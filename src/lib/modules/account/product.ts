@@ -2133,3 +2133,18 @@ export function consumeBundleComponentsForDoc(
 ): Promise<BundleConsumeResult> {
   return prisma.$transaction((tx) => consumeBundleComponentsInTx(tx, ctx, docId));
 }
+
+// ─────────────────── ACC T5.9 ▸ ตัวอ่านข้ามระบบของรายงานสินค้า (goods-report.ts) ───────────────────
+// InvMovement อยู่ใต้ระบบคลัง (คนละ systemId กับสมุด) และ User เป็นตัวตนข้ามร้าน ⇒ อ่านด้วย client ที่ไม่ผูก scope ในไฟล์นี้ (กรอง tenantId เอง) ◂
+export async function invMovementsOfItems(tenantId: string, itemIds: string[], upTo: Date) {
+  if (!itemIds.length) return [];
+  return prisma.invMovement.findMany({
+    where: { tenantId, itemId: { in: itemIds }, createdAt: { lte: upTo } },
+    select: { itemId: true, qtyDelta: true, costSatang: true, createdAt: true, refType: true, refId: true, sourceModule: true },
+    orderBy: { createdAt: "asc" },
+  });
+}
+export async function userNamesOf(ids: string[]): Promise<{ id: string; name: string | null; email: string }[]> {
+  if (!ids.length) return [];
+  return prisma.user.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, email: true } });
+}

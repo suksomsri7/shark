@@ -196,6 +196,10 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "reports/pos-link/page.tsx": "account.report.view", // ACC T4.7 — POS กับสมุดบัญชี (loadReport · ปุ่มลงบัญชีตรวจ journal.adjust ที่ action)
   "reports/dorm-deposits/page.tsx": "account.report.view", // ACC T4.8 — ตรวจเงินประกันหอพัก (loadReport)
   "reports/points-outstanding/page.tsx": "account.report.view", // ACC T4.8 — แต้มคงค้าง ณ วันสิ้นงวด (loadReport)
+  "reports/equity/page.tsx": "account.report.view", // ACC T5.8 — งบแสดงการเปลี่ยนแปลงส่วนของเจ้าของ (loadReportWithPolicy)
+  "reports/goods/page.tsx": "account.report.view", // ACC T5.9 — สินค้าและวัตถุดิบ · ของเสีย · ถือเป็นขาย (loadReport · ปุ่มตรวจสิทธิ์ใน action)
+  "reports/deferrals/page.tsx": "account.report.view", // ACC T5.10 — รายได้รับล่วงหน้า (loadReport · ปุ่มตรวจสิทธิ์ใน action)
+  "reports/branch-tax/page.tsx": "account.report.view", // ACC T5.11 — สาขา + รายงานภาษีแยกสาขา (loadReport · ปุ่มตรวจสิทธิ์ใน action)
   "export/books/route.ts": "account.report.view", // ACC T4.5 — ส่งออกสมุดบัญชี + ไฟล์แนบ (ZIP) ก่อนลบร้าน
   "reports/trial-balance/page.tsx": "account.report.view",
   "settings/page.tsx": "account.settings.manage",

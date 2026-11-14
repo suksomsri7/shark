@@ -337,11 +337,16 @@ export async function issueDocNo(
     docType: AccountDocType;
     fallbackPrefix: string;
     date: Date;
+    /** ACC T5.11 ▸ สาขาที่ออกเอกสาร (null/สาขาตั้งต้นของสมุด = เดิมทุกไบต์) — สาขาอื่นใช้ลำดับแยก + ขึ้นต้นรหัสสาขาเมื่อรูปแบบไม่มี {สาขา} ◂ */
+    branchCode?: string | null;
   },
 ): Promise<string> {
-  const cfg = await loadNumberingContext(db, input.systemId, input.docType, input.fallbackPrefix);
+  const base = await loadNumberingContext(db, input.systemId, input.docType, input.fallbackPrefix);
+  const br = (input.branchCode ?? "").trim();
+  const other = /^\d{5}$/.test(br) && br !== base.branchCode;
+  const cfg = other ? { ...base, branchCode: br, effectivePattern: /\{(?:สาขา|BR)\}/.test(base.effectivePattern) ? base.effectivePattern : `${br}-${base.effectivePattern}` } : base;
   const { year, month } = bkkParts(input.date);
-  const periodKey = periodKeyOf(cfg.reset, year, month);
+  const periodKey = other ? `${periodKeyOf(cfg.reset, year, month)}@${br}` : periodKeyOf(cfg.reset, year, month);
   // ยังไม่มีแถวของงวดนี้ = งวดใหม่/เพิ่งเปลี่ยนนโยบาย → เริ่มต่อจากเลขที่ออกไปแล้วจริง
   const existing = await db.accountDocSequence.findUnique({
     where: { systemId_docType_periodKey: { systemId: input.systemId, docType: input.docType, periodKey } },
@@ -349,7 +354,9 @@ export async function issueDocNo(
   });
   const startNo = existing
     ? existing.lastNo + 1
-    : (await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month, seriesOfCfg(cfg, input.date))) + 1;
+    : other
+      ? 1
+      : (await legacyMaxSeq(db, input.systemId, input.docType, cfg.reset, year, month, seriesOfCfg(cfg, input.date))) + 1;
   const reserve = (start: number) =>
     reserveSeq(db, { tenantId: input.tenantId, systemId: input.systemId, docType: input.docType, prefix: cfg.prefix, periodKey, startNo: start });
   const fmt = (seq: number) =>

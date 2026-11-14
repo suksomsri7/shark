@@ -88,6 +88,19 @@ export const COMPLIANCE_ROW_SCHEMA = z
   .strict()
   .refine(rangeOk, RANGE_MSG);
 
+/** ACC T5.9 ▸ ใช้ส่วนตัว/ขาด ถือเป็นขาย (WARN = แสดงยอด+เตือน · OFF = ไม่แสดงยอด) ◂ */
+export const DEEMED_SALE_MODES = ["WARN", "OFF"] as const;
+export type DeemedSaleMode = (typeof DEEMED_SALE_MODES)[number];
+export const DEEMED_SALE_MODE_LABEL_TH: Record<DeemedSaleMode, string> = { WARN: "แสดงยอดภาษีขายโดยประมาณ + คำเตือน", OFF: "ไม่แสดงยอด (คำเตือนยังแสดง)" };
+/** ACC T5.11 ▸ สาขา (สถานประกอบการ) + วิธียื่น ภ.พ.30 ◂ */
+export const BRANCH_ROW_SCHEMA = z
+  .object({ code: z.string().regex(/^\d{5}$/, "รหัสสาขาต้องเป็นตัวเลข 5 หลัก").refine((c) => c !== "00000", "00000 คือสำนักงานใหญ่ (มีอยู่แล้ว)"), name: z.string().trim().min(1).max(120), address: z.string().trim().max(300).nullable().optional() })
+  .strict();
+export type BranchRow = z.infer<typeof BRANCH_ROW_SCHEMA>;
+export const VAT_FILING_MODES = ["SEPARATE", "COMBINED"] as const;
+export type VatFilingMode = (typeof VAT_FILING_MODES)[number];
+export const VAT_FILING_MODE_LABEL_TH: Record<VatFilingMode, string> = { SEPARATE: "แยกยื่นแต่ละสถานประกอบการ", COMBINED: "ยื่นรวม (ได้รับอนุมัติแล้ว)" };
+
 /** ACC T4.7 ▸ ทิปที่รับผ่านจุดขาย 3 ทาง (skill domain-shark-accounting-cases §1.8) ◂ */
 export const TIP_TREATMENTS = ["LIABILITY", "REVENUE_VAT", "STAFF_DIRECT"] as const;
 export type TipTreatment = (typeof TIP_TREATMENTS)[number];
@@ -231,9 +244,36 @@ const DEFS: SettingDef[] = [
     defaults: { _fallback: "LIABILITY" },
     chain: CHAIN, editPermission: EDIT,
   },
+  // ── ACC T5.9 · T5.11 (เลน 1) ──
+  {
+    // skill domain-shark-accounting-cases §5.3–5.4: ใช้ส่วนตัว/ขาด = ถือเป็นขาย ราคาตลาด [V] · ร้านนับเองถือ "ตรวจพบ" [U] — ค่าเริ่ม WARN (แสดงยอด + เตือน · ไม่ตั้งภาษีขายเอง)
+    key: "account.stock.deemedSale", domain: "account", group: "stock", type: "enum", labelTh: "สินค้าใช้ส่วนตัว/ขาด ถือเป็นการขาย",
+    helpTh: "แสดงยอดภาษีขายโดยประมาณ (ราคาตลาด) ของสินค้าที่ใช้ส่วนตัวหรือขาด พร้อมคำเตือน · ปิด = ไม่แสดงยอด (ยังมีคำเตือน) — โปรดตรวจกับนักบัญชีของร้าน",
+    schema: z.enum(DEEMED_SALE_MODES),
+    enumLabelsTh: DEEMED_SALE_MODE_LABEL_TH,
+    defaults: { _fallback: "WARN" },
+    chain: CHAIN, editPermission: EDIT,
+  },
+  {
+    // skill common-vat-invoice §14 §18 §19: สถานประกอบการ (สำนักงานใหญ่ 00000 / สาขา 5 หลัก) · รายงานแยกสถานประกอบการ [V] · ยื่นรวมต้องได้รับอนุมัติ ม.83 ว.สี่ [V]
+    key: "account.entity.branches", domain: "account", group: "entity", type: "table", labelTh: "สถานประกอบการ (สาขา)",
+    helpTh: "รายชื่อสาขาที่จดทะเบียนภาษีมูลค่าเพิ่ม (รหัส 5 หลัก) — เอกสารเลือกสาขาที่ออก · เลขที่และรายงานภาษีแยกตามสาขา",
+    schema: z.array(BRANCH_ROW_SCHEMA).max(50),
+    defaults: { _fallback: [] },
+    chain: CHAIN, editPermission: EDIT,
+    tableTh: { item: { kind: "object", labelTh: "สาขา", fields: { code: { kind: "text", labelTh: "รหัสสาขา" }, name: { kind: "text", labelTh: "ชื่อสาขา" }, address: { kind: "text", labelTh: "ที่อยู่", optional: true } } }, emptyTh: "มีเฉพาะสำนักงานใหญ่" },
+  },
+  {
+    key: "account.entity.vatFilingMode", domain: "account", group: "entity", type: "enum", labelTh: "การยื่น ภ.พ.30 ของหลายสาขา",
+    helpTh: "แยกยื่นแต่ละสถานประกอบการ (ค่าเริ่ม) · ยื่นรวม (ต้องได้รับอนุมัติจากอธิบดี)",
+    schema: z.enum(VAT_FILING_MODES),
+    enumLabelsTh: VAT_FILING_MODE_LABEL_TH,
+    defaults: { _fallback: "SEPARATE" },
+    chain: CHAIN, editPermission: EDIT,
+  },
 ];
 
-defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน", wht: "หัก ณ ที่จ่าย", pos: "เชื่อมจุดขาย" } });
+defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน", wht: "หัก ณ ที่จ่าย", pos: "เชื่อมจุดขาย", stock: "สินค้าคงเหลือ" } });
 
 export const ACCOUNT_SETTING_KEYS = {
   entityKind: "account.entity.kind",
@@ -247,4 +287,7 @@ export const ACCOUNT_SETTING_KEYS = {
   grossUpOnce: "account.wht.grossUpOnce",
   compliance: "account.legal.complianceValues", // ACC T4.5 · T4.8 ◂
   tipTreatment: "account.pos.tipTreatment", // ACC T4.7 ◂
+  deemedSale: "account.stock.deemedSale", // ACC T5.9 ◂
+  branches: "account.entity.branches", // ACC T5.11 ◂
+  vatFilingMode: "account.entity.vatFilingMode", // ACC T5.11 ◂
 } as const;

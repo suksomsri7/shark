@@ -90,6 +90,7 @@ export const SKILLS: Skill[] = [
       "account_books_retention", "account_compliance_values", // ACC T4.5 ▸ หน้าที่เก็บบัญชีก่อนลบร้าน · ค่ากฎหมายอื่น + วิธีลงทิป (อ่าน) ◂
       "account_pos_unposted", "account_pos_daily_recon", "account_pos_shift_variances", // ACC T4.7 ▸ บิลยังไม่ลง · กระทบยอดรายวัน · เงินขาด/เกิน (อ่าน) ◂
       "account_stock_issue_reasons", "account_dorm_deposit_check", "account_points_outstanding", // ACC T4.8 ▸ สาเหตุเบิก · เงินประกันหอ · แต้มคงค้าง (อ่าน) ◂
+      "account_equity_statement", "account_goods_report", "account_waste_log", "account_deemed_sales", "account_deferrals", "account_branches", "account_branch_tax_report", // ACC T5.8–T5.11 ▸ งบส่วนของเจ้าของ · สินค้า · ของเสีย · ถือเป็นขาย · รายได้รับล่วงหน้า · สาขา (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",
@@ -98,6 +99,7 @@ export const SKILLS: Skill[] = [
       "account_run_depreciation", "account_transfer_funds", "account_email_document",
       "account_create_recurring", "account_upload_file", "account_read_bill_image",
       "account_update_tax_settings", // ACC T0.1/T0.2 ▸ ตั้งประเภทผู้ประกอบการ / แถวตารางค่ากฎหมาย (ข้อเสนอ) ◂
+      "account_set_waste_evidence", "account_create_deferral", "account_recognize_deferrals", "account_cancel_deferral", "account_set_deposit_kind", "account_set_discount_funder", "account_update_branches", "account_set_document_branch", // ACC T5.9–T5.11 (ข้อเสนอ) ◂
       "account_file_vat_return", "account_file_vat_additional", "account_set_vat_credit_carry", // ACC T1.3 ▸ ภ.พ.30 ยื่น · แบบเพิ่มเติม · แก้เครดิตยกมา (ข้อเสนอ) ◂
       "account_release_parked_vat", // ACC T1.2 ▸ ออกใบกำกับปล่อยภาษีขายที่ค้างพัก (ข้อเสนอ · ร้านเลือกวันที่) ◂
       "account_replace_tax_invoice", // ACC T2.2 ▸ ยกเลิกและออกใบกำกับภาษีแทน (ข้อเสนอ · เลขใหม่ วันที่เดิม) ◂

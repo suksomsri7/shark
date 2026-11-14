@@ -469,6 +469,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // WO 4.3 (บัญชี V2 §8.2) — สูตรรายการจัดชุด + ยอดยกมาของสินค้า (ผูก tenantId+systemId ทั้งคู่)
   AccountProductBundleItem: sys(),
   AccountProductOpeningLot: sys(),
+  AccountDeferral: sys(), // ACC T5.10 — รายได้รับล่วงหน้าทยอยรับรู้
   AccountCategory: sys(),
   AccountFinance: sys(),
   // WO 5.1 (บัญชี V2 §10.1) — ยอดยกมาหลายรายการ + โอนระหว่างช่องทาง ของ AccountFinance (ผูก tenantId+systemId ทั้งคู่)

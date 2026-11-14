@@ -214,6 +214,12 @@ model AccountDocument {
   whtCertReceivedAt   DateTime?
   whtCertReceivedById String?
   whtCertReceivedNote String?
+  /// ACC T5.9 (H6) — waste log: พยาน/การตรวจสภาพของใบเบิก { witnessName, witnessRole, inspectedAt, method, note } (รูป = attachments)
+  stockEvidence       Json?
+  /// ACC T5.10 (J11) — ใครออกส่วนลด: SHOP | PLATFORM | SHARED (null = ไม่ระบุ · ข้อมูลประกอบ ไม่เปลี่ยนฐานภาษีเอง)
+  discountFundedBy    String?
+  /// ACC T5.11 (A7) — สถานประกอบการที่ออกเอกสาร (รหัส 5 หลัก · null = สำนักงานใหญ่ 00000)
+  branchCode          String?
   /// ACC T2.7 — ประวัติการพิมพ์ (ต้นฉบับ/สำเนา/ใบแทน)
   prints        AccountDocumentPrint[]
 
@@ -238,6 +244,8 @@ model AccountDocument {
   @@index([systemId, docType, whtFiledPeriodKey])
   // ACC T3.5: ค้างรับ 50 ทวิ (ฝั่งถูกหัก)
   @@index([systemId, docType, direction, whtCertReceivedAt])
+  // ACC T5.11: รายงานภาษีแยกสถานประกอบการ
+  @@index([systemId, branchCode])
 }
 
 model AccountDocumentLine {

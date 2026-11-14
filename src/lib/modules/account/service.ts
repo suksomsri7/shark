@@ -1312,12 +1312,20 @@ export function bkkYearMonth(date: Date): { year: string; month: string } {
   return { year, month };
 }
 
+/** ACC T5.11 ▸ ค่าตั้งผู้ขายที่ใช้ตรึงบนใบ เมื่อเอกสารออกที่สาขาอื่น (รหัส + ชื่อสาขา + ที่อยู่สาขาถ้าตั้งไว้) ◂ */
+async function branchSettingsFor<T extends { branchCode?: string | null; branchName?: string | null; address?: string | null }>(ctx: { tenantId: string; systemId: string }, settings: T, code: string): Promise<T> {
+  const { loadBranches } = await import("./branches");
+  const b = (await loadBranches(ctx)).all.find((x) => x.code === code);
+  return { ...settings, branchCode: code, branchName: b?.name ? `สาขาที่ ${code} ${b.name}` : `สาขาที่ ${code}`, ...(b?.address ? { address: b.address } : {}) };
+}
+
 async function nextDocNo(
   tx: Prisma.TransactionClient,
   tenantId: string,
   systemId: string,
   docType: AccountDocType,
   date: Date,
+  branchCode?: string | null, // ACC T5.11 ◂
 ): Promise<string> {
   return issueDocNo(tx, {
     tenantId,
@@ -1325,6 +1333,7 @@ async function nextDocNo(
     docType,
     fallbackPrefix: docNoFallbackPrefix(docType),
     date,
+    branchCode,
   });
 }
 
@@ -2255,6 +2264,8 @@ export async function createDocument(input: {
   /** กุญแจกันนำเข้าซ้ำ (refType="CSV_IMPORT" · refId=`${fileHash}:${rowKey}`) — ดู import-actions.ts */
   refType?: string | null;
   refId?: string | null;
+  /** ACC T5.11 ▸ สาขาที่ออก (5 หลัก · ว่าง/สาขาตั้งต้น = null) ◂ */
+  branchCode?: string | null;
 }) {
   // CRM C5.4-C ▸ (round 6 · F6) ทุกทาง (ฟอร์ม · REST · AI · นำเข้า) ผ่านด่านเดียวกัน ◂
   const srcProblem = await sourceDocProblemFor(input.tenantId, input.systemId, input.docType, input.sourceDocId);
@@ -2322,6 +2333,7 @@ export async function createDocument(input: {
         note: input.note ?? null,
         adjustReason: input.adjustReason ?? null,
         adjustReasonCode: adjustReasonOf(input.adjustReasonCode)?.code ?? null, // ACC T2.3 ◂
+        ...(input.branchCode && /^\d{5}$/.test(input.branchCode.trim()) ? { branchCode: input.branchCode.trim() } : {}), // ACC T5.11 ◂
         sourceDocId: input.sourceDocId ?? null,
         createdById: input.createdById ?? null,
         source: input.source ?? "MANUAL",
@@ -2621,7 +2633,7 @@ export async function issueDocumentInTx(
         }
       }
 
-      docNo = await nextDocNo(tx, tenantId, systemId, doc.docType, doc.issueDate);
+      docNo = await nextDocNo(tx, tenantId, systemId, doc.docType, doc.issueDate, doc.branchCode); // ACC T5.11 ▸ ลำดับแยกสาขา ◂
       const snapshot = doc.contact
         ? {
             name: doc.contact.name,
@@ -2645,7 +2657,7 @@ export async function issueDocumentInTx(
           status: ISSUE_STATUS[doc.docType],
           contactSnapshot: snapshot ?? undefined,
           // ACC T2.9 ▸ ตรึงผู้ขาย + ข้อความท้ายใบ ณ วันออก (แก้ค่าตั้งภายหลัง สำเนาเก่าไม่เปลี่ยน · K4) ◂
-          sellerSnapshot: sellerSnapshotOf(settings, doc.docType, "ISSUE") as unknown as Prisma.InputJsonValue,
+          sellerSnapshot: sellerSnapshotOf(doc.branchCode ? await branchSettingsFor({ tenantId, systemId }, settings, doc.branchCode) : settings, doc.docType, "ISSUE") as unknown as Prisma.InputJsonValue, // ACC T5.11 ▸ สาขาที่ออกบนใบ ◂
         },
       });
       // ── A5/A2: โพสต์บัญชีเงียบใน tx เดียวกัน (posting ล้ม = เอกสาร rollback) ──
