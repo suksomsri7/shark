@@ -72,8 +72,12 @@ try {
   await prisma.calItem.update({ where: { id: drRow.id }, data: { createdAt: new Date(Date.now() - 25 * 3_600_000) } });
   const cf2 = await call("calendar/items/ID/confirm", "POST", { h: H.a, id: drRow.id, body: {} });
   chk("R5-9", "DRAFT หมดอายุ = 410 expired ไทย", cf2.status === 410 && cf2.body.error === "expired" && thai(cf2.body.message));
+  // ไม่พึ่งนาฬิกา: แท็บ upcoming = ตั้งแต่พรุ่งนี้ (วันไทย) — now+30 ชม./+50 ชม. อยู่ "พรุ่งนี้ขึ้นไป" เสมอไม่ว่าตอนนี้กี่โมง
+  for (const h of [30, 50]) await call("calendar/items", "POST", { h: H.a, body: { kind: "REMINDER", title: `ล่วงหน้า ${h} ชม.`, startAt: soon(h) } });
+  const tomorrowStart = new Date((Math.floor((Date.now() + 7 * 3_600_000) / 86_400_000) + 1) * 86_400_000 - 7 * 3_600_000);
+  const upN = await prisma.calItem.count({ where: { userId: fx.U.a, tenantId: t1, status: { in: ["OPEN", "DRAFT"] }, occursAt: { gte: tomorrowStart } } });
   const lt = await call("calendar/items", "GET", { h: H.a, q: "tab=upcoming&take=1" });
-  chk("R5-10", "GET items?tab=upcoming&take=1 → items + nextBefore", lt.status === 200 && Array.isArray(lt.body.items) && lt.body.items.length === 1 && typeof lt.body.nextBefore === "string");
+  chk("R5-10", "GET items?tab=upcoming&take=1 → items + nextBefore (คาดจากวันไทยของแถว)", upN >= 2 && lt.status === 200 && Array.isArray(lt.body.items) && lt.body.items.length === 1 && typeof lt.body.nextBefore === "string" && Date.parse(lt.body.items[0].occursAt) >= +tomorrowStart, String(upN));
 
   console.log("── R2: ของคนอื่น = 404 ──");
   const mine = await call("calendar/items", "POST", { h: H.a, body: { kind: "EVENT", title: "นัดส่วนตัวของ a", startAt: soon(26), endAt: soon(27) } });
