@@ -708,3 +708,13 @@
 - เลน 4 `wip/hr-preprod-1` 681ed7464: ผู้สร้าง a7878aeefb74368f3 รอบ V1b/V7b/V8c (3 ไฟล์ข้อสอบ)
 - ลำดับรวม: H4.9-FIX1 (อยู่ใน session/hr แล้ว) → PREPROD-1 → LEAVE-3 → PRIV-3 → VIS-5a → VIS-5b → VIS-5c → (VIS-5d, 5e ยังไม่ร่าง) → ด่าน pm-full (ต้อง seed-hr-walk --down ก่อน + EXTRA ชุด preprod-1b/1c, leave-3b, priv-3, vis-5a/5b/5c) → HANDOVER-H4 → นับ H4.9 · หลังชุดหน้าจอครบ: build ใหม่ + เดินซ้ำ + ดูภาพคู่ → นับ H5.1
 - หนี้: reports/export ตอบ 400 กับ 404 ต่างกันตาม system id (เล็ก) · ข้อสอบ vis-5b การ์ดสรุปเดือนแดงปลอมถ้ารันวันที่ 1–3
+
+### 2026-11-15T05:10Z · จุดต่อ
+- 🔴 ทรีผู้คุม `/root/projects/shark-hr-c` ตอนนี้อยู่บนสาขาชั่วคราว `tmp/walk-vis5b` (session/hr + VIS-5b + VIS-5a · ใช้ถ่ายภาพเท่านั้น · ไฟล์ข้อสอบที่ชนเลือกฝั่งเดียวแบบหยาบ ห้าม merge) · serve :3226 จาก build ของสาขานี้ · unit hr-walk-vis5ab2 กำลังเดิน 11v/x1–x4/13b (สถานะ /tmp/hr-ctl/walk/vis5ab2/status) · สคริปต์ /tmp/hr-ctl/walk/rewalk.sh (build+serve+walk) และ walkonly.sh
+- การ merge เข้า session/hr ทำที่ทรี merge-only `/root/projects/shark-hr-merge` (ไม่มี node_modules) จนกว่าทรีผู้คุมจะกลับมา session/hr
+- session/hr ในเครื่อง = 1cb714435 = +HR-PREPROD-1 (1e53bba91 · ผู้ตรวจ MERGE ×2 รอบส่วนต่าง · นักล่ายืนยันข้อเดิมปิด) · ยังไม่ push · ยังไม่ผ่านด่าน
+- 🔴 รอเจ้าของ: "แก้ค่าตรึง h3.8 ได้" — qc-hr-h3.8 S1.13 ตรึง sha ของ privacy.ts → แดงบน session/hr (77/78) · ระบบสิทธิ์บล็อกผู้สร้าง PREPROD-1 ไม่ให้แก้ · ผู้สร้าง PRIV-3 แก้ไปเองแล้วถูกสั่งถอน · ค่าใหม่ต้องคำนวณหลังรวมทุกใบที่แตะ privacy.ts (PREPROD-1, PRIV-3, LEAVE-3?)
+- LEAVE-3 (เลน 2): ผู้ตรวจส่วนต่าง MERGE · ผู้สร้าง a872228a4f774f395 ทำขั้นสอง (W10 การ์ด AI บอกชื่อคำขอ + รวม session/hr + โพรบลาคู่×ลาป่วยแบ่งส่วน)
+- PRIV-3 (เลน 5 `wip/hr-priv-3` 44a75f37a): ผู้ตรวจ MERGE WITH NOTES · นักล่า a9e849d961b43d3fc กำลังล่า · ค้าง: ผู้เขียนข้อสอบเพิ่มผู้ดูถือกุญแจเดียว (payadjust.request / payadjust.approve) + เซลล์ S0/SR/SD ในตารางเดิน · SD (ถือ hr.leave.read) เห็นทะเบียน = ของเดิม → รายการเจ้าของ
+- VIS-5a (เลน 3 `wip/hr-vis-5a` 815a626aa): 39/39 · รอภาพ · VIS-5b (เลน 1 `wip/hr-vis-5bc`): ผู้สร้าง a538b5242fe7df3d0 แก้ตามภาพ F1–F4 (แถบอนุมัติทับการ์ด · คอลัมน์ซ้ายว่าง · เพิ่มชุดถ่ายวันมีกะ `01-hub-rostered`)
+- ด่านสุดท้ายต้อง EXTRA="qc-hr-preprod-1b qc-hr-preprod-1c qc-hr-leave-3 qc-hr-leave-3b qc-hr-priv-3 qc-hr-vis-5a qc-hr-vis-5b qc-hr-vis-5c" + `seed-hr-walk --down` ก่อน
