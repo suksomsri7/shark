@@ -1,0 +1,31 @@
+# PRIV-2 — one pay scope: borrowing never widens pay (fix after H5.2 hunt F1–F5)
+
+> Base `session/hr` 60659e7c0 · branch `wip/hr-priv-2` · no migration · oracle `scripts/qc-hr-priv-2.mts` (+ `-lib`) · notes `ledger/wo-notes/hr-PRIV-2-oracle.md` · hunt `ledger/wo-notes/hr-H5.2-privacy-hunt.md`. Marker on every hunk: `// HR PRIV-2 ▸ … ◂`.
+
+## Problem
+A payroll viewer limited to branch U1 gets pay data of employees merely **borrowed** into U1 because pay paths use `employeeInScope`/`unitWhere` (home **or borrowing open today**):
+F1 profile sensitive block + docs (`privacy.ts:57,92`; latent twin `loadPayslipForViewer` `:132`) · F2 money reports page/CSV/XLSX for **every past period** (`reports.ts:172`) · F3 payroll page shows borrowed salary/items/adjustments **and whole-run totals + headcount** (`payroll-ui.tsx:93-105,350-362`) ⇒ hidden pay by subtraction · F4 a name with bidi/control/formula blocks every money export of the owner and the refusal echoes the raw name (`reports.ts:700`) · F5 readers trust caller viewer (debt).
+Today two home-only predicates exist with the same meaning: `payslip.ts homeInScope` (private) and `labor.ts` gate `sees` (closure); a third copy `payroll.ts unitsOfViewer`+`mine` (previewPayrollRunV2 — differs: `unitAccess []` = no branch there, = all branches in `hrScopeOf` D-1) and `attendance-pay.ts covers`.
+
+## Rulings (contract)
+R1 **One predicate** in `scope.ts`: `export function inPayScope(scope: HrScope, homeUnitId: string | null | undefined): boolean` (pure: `"*"` ⇒ true incl. null home; list ⇒ home ∈ list; null home ⇒ false) and `export function payScopeWhere(scope: HrScope): Prisma.HrEmployeeWhereInput` (`"*"` ⇒ `{}`, `[]` ⇒ none, list ⇒ `{unitId:{in}}` — **no** `units` term). Current home only (= payslip rule; leavers judged by home; no home-history). `homeInScope`, labour `sees`, `previewPayrollRunV2`, `attendance-pay covers` call it (no second implementation). Text `export const PAY_SCOPE_EXCLUDED_TEXT = "ไม่รวมพนักงานที่คุณไม่มีสิทธิ์ดูค่าจ้าง {n} คน"`.
+(a) **Profile**: sensitive block (nationalId, SSO, house-reg, bank ×3, payType, docs) only when `canViewPayroll && inPayScope`; out-of-pay-scope ⇒ the DTO a manager without payroll gets (byte-identical, `canSeeSensitive:false`). Opening the profile itself still follows `employeeInScope` (R3). `loadPayslipForViewer` payroll branch uses pay scope.
+(b) **Money reports** (payroll-month/-year, tax-month/-year, wages, register, and `ot` when the viewer gets money columns) for a limited payroll viewer: rows from `payScopeWhere` — out-of-pay-scope rows **absent**, any period. `time`/`leave` (no money) keep today's rows. Totals = Σ own rows (H3.9).
+(c) **Payroll page** (`PayrollSection`) for a limited viewer: employees, salary forms, attendance, adjustments, stranded, exclusions, run items = pay scope only; per run: headcount + totals from shown items only, plus the note with N = hidden items; no whole-run figure in HTML **or props**. `previewPayrollRunV2` adds `run.excludedHeadcount` (0 for all-branch) and the run-v2 section prints the note.
+(d) **Inbox** (H2.11, oracle finding C5): pending pay-adjustment items/amounts of out-of-pay-scope employees are absent for a limited payroll viewer. **Slip loader**: `loadPayslipForViewer` never hands whole-run totals to a limited viewer (D2).
+R2 Doubling every out-of-pay-scope employee's pay (profile rates, items, adjustments, run totals) changes no byte of any covered payload of payU1s/payU1m (list in oracle D1–D5); owner/pay-key payloads do change (D6).
+R3 Roster, attendance board, time/leave reports, leave/OT decisions, profile opening for borrowed staff unchanged.
+R4 Pinned as found (GREEN): every run action requires an all-branch viewer (`assertRunAllBranches`, H1.1 R12.3); bank/filings/certs/opening need `bankGateOf` (all-branch). Limited viewers cannot create/approve/pay/reverse/delete/recompute runs or issue documents.
+R5 Write path (`service.createEmployee/updateEmployee/saveEmployeeProfile`) rejects names containing the H4.8 key-name set (C0/C1 incl. tab/LF, DEL, U+061C, U+200B–200F, U+202A–202E, U+2060, U+2066–2069, U+2028/2029, U+FEFF) with a fixed Thai text (no echo). Exports never refuse because of a stored name: names are sanitised on output (strip the set; neutralise a leading `= + - @`); refusal texts carry no `{names}`.
+R6 F5 = debt **D-PRIV-reader-trust**. Readers this ticket touches (privacy.ts profile/slip, payroll page reader) re-read the DB membership (`memberOf`/`gateOf` pattern) for the pay decision.
+Refusals stay byte-identical for forbidden vs unknown ids. API (H4.8) and AI tools (H4.3) unchanged (D5 regression).
+
+## Files
+Likely: `scope.ts` · `privacy.ts` · `payslip.ts` · `labor.ts` · `reports.ts` · `reports-rules.ts` · `payroll.ts` (previewPayrollRunV2) · `payroll-ui.tsx` · `payroll-run-ui.tsx` · `service.ts` · `attendance-pay.ts` · `inbox.ts` · (`actions.ts`, `privacy-shared.ts`, `reports-ui.tsx`, messages th/en if needed). Only marked hunks; a new hr file must say `HR PRIV-2` in its first 3 lines.
+**Frozen** (S4): `prisma/**` · `src/lib/core/**` · `src/lib/ai/**` · `hr/api/**` · `hr/filings/**` · `hr/bank-files/**` · payroll-rules*/payroll-run-rules/payslip-rules/labor-rules · roster*/judge*/leave*/ot*/inbox-*/swap*/correction*/lifecycle*/self*/clock*/pin/work-entries*/settings*/law*/ai*/payroll-opening*/stock-charge*/line-* · `qc-hr-lib.mts` + h3.8/h4.3 libs · every older oracle · `package.json`.
+
+## Run list (lane wrapper, one at a time)
+`qc-hr-priv-2` · `qc-hr-h0.6` · `qc-hr-h1.1` · `qc-hr-h1.2` · `qc-hr-h1.3` · `qc-hr-h2.4` · `qc-hr-h3.4-ytd` · `qc-hr-h3.5` · `qc-hr-h3.6` · `qc-hr-h3.7` · `qc-hr-h3.8` · `qc-hr-h3.9` · `qc-hr-h4.2` · `qc-hr-h4.3` · `qc-hr-h4.8` · `qc-hf-hr-privacy` · `qc-audit-trail` · targeted tsc of touched files. Expected older-suite changes (ORACLE-EDIT requests, not builder edits): see notes §4.
+
+## Debts
+D-PRIV-reader-trust (F5, ~35 readers) · D-PRIV-home-history (pay scope = current home; a moved employee's past pay follows the new home) · D-PRIV-workentries (work-entries `covers` stays a minutes-only copy) · D-PRIV-service-run-guard (approveRun/markPaidRun/reverseRun services take no viewer; the all-branch rule lives in actions only).
