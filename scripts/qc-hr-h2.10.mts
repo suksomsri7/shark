@@ -181,7 +181,10 @@ async function runStatic(): Promise<void> {
     const fs = files(ME);
     // ORACLE-EDIT (H3.6 builder, 13 Nov — brief hr-brief-H3.6 R14/R15 put the self 50 Tawi card on /app/me/hr/pay and a route under /app/me/hr/tax-cert):
     //   + exactly the two H3.6 self entry points (filings/ui#MyTaxCertCard · filings/download-route#myTaxCertGet) — both resolve the user through H2.10 resolveSelf
-    const allowed = (spec: string) => /^(react|next\/|next-intl)/.test(spec) || /^@\/components\//.test(spec) || /^@\/lib\/ui\//.test(spec) || spec === "@/lib/core/context" || /^@\/lib\/modules\/hr\/(self|self-actions|self-ui)$/.test(spec) || /^@\/lib\/modules\/hr\/filings\/(ui|download-route)$/.test(spec) || /^\.{1,2}\//.test(spec);
+    // ORACLE-EDIT (H4.5 builder, 14 Nov — brief hr-brief-H4.5 R10/R11 put the "LINE ของฉัน" card on /app/me/hr/profile):
+    //   + exactly the H4.5 self entry points (line-link#myLineStatus via resolveSelf · line-actions · line-ui · platform/hr-line-actions#issueMyLineCodeAction passed as a prop)
+    const allowedH45 = (spec: string) => /^@\/lib\/modules\/hr\/line-(link|actions|ui)$/.test(spec) || spec === "@/lib/platform/hr-line-actions"; // ORACLE-EDIT (H4.5 builder)
+    const allowed = (spec: string) => /^(react|next\/|next-intl)/.test(spec) || /^@\/components\//.test(spec) || /^@\/lib\/ui\//.test(spec) || spec === "@/lib/core/context" || /^@\/lib\/modules\/hr\/(self|self-actions|self-ui)$/.test(spec) || /^@\/lib\/modules\/hr\/filings\/(ui|download-route)$/.test(spec) || /^\.{1,2}\//.test(spec) || allowedH45(spec); // ORACLE-EDIT (H4.5 builder): + allowedH45
     const bad = fs.flatMap((f) => importsOf(stripComments(rd(f))).filter((i) => !i.type && !allowed(i.spec)).map((i) => `${f.slice(ME.length + 1)}:${i.spec}`));
     const now = fs.filter((f) => /\bnow\s*:/.test(stripComments(rd(f))));
     ck("S1.5", { pages: PAGES.every((p) => existsSync(join(ROOT, p))), imports: fs.length > 0 && !bad.length, noNow: !now.length }, "6 files · facade only", `${PAGES.filter((p) => !existsSync(join(ROOT, p))).length} missing · ${bad.slice(0, 3).join(" ")}`);
@@ -228,7 +231,7 @@ async function runStatic(): Promise<void> {
     const ids = testidsOf(src, "hr-self-");
     const miss = [...UI_IDS, ...UI_DYN].filter((t) => !ids.has(t));
     ck("S8.1", { some: ids.size > 0, ids: !miss.length, ...tokensOnly(stripComments(src)), h44: /min-h-\[44px\]|min-h-11\b|h-11\b/.test(src) }, "ids · tokens · 44 px", miss.slice(0, 6).join(","));
-    const rows = ((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((r) => String(r.testid ?? "").startsWith("hr-self-"));
+    const rows = ((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((r) => String(r.testid ?? "").startsWith("hr-self-") && r.wo !== "H4.5"); // ORACLE-EDIT (H4.5 builder, 14 Nov): hr-self-line-* rows belong to H4.5 (oracle qc-hr-h4.5 S1.13) — excluded here
     const rowIds = new Set(rows.map((r) => String(r.testid)));
     const want = [...UI_IDS, ...UI_DYN];
     ck("S8.2", { some: rows.length > 0, codeRow: want.every((t) => rowIds.has(t)), rowCode: [...rowIds].every((t) => ids.has(t)), meta: rows.length > 0 && rows.every((r) => r.wo === "H2.10" && r.oracle === SUITE) }, "rows", `rows=${rows.length}`);

@@ -829,7 +829,12 @@ function runStatic(): void {
     // ORACLE-EDIT (H3.4 builder, phase B · fix round 1): H3.4 = 11 (lawRowIds/ytdJson on v2 items · carry-row sourceRef write + carry-class/consent/reverse reads)
     // ORACLE-EDIT (H3.7 builder): H3.7 = 4 (sourceRef in h37RunFiguresInTx: row type · SELECT · map to the pure classifier ×2 — stored figures for the accrual)
     //   fix round 1 F5: + 6 in h37RefundClaimsInTx (refund rows: filter · slice · claim row type · SELECT · map ×2 — the class of the claim a refund gives back) = 10
-    const PAY_MARKED: Record<string, number> = { "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 16, "HR H3.7": 12 }; // ORACLE-EDIT (H3.7 fix r2 b): + 2 in giveBackClaim (earlier refunds of the claim: sourceRef match · REFUND insert column) = 12 // fix round 2: + carry idempotency read · fix round 3 (H5): + the leaver attendance-row writer (sourceRef read/write ×4, mirrors H3.2's writer)
+    // ORACLE-EDIT (controller · H3.4-YTD merge gate): "HR H3.4-YTD" is its own tag (declared first; exact tag matching below) and carries 0 tracked
+    //   tokens — the opening is read through payroll-opening-read.ts, not through ytdJson in payroll.ts
+    const PAY_MARKED: Record<string, number> = { "HR H3.4-YTD": 0, "HR H2.9": 2, "HR H4.6": 3, "HR H3.2": 6, "HR H3.4": 16, "HR H3.7": 12 };
+    // ORACLE-EDIT (controller · H3.4-YTD merge gate): tags match EXACTLY — "HR H3.4" must not match inside "HR H3.4-YTD" (a YTD hunk nested in an
+    //   H3.4 block used to close that block early at "◂ HR H3.4-YTD" and push the rest of the block's tokens outside)
+    const hasTag = (line: string, t: string) => new RegExp(t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?!-YTD|\\d)").test(line);
     const splitMarked = (src: string) => {
       const inside: Record<string, string[]> = Object.fromEntries(Object.keys(PAY_MARKED).map((t) => [t, []]));
       const outside: string[] = [];
@@ -837,10 +842,10 @@ function runStatic(): void {
       for (const line of src.split("\n")) {
         if (open) {
           inside[open]!.push(line);
-          if (line.includes(`◂ ${open}`)) open = null;
+          if (hasTag(line, `◂ ${open}`)) open = null;
           continue;
         }
-        const tag = Object.keys(PAY_MARKED).find((t) => line.includes(t));
+        const tag = Object.keys(PAY_MARKED).find((t) => hasTag(line, t));
         if (!tag) {
           outside.push(line);
           continue;
