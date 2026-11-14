@@ -84,7 +84,8 @@ export const dataBad = (body: Any, s: Sh, list: boolean): string[] => {
   if (list) return Array.isArray(d) ? d.flatMap((e) => shapeBad(e, s, "data[]", [])).slice(0, 6) : ["data:not-array"];
   return d && typeof d === "object" && !Array.isArray(d) ? shapeBad(d, s, "data", []).slice(0, 6) : ["data:not-object"];
 };
-export const BAD_KEY = (k: string, extra: string[]) => extra.includes(k) || /^(photo|device|lat$|lng$|accuracy|bank|national|citizen|pin|address|birth|houseReg|emergency|href$)/i.test(k);
+// ORACLE-EDIT (H4.8 · merge of session/hr b6f1d0719, controller): H4.5 LINE link / notice surfaces never reach an API response — no key containing "line" or "notice" in any 2xx body (A4) ◂
+export const BAD_KEY = (k: string, extra: string[]) => extra.includes(k) || /^(photo|device|lat$|lng$|accuracy|bank|national|citizen|pin|address|birth|houseReg|emergency|href$)/i.test(k) || /line|notice/i.test(k);
 
 // ═════════════ curl parser (lifted from qc-pos-api-skill, condensed) ═════════════
 export function shellWords(cmd: string): { words: string[]; err: string } {
