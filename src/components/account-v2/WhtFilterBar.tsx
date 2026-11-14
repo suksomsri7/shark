@@ -12,6 +12,7 @@ export function WhtFilterBar({
   tab,
   status,
   range,
+  month,
   q,
   searchPlaceholder,
   resetHref,
@@ -20,6 +21,8 @@ export function WhtFilterBar({
   tab: string;
   status: string;
   range: string;
+  /** ACCOUNT-FIX B5 — เดือนที่เลือก (YYYY-MM) เมื่อ range=month */
+  month?: string;
   q?: string;
   searchPlaceholder: string;
   resetHref: string;
@@ -40,8 +43,20 @@ export function WhtFilterBar({
         >
           <option value="this_year">วันที่ชำระ: ปีนี้</option>
           <option value="all">วันที่ชำระ: ทั้งหมด</option>
+          <option value="month">วันที่ชำระ: เลือกเดือน</option>
         </select>
       </label>
+      {range === "month" && (
+        <input
+          type="month"
+          name="month"
+          defaultValue={month}
+          className="input w-40"
+          aria-label="เดือนที่ชำระ"
+          data-testid="wht-month"
+          onChange={(e) => e.currentTarget.form?.requestSubmit()}
+        />
+      )}
       <div className="relative w-[390px] max-w-full">
         <AccountIcon
           name="search"

@@ -23,7 +23,8 @@ import { MarkFiledModal } from "@/components/account-v2/MarkFiledModal";
 import { WhtFilterBar } from "@/components/account-v2/WhtFilterBar";
 import { buildHref } from "@/components/account-v2/url";
 import { formatBaht } from "@/lib/ui/money";
-import { formatThaiDate } from "@/lib/ui/date";
+import { formatThaiDate, thaiPeriodKey } from "@/lib/ui/date";
+import { readPageSize } from "@/components/account-v2/url";
 import { whtCreditsOwed } from "@/lib/modules/account/wht-cert";
 import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
 import { PND_FORM_LABEL_TH } from "@/lib/modules/account/wht-forms";
@@ -39,6 +40,8 @@ type SP = {
   status?: string;
   q?: string;
   page?: string;
+  size?: string;
+  month?: string;
   markFiled?: string;
   ids?: string;
   owed?: string;
@@ -63,10 +66,16 @@ export default async function WhtPage({
   const tab = direction === "OUT" ? "credit" : "deduct";
 
   const now = new Date();
-  const range = sp.range === "all" || sp.range === "custom" ? sp.range : "this_year";
+  const range = sp.range === "all" || sp.range === "custom" || sp.range === "month" ? sp.range : "this_year";
   let from: Date | undefined;
   let to: Date | undefined;
-  if (range === "this_year") {
+  // ACCOUNT-FIX B5 — กรองรายเดือน (เดือนภาษีของ ภ.ง.ด.) · ไม่ระบุเดือน = เดือนปัจจุบันตามเวลาไทย
+  const month = range === "month" ? (/^\d{4}-\d{2}$/.test(sp.month ?? "") ? sp.month! : thaiPeriodKey(now)) : undefined;
+  if (month) {
+    const [my, mm] = month.split("-").map(Number);
+    from = new Date(Date.UTC(my, mm - 1, 1, -7));
+    to = new Date(Date.UTC(my, mm, 1, -7));
+  } else if (range === "this_year") {
     const y = now.getFullYear();
     from = new Date(Date.UTC(y, 0, 1, -7));
     to = new Date(Date.UTC(y + 1, 0, 1, -7));
@@ -77,7 +86,7 @@ export default async function WhtPage({
 
   const status = sp.status === "NORMAL" || sp.status === "CANCELLED" ? sp.status : "ALL";
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
-  const pageSize = 20;
+  const pageSize = readPageSize(sp, 20); // ACCOUNT-FIX A4 — ตัวเลือก "แสดง n" มีผลจริง (เดิมตายตัว 20)
 
   // ACC T3.5 ▸ ฝั่งถูกหัก: "ค้างรับ 50 ทวิ" = ธงรับจริง (ไม่เดาจากไฟล์แนบ) ◂
   const owedOnly = direction === "OUT" && sp.owed === "1";
@@ -100,6 +109,8 @@ export default async function WhtPage({
     status: sp.status,
     q: sp.q,
     page: sp.page,
+    size: sp.size,
+    month,
     owed: owedOnly ? "1" : undefined,
   };
   const selfHref = buildHref(pathname, spForHref, {});
@@ -241,16 +252,20 @@ export default async function WhtPage({
         title={heading}
         actions={
           <>
-            <div className="text-right" data-testid="wht-credit-year-tile">
-              <div className="text-xs text-[color:var(--color-muted)]">เครดิตภาษีถูกหักสะสมปีนี้</div>
-              <div className="text-lg font-semibold tabular-nums" data-testid="wht-credit-year-amount">
-                {formatBaht(creditYearTotal, { decimals: true })}
+            {/* ACCOUNT-FIX B5 — ไทล์เครดิตภาษีถูกหัก เป็นเรื่องของฝั่ง "ถูกหัก" เท่านั้น */}
+            {direction === "OUT" && (
+              <div className="text-right" data-testid="wht-credit-year-tile">
+                <div className="text-xs text-[color:var(--color-muted)]">เครดิตภาษีถูกหักสะสมปีนี้</div>
+                <div className="text-lg font-semibold tabular-nums" data-testid="wht-credit-year-amount">
+                  {formatBaht(creditYearTotal, { decimals: true })}
+                </div>
               </div>
-            </div>
+            )}
             <PrintButton testId="wht-print" />
+            {/* ACCOUNT-FIX A5 — ป้ายตรงกับปลายทาง: หน้า ภ.ง.ด. ของงวด (ทำ/ยกเลิกเครื่องหมายนำส่ง · ออก 50 ทวิ ที่ยังไม่ออก · ดาวน์โหลด CSV) */}
             {direction === "IN" && (
-              <Link href={`${base}/tax`} className="btn btn-primary" data-testid="wht-export-pnd">
-                รายการ ภ.ง.ด. (CSV ช่วยกรอกแบบ)
+              <Link href={`${base}/tax?period=${month ?? thaiPeriodKey(now)}`} className="btn btn-primary" data-testid="wht-export-pnd">
+                ภ.ง.ด. งวด {periodKeyLabel(month ?? thaiPeriodKey(now))} · นำส่ง / CSV
               </Link>
             )}
           </>
@@ -259,14 +274,7 @@ export default async function WhtPage({
 
       <div className="flex flex-wrap items-center gap-4">
         <StatusTabs tabs={statusTabsLeft} counts={tabCounts} active={status} paramKey="status" testId="wht-status-tabs" />
-        <span
-          className="pb-2 text-sm opacity-40"
-          style={{ cursor: "not-allowed" }}
-          title="e-WHT เชื่อมสรรพากรโดยตรง — เร็ว ๆ นี้"
-          data-testid="wht-tab-ewht-soon"
-        >
-          e-WHT (เร็ว ๆ นี้)
-        </span>
+        {/* ACCOUNT-FIX — แท็บ "e-WHT (เร็ว ๆ นี้)" เอาออก: รายการ e-WHT ไม่ออก 50 ทวิ (แสดงยอดแยกที่หน้า ภ.ง.ด.) */}
         <StatusTabs tabs={statusTabsRight} counts={tabCounts} active={status} paramKey="status" testId="wht-status-tabs-2" />
       </div>
 
@@ -308,6 +316,7 @@ export default async function WhtPage({
         tab={tab}
         status={status}
         range={range}
+        month={month}
         q={sp.q}
         searchPlaceholder={`ค้นหาด้วยชื่อ${direction === "IN" ? "ผู้ขาย" : "ผู้ซื้อ"}, เลขที่`}
         resetHref={resetHref}
@@ -326,7 +335,7 @@ export default async function WhtPage({
           direction === "IN"
             ? [
                 {
-                  label: "✓ ทำเครื่องหมายนำส่งแล้ว",
+                  label: "ทำเครื่องหมายนำส่งทั้งงวด…",
                   hrefTemplate: markFiledHrefTemplate,
                   requireEligible: true,
                   eligibleHint: "เลือกได้เฉพาะรายการที่ยังไม่ยกเลิก",

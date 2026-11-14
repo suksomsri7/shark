@@ -37,7 +37,7 @@ export async function GET(
   } else if (kind === "credits") {
     csv = await whtCreditsCsv(tenantId, systemId, { period: period || undefined, year: year || undefined });
     filename = `wht-credits-${year || period || "all"}.csv`;
-  } else if (kind === "pnd1k") {
+  } else if (kind === "pnd1k" || (kind === "pnd" && url.searchParams.get("type") === "1k")) {
     csv = await pnd1kCsv(tenantId, systemId, { year: Number(year) || new Date().getFullYear() });
     filename = `pnd1k-${year || "all"}.csv`;
   } else {

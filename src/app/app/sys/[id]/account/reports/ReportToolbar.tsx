@@ -32,6 +32,9 @@ export default function ReportToolbar({
   to,
   compare = false,
   showCompare = true,
+  asOfParam,
+  resetOnPeriodChange = [],
+  extraExports,
 }: {
   filename: string;
   csv: CsvData;
@@ -43,6 +46,13 @@ export default function ReportToolbar({
   compare?: boolean;
   /** รายงานบางตัวเทียบงวดก่อนไม่ได้ (เช่น ภ.พ.30 ที่เป็นแบบยื่นต่องวด) */
   showCompare?: boolean;
+  /** ACCOUNT-FIX A5 — หน้าที่อ่านงวดจากพารามิเตอร์ของตัวเอง (ภ.พ.30 = `period`): เปลี่ยนเดือนแล้วตั้งค่าตัวนั้นตัวเดียว
+   *  (เดิมตั้ง asOf+to แต่หน้าอ่าน period ก่อน ⇒ เปลี่ยนเดือนแล้วตัวเลขไม่เปลี่ยน) */
+  asOfParam?: string;
+  /** พารามิเตอร์ที่ผูกกับงวดเดิม — ล้างทิ้งเมื่อเปลี่ยนงวด (เช่น ค่าลองดูเครดิตยกมา · ข้อความผลลัพธ์) */
+  resetOnPeriodChange?: string[];
+  /** ACCOUNT-FIX B5 — ปุ่มส่งออกเฉพาะรายงาน (เช่น CSV ยื่นแบบ) อยู่ชุดเดียวกับ Excel ของแถบนี้ */
+  extraExports?: React.ReactNode;
 }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
@@ -101,7 +111,13 @@ export default function ReportToolbar({
           <input
             type="month"
             value={to ?? ""}
-            onChange={(e) => go({ asOf: e.target.value, to: e.target.value })}
+            onChange={(e) =>
+              go(
+                asOfParam
+                  ? { [asOfParam]: e.target.value, asOf: undefined, to: undefined, ...Object.fromEntries(resetOnPeriodChange.map((k) => [k, undefined])) }
+                  : { asOf: e.target.value, to: e.target.value },
+              )
+            }
             className="rounded-lg border px-2 py-1.5 text-sm"
             style={{ borderColor: "var(--color-line)" }}
             data-testid="report-asof"
@@ -136,15 +152,14 @@ export default function ReportToolbar({
       </label>
 
       <div className="flex gap-2 self-end">
+        {/* ACCOUNT-FIX B5 — "พิมพ์" กับ "PDF" เป็นคำสั่งเดียวกัน (กล่องพิมพ์ของเบราว์เซอร์ · เลือกบันทึกเป็น PDF ได้) ⇒ เหลือปุ่มเดียว */}
         <button type="button" onClick={() => window.print()} className="btn btn-ghost text-sm" data-testid="report-print">
-          <AccountIcon name="printer" className="h-4 w-4" /> พิมพ์
-        </button>
-        <button type="button" onClick={() => window.print()} className="btn btn-ghost text-sm" data-testid="report-pdf">
-          <AccountIcon name="file" className="h-4 w-4" /> PDF
+          <AccountIcon name="printer" className="h-4 w-4" /> พิมพ์ / PDF
         </button>
         <button type="button" onClick={download} className="btn btn-ghost text-sm" data-testid="report-excel">
           <AccountIcon name="download" className="h-4 w-4" /> Excel
         </button>
+        {extraExports}
       </div>
     </div>
   );
