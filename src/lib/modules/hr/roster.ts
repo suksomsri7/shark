@@ -409,9 +409,9 @@ export async function generateFromTemplate(ctx: Ctx, viewer: RosterViewer, input
 export type EntryResult = { ok: true; id: string } | RosterFail;
 
 /** ตรวจพนักงาน + วัน + ขอบเขต (ใช้ทั้งเพิ่มและย้าย) — คืนสาขาของวันนั้น */
-async function employeeDayCheck(ctx: Ctx, viewer: RosterViewer, scope: HrScope, employeeId: unknown, day: string): Promise<{ emp: EmpRow; unitId: string | null }> {
+async function employeeDayCheck(ctx: Ctx, viewer: RosterViewer, scope: HrScope, employeeId: unknown, day: string, txDb?: Tx): Promise<{ emp: EmpRow; unitId: string | null }> { // HR H4.3 ▸ + txDb ◂
   const id = typeof employeeId === "string" ? employeeId.trim() : "";
-  const emp = id ? ((await tenantDb(ctx).hrEmployee.findFirst({ where: { id }, select: EMP_SELECT })) as EmpRow | null) : null;
+  const emp = id ? ((await (txDb ?? tenantDb(ctx)).hrEmployee.findFirst({ where: { id }, select: EMP_SELECT })) as EmpRow | null) : null; // HR H4.3 ▸ txDb = client ของ tx ผู้เรียก (ร่างจาก AI) ◂
   if (!emp) throw new RosterRefusal(ROSTER_TEXT.employeeNotFound);
   if (isEnded(emp)) throw new RosterRefusal(ROSTER_TEXT.ended);
   if (!inEmployment(emp, day)) throw new RosterRefusal(ROSTER_TEXT.outOfEmployment);
@@ -420,26 +420,32 @@ async function employeeDayCheck(ctx: Ctx, viewer: RosterViewer, scope: HrScope, 
   if (r) throw new RosterRefusal(r);
   return { emp, unitId: u };
 }
-async function shiftCheck(ctx: Ctx, shiftId: unknown, unitOfTheDay: string | null): Promise<ShiftRow> {
+async function shiftCheck(ctx: Ctx, shiftId: unknown, unitOfTheDay: string | null, txDb?: Tx): Promise<ShiftRow> { // HR H4.3 ▸ + txDb ◂
   const id = typeof shiftId === "string" ? shiftId.trim() : "";
-  const s = id ? ((await tenantDb(ctx).hrShift.findFirst({ where: { id }, select: SHIFT_SELECT })) as ShiftRow | null) : null;
+  const s = id ? ((await (txDb ?? tenantDb(ctx)).hrShift.findFirst({ where: { id }, select: SHIFT_SELECT })) as ShiftRow | null) : null; // HR H4.3 ▸ txDb ◂
   const r = shiftRefusal(s, unitOfTheDay);
   if (r) throw new RosterRefusal(r);
   return s!;
 }
 
+// HR H4.3 ▸ พารามิเตอร์ที่ 4 (มติ Q9 — ใช้ด่านเดิมทุกข้อ): `{ source: "AI", tx }` = ร่างจากข้อเสนอของผู้ช่วยที่คนกดยืนยันแล้ว
+//   ทุกคำสั่งใช้ client ของ tx ผู้เรียก (ผู้เรียกล็อกกุญแจของทุกช่องแล้ว — ล็อกซ้ำใน tx เดียวกันได้) · แถว source AI · ยังไม่ประกาศ ·
+//   ไม่เขียน audit ของตัวเอง (ผู้เรียกเขียน hr.ai.proposal.confirm หลัง commit — ไม่มี connection ที่สองใต้ล็อก) · ไม่ส่ง = ทางเดิมทุกไบต์ ◂
+export type AddEntryOpts = { source: "AI"; tx: Tx }; // HR H4.3 ◂
 export async function addEntry(
   ctx: Ctx,
   viewer: RosterViewer,
   input: { employeeId: string; date: string; shiftId: string; note?: string | null; startMin?: number; endMin?: number },
+  aiOpts?: AddEntryOpts, // HR H4.3 ◂
 ): Promise<EntryResult> {
   if (!canWrite(viewer)) return refuse(ROSTER_TEXT.noPermission);
   try {
     const scope = scopeOfViewer(viewer);
     const day = dayKey(input?.date);
     if (day < todayKey()) return refuse(ROSTER_TEXT.past);
-    const { unitId } = await employeeDayCheck(ctx, viewer, scope, input?.employeeId, day);
-    const shift = await shiftCheck(ctx, input?.shiftId, unitId);
+    const txDb = aiOpts?.source === "AI" ? aiOpts.tx : undefined; // HR H4.3 ◂
+    const { unitId } = await employeeDayCheck(ctx, viewer, scope, input?.employeeId, day, txDb);
+    const shift = await shiftCheck(ctx, input?.shiftId, unitId, txDb);
     const note = optNote(input?.note);
     // Q7: เวลาเองได้ (ไม่ส่ง = ตามกะ) · ข้ามเที่ยงคืนคิดจากเวลา · พักตามกะ
     const sIn = optInt(input?.startMin);
@@ -453,8 +459,7 @@ export async function addEntry(
     const problem = shiftTimesProblem({ startMin, endMin, crossesMidnight });
     if (problem) return refuse(problem);
     const employeeId = String(input.employeeId).trim();
-    const id = await tenantDb(ctx).$transaction(async (t) => {
-      const tx = t as unknown as Tx;
+    const write = async (tx: Tx) => { // HR H4.3 ▸ ตัวเขียนเดิม (ทางเดิม = ใน tx ของตัวเอง · AI = ใน tx ของผู้เรียก) ◂
       await lockKeys(tx, ctx.systemId, [{ employeeId, date: day }]);
       const dup = await tx.hrRosterEntry.findFirst({ where: { employeeId, date: dbDate(day), shiftId: shift.id }, select: { id: true } });
       if (dup) throw new RosterRefusal(ROSTER_TEXT.duplicate);
@@ -471,14 +476,16 @@ export async function addEntry(
           breakMin: shift.breakMin,
           crossesMidnight,
           timesOverridden, // HR H2.4 ▸ R13 ◂
-          source: "MANUAL",
+          source: txDb ? "AI" : "MANUAL", // HR H4.3 ▸ ร่างจาก AI = source AI (ยังไม่ประกาศ — published ค่าปริยาย false) ◂
           note,
           createdById: viewer.userId ?? null,
         },
         select: { id: true },
       });
       return row.id;
-    });
+    };
+    if (txDb) return { ok: true, id: await write(txDb) }; // HR H4.3 ▸ audit โดยผู้เรียกหลัง commit ◂
+    const id = await tenantDb(ctx).$transaction(async (t) => write(t as unknown as Tx)); // HR H4.3 ▸ ทางเดิม ◂
     await audit(ctx, viewer, "hr.roster.entry.add", "HrRosterEntry", id, { entryId: id, employeeId, date: day, shiftId: shift.id, unitId, wasPublished: false });
     return { ok: true, id };
   } catch (e) {
@@ -1044,6 +1051,48 @@ export async function lockRosterKeysInTx(tx: Tx, systemId: string, keys: LockKey
     keys.filter((k) => !!k && typeof k.employeeId === "string" && !!k.employeeId && typeof k.date === "string" && !!k.date),
   );
 }
+
+// HR H4.3 ▸ ตัวช่วยของร่างตารางกะจากผู้ช่วย AI (hr/ai.ts) — อ่านอย่างเดียว · ด่านเดียวกับ addEntry ทุกข้อ ◂
+export type EntryDraftCheck = { ok: true; unitId: string | null; name: string; shiftName: string } | RosterFail;
+/** HR H4.3 ▸ ช่องนี้ "เพิ่มได้ไหม" ด้วยสิทธิ์ของผู้ดู (ผู้เขียนตารางกะ · ไม่ย้อนหลัง · พนักงาน/วัน/สาขา/กะ แบบ addEntry) — ไม่เขียนอะไร ◂ */
+export async function checkEntryDraft(ctx: Ctx, viewer: RosterViewer, input: { employeeId: string; date: string; shiftId: string }): Promise<EntryDraftCheck> {
+  if (!canWrite(viewer)) return refuse(ROSTER_TEXT.noPermission);
+  try {
+    const scope = scopeOfViewer(viewer);
+    const day = dayKey(input?.date);
+    if (day < todayKey()) return refuse(ROSTER_TEXT.past);
+    const { emp, unitId } = await employeeDayCheck(ctx, viewer, scope, input?.employeeId, day);
+    const shift = await shiftCheck(ctx, input?.shiftId, unitId);
+    const db = tenantDb(ctx);
+    const [e, sh] = await Promise.all([db.hrEmployee.findFirst({ where: { id: emp.id }, select: { name: true } }), db.hrShift.findFirst({ where: { id: shift.id }, select: { name: true } })]);
+    return { ok: true, unitId, name: e?.name ?? "", shiftName: sh?.name ?? "" };
+  } catch (e) {
+    return refuse(reasonOf(e));
+  }
+}
+/**
+ * HR H4.3 ▸ สถานะของช่อง (พนักงาน, วัน) สำหรับลายนิ้วมือของร่าง: แถวตารางกะทุกแถว (ทุกสาขา · ประกาศหรือไม่) + วันลาที่อนุมัติแล้วที่ครอบวันนั้น
+ *   เรียกได้ทั้งใน tx ของผู้เรียก (หลัง lockRosterKeysInTx — ตอนกดยืนยัน) และ tx อ่านสั้น ๆ ตอนเสนอ · ผลรูปเดียวกันเสมอ ◂
+ */
+export async function rosterKeyStateInTx(
+  tx: Tx,
+  keys: LockKey[],
+): Promise<{ entries: { id: string; employeeId: string; date: string; shiftId: string }[]; leaves: { employeeId: string; date: string }[] }> {
+  const ks = keys.filter((k) => !!k && typeof k.employeeId === "string" && !!k.employeeId && typeof k.date === "string" && !!k.date);
+  if (!ks.length) return { entries: [], leaves: [] };
+  const want = new Set(ks.map((k) => `${k.employeeId}|${k.date}`));
+  const emps = [...new Set(ks.map((k) => k.employeeId))];
+  const days = [...new Set(ks.map((k) => k.date))].sort();
+  const [rows, leaves] = await Promise.all([
+    tx.hrRosterEntry.findMany({ where: { employeeId: { in: emps }, date: { in: days.map(dbDate) } }, select: { id: true, employeeId: true, date: true, shiftId: true }, orderBy: { id: "asc" }, take: 5000 }),
+    tx.hrLeave.findMany({ where: { employeeId: { in: emps }, status: "APPROVED", fromDate: { lte: dbDate(days[days.length - 1]!) }, toDate: { gte: dbDate(days[0]!) } }, select: { employeeId: true, fromDate: true, toDate: true }, take: 2000 }),
+  ]);
+  const entries = rows.map((r) => ({ id: r.id, employeeId: r.employeeId, date: dayOf(r.date), shiftId: r.shiftId })).filter((r) => want.has(`${r.employeeId}|${r.date}`));
+  const out: { employeeId: string; date: string }[] = [];
+  for (const l of leaves) for (const d of days) if (dayOf(l.fromDate) <= d && d <= dayOf(l.toDate) && want.has(`${l.employeeId}|${d}`)) out.push({ employeeId: l.employeeId, date: d });
+  return { entries, leaves: out };
+}
+// ◂ HR H4.3
 
 export type ReassignCode = "ENTRY_GONE" | "ENTRY_CHANGED" | "PAST" | "NOT_PUBLISHED" | "DUP";
 export type ReassignResult = { ok: true } | { ok: false; code: ReassignCode };
