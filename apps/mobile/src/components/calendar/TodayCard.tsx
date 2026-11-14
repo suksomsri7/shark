@@ -7,9 +7,10 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon } from "@/src/components/airy";
-import { calApi, onCalChanged, type TodayRes } from "@/src/api/calendar";
+import { calApi, deviceAgenda, onCalChanged, type TodayRes } from "@/src/api/calendar";
+import { onDeviceCalChanged } from "@/src/lib/device-calendar";
 import { useAuth } from "@/src/lib/auth-context";
-import { dayOfMs, dayStartMs, addDays } from "@/src/lib/cal-date";
+import { dayOfMs, dayStartMs, addDays, hhmm } from "@/src/lib/cal-date";
 import { useT } from "@/src/i18n";
 import { useTheme } from "@/src/theme/index";
 import { calCard } from "./style";
@@ -27,13 +28,24 @@ export function TodayCard({ testID = "cal-today" }: { testID?: string }) {
     const tenant = activeTenantId;
     try {
       const r = await calApi.today();
-      if (tenantRef.current === tenant) setRes(r);
+      // CAL2.11: นัดในเครื่องวันนี้ (สรุปเช้าแบบ push ไม่รวม · การ์ดนี้รวมตอนเปิดแอป · สัญญา §10.6) — 1 บรรทัดรวม ≤ 4 บรรทัด
+      const dev = (await deviceAgenda(r.day, r.day).catch(() => [])).filter((x) => x.mine);
+      const merged: TodayRes = dev.length
+        ? {
+            ...r,
+            count: r.count + dev.length,
+            greeting: r.greeting || t("cal.card.greet", { n: r.count + dev.length }),
+            lines: [...(r.lines ?? []).slice(0, 3), { colorKey: "device", text: t("cal.card.device", { n: dev.length }), rightText: hhmm(dev[0].startAt) }],
+          }
+        : r;
+      if (tenantRef.current === tenant) setRes(merged);
     } catch {
       if (tenantRef.current === tenant) setRes(null);
     }
-  }, [activeTenantId]);
+  }, [activeTenantId, t]);
 
   useEffect(() => setRes(null), [activeTenantId]);
+  useEffect(() => onDeviceCalChanged(() => void load()), [load]);
   useEffect(() => onCalChanged(() => void load()), [load]);
   useFocusEffect(
     useCallback(() => {

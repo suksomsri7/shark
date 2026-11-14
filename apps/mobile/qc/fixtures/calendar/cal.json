@@ -649,6 +649,39 @@
      "sleep": 1000
     }
    ]
+  },
+  {
+   "name": "device",
+   "route": "/secretary/calendar/device",
+   "steps": [
+    {
+     "wait": "cal-device"
+    },
+    {
+     "sleep": 800
+    }
+   ]
+  },
+  {
+   "name": "google-none",
+   "route": "/secretary/calendar/google",
+   "steps": [
+    {
+     "wait": "cal-g-disconnect"
+    },
+    {
+     "tap": "cal-g-disconnect"
+    },
+    {
+     "tap": "cal-g-ask-yes"
+    },
+    {
+     "wait": "cal-g-connect"
+    },
+    {
+     "sleep": 600
+    }
+   ]
   }
  ]
 }

@@ -15,6 +15,8 @@ import { addDays, dayOfIso, dayOfMs, dayStartMs, hhmm, isoAt, minuteText, shortD
 import { useLang, useT } from "@/src/i18n";
 import { useTheme } from "@/src/theme/index";
 import { calCard } from "./style";
+import { useAuth } from "@/src/lib/auth-context";
+import { setDeviceCalUser } from "@/src/lib/device-calendar";
 
 // ───────── Host ─────────
 type Open = { mode: "add"; kind?: CalKind } | { mode: "edit"; item: CalItemDto };
@@ -26,6 +28,8 @@ export function useCalSheet(): CalSheetApi | null {
 }
 
 export function CalSheetHost({ children }: { children?: ReactNode }) {
+  const { user } = useAuth();
+  useEffect(() => setDeviceCalUser(user?.id ?? null), [user?.id]); // CAL2.11 ค่าปฏิทินในเครื่องแยกต่อผู้ใช้
   const [open, setOpen] = useState<Open | null>(null);
   const [plus, setPlus] = useState(false);
   const value = useMemo<CalSheetApi>(

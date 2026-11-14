@@ -2,7 +2,7 @@
 //   หัว: ‹ กลับ · "ตั้งค่าปฏิทิน" + ชื่อกิจการ (GET calendar/prefs.tenantName)
 //   สรุปวันนี้: ส่งสรุปตอนเช้า (สวิตช์) + เวลา "08:00 (ค่าเริ่ม)" · สรุปพรุ่งนี้ตอนเย็น (สวิตช์) + เวลา — แตะเวลา = แผ่นเลือกชั่วโมง/นาที
 //   แสดงในปฏิทิน (เฉพาะระบบที่คุณมีสิทธิ์): prefs.sources[] (จุดสีระบบ + ชื่อ + บรรทัดรอง + สวิตช์)
-//   ซิงก์ปฏิทินนอก: Google Calendar (สถานะ เชื่อมแล้ว/เชื่อม/ต้องเชื่อมใหม่ → จอ 9) · ปฏิทิน iPhone (CAL2.11 ยังไม่มี = แจ้งว่ามาในแอปรุ่นถัดไป)
+//   ซิงก์ปฏิทินนอก: Google Calendar (สถานะ เชื่อมแล้ว/เชื่อม/ต้องเชื่อมใหม่ → จอ 9) · ปฏิทิน iPhone (CAL2.11 → /secretary/calendar/device · สถานะจากค่าในเครื่อง)
 //   บันทึกทันทีที่สลับ (PUT calendar/prefs · ล้ม = คืนค่าเดิม + ข้อความ)
 import { useCallback, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -14,6 +14,7 @@ import { calCard } from "@/src/components/calendar/style";
 import { calApi, type ColorKey, type PrefSourceKey, type PrefsPut, type PrefsRes } from "@/src/api/calendar";
 import { apiErrorText } from "@/src/api/client";
 import { minuteText } from "@/src/lib/cal-date";
+import { devicePermission, deviceLabel, loadDevicePrefs } from "@/src/lib/device-calendar";
 import { useT } from "@/src/i18n";
 import { useTheme } from "@/src/theme/index";
 
@@ -40,8 +41,10 @@ export default function CalSettingsScreen() {
   const [failed, setFailed] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [pickFor, setPickFor] = useState<"morning" | "evening" | null>(null);
+  const [devOn, setDevOn] = useState(false);
 
   const load = useCallback(async () => {
+    void Promise.all([loadDevicePrefs(), devicePermission()]).then(([p, pm]) => setDevOn(p.enabled && pm === "granted"));
     try {
       setPrefs(await calApi.prefs());
       setFailed(null);
@@ -162,10 +165,10 @@ export default function CalSettingsScreen() {
                   {gStatus === "ACTIVE" ? t("cal.set.connected") : gStatus === "NEEDS_RECONNECT" ? t("cal.set.reconnect") : t("cal.set.connect")} ›
                 </Text>
               </Row>
-              <Row last testID="cal-set-iphone" onPress={() => setNote(t("cal.set.iphoneSoon"))}>
+              <Row last testID="cal-set-iphone" onPress={() => router.push("/secretary/calendar/device")}>
                 <View style={[styles.dot, { backgroundColor: c.cal.device }]} />
-                <Text style={[styles.rt, { color: c.text }]}>{t("cal.set.iphone")}</Text>
-                <Text style={[styles.rv, { color: c.textMuted }]}>{t("cal.set.connect")} ›</Text>
+                <Text style={[styles.rt, { color: c.text }]}>{deviceLabel === "iPhone" ? t("cal.set.iphone") : t("cal.dev.title")}</Text>
+                <Text style={[styles.rv, { color: devOn ? c.sys.acc : c.textMuted }]}>{devOn ? t("cal.set.connected") : t("cal.set.connect")} ›</Text>
               </Row>
             </View>
           </>

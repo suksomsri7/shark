@@ -376,6 +376,11 @@ function route(method: string, sub: string, q: Q, body: unknown): unknown {
     return st.google;
   }
   if (method === "POST" && sub === "google/sync") return { ok: true, changed: 0 };
+  if (method === "POST" && sub === "google/connect") {
+    st.google = { status: "ACTIVE", email: "somchai@gmail.com", calendars: [{ id: "primary", name: "ส่วนตัว", color: "#4285F4", primary: true, import: true, sub: "ของฉัน" }], exportKinds: ["EVENT"], exportCalendarId: "primary", exportCalendarName: "ส่วนตัว", lastSyncAt: null, lastError: null };
+    st.prefs.google = { status: "ACTIVE", email: "somchai@gmail.com" };
+    return st.google;
+  }
   if (method === "DELETE" && sub === "google") {
     st.google = { status: "NONE" };
     st.prefs.google = { status: "NONE", email: null };

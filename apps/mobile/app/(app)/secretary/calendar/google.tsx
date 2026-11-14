@@ -1,7 +1,9 @@
 // Google Calendar (จอ 9 · แบบ cal-3.png) — ส่วนที่ไม่ต้องใช้ native module (CAL2.9 นำทางมาที่นี่ · การ "เชื่อม" จริงด้วย google-signin = CAL2.10 รอ build)
 //   ACTIVE / NEEDS_RECONNECT: หัว "Google Calendar" + email · ดึงเข้ามาแสดงในปฏิทิน SHARK (ปฏิทินของบัญชี + สวิตช์ import) ·
 //     ส่งออกไปที่ Google (นัดส่วนตัว · เตือนฉัน · นัดลูกค้าที่ฉันรับ) + ไปที่ปฏิทิน · กล่องความเป็นส่วนตัว (M4) · ยกเลิกการเชื่อม (ยืนยัน → DELETE)
-//   NONE: แจ้งว่ายังไม่ได้เชื่อม · ปุ่มเชื่อมมากับแอปรุ่นถัดไป (CAL2.10)
+//   CAL2.10: NONE = กล่องความเป็นส่วนตัว + ปุ่ม "เชื่อม Google Calendar" (google-signin · serverAuthCode → POST google/connect · src/lib/cal-google.ts)
+//     NEEDS_RECONNECT = แถบเตือน + ปุ่ม "เชื่อมใหม่" (ขั้นเดียวกัน) · "ไปที่ปฏิทิน" = เลือกปฏิทินปลายทางที่แก้ได้ (accessRole owner/writer)
+//     ส่งออก "นัดลูกค้าที่ฉันรับ" ค่าเริ่ม = ปิด (เซิร์ฟเวอร์ · รอเจ้าของตอบ Q9)
 //   บันทึกทันทีที่สลับ (PUT calendar/google · ล้ม = คืนค่าเดิม)
 import { useCallback, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -12,6 +14,7 @@ import { AiryScreen, Icon, IconBtn, LoadError, Loading } from "@/src/components/
 import { calCard } from "@/src/components/calendar/style";
 import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
 import { calApi, calChanged, type GoogleLinkDto } from "@/src/api/calendar";
+import { connectGoogleCalendar } from "@/src/lib/cal-google";
 import { apiErrorText } from "@/src/api/client";
 import { useT } from "@/src/i18n";
 import { useTheme } from "@/src/theme/index";
@@ -32,6 +35,19 @@ export default function CalGoogleScreen() {
   const [failed, setFailed] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const [ask, setAsk] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [pickTarget, setPickTarget] = useState(false);
+  const connect = async () => {
+    setBusy(true);
+    setNote(null);
+    const r = await connectGoogleCalendar(t("cal.g.connectFail"));
+    setBusy(false);
+    if (r.ok) {
+      setG(r.link);
+      calChanged();
+      void calApi.googleSync().catch(() => {});
+    } else if (!r.cancelled) setNote(r.message);
+  };
 
   const load = useCallback(async () => {
     try {
@@ -104,17 +120,29 @@ export default function CalGoogleScreen() {
         {!g ? (
           failed ? <LoadError testID="cal-g-error" message={failed} onRetry={() => void load()} /> : <Loading testID="cal-g-loading" />
         ) : !linked ? (
-          <View testID="cal-g-none" style={[calCard(c, 16), styles.none]}>
-            <Icon name="calendar" size={22} color={c.cal.google} />
-            <Text style={[styles.noneT, { color: c.text }]}>{t("cal.g.none")}</Text>
-            <Text style={[styles.noneB, { color: c.textMuted }]}>{t("cal.g.noneBody")}</Text>
-          </View>
+          <>
+            <View testID="cal-g-none" style={[calCard(c, 16), styles.none]}>
+              <Icon name="calendar" size={22} color={c.cal.google} />
+              <Text style={[styles.noneT, { color: c.text }]}>{t("cal.g.none")}</Text>
+              <Text style={[styles.noneB, { color: c.textMuted }]}>{t("cal.g.connectBody")}</Text>
+            </View>
+            <Text style={[styles.sect, { color: c.textFaint }]}>{t("cal.g.privacy")}</Text>
+            <View style={[calCard(c, 16), styles.box]}>
+              <Text style={[styles.boxT, { color: c.textDim }]}>{t("cal.g.privacyBody")}</Text>
+            </View>
+            <Pressable testID="cal-g-connect" accessibilityRole="button" disabled={busy} onPress={() => void connect()} style={[styles.cta, { backgroundColor: c.accent }, busy && styles.busy]}>
+              <Text style={[styles.ctaT, { color: c.onAccent }]}>{busy ? t("sec.state.loading") : t("cal.g.connect")}</Text>
+            </Pressable>
+          </>
         ) : (
           <>
             {g.status === "NEEDS_RECONNECT" ? (
               <View testID="cal-g-reconnect" style={[styles.warn, { backgroundColor: c.warn.bg }]}>
                 <Icon name="alert-triangle" size={16} color={c.warn.fg} />
                 <Text style={[styles.warnT, { color: c.warn.fg }]}>{g.lastError || t("cal.g.needReconnect")}</Text>
+                <Pressable testID="cal-g-reconnect-btn" accessibilityRole="button" disabled={busy} onPress={() => void connect()} style={[styles.reBtn, { backgroundColor: c.accent }, busy && styles.busy]}>
+                  <Text style={[styles.reBtnT, { color: c.onAccent }]}>{t("cal.g.reconnect")}</Text>
+                </Pressable>
               </View>
             ) : null}
             <Text style={[styles.sect, { color: c.textFaint }]}>{t("cal.g.import")}</Text>
@@ -152,10 +180,34 @@ export default function CalGoogleScreen() {
                   </Row>
                 );
               })}
-              <Row last>
+              <Pressable testID="cal-g-target" accessibilityRole="button" onPress={() => setPickTarget((v) => !v)} style={styles.r}>
                 <Text style={[styles.rt, { color: c.text }]}>{t("cal.g.target")}</Text>
-                <Text style={[styles.rv, { color: c.textMuted }]}>{g.exportCalendarName ?? cals.find((x) => x.primary)?.name ?? ""} ›</Text>
-              </Row>
+                <Text style={[styles.rv, { color: c.textMuted }]}>{cals.find((x) => x.id === g.exportCalendarId)?.name ?? g.exportCalendarName ?? cals.find((x) => x.primary)?.name ?? ""} ›</Text>
+              </Pressable>
+              {pickTarget ? (
+                <View style={styles.opts}>
+                  {cals
+                    .filter((x) => x.primary || !x.accessRole || x.accessRole === "owner" || x.accessRole === "writer")
+                    .map((x) => {
+                      const on = (g.exportCalendarId ?? cals.find((y) => y.primary)?.id) === x.id;
+                      return (
+                        <Pressable
+                          key={x.id}
+                          testID={`cal-g-target-${x.id}`}
+                          accessibilityRole="button"
+                          accessibilityState={{ selected: on }}
+                          onPress={() => {
+                            setPickTarget(false);
+                            void put({ exportCalendarId: x.id }, (s0) => ({ ...s0, exportCalendarId: x.id, exportCalendarName: x.name }));
+                          }}
+                          style={[styles.opt, { backgroundColor: on ? c.accent : c.chip.bg }]}
+                        >
+                          <Text style={[styles.optT, { color: on ? c.onAccent : c.chip.fg }]}>{x.name}</Text>
+                        </Pressable>
+                      );
+                    })}
+                </View>
+              ) : null}
             </View>
 
             <Text style={[styles.sect, { color: c.textFaint }]}>{t("cal.g.privacy")}</Text>
@@ -210,4 +262,12 @@ const styles = StyleSheet.create({
   noneB: { fontSize: 13, textAlign: "center", lineHeight: 19 },
   warn: { flexDirection: "row", alignItems: "center", gap: 8, borderRadius: 12, paddingVertical: 10, paddingHorizontal: 12, marginTop: 12 },
   warnT: { fontSize: 13, flex: 1 },
+  reBtn: { borderRadius: 10, paddingVertical: 6, paddingHorizontal: 10 },
+  reBtnT: { fontSize: 12.5, fontWeight: "700" },
+  cta: { marginTop: 16, borderRadius: 16, paddingVertical: 13, alignItems: "center" },
+  ctaT: { fontSize: 15, fontWeight: "700" },
+  busy: { opacity: 0.6 },
+  opts: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 14, paddingBottom: 12 },
+  opt: { paddingVertical: 6, paddingHorizontal: 11, borderRadius: 12 },
+  optT: { fontSize: 12.5 },
 });

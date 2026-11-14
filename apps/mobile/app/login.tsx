@@ -6,6 +6,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View
 import { FontAwesome6 } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { GoogleSignin, isSuccessResponse, statusCodes } from "@react-native-google-signin/google-signin";
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from "@/src/lib/google-client";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
@@ -25,8 +26,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Google Sign-In (creds เจ้าของ 25 ก.ค. — idToken aud = web client → server ตรวจกับ Google JWKS)
 GoogleSignin.configure({
-  iosClientId: "732040229931-pudkdofrj1qbj7lbhrfie5m5dpmfi1pv.apps.googleusercontent.com",
-  webClientId: "732040229931-nk82v61v46bln5q5rodeuftknn27ok8l.apps.googleusercontent.com",
+  iosClientId: GOOGLE_IOS_CLIENT_ID,
+  webClientId: GOOGLE_WEB_CLIENT_ID,
 });
 
 // ปุ่ม social — icon แบรนด์ (FontAwesome6) · สีแบรนด์อยู่ที่ components/auth/social.ts (Apple/TikTok = สีตัวอักษรของธีม)

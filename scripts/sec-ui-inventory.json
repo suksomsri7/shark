@@ -2245,8 +2245,8 @@
    "testID": "cal-set-iphone",
    "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
    "screen": "ตั้งค่าปฏิทิน (จอ 8)",
-   "action": "ข้อความ: เชื่อมได้ในแอปรุ่นถัดไป (CAL2.11)",
-   "wo": "CAL2.9"
+   "action": "router.push /secretary/calendar/device",
+   "wo": "CAL2.11"
   },
   {
    "testID": "cal-set-hour-<h>",
@@ -2366,6 +2366,97 @@
    "screen": "ห้องเลขา · การ์ดปฏิทินของผู้ดู (B1)",
    "action": "AGENDA = deepLink ของแถว · LIST = แผ่นแก้ไขเตือน",
    "wo": "CAL2.13"
+  },
+  {
+   "testID": "cal-g-connect",
+   "file": "apps/mobile/app/(app)/secretary/calendar/google.tsx",
+   "screen": "Google Calendar (จอ 9) ยังไม่เชื่อม",
+   "action": "google-signin (scope ปฏิทิน + serverAuthCode) → POST calendar/google/connect",
+   "wo": "CAL2.10"
+  },
+  {
+   "testID": "cal-g-reconnect-btn",
+   "file": "apps/mobile/app/(app)/secretary/calendar/google.tsx",
+   "screen": "Google Calendar (จอ 9) NEEDS_RECONNECT",
+   "action": "เชื่อมใหม่ (ขั้นเดียวกับ connect)",
+   "wo": "CAL2.10"
+  },
+  {
+   "testID": "cal-g-target",
+   "file": "apps/mobile/app/(app)/secretary/calendar/google.tsx",
+   "screen": "Google Calendar (จอ 9)",
+   "action": "เปิดตัวเลือกปฏิทินปลายทาง cal-g-target-<id> → PUT google exportCalendarId",
+   "wo": "CAL2.10"
+  },
+  {
+   "testID": "cal-dev-back",
+   "file": "apps/mobile/app/(app)/secretary/calendar/device.tsx",
+   "screen": "ปฏิทินในเครื่อง",
+   "action": "กลับ",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-connect",
+   "file": "apps/mobile/app/(app)/secretary/calendar/device.tsx",
+   "screen": "ปฏิทินในเครื่อง (ยังไม่เชื่อม)",
+   "action": "requestCalendarPermissionsAsync → เปิดใช้ + เลือกทุกปฏิทิน",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-settings",
+   "file": "apps/mobile/app/(app)/secretary/calendar/device.tsx",
+   "screen": "ปฏิทินในเครื่อง (ถูกปฏิเสธ)",
+   "action": "Linking.openSettings()",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-cal-<n>",
+   "file": "apps/mobile/app/(app)/secretary/calendar/device.tsx",
+   "screen": "ปฏิทินในเครื่อง",
+   "action": "เลือก/เลิกแสดงปฏิทินนี้ (ค่าในเครื่อง)",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-export",
+   "file": "apps/mobile/app/(app)/secretary/calendar/device.tsx",
+   "screen": "ปฏิทินในเครื่อง",
+   "action": "ส่งนัดส่วนตัวไปปฏิทินเครื่อง (เปิด/ปิด)",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-target",
+   "file": "apps/mobile/app/(app)/secretary/calendar/device.tsx",
+   "screen": "ปฏิทินในเครื่อง",
+   "action": "เลือกปฏิทินปลายทาง cal-dev-target-<n>",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-disconnect",
+   "file": "apps/mobile/app/(app)/secretary/calendar/device.tsx",
+   "screen": "ปฏิทินในเครื่อง",
+   "action": "ยืนยัน cal-dev-ask → ปิดใช้ + ล้างแผนที่ส่งออก (ไม่ลบอะไรในเครื่อง)",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-ask-yes",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "ปฏิทินในเครื่อง · ยืนยันเลิกเชื่อม",
+   "action": "disconnectDeviceCalendar",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-ask-no",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "ปฏิทินในเครื่อง · ยืนยันเลิกเชื่อม",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-dev-ask-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ปฏิทินในเครื่อง · ยืนยันเลิกเชื่อม",
+   "action": "ปิดแผ่น",
+   "wo": "CAL2.11"
   }
  ]
 }

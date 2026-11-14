@@ -6,6 +6,7 @@
 import { useSyncExternalStore } from "react";
 import { api, ApiError } from "@/src/api/client";
 import { fixtureCall, FIXTURE_LINKS } from "@/src/api/calendar.fixtures";
+import { deviceEventsFor } from "@/src/lib/device-calendar";
 
 // ───────── ชนิด (§4.1) ─────────
 export type AgendaSource =
@@ -161,11 +162,11 @@ function qs(q?: Q): string {
 }
 
 /** เรียกเส้นปฏิทิน · `sub` = ส่วนหลัง calendar/ (เช่น "agenda", "items/abc/done") · google/* ไม่ส่ง x-tenant-id */
-async function call<T>(method: Method, sub: string, opts: { q?: Q; body?: unknown } = {}): Promise<T> {
+async function call<T>(method: Method, sub: string, opts: { q?: Q; body?: unknown; tenantId?: string } = {}): Promise<T> {
   // เคยได้ 404 ของเส้นที่ไม่มีแล้ว ⇒ ไปที่ fixture ตรง (ไม่ยิงซ้ำทุกครั้ง)
   if (fixtureOn) return fixtureCall<T>(method, sub, opts.q, opts.body);
   try {
-    return await api<T>(BASE + "/" + sub + qs(opts.q), { method, body: opts.body, tenant: !sub.startsWith("google") });
+    return await api<T>(BASE + "/" + sub + qs(opts.q), { method, body: opts.body, tenant: !sub.startsWith("google"), ...(opts.tenantId && !sub.startsWith("google") ? { tenantId: opts.tenantId } : {}) });
   } catch (e) {
     if (CAL_FIXTURE_ALLOWED && e instanceof ApiError && e.status === 404 && routeMissing(e)) {
       setFixtureOn(true);
@@ -185,13 +186,15 @@ export const calApi = {
   month: (ym: string) => call<MonthRes>("GET", "month", { q: { ym } }),
   today: () => call<TodayRes>("GET", "today"),
   items: (tab: ItemsTab, take = 50, before?: string) => call<{ items: CalItemDto[]; nextBefore?: string | null }>("GET", "items", { q: { tab, take, before } }),
-  item: (id: string) => call<{ item: CalItemDto; phone: string | null }>("GET", `items/${encodeURIComponent(id)}`),
+  /** tenantId = กิจการของรายการ (ปุ่มลัดในแจ้งเตือน · data.tenantId) — ไม่ใส่ = กิจการ active */
+  item: (id: string, tenantId?: string) => call<{ item: CalItemDto; phone: string | null }>("GET", `items/${encodeURIComponent(id)}`, { tenantId }),
   create: (body: CalItemBody) => call<{ item: CalItemDto }>("POST", "items", { body }),
   patch: (id: string, body: CalItemPatch) => call<{ item: CalItemDto }>("PATCH", `items/${encodeURIComponent(id)}`, { body }),
   remove: (id: string) => call<{ ok: true }>("DELETE", `items/${encodeURIComponent(id)}`),
-  done: (id: string, occ?: string) => call<{ item: CalItemDto }>("POST", `items/${encodeURIComponent(id)}/done`, { body: occ ? { occ } : {} }),
+  done: (id: string, occ?: string, tenantId?: string) => call<{ item: CalItemDto }>("POST", `items/${encodeURIComponent(id)}/done`, { body: occ ? { occ } : {}, tenantId }),
   reopen: (id: string) => call<{ item: CalItemDto }>("POST", `items/${encodeURIComponent(id)}/reopen`, { body: {} }),
-  snooze: (id: string, body: { preset: "1h" | "tomorrow9" } | { until: string }) => call<{ item: CalItemDto }>("POST", `items/${encodeURIComponent(id)}/snooze`, { body }),
+  snooze: (id: string, body: { preset: "1h" | "tomorrow9" } | { until: string }, tenantId?: string) =>
+    call<{ item: CalItemDto }>("POST", `items/${encodeURIComponent(id)}/snooze`, { body, tenantId }),
   confirm: (id: string) => call<{ item: CalItemDto }>("POST", `items/${encodeURIComponent(id)}/confirm`, { body: {} }),
   sourceDone: (source: "kanban" | "crm", id: string) => call<{ ok: true }>("POST", "source-done", { body: { source, id } }),
   prefs: () => call<PrefsRes>("GET", "prefs"),
@@ -199,6 +202,7 @@ export const calApi = {
   google: () => call<GoogleLinkDto>("GET", "google"),
   putGoogle: (body: { calendars?: { id: string; import: boolean }[]; exportKinds?: ("EVENT" | "REMINDER" | "BOOKING")[]; exportCalendarId?: string | null }) =>
     call<GoogleLinkDto>("PUT", "google", { body }),
+  googleConnect: (serverAuthCode: string) => call<GoogleLinkDto>("POST", "google/connect", { body: { serverAuthCode } }),
   googleSync: () => call<{ ok: boolean; changed: number }>("POST", "google/sync", { body: {} }),
   googleDisconnect: () => call<{ ok: true }>("DELETE", "google"),
 };
@@ -208,10 +212,10 @@ function normAgenda(r: AgendaResult): AgendaResult {
   return { items: Array.isArray(r?.items) ? r.items : [], conflicts: Array.isArray(r?.conflicts) ? r.conflicts : [], notes: Array.isArray(r?.notes) ? r.notes : [] };
 }
 
-// ───────── นัดในเครื่อง (CAL2.11 — ยังไม่มี expo-calendar ในเลนนี้) ─────────
-/** แถว source "device" ของช่วงวัน · ก่อน CAL2.11 = [] (fixture mode = แถวตัวอย่าง "จากปฏิทิน iPhone" ของจอ 10) */
+// ───────── นัดในเครื่อง (CAL2.11 · expo-calendar · ฝั่งเครื่องเท่านั้น — ไม่เคยส่งขึ้นเซิร์ฟเวอร์) ─────────
+/** แถว source "device" ของช่วงวัน · ปิดใช้/ไม่อนุญาต = [] · fixture mode = แถวตัวอย่าง "จากปฏิทิน iPhone" ของจอ 10 */
 export async function deviceAgenda(from: string, to: string): Promise<AgendaItem[]> {
-  if (!fixtureOn) return [];
+  if (!fixtureOn) return deviceEventsFor(from, to);
   return fixtureCall<AgendaItem[]>("GET", "_device", { from, to }, undefined);
 }
 

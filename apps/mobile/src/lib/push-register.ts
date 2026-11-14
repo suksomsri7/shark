@@ -5,6 +5,7 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { api } from "@/src/api/client";
+import { calActionOf, handleCalAction, registerCalCategories } from "@/src/lib/cal-notify";
 
 // 🔴 projectId ต้องอ่านจาก app.json เสมอ ห้ามพิมพ์ซ้ำในโค้ด (บทเรียน 22 ส.ค.)
 // เดิมฮาร์ดโค้ด `c24ec712-…` = โปรเจกต์ของบัญชี @siamdive ที่เลิกใช้ไปตั้งแต่ย้ายบัญชี 20 ส.ค.
@@ -17,6 +18,7 @@ let registered = false;
 let lastToken: string | null = null;
 
 export async function registerPush(): Promise<void> {
+  void registerCalCategories(); // CAL2.8: ปุ่มลัดของเตือนปฏิทิน (SEC_CAL / SEC_CAL_CALL) · ไม่ต้องรอ permission
   if (registered) return;
   try {
     const token = await currentPushToken({ ask: true });
@@ -94,6 +96,16 @@ export function secretaryRouteFromLink(link: unknown, systemId?: unknown): strin
   if (!s.startsWith("/") || s.startsWith("//") || s.includes("\\")) return null;
   const [rawPath, rawQuery = ""] = s.split("#")[0]!.split("?");
   const path = rawPath!.replace(/\/+$/, "") || "/";
+  // CAL2.8 (สัญญา §7.1): /secretary/calendar[?day=YYYY-MM-DD[&item=<id>]] — คงเฉพาะ day/item ที่ถูกรูป
+  if (path === "/secretary/calendar") {
+    const q: string[] = [];
+    for (const kv of rawQuery.split("&")) {
+      if (/^day=\d{4}-\d{2}-\d{2}$/.test(kv) && !q.some((x) => x.startsWith("day="))) q.push(kv);
+      if (/^item=[A-Za-z0-9_-]{1,80}$/.test(kv) && !q.some((x) => x.startsWith("item="))) q.push(kv);
+    }
+    q.sort((a, b) => Number(b.startsWith("day=")) - Number(a.startsWith("day=")));
+    return q.length ? `${path}?${q.join("&")}` : path;
+  }
   for (const l of SEC_LINKS) {
     const m = l.re.exec(path);
     if (!m) continue;
@@ -125,6 +137,26 @@ const handledPush = new Set<string>();
  * ใบเดิมซ้ำ (listener + เปิดแอปจากแจ้งเตือน) = เปิดครั้งเดียว (จำ identifier)
  */
 export function handleSecretaryPush(resp: Notifications.NotificationResponse, deps: SecretaryPushDeps): boolean {
+  // CAL2.8 ปุ่มลัดของเตือนปฏิทิน (เสร็จ/เลื่อน/โทร) — ทำในนามกิจการของรายการ แล้วเปิดปฏิทินวันนั้น (ใบเดิม+ปุ่มเดิม = ครั้งเดียว)
+  if (calActionOf(resp?.actionIdentifier)) {
+    const k = `${resp.notification?.request?.identifier ?? ""}#${resp.actionIdentifier}`;
+    if (handledPush.has(k)) return true;
+    const ok = handleCalAction(resp, (link) => {
+      const href = secretaryRouteFromLink(link);
+      if (!href) return;
+      const tid = (resp.notification.request.content.data as { tenantId?: unknown } | undefined)?.tenantId;
+      void (async () => {
+        try {
+          if (typeof tid === "string" && tid && tid !== deps.activeTenantId && deps.tenantIds.includes(tid)) await deps.switchTenant(tid);
+        } catch {
+          /* เปิดในกิจการเดิม */
+        }
+        deps.push(href);
+      })();
+    });
+    if (ok) handledPush.add(k);
+    if (ok) return true;
+  }
   const data = (resp?.notification?.request?.content?.data ?? {}) as { link?: unknown; tenantId?: unknown; systemId?: unknown };
   const href = secretaryRouteFromLink(data.link, data.systemId);
   if (!href) return false;

@@ -47,6 +47,13 @@
       ],
       "expo-notifications",
       [
+        "expo-calendar",
+        {
+          "calendarPermission": "Lekaa ใช้ปฏิทินในเครื่องเพื่อแสดงนัดของคุณรวมกับงานร้าน และบันทึกนัดส่วนตัวที่คุณสร้าง — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
+          "remindersPermission": "Lekaa ไม่ได้ใช้รายการเตือนของเครื่อง (Reminders) — ข้อมูลไม่ถูกส่งออกจากเครื่อง"
+        }
+      ],
+      [
         "expo-image-picker",
         {
           "photosPermission": "แอปขอเข้าถึงรูปภาพเพื่อส่งรูปให้ผู้ช่วย AI ดู",

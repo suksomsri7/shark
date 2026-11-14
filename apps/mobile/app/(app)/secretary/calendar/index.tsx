@@ -23,10 +23,12 @@ import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
 import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
 import { ConflictCard, loadSkipped, skipConflict } from "@/src/components/calendar/ConflictCard";
 import { conflicts as localConflicts } from "@/src/lib/cal-conflicts";
+import { onDeviceCalChanged } from "@/src/lib/device-calendar";
+import { runDeviceExportSync } from "@/src/lib/device-sync";
 import { calApi, calChanged, deepLinkRoute, deviceAgenda, onCalChanged, sortAgenda, useCalFixture, type AgendaItem, type AgendaResult, type CalItemDto, type ColorKey, type ConflictNote } from "@/src/api/calendar";
 import { apiErrorText } from "@/src/api/client";
 import { scheduleZoneBadges } from "@/src/api/secretary";
-import { addDays, addMonths, dayOfMs, isDay, monthName, monthYear, shortDate, weekDays, yearLabel, ymOf } from "@/src/lib/cal-date";
+import { addDays, addMonths, dayOfIso, daysInMonth, dayOfMs, isDay, monthName, monthYear, shortDate, weekDays, yearLabel, ymOf } from "@/src/lib/cal-date";
 import { useLang, useT } from "@/src/i18n";
 import { useTheme } from "@/src/theme/index";
 import { spacing } from "@/src/theme/tokens";
@@ -99,7 +101,15 @@ export default function CalendarScreen() {
     if (!force && months[m]) return;
     try {
       const r = await calApi.month(m);
-      setMonths((prev) => ({ ...prev, [m]: r.days ?? {} }));
+      // CAL2.11: จุดของนัดในเครื่อง (เซิร์ฟเวอร์ไม่รวม device · สัญญา §8) — เติมท้าย ≤ 3
+      const dev = await deviceAgenda(`${m}-01`, `${m}-${String(daysInMonth(m)).padStart(2, "0")}`).catch(() => [] as AgendaItem[]);
+      const days: Record<string, ColorKey[]> = { ...(r.days ?? {}) };
+      for (const d of dev) {
+        const k = dayOfIso(d.startAt);
+        const cur = days[k] ?? [];
+        if (!cur.includes("device") && cur.length < 3) days[k] = [...cur, "device"];
+      }
+      setMonths((prev) => ({ ...prev, [m]: days }));
     } catch {
       /* จุดหาย = ไม่บล็อกจอ */
     }
@@ -124,6 +134,20 @@ export default function CalendarScreen() {
       void loadDay(day);
     }, [day, loadDay]),
   );
+  // CAL2.11: ส่งออกนัดส่วนตัวไปปฏิทินในเครื่อง (เปิดไว้เท่านั้น) ตอนเข้าจอ · ค่าในเครื่องเปลี่ยน ⇒ โหลดวัน/จุดใหม่
+  useFocusEffect(
+    useCallback(() => {
+      void runDeviceExportSync();
+    }, []),
+  );
+  useEffect(
+    () =>
+      onDeviceCalChanged(() => {
+        void loadDay(dayRef.current);
+        void loadMonth(ymOf(dayRef.current), true);
+      }),
+    [loadDay, loadMonth],
+  );
   useEffect(() => {
     const ms = new Set([ymOf(day), ...weekDays(day).map(ymOf), ym]);
     ms.forEach((m) => void loadMonth(m));
@@ -136,6 +160,7 @@ export default function CalendarScreen() {
         void loadDay(dayRef.current);
         void loadMonth(ymOf(dayRef.current), true);
         setReloadKey((k) => k + 1);
+        void runDeviceExportSync();
       }),
     [loadDay, loadMonth],
   );

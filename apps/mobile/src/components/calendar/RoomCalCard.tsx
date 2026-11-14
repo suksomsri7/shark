@@ -8,7 +8,7 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon } from "@/src/components/airy";
-import { calApi, deepLinkRoute, onCalChanged, sortAgenda, type AgendaItem, type CalItemDto } from "@/src/api/calendar";
+import { calApi, deepLinkRoute, deviceAgenda, onCalChanged, sortAgenda, type AgendaItem, type CalItemDto } from "@/src/api/calendar";
 import { apiErrorText } from "@/src/api/client";
 import { dateNum, dayOfIso, dayOfMs, hhmm, monthName, shortDate, ymOf } from "@/src/lib/cal-date";
 import { useLang, useT } from "@/src/i18n";
@@ -42,7 +42,9 @@ export function RoomCalCard({ card }: { card: RoomCalCardDto }) {
     try {
       if (card.kind === "AGENDA") {
         const r = await calApi.agenda(card.fromDay, card.toDay || card.fromDay);
-        setAgenda(sortAgenda(r.items).map((x) => ({ ...x, checkable: false })));
+        // CAL2.11: นัดในเครื่องของผู้ดู (อ่านจากเครื่องตอนวาด · ไม่ถึงเซิร์ฟเวอร์)
+        const dev = await deviceAgenda(card.fromDay, card.toDay || card.fromDay).catch(() => [] as AgendaItem[]);
+        setAgenda(sortAgenda([...r.items, ...dev]).map((x) => ({ ...x, checkable: false })));
       } else {
         const [a, b] = await Promise.all([calApi.items("today", 20), calApi.items("upcoming", 20)]);
         setList([...(a.items ?? []), ...(b.items ?? [])]);
