@@ -26,7 +26,8 @@ try {
   await guard("404-norm", async () => {
     const ip = freshIp();
     const r0 = await L.bookHttp(A, PA, { d: L.addDays(today, 20), n: { ADULT: 1 } }, ip);
-    const tok = decodeURIComponent(r0.resPath.split("/my/")[1] ?? "");
+    // PROBE-EDIT (คัดแยก): resPath ลงท้าย `?lang=th` ⇒ เดิม tok มี "?lang=th" ติดมา ทำให้กรณี "token A on B" เป็นคำขอที่มี query (RSC สะท้อน `"q":"?lang=th"`) ⇒ ตัด query ออก
+    const tok = decodeURIComponent(r0.resPath.split("/my/")[1]?.split("?")[0] ?? "");
     const rnd = () => Buffer.from(L.hex(32), "hex").toString("base64url").slice(0, 43);
     const cases: [string, string, string][] = [
       ["shop missing", `${L.SLUG}zz${L.STAMP}`, rnd()],

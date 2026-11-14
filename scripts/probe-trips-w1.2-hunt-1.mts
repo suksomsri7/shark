@@ -111,7 +111,10 @@ try {
     ];
     // PROBE-EDIT (r1): Next ใส่ path ของคำขอ (slug ร้าน · token/ตะกร้า · sel) ลงหน้า 404 เอง — ไม่ใช่ข้อมูลร้านที่รั่ว ⇒ นับเฉพาะชื่อร้าน/ชื่อสินค้า และเทียบรูปหลังตัดค่าที่มาจาก URL (ต่อชนิดเส้นทาง c/ · my/)
     const echoed = [A.slug, B.slug, `${L.SLUG}nope-${L.STAMP}`, basketA, encodeURIComponent(basketA), selA, encodeURIComponent(selA), tokA, encodeURIComponent(tokA), randTok, tokA.replace(/[a-z]/, (c) => c.toUpperCase())].filter((x) => x.length >= 3).sort((x, y) => y.length - x.length);
-    const normOf = (b: string) => { let x = b; for (const e of echoed) x = x.split(e).join("§"); return x.replace(/[A-Za-z0-9_-]{30,}/g, "#"); };
+    // PROBE-EDIT (คัดแยก): ค่ารูปผิดสั้น ๆ ("abc"/"xyz"/sel=x) และการมี/ไม่มี query `?sel=` ก็สะท้อนจาก URL ลง RSC payload (`"c":[…,"abc?sel=x"],"q":"?sel=x"`) ⇒ ตัดออกด้วย
+    echoed.push("abc", "xyz");
+    echoed.sort((x, y) => y.length - x.length);
+    const normOf = (b: string) => { let x = b; for (const e of echoed) x = x.split(e).join("§"); return x.replace(/\?sel=(§|x)/g, "").replace(/__PAGE__\?\{[^}]*\}/g, "__PAGE__").replace(/[A-Za-z0-9_-]{30,}/g, "#"); }; // + คีย์ต้นไม้เส้นทาง `__PAGE__?{"sel":…}` (สะท้อน query)
     const shapes = new Map<string, Map<string, string[]>>();
     for (const [name, path] of cases) {
       const r = await req(path, { ip });
@@ -237,15 +240,18 @@ try {
       const c = await L.openCheckout(h2.location, ip2);
       if (c.form) {
         await sleep(L.FORM_WAIT);
-        const bound = JSON.parse(L.fieldOf(c.form, "$ACTION_0:1") ?? "[]") as string[];
+        // PROBE-EDIT (คัดแยก): หน้า c/ (r1) ตั้งชื่อช่อง bind เป็น `$ACTION_1:1` (มี `$ACTION_REF_1`) ไม่ใช่ `$ACTION_0:1` ⇒ เดิมหาไม่เจอ (bound=[]) ไม่ได้แก้อะไร = ยืนยันปกติ · หาช่องจริงจากค่า (JSON array 3 ตัว ขึ้นต้นด้วย slug ร้าน)
+        const bk = c.form.fields.find(([k, v]) => { if (!/^\$ACTION_\d+:\d+$/.test(k)) return false; try { const j = JSON.parse(v) as unknown; return Array.isArray(j) && j.length === 3 && j[0] === A.slug; } catch { return false; } })?.[0] ?? "";
+        line("S-confirm-boundfield", "confirm form carries the bound args [shop, basket, sel] in a hidden $ACTION_n:m field", bk || "none", !!bk);
+        const bound = JSON.parse(L.fieldOf(c.form, bk) ?? "[]") as string[];
         const t = [bound[0], bound[1], `v1.${reenc({ ...JSON.parse(Buffer.from(sel2.split(".")[1] ?? "", "base64url").toString()), n: [["ADULT", 3]] })}.${sel2.split(".")[2]}`];
         const before = (await L.bookingsOf(A.tenant)).length;
-        const r = await submit(h2.location, L.bookerFields({ action: "", fields: c.form.fields.map(([k, v]): [string, string] => (k === "$ACTION_0:1" ? [k, JSON.stringify(t)] : [k, v])) }), ip2);
+        const r = await submit(h2.location, L.bookerFields({ action: "", fields: c.form.fields.map(([k, v]): [string, string] => (k === bk ? [k, JSON.stringify(t)] : [k, v])) }), ip2);
         const after = (await L.bookingsOf(A.tenant)).length;
         line("S-confirm-tampered", "confirm with bound sel qty edited ⇒ 404, no booking", `${kindOf(r)} bookings +${after - before}`, r.status === 404 && after === before);
         // huge bound sel → Location header?
         const huge = [bound[0], bound[1], `${sel2}${"A".repeat(20_000)}`];
-        const r2 = await submit(h2.location, L.bookerFields({ action: "", fields: c.form.fields.map(([k, v]): [string, string] => (k === "$ACTION_0:1" ? [k, JSON.stringify(huge)] : [k, v])) }), ip2);
+        const r2 = await submit(h2.location, L.bookerFields({ action: "", fields: c.form.fields.map(([k, v]): [string, string] => (k === bk ? [k, JSON.stringify(huge)] : [k, v])) }), ip2);
         line("S-confirm-huge-bound", "confirm with 20k bound sel ⇒ 404, no 5xx / no 20k Location", `${kindOf(r2)} locLen=${loc(r2).length}`, r2.status === 404 && loc(r2).length < 2000);
       }
     }

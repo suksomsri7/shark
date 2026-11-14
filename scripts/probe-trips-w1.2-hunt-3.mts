@@ -143,7 +143,8 @@ try {
     line("SB-cap", "after the resends: 3 new holds ⇒ OK,OK,RATE_LIMITED (held 3) — 4th new basket on the same run/device limited", `${codes.join(",")} held=${d2?.held}`, codes.join(",") === "OK,OK,RATE_LIMITED" && d2?.held === 3);
     if (lastLoc && !lastLoc.includes("/c/")) {
       const p = await req(lastLoc, { ip });
-      const txt = p.body.replace(/<[^>]*>/g, " ");
+      // PROBE-EDIT (คัดแยก): "รอสักครู่" ที่เจอมาจากคลังข้อความของระบบอื่น (POS/จอลูกค้า/บัญชี) ใน <script> RSC payload ไม่ใช่ข้อความที่ลูกค้าเห็น ⇒ ตรวจเฉพาะข้อความนอก <script>
+      const txt = p.body.replace(/<script\b[\s\S]*?<\/script>/g, " ").replace(/<[^>]*>/g, " ");
       line("SB-msg", "rate-limited hold page: 'try again later' + shop contact, not 'wait a moment'", `${kindOf(p)} contact=${txt.includes("076-333-777") || txt.includes("@w12h3")} later=${/ภายหลัง|later/i.test(txt)} wait=${/รอสักครู่/.test(txt)}`, (txt.includes("076-333-777") || txt.includes("@w12h3")) && /ภายหลัง|later/i.test(txt) && !/รอสักครู่/.test(txt));
     }
     const other = await L.holdHttp(A, PA, { d: L.addDays(today, 35), n: { ADULT: 1 } }, ip);
