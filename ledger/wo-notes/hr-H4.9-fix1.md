@@ -27,3 +27,10 @@ typecheck (clean .next/types + tsbuildinfo) exit 0.
 - qc-hr-h4.3 S1.6 (`qc-hr-h4.3-lib.mts:192-204`): `H49_ALLOW = new Set(["scripts/qc-nav-functions.mts"])`, `h49Ok(f)` = in allow-list && ≥1 hunk && every hunk has an added line containing `ORACLE-EDIT (HR H4.9 · controller)`; add `!h49Ok(f)` to `oraclesLeft`.
 - qc-hr-priv-2 S4 (`qc-hr-priv-2.mts:106-115`): accept `src/lib/ai/skills.ts` in FROZEN when every hunk adds a line with `HR H4.9`; accept `scripts/qc-nav-functions.mts` in OLD when every hunk adds `ORACLE-EDIT (HR H4.9 · controller)`.
 - qc-hr-priv-2 S5 (`:117-121`): treat `src/lib/ai/skills.ts`, `src/lib/pages/registry.ts` as allowed when every hunk adds a line with `HR H4.9`.
+
+## Rulings applied (controller · all four approved as worded) — r2
+- `scripts/qc-hr-h4.3.mts` S1.3 (CHECKS line 28 + :154): pins "proposals need a human to confirm".
+- `scripts/qc-hr-h4.3-lib.mts` S1.6: `H49_ALLOW = {scripts/qc-nav-functions.mts, scripts/qc-hr-priv-2.mts}` + `h49Ok` (every hunk adds `ORACLE-EDIT (HR H4.9 · controller)`) in `oraclesLeft`. Extension per ruling: `qc-hr-priv-2.mts` (its own S4/S5 edit trips h4.3 S1.6).
+- `scripts/qc-hr-priv-2.mts` S4: `H49_MARK` = skills.ts → "HR H4.9" · qc-nav-functions.mts → ORACLE-EDIT marker; extension per ruling: `qc-hr-h4.3.mts`, `qc-hr-h4.3-lib.mts` (ORACLE-EDIT marker; they are in OLD and lack the PRIV-2 marker). FROZEN diff and OLD filter both drop h49Ok files. S5: `H49_SRC = [skills.ts, registry.ts]`, every hunk adds "HR H4.9".
+- money-2 / hf-sso statics: not tripped, no edit.
+r2 results: h4.3 45/45 · priv-2 47/47 · money-2 57/57 · hf-sso 41/41 · h1.3 63/63 · h2.4 68/68 · ai-skills 23/23 · pages 31/31 · fitness 54/54 ×2 · fitness-hr 9/9 ×2 · nav-functions S5 = HOTEL ×14 + BOOKING ×2 only (class b).
