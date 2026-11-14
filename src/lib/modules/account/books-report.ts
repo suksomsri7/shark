@@ -229,8 +229,44 @@ export type SubsidiaryLedger = {
 };
 
 /**
+ * ACC T5 Job 0 ▸ ผู้ติดต่อของบรรทัด AR/AP ที่ลงไว้ก่อนระบบเขียนผู้ติดต่อบนบรรทัด (T4.2) — อนุมานตอนอ่านจากเอกสารต้นทาง
+ *   refType AccountDocument → document.contactId · AccountDocumentPayment → payment.document.contactId
+ *   AccountCheque → งวดที่ผูกเช็ค → document.contactId · AccountJournalEntry (กลับรายการ) → ตามใบเดิม
+ *   ไม่แก้แถวใน DB (สมุดที่ลงแล้วห้ามแก้ — ใช้ตอนอ่านเท่านั้น) · หาไม่ได้ = คงเป็น "ไม่ระบุผู้ติดต่อ"
+ *   คิวรีคงที่ ≤ 4 ครั้งต่อการเรียก (ไม่วนต่อบรรทัด)
+ */
+export async function deriveRefContacts(
+  ctx: Ctx,
+  refs: { refType: string | null; refId: string | null; reversalOf?: { refType: string | null; refId: string | null } | null }[],
+): Promise<(string | null)[]> {
+  const db = tenantDb(ctx);
+  const eff = refs.map((r) => (r.refType === "AccountJournalEntry" && r.reversalOf ? r.reversalOf : r));
+  const idsOf = (t: string) => [...new Set(eff.filter((r) => r.refType === t && r.refId).map((r) => r.refId as string))];
+  const docIds = idsOf("AccountDocument");
+  const payIds = idsOf("AccountDocumentPayment");
+  const chqIds = idsOf("AccountCheque");
+  const [pays, chqPays] = await Promise.all([
+    payIds.length ? db.accountDocumentPayment.findMany({ where: { id: { in: payIds } }, select: { id: true, documentId: true } }) : Promise.resolve([] as { id: string; documentId: string }[]),
+    chqIds.length ? db.accountDocumentPayment.findMany({ where: { chequeId: { in: chqIds } }, select: { chequeId: true, documentId: true } }) : Promise.resolve([] as { chequeId: string | null; documentId: string }[]),
+  ]);
+  const payDoc = new Map(pays.map((p) => [p.id, p.documentId]));
+  const chqDoc = new Map(chqPays.map((p) => [p.chequeId as string, p.documentId]));
+  const allDocs = [...new Set([...docIds, ...pays.map((p) => p.documentId), ...chqPays.map((p) => p.documentId)])];
+  const docs = allDocs.length ? await db.accountDocument.findMany({ where: { id: { in: allDocs } }, select: { id: true, contactId: true } }) : [];
+  const docContact = new Map(docs.map((d) => [d.id, d.contactId]));
+  return eff.map((r) => {
+    if (!r.refId) return null;
+    if (r.refType === "AccountDocument") return docContact.get(r.refId) ?? null;
+    if (r.refType === "AccountDocumentPayment") return docContact.get(payDoc.get(r.refId) ?? "") ?? null;
+    if (r.refType === "AccountCheque") return docContact.get(chqDoc.get(r.refId) ?? "") ?? null;
+    return null;
+  });
+}
+
+/**
  * บัญชีย่อยจาก GL: บรรทัดของบัญชีลูกหนี้ (AR) / เจ้าหนี้ (AP) ตาม mapping จัดกลุ่มตามผู้ติดต่อบนบรรทัด
  *   ยอดฝั่งลูกหนี้ = เดบิต − เครดิต · ฝั่งเจ้าหนี้ = เครดิต − เดบิต (ยอดค้างเป็นบวก) · ไม่ระบุผู้ติดต่อ = แถว "ไม่ระบุผู้ติดต่อ"
+ *   บรรทัดที่ไม่มีผู้ติดต่อ (ลงก่อน T4.2) = อนุมานจากเอกสารต้นทาง (deriveRefContacts) ตอนอ่าน
  *   ผลรวมทุกแถว = ยอดบัญชีคุมใน GL (ข้อสอบ T4.2 ตรวจ)
  */
 export async function subsidiaryLedger(ctx: Ctx, input: { side: SubsidiarySide; from: Date; to: Date; contactId?: string | null }): Promise<SubsidiaryLedger> {
@@ -240,22 +276,43 @@ export async function subsidiaryLedger(ctx: Ctx, input: { side: SubsidiarySide; 
   const empty = { opening: 0, debit: 0, credit: 0, closing: 0 };
   if (!account) return { side: input.side, account: null, rows: [], totals: empty, detail: null };
   const sign = input.side === "AR" ? 1 : -1;
-  const [openG, moveG] = await Promise.all([
-    db.accountJournalLine.groupBy({ by: ["contactId"], where: { systemId: ctx.systemId, accountId: account.id, entry: { date: { lt: input.from } } }, _sum: { debit: true, credit: true } }),
-    db.accountJournalLine.groupBy({ by: ["contactId"], where: { systemId: ctx.systemId, accountId: account.id, entry: { date: { gte: input.from, lte: input.to } } }, _sum: { debit: true, credit: true } }),
+  const [openG, moveG, orphans] = await Promise.all([
+    db.accountJournalLine.groupBy({ by: ["contactId"], where: { systemId: ctx.systemId, accountId: account.id, contactId: { not: null }, entry: { date: { lt: input.from } } }, _sum: { debit: true, credit: true } }),
+    db.accountJournalLine.groupBy({ by: ["contactId"], where: { systemId: ctx.systemId, accountId: account.id, contactId: { not: null }, entry: { date: { gte: input.from, lte: input.to } } }, _sum: { debit: true, credit: true } }),
+    // บรรทัดไม่มีผู้ติดต่อ (ข้อมูลก่อน T4.2) — อ่านรายบรรทัดเพื่ออนุมานจากเอกสารต้นทาง
+    db.accountJournalLine.findMany({
+      where: { systemId: ctx.systemId, accountId: account.id, contactId: null, entry: { date: { lte: input.to } } },
+      orderBy: [{ entry: { date: "asc" } }, { entry: { createdAt: "asc" } }, { id: "asc" }],
+      select: { debit: true, credit: true, note: true, entry: { select: { date: true, docNo: true, memo: true, refType: true, refId: true, reversalOf: { select: { refType: true, refId: true } } } } },
+    }),
   ]);
-  const keys = [...new Set([...openG.map((g) => g.contactId), ...moveG.map((g) => g.contactId)])];
+  const derived = await deriveRefContacts(ctx, orphans.map((l) => l.entry));
+  const orphanLines = orphans.map((l, i) => ({ ...l, contactId: derived[i] }));
+  const agg = new Map<string | null, { o: number; d: number; c: number }>();
+  const bucket = (k: string | null) => agg.get(k) ?? (agg.set(k, { o: 0, d: 0, c: 0 }), agg.get(k)!);
+  for (const g of openG) bucket(g.contactId).o += sign * ((g._sum.debit ?? 0) - (g._sum.credit ?? 0));
+  for (const g of moveG) {
+    const b = bucket(g.contactId);
+    b.d += g._sum.debit ?? 0;
+    b.c += g._sum.credit ?? 0;
+  }
+  for (const l of orphanLines) {
+    const b = bucket(l.contactId);
+    if (l.entry.date < input.from) b.o += sign * (l.debit - l.credit);
+    else {
+      b.d += l.debit;
+      b.c += l.credit;
+    }
+  }
+  const keys = [...agg.keys()];
   const ids = keys.filter((x): x is string => !!x);
   const contacts = ids.length ? await db.accountContact.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } }) : [];
   const name = new Map(contacts.map((c) => [c.id, c.name]));
   const nameOf = (id: string | null) => (id ? (name.get(id) ?? "(ผู้ติดต่อที่ถูกลบ)") : "ไม่ระบุผู้ติดต่อ");
   const rows: SubsidiaryRow[] = keys.map((k) => {
-    const o = openG.find((g) => g.contactId === k);
-    const m = moveG.find((g) => g.contactId === k);
-    const opening = sign * ((o?._sum.debit ?? 0) - (o?._sum.credit ?? 0));
-    const debit = m?._sum.debit ?? 0;
-    const credit = m?._sum.credit ?? 0;
-    return { contactId: k, contactName: nameOf(k), opening, debit, credit, closing: opening + sign * (debit - credit) };
+    const a = agg.get(k)!;
+    // `|| 0` = ตัด −0 (ฝั่งเจ้าหนี้คูณ −1 กับ 0 แล้วจอแสดง "-0.00")
+    return { contactId: k, contactName: nameOf(k), opening: a.o || 0, debit: a.d, credit: a.c, closing: a.o + sign * (a.d - a.c) || 0 };
   });
   rows.sort((a, b) => (a.contactId === null ? 1 : b.contactId === null ? -1 : a.contactName.localeCompare(b.contactName, "th")));
   const live = rows.filter((r) => r.opening !== 0 || r.debit !== 0 || r.credit !== 0);
@@ -265,17 +322,25 @@ export async function subsidiaryLedger(ctx: Ctx, input: { side: SubsidiarySide; 
   if (input.contactId !== undefined && input.contactId !== "") {
     const cid = input.contactId === "none" ? null : input.contactId;
     const row = rows.find((r) => r.contactId === cid);
-    const ls = await db.accountJournalLine.findMany({
-      where: { systemId: ctx.systemId, accountId: account.id, contactId: cid, entry: { date: { gte: input.from, lte: input.to } } },
-      orderBy: [{ entry: { date: "asc" } }, { entry: { createdAt: "asc" } }, { id: "asc" }],
-      select: { debit: true, credit: true, note: true, entry: { select: { date: true, docNo: true, memo: true } } },
-    });
+    const direct =
+      cid === null
+        ? []
+        : await db.accountJournalLine.findMany({
+            where: { systemId: ctx.systemId, accountId: account.id, contactId: cid, entry: { date: { gte: input.from, lte: input.to } } },
+            orderBy: [{ entry: { date: "asc" } }, { entry: { createdAt: "asc" } }, { id: "asc" }],
+            select: { debit: true, credit: true, note: true, entry: { select: { date: true, docNo: true, memo: true, createdAt: true } } },
+          });
+    const fromOrphans = orphanLines.filter((l) => l.contactId === cid && l.entry.date >= input.from);
+    const merged = [
+      ...direct.map((l) => ({ debit: l.debit, credit: l.credit, note: l.note, date: l.entry.date, docNo: l.entry.docNo, memo: l.entry.memo })),
+      ...fromOrphans.map((l) => ({ debit: l.debit, credit: l.credit, note: l.note, date: l.entry.date, docNo: l.entry.docNo, memo: l.entry.memo })),
+    ].sort((a, b) => a.date.getTime() - b.date.getTime() || (a.docNo ?? "").localeCompare(b.docNo ?? ""));
     let run = row?.opening ?? 0;
-    const lines = ls.map((l) => {
-      run += sign * (l.debit - l.credit);
-      return { date: l.entry.date, docNo: l.entry.docNo, memo: l.note ?? l.entry.memo, debit: l.debit, credit: l.credit, balance: run };
+    const lines = merged.map((l) => {
+      run = run + sign * (l.debit - l.credit) || 0;
+      return { date: l.date, docNo: l.docNo, memo: l.note ?? l.memo, debit: l.debit, credit: l.credit, balance: run };
     });
-    detail = { contactId: cid, contactName: nameOf(cid), opening: row?.opening ?? 0, lines, closing: run };
+    detail = { contactId: cid, contactName: nameOf(cid), opening: row?.opening ?? 0, lines, closing: run || 0 };
   }
   return { side: input.side, account, rows: live, totals, detail };
 }

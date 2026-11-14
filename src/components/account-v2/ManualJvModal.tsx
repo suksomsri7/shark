@@ -90,11 +90,14 @@ export function ManualJvModal({
   // ACC T4.1 ▸ คำอธิบาย (ต้องยืนยันเมื่อว่าง) · ไฟล์แนบ (เอกสารประกอบ) · ลงช้า — ตัวเดียวกับ server (jv-rules) ◂
   const [memo, setMemo] = useState("");
   const [fileCount, setFileCount] = useState(0);
+  // ACC T5 Job 0 ▸ ฟอร์มว่างเพิ่งเปิด = ยังไม่ตะโกนเรื่องคำอธิบาย/เอกสารประกอบ — แสดงเมื่อเริ่มกรอกบรรทัด/คำอธิบาย/แนบไฟล์ หรือกดบันทึกแล้ว ◂
+  const [attempted, setAttempted] = useState(false);
+  const started = attempted || !!error || memo !== "" || fileCount > 0 || lines.some((l) => l.accountId || l.debit > 0 || l.credit > 0);
   const bookRules = useMemo(() => {
-    const ws = jvContentWarnings({ memo, hasSupportingDoc: fileCount > 0 });
+    const ws = started ? jvContentWarnings({ memo, hasSupportingDoc: fileCount > 0 }) : [];
     if (lateCtx) ws.push(...jvLateWarnings({ dateYmd: dateKey, recordedYmd: lateCtx.todayYmd, entityKind: lateCtx.entityKind, vatRegistered: lateCtx.vatRegistered, rules: lateCtx.rules }));
     return ws;
-  }, [memo, fileCount, dateKey, lateCtx]);
+  }, [started, memo, fileCount, dateKey, lateCtx]);
   const legal = useMemo(() => {
     const used = lines.filter((l) => l.accountId && (l.debit > 0 || l.credit > 0));
     const taxOf = (id: string) => taxAccounts.find((a) => a.id === id);
@@ -115,7 +118,7 @@ export function ManualJvModal({
   // size xl (896px) ไม่ใช่ lg — g16-journal-modal.png กว้าง ~940/1440 · lg (672px) ทำให้ชื่อบัญชีในบรรทัดถูกตัด
   return (
     <Modal open onClose={close} title="สร้างสมุดรายวัน" size="xl" testId="jv-modal" sheetOnMobile>
-      <form action={submit} encType="multipart/form-data" className="flex flex-col gap-4">
+      <form action={submit} onSubmitCapture={() => setAttempted(true)} encType="multipart/form-data" className="flex flex-col gap-4">
         <input type="hidden" name="systemId" value={systemId} />
         {lines.map((l) => (
           <input key={`h-${l.key}`} type="hidden" name="lineKey" value={l.key} />

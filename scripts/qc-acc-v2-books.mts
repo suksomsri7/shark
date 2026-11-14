@@ -111,14 +111,41 @@ try {
   const v = ap.rows.find((r: Any) => r.contactId === S.vJur.id);
   eq("D3.5", "เจ้าหนี้บริษัทรับเหมา: Dr 100,000 · Cr 100,000 · ยกไป 0 (ฝั่งเจ้าหนี้ยอดค้างเป็นบวก)", [v?.debit, v?.credit, v?.closing], [100_000, 100_000, 0]);
 
+  // ACC T5 Job 0 ▸ บรรทัดลูกหนี้ที่ลงก่อนระบบเขียนผู้ติดต่อบนบรรทัด (ข้อมูลเดิมก่อน T4.2) — อนุมานผู้ติดต่อจากเอกสารต้นทางตอนอ่าน
+  //   จำลองข้อมูลเดิมด้วยการ "เพิ่ม" ใบสำคัญใหม่ (ไม่แก้/ลบแถวที่ลงแล้ว): Dr ลูกหนี้ 7,000 ไม่มีผู้ติดต่อ refType AccountDocument → ใบของลูกค้า ข
+  //   + JV มือ Dr ลูกหนี้ 1,000 ไม่มีผู้ติดต่อและไม่มีเอกสารต้นทาง → คงอยู่แถว "ไม่ระบุผู้ติดต่อ"
+  const legacyDoc = await acc.createDocument({ tenantId: S.tid, systemId: S.SYS, docType: "INVOICE", contactId: custB.id, issueDate: S.day("2026-11", 20), vatMode: "NONE", lines: [{ description: "ค่าบริการเดิม", qty: 1, unitPrice: 7_000, vatRateBp: 0 }], createdById: S.owner.id });
+  const rev = await prisma.accountLedger.findFirst({ where: { systemId: S.SYS, code: { startsWith: "4" } }, select: { id: true } });
+  await prisma.accountJournalEntry.create({
+    data: {
+      tenantId: S.tid, systemId: S.SYS, docNo: `JV-LEGACY-${S.tid.slice(-6)}`, book: "SALES", journal: "DOC", date: S.day("2026-11", 20), periodKey: "2026-11",
+      refType: "AccountDocument", refId: legacyDoc.id, memo: "ข้อมูลเดิมก่อน T4.2", source: "AUTO",
+      lines: { create: [{ tenantId: S.tid, systemId: S.SYS, accountId: ar.account.id, debit: 7_000, credit: 0 }, { tenantId: S.tid, systemId: S.SYS, accountId: rev.id, debit: 0, credit: 7_000 }] },
+    },
+  });
+  await GL.postManualJV(ctx, { date: S.day("2026-11", 21), memo: "ปรับลูกหนี้ไม่ระบุ", book: "GENERAL", postedById: S.owner.id, lines: [{ accountId: ar.account.id, debit: 1_000, credit: 0 }, { accountId: rev.id, debit: 0, credit: 1_000 }] });
+  const ar2 = await BR.subsidiaryLedger(ctx, { side: "AR", ...RN });
+  const r2 = (id: string | null) => ar2.rows.find((r: Any) => r.contactId === id);
+  eq("D3.6", "ข้อมูลเดิม: บรรทัดไม่มีผู้ติดต่อแต่อ้างใบของลูกค้า ข → อยู่ใต้ลูกค้า ข (Dr 37,000 · ยกไป 37,000) · JV ไม่มีต้นทาง → ไม่ระบุผู้ติดต่อ 1,000", [r2(custB.id)?.debit, r2(custB.id)?.closing, r2(null)?.closing], [37_000, 37_000, 1_000]);
+  const gl2 = await JV.generalLedger(ctx, { accountId: ar.account.id, from: RN.from, to: RN.to });
+  eq("D3.7", "ผลรวมบัญชีย่อยยังเท่ายอดบัญชีคุม (68,000)", [gl2.closing, ar2.totals.closing], [68_000, 68_000]);
+  const detB = await BR.subsidiaryLedger(ctx, { side: "AR", ...RN, contactId: custB.id });
+  eq("D3.8", "รายการของลูกค้า ข: 2 บรรทัด (ใบปกติ 30,000 + ใบเดิม 7,000) เรียงวันที่ · คงเหลือ 37,000", [detB.detail?.lines.map((l: Any) => [l.debit, l.balance]), detB.detail?.closing], [[[30_000, 30_000], [7_000, 37_000]], 37_000]);
+  const detNone = await BR.subsidiaryLedger(ctx, { side: "AR", ...RN, contactId: "none" });
+  eq("D3.9", "แถวไม่ระบุผู้ติดต่อ: 1 บรรทัด 1,000 (JV มือ) — ใบเดิมไม่ปนมา", [detNone.detail?.lines.map((l: Any) => l.debit), detNone.detail?.closing], [[1_000], 1_000]);
+  const opening = await BR.subsidiaryLedger(ctx, { side: "AR", from: new Date("2026-11-25T00:00:00+07:00"), to: RN.to });
+  eq("D3.10", "ยอดยกมาก็อนุมาน: ช่วงตั้งแต่ 25 พ.ย. ลูกค้า ข ยกมา 37,000", opening.rows.find((r: Any) => r.contactId === custB.id)?.opening, 37_000);
+
   console.log("\n── D4 บัญชีแยกประเภททุกบัญชี ──");
   const lb = await BR.ledgerBookAll(ctx, { from: new Date("2026-10-01T00:00:00+07:00"), to: RN.to });
   const arAcc = lb.find((a: Any) => a.id === ar.account.id);
   const dr = lb.reduce((s: number, a: Any) => s + a.debit, 0);
   const cr = lb.reduce((s: number, a: Any) => s + a.credit, 0);
-  eq("D4.1", "ทุกบัญชี: Σ เดบิต = Σ เครดิต · บัญชีลูกหนี้ยกไป 60,000 · เรียงรหัส", [dr === cr, arAcc?.closing, lb.every((a: Any, i: number) => i === 0 || lb[i - 1].code <= a.code)], [true, 60_000, true]);
+  // ORACLE-EDIT (T5 Job 0): ยกไป 68,000 (เดิม 60,000) — บรรทัดลูกหนี้ที่ D3.6 เพิ่ม
+  eq("D4.1", "ทุกบัญชี: Σ เดบิต = Σ เครดิต · บัญชีลูกหนี้ยกไป 68,000 · เรียงรหัส", [dr === cr, arAcc?.closing, lb.every((a: Any, i: number) => i === 0 || lb[i - 1].code <= a.code)], [true, 68_000, true]);
   const one = await BR.ledgerBookAll(ctx, { from: RN.from, to: RN.to }, ar.account.id);
-  eq("D4.2", "บัญชีเดียว (ลูกหนี้): ยกมา 50,000 · รายการ 2 บรรทัด · ยกไป 60,000", [one.length, one[0]?.opening, one[0]?.lines.length, one[0]?.closing], [1, 50_000, 2, 60_000]);
+  // ORACLE-EDIT (T5 Job 0): D3.6 เพิ่มบรรทัดลูกหนี้ 2 บรรทัด (7,000 + 1,000) ก่อนส่วนนี้ ⇒ 4 บรรทัด · ยกไป 68,000 (เดิม 2 · 60,000)
+  eq("D4.2", "บัญชีเดียว (ลูกหนี้): ยกมา 50,000 · รายการ 4 บรรทัด · ยกไป 68,000", [one.length, one[0]?.opening, one[0]?.lines.length, one[0]?.closing], [1, 50_000, 4, 68_000]);
 } catch (e) {
   chk("X", "ไม่มี exception", false, "no error", String((e as Error)?.stack ?? e));
 } finally {

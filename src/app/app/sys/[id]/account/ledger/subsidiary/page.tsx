@@ -71,6 +71,11 @@ export default async function SubsidiaryLedgerPage({
         </Link>
         <ReportToolbar filename={`${title}-${from}-${to}`} csv={csv} mode="none" showCompare={false} />
       </div>
+      {/* ACC T5 Job 0 ▸ จอเดิมไม่มีชื่อรายงาน (หัวอยู่ในใบพิมพ์อย่างเดียว) ◂ */}
+      <div className="print:hidden">
+        <h1 className="text-2xl font-semibold" data-testid="sub-title">{detail ? `${title} · ${detail.contactName}` : title}</h1>
+        <p className="text-sm text-[color:var(--color-muted)]">{periodLabel}</p>
+      </div>
       <form className="flex flex-wrap items-end gap-2 print:hidden" data-testid="sub-filter">
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
           บัญชีย่อย
