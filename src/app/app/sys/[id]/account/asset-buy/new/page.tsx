@@ -10,12 +10,12 @@ export default async function Page({
 }: {
   params: Promise<{ id: string }>;
   // WO 9.4 — เติมผู้ติดต่อ/จำนวนเงินจากแผง "สร้างด่วน" (⌘K) เท่านั้น — ไม่ส่งมา = พฤติกรรมเดิมทุกอย่าง
-  searchParams: Promise<{ contactId?: string; amount?: string }>;
+  searchParams: Promise<{ contactId?: string; amount?: string; copy?: string }>;
 }) {
   const { id } = await params;
   const sp = await searchParams;
   await requireAccountPage(id, "account.doc.create");
   const amountSatang = parseAmountQueryToSatang(sp.amount);
   const prefill = sp.contactId || amountSatang != null ? { contactId: sp.contactId, amountSatang } : undefined;
-  return <DocEditorPage systemId={id} docType="ASSET_PURCHASE" prefill={prefill} />;
+  return <DocEditorPage systemId={id} docType="ASSET_PURCHASE" prefill={prefill} copyFromId={sp.copy} />;
 }

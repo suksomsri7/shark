@@ -47,6 +47,9 @@ export function PayLinkButton({
   disabled,
   disabledHint,
   current,
+  open: openProp,
+  onOpenChange,
+  hideTrigger = false,
 }: {
   systemId: string;
   docId: string;
@@ -56,9 +59,16 @@ export function PayLinkButton({
   disabledHint?: string;
   /** คำขอที่ยังรอชำระของเอกสารนี้ (ถ้ามี) — เปิดโมดัลมาเห็น QR ทันที */
   current: PayLinkView | null;
+  /** ACCOUNT-FIX B1 — เปิด/ปิดจากภายนอก (เมนู "ส่ง ▾" ของหัวเอกสาร) · ไม่ส่ง = ปุ่มของตัวเองคุม */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /** ไม่วาดปุ่มของตัวเอง (เปิดจากเมนูแทน) */
+  hideTrigger?: boolean;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
+  const [openState, setOpenState] = useState(false);
+  const open = openProp ?? openState;
+  const setOpen = (v: boolean) => (onOpenChange ? onOpenChange(v) : setOpenState(v));
   const [view, setView] = useState<PayLinkView | null>(current);
   const [channels, setChannels] = useState<{ id: string; name: string; hasPromptPay: boolean }[] | null>(null);
   const [financeId, setFinanceId] = useState("");
@@ -86,6 +96,7 @@ export function PayLinkButton({
   }, [open, view, channels, systemId]);
 
   if (disabled) {
+    if (hideTrigger) return null;
     return (
       <button type="button" className="btn btn-ghost text-sm" disabled title={disabledHint ?? "เร็ว ๆ นี้"} data-testid="btn-pay-link">
         ลิงก์ชำระเงิน
@@ -136,9 +147,11 @@ export function PayLinkButton({
 
   return (
     <>
-      <button type="button" className="btn btn-ghost text-sm" onClick={() => setOpen(true)} data-testid="btn-pay-link">
-        ลิงก์ชำระเงิน
-      </button>
+      {!hideTrigger && (
+        <button type="button" className="btn btn-ghost text-sm" onClick={() => setOpen(true)} data-testid="btn-pay-link">
+          ลิงก์ชำระเงิน
+        </button>
+      )}
       <Modal
         open={open}
         onClose={() => setOpen(false)}
