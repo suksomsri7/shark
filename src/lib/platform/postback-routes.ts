@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────
 import { consumeLinkCode, normalizeLinkCode } from "@/lib/modules/chat";
 
-export type PostbackDomain = "booking" | "dorm" | "hotel";
+export type PostbackDomain = "booking" | "dorm" | "hotel" | "hr"; // HR H4.5 ▸ + hr ◂
 export type PostbackCtx = { tenantId: string; connectionId: string; chatContactId: string; partyId: string | null; replyToken: string | null };
 export type PostbackEvent = { data: string; domain: PostbackDomain; action: string; params: Record<string, string> };
 export type PostbackReply = { text?: string; flex?: { altText: string; contents: Record<string, unknown> } };
@@ -24,7 +24,7 @@ export type PostbackReply = { text?: string; flex?: { altText: string; contents:
  */
 export type LinkedInfo = { purpose: string; refId: string; partyId: string | null; resolvedPartyId: string | null; partyMismatch: boolean };
 export type PostbackRoute = {
-  prefix: "booking." | "dorm." | "hotel.";
+  prefix: "booking." | "dorm." | "hotel." | "hr."; // HR H4.5 ▸ + hr. ◂
   resolveParty?: (ctx: { tenantId: string }, a: { purpose: string; refId: string }) => Promise<string | null>;
   onPostback?: (ctx: PostbackCtx, evt: PostbackEvent) => Promise<PostbackReply | void>;
   onLinked?: (ctx: PostbackCtx, a: LinkedInfo) => Promise<PostbackReply | void>;
@@ -46,19 +46,28 @@ POSTBACK_ROUTES.push({
   onPostback: async (ctx, evt) => (await import("@/lib/platform/dorm-line")).onDormPostback(ctx, evt),
   onLinked: async (ctx, a) => (await import("@/lib/platform/dorm-line")).onDormLinked(ctx, a),
 });
+// HR H4.5 ▸ พนักงาน: ผูก LINE ด้วยรหัส HR_EMPLOYEE (ไม่ผูก Party — resolveParty = null · R5) + postback hr.menu / hr.unlink — โหลดตอนเรียก ◂
+POSTBACK_ROUTES.push({
+  prefix: "hr.",
+  resolveParty: async () => null,
+  onPostback: async (ctx, evt) => (await import("@/lib/platform/hr-line")).onHrPostback(ctx, evt),
+  onLinked: async (ctx, a) => (await import("@/lib/platform/hr-line")).onHrLinked(ctx, a),
+});
+// ◂ HR H4.5
 
 /** ชนิดรหัสผูก → route ที่รู้ว่า ref เป็นของใคร */
-export const LINK_PURPOSE_PREFIX: Record<"DORM_LEASE" | "QUEUE_TICKET" | "APPOINTMENT", PostbackRoute["prefix"]> = {
+export const LINK_PURPOSE_PREFIX: Record<"DORM_LEASE" | "QUEUE_TICKET" | "APPOINTMENT" | "HR_EMPLOYEE", PostbackRoute["prefix"]> = { // HR H4.5 ▸ + HR_EMPLOYEE ◂
   DORM_LEASE: "dorm.",
   QUEUE_TICKET: "booking.",
   APPOINTMENT: "booking.",
+  HR_EMPLOYEE: "hr.", // HR H4.5 ▸ รหัสผูก LINE ของพนักงาน ◂
 };
 
 /** ข้อความกลางเมื่อผูกไม่สำเร็จ — เหมือนกันทุกกรณี (รหัสผิด/หมดอายุ/ใช้แล้ว/ร้านอื่น/เกินโควตา · X7) */
 export const LINK_FAILED_TEXT = "ใช้รหัสนี้ผูกบัญชีไม่ได้ ตรวจรหัสอีกครั้ง หรือขอรหัสใหม่จากร้าน";
 export const LINK_OK_TEXT = "ผูกบัญชี LINE เรียบร้อยแล้ว";
 
-const DATA_RE = /^(booking|dorm|hotel)\.[a-z][A-Za-z0-9_]*(\.[a-z][A-Za-z0-9_]*)*(\?.*)?$/;
+const DATA_RE = /^(booking|dorm|hotel|hr)\.[a-z][A-Za-z0-9_]*(\.[a-z][A-Za-z0-9_]*)*(\?.*)?$/; // HR H4.5 ▸ + hr ◂
 // eslint-disable-next-line no-control-regex
 const CONTROL_RE = /[\u0000-\u001f\u007f]/;
 const BAD_KEYS = new Set(["__proto__", "constructor", "prototype"]);
