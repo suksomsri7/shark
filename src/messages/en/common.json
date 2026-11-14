@@ -1261,7 +1261,9 @@
       "created": "Pay run created",
       "approved": "Approved",
       "synced": "Work hours pulled and deductions calculated",
-      "rv_RECEIVABLE_ATT": "Employee receivable (late/absence deduction not collectable from the final wage)"
+      "rv_RECEIVABLE_ATT": "Employee receivable (late/absence deduction not collectable from the final wage)",
+      "rv_YTD_OPENING": "Opening year-to-date not entered (warning only — enter it or press \"No income before the system\")",
+      "ytdLink": "Enter opening figures"
     },
     "attpay": {
       "policyTitle": "Late / early-out / absence deductions",
@@ -1731,6 +1733,43 @@
       "benefits": "Other agreed benefits",
       "onlyData": "Time and OT reports list only employees with data in the chosen period",
       "fullIdCsvHint": "Full national IDs are on — 13-digit numbers display fully in the Excel file; spreadsheet programs may show them as 1.1E+12 in the CSV file"
+    },
+    "ytd": {
+      "title": "Opening year-to-date (before using the system)",
+      "desc": "Income, withholding tax and employee social security this shop paid in this tax year before its first payroll run in the system — used to average the year's tax and included in the 50 Tawi / PND.1A",
+      "scopeNote": "Enter only what this shop paid itself, not income from a previous employer (the employee adds that on PND.90/91)",
+      "year": "Tax year",
+      "pickYear": "Show year",
+      "none": "No employees in this tax year",
+      "state_SET": "Entered",
+      "state_MISSING": "Needed",
+      "state_NOT_NEEDED": "Not needed",
+      "rev": "Version {n}",
+      "asOf": "Paid up to",
+      "months": "Months",
+      "income": "Total income (THB)",
+      "wht": "Withholding tax (THB)",
+      "sso": "Social security contribution (THB)",
+      "save": "Save",
+      "zero": "No income before the system",
+      "bulkSave": "Save all",
+      "bulkNote": "Saves every filled row at once — if any row fails, nothing is saved",
+      "locked": "50 Tawi already issued — void it before editing",
+      "summary": "up to {asOf} · {months} months · income {income} · tax {wht} · social security {sso}",
+      "ok_saved": "Opening figures saved",
+      "ok_savedWarn": "Opening figures saved — the social security contribution is above the monthly legal maximum, please check the figures",
+      "ok_bulk": "Opening figures saved for {n} people",
+      "ok_bulkWarn": "Opening figures saved for {n} people — a social security contribution is above the monthly legal maximum, please check the figures",
+      "err_NO": "You do not have access to this section",
+      "err_OWN": "You cannot enter your own opening figures — ask the owner or another payroll user",
+      "err_FIELDS": "The opening figures are not valid — amounts cannot be negative and months cannot exceed the month of the paid-up-to date",
+      "err_WHT_OVER": "Withholding tax is more than the income — please check the figures",
+      "err_AS_OF": "The paid-up-to date must be in the selected tax year and not after today",
+      "err_OVERLAP": "A payroll run in the system was paid within this opening period — choose a date before the first run's pay date",
+      "err_CERT_ISSUED": "The 50 Tawi for this year is already issued — void it before editing the opening figures",
+      "err_REV_CHANGED": "Someone else changed these opening figures — reload and save again",
+      "err_YEAR": "The tax year is not valid",
+      "err_empty": "No row has been filled in yet"
     }
   }
 }

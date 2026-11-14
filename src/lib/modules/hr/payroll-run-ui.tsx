@@ -12,6 +12,7 @@ import { WE_TEXT } from "./work-entries";
 import { ATT_TEXT, attendanceInForceOf } from "./attendance-pay-rules";
 import { H37_CODE_TEXT, H37_TEXT, getPayrollAccounting, payAccountsOfRun } from "./payroll"; // HR H3.7 ▸ จ่ายรอบที่ลงบัญชี: เลือกบัญชีจ่าย + วันที่จ่าย ◂
 import { DateInput } from "@/components/account-v2/DateInput"; // HR H3.7 ◂
+import { OPENING_TEXT } from "./payroll-opening-rules"; // HR H3.4-YTD ▸ ข้อความคงที่ของ OPENING_OVERLAP (สร้าง/คิดใหม่) ◂
 
 const btn = "btn btn-primary min-h-[44px] text-sm";
 const ghost = "btn btn-ghost min-h-[44px] text-sm";
@@ -31,6 +32,7 @@ export const RUN2_MSG: Record<string, string> = Object.fromEntries([
   ...Object.entries(RUN2_REVERSE_TEXT).map(([k, v]) => [`v.${k}`, v]),
   ...Object.entries(H37_TEXT).map(([k, v]) => [`b.${k}`, v]), // HR H3.7 ◂
   ...Object.entries(H37_CODE_TEXT).map(([k, v]) => [`c.${k}`, v]), // HR H3.7 ◂
+  ...Object.entries(OPENING_TEXT).map(([k, v]) => [`y.${k}`, v]), // HR H3.4-YTD ◂
 ]);
 export const run2MsgCode = (reason: string | undefined) => (reason ? (Object.entries(RUN2_MSG).find(([, v]) => v === reason)?.[0] ?? "failed") : "failed");
 
@@ -202,6 +204,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                     {pv.review.map((x, i) => (
                       <li key={i}>
                         {x.name} · {x.day ?? t("wholePeriod")} · {t(`rv_${x.code}`)}
+                        {x.code === "YTD_OPENING" ? <> · <a href="#hr-ytd-card" data-testid="hr-run2-ytd-link" className="inline-flex min-h-[44px] items-center underline-offset-2 hover:underline">{t("ytdLink")}</a></> : null} {/* HR H3.4-YTD ▸ ไปการ์ดยอดยกมา ◂ */}
                       </li>
                     ))}
                   </ul>
