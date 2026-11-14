@@ -5,7 +5,7 @@
 - ทรี `/root/projects/shark-sec-ui` branch `wip/sec-calendar` ตัดจาก `wip/sec-ui-1114` @ 8acda1fd3 (14 พ.ย. 2569)
 - กติกา: งานหนักผ่าน scripts/iso.sh (typecheck ISO_MEM=14000M) · ห้าม EAS build / push main / migrate prod จนเจ้าของสั่ง · UI ทุกจอภาพคู่ MOCKUP|RENDER ก่อน merge · tg สั้น+% · ตอบเจ้าของภาษาไทย
 
-## สถานะใบ (12/29 · เลน c ปิด 9 ใบ fixture-only — รอ CAL1.6 ต่อ API จริง)
+## สถานะใบ (15/29 · เลน c ปิด 9 ใบ fixture-only — รอ CAL1.6 ต่อ API จริง)
 | ใบ | สถานะ | หมายเหตุ |
 |---|---|---|
 | CAL0.1 สำรวจ | ✅ 14 พ.ย. (เจ้าของตอบ Q1–Q7 = ค่าเริ่ม · Q6 ส่ง RUN บัญชี) | ledger/cal-briefs/cal-brief-RESOLUTIONS.md · R-CAL-1…24 · คำถามเจ้าของ Q1–Q7 (มีค่าเริ่มทุกข้อ) · APNs ของ th.in.shark.ai ยังไม่ได้ตรวจ (R-CAL-14 · ต้องทำก่อน CAL3.2) |
@@ -17,6 +17,9 @@
 | CAL1.5 job calendar.brief (เลน a) | ✅ 14 พ.ย. | modules/calendar/{brief,summary}.ts + agenda.ts **STUB until CAL1.3** (เลน b แทนทั้งไฟล์) · จองก่อนส่ง · ชุดละ 50 · หน้าต่าง 90 น. · Google เฉพาะกิจการหลัก (R-CAL-31) · F5 51→52 · qc-cal-1.5 24/24 ×2 |
 | CAL1.6 API แอป (เลน a) | ✅ 14 พ.ย. | src/app/api/mobile/secretary/calendar/{agenda,month,today,items,items/[id],items/[id]/{done,reopen,snooze,confirm},source-done,prefs} + modules/calendar/prefs.ts · badges.calendar (ไม่รวม total) · rooms/[id].reminders · google/* = CAL1.8 เลน b · qc-cal-1.6 32/32 ×2 (401 ทุกเส้น · 404 ของคนอื่น · 400 ไทย · strict · 429) |
 | CAL1.9 นัดชน (เลน a) | ✅ 14 พ.ย. | modules/calendar/conflicts.ts บริสุทธิ์ · qc-cal-1.9 17/17 ×2 · ครอบคลุม 100% บรรทัด/กิ่ง/ฟังก์ชัน (วัดบน JS ที่ esbuild แปลง — ตัววัดของ node บน .ts ผ่าน tsx แมปบรรทัดเพี้ยน) · ต่อเข้า agenda = CAL1.3 เลน b · ⏭ เลน a ครบ 6 ใบ |
+| CAL1.3 ตัวรวม agenda (เลน b) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | modules/calendar/{agenda,tax-deadlines}.ts แทน STUB ทั้งไฟล์ (ลายเซ็นเดิม) · adapter 10 แหล่ง part()+logOps WARN+SECTION_FAILED · ตัดด้วยระบบไม่เปิด/CalPref.sources/ระดับเลขา OFF (ไม่ตัดของส่วนตัว Q2) · conflicts() → conflictWith · monthDots · todayOpenCount (count ตรง แคช 60 วิ) · completeSourceItem (kanban completeCard · CRM completeActivity) · links.ts +deepLink · เส้น F2 ใหม่ calendar→hr · qc-cal-1.3 58/58 ×2 (รัน seed ก่อน) · D-B1…B14 |
+| CAL1.7 เครื่องมือเลขา (เลน b) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | src/lib/ai/tools-calendar.ts 5 ตัว (ไม่มีพารามิเตอร์ผู้รับ · ไม่ action · HAND_TOOL_CORE · add/agenda ใน CORE_TOOLS · สกิล calendar) · ทำซ้ำ = DRAFT · roomId = AiRoom.id · persona ห้องเลขา (M3 ปฏิเสธ+เสนอการ์ด · แยก schedule_task · วันที่+7 วัน) · qc-cal-1.7 51/51 ×2 · eval สด qc-cal-1.7-live 22 ประโยค: 100% / 95.5% (สองรอบสุดท้าย) · ค่าโมเดลรวม ≈ $1.00 · D-B15…B20 |
+| CAL1.8 Google (เลน b) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯 · ยังไม่ทดสอบกับ Google จริง) | modules/calendar/google.ts + job calendar.google (15 นาที) + route calendar/google{,/connect,/sync} · secret-box AAD cal:<user>:<link> · syncToken ต่อปฏิทิน · ส่งออก EVENT/REMINDER/BOOKING + แก้สองทาง · ยกเลิกเชื่อม = ลบสำเนา+revoke+ลบแคช · deleteUserTraces revoke · qc-cal-1.8 49/49 ×2 (transport ปลอม) · ร่างยื่นตรวจ ledger/cal-briefs/google-verification-draft.md · D-B21…B27 |
 | CAL2.1 แถบบน+API แอป | ✅ เลน c 14 พ.ย. bd9f52175 | ปุ่มปฏิทินถัดจาก ทีม + badge แดง (badges.calendar) · src/api/calendar.ts (ชนิดสัญญา + เส้น §8) · fixture เฉพาะ dev/QC เมื่อ 404 (calendar.fixtures.ts) · route calendar/{index,settings,google} · ภาพคู่ /root/qc/cal/ |
 | CAL2.2 มุมมองวัน | ✅ เลน c 4c133fc34 (รวม 2.3) | แถบสัปดาห์+จุด · ทั้งวัน/ตามเวลา · AgendaRow · deepLink · ติ๊ก done/reopen/source-done · ดึงลง · ว่าง · pair-day[-dark] |
 | CAL2.3 มุมมองเดือน | ✅ เลน c 4c133fc34 | ตาราง อา–ส · จุด ≤3 · ‹ พ.ศ. › · pair-month[-dark] |

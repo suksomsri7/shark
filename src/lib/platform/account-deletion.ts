@@ -104,6 +104,8 @@ export async function verifyDeletionStepUp(userId: string, code: string): Promis
  *   เครื่องรับแจ้งเตือน · ค่าการแจ้งเตือน · เวรแชท · ผู้ช่วยในห้องแชท · สมาชิกห้องเลขา · ความจำส่วนตัว `u~<uid>~`
  */
 async function deleteUserTraces(userId: string): Promise<void> {
+  // CAL1.8 ▸ ถอน token Google แบบพยายาม (§2.5) ก่อนลบแถว — ล้ม/ช้าไม่บล็อกการลบบัญชี ◂
+  await import("@/lib/modules/calendar/google").then((g) => g.revokeGoogleForDeletion(userId)).catch(() => undefined);
   await prisma.$transaction([
     prisma.pushDevice.deleteMany({ where: { userId } }),
     prisma.aiNotifyPref.deleteMany({ where: { userId } }),
@@ -111,7 +113,7 @@ async function deleteUserTraces(userId: string): Promise<void> {
     prisma.chatConversationHelper.deleteMany({ where: { userId } }),
     prisma.aiRoomMember.deleteMany({ where: { userId } }),
     prisma.aiMemory.deleteMany({ where: { id: { startsWith: `u~${userId}~` } } }),
-    // CAL1.1 ▸ ปฏิทินส่วนตัว (§2.6) — CalLink cascade CalExternalEvent · ถอน token Google ก่อนลบ = งานของ CAL1.8 ◂
+    // CAL1.1 ▸ ปฏิทินส่วนตัว (§2.6) — CalLink cascade CalExternalEvent · ถอน token Google ก่อนลบ = revokeGoogleForDeletion ข้างบน (CAL1.8) ◂
     prisma.calItem.deleteMany({ where: { userId } }),
     prisma.calPref.deleteMany({ where: { userId } }),
     prisma.calLink.deleteMany({ where: { userId } }),
