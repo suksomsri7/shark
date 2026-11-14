@@ -1,7 +1,7 @@
 // QC — HR V2 · fix ticket HR-PREPROD-1 · review round (controller rulings V1–V9, brief "CONTROLLER RULINGS (review)") · second suite file, shares qc-hr-preprod-1-lib.mts
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-preprod-1b.mts  (--list)
-// Registry base = 72bf1db1b (builder tip before the review fix round) · own tenants qc-hr-pp1-*-{a,b} · 2031 dates · money = integer satang ·
+// Registry base = f3955bdc1 (V8b round: RED = V8.1 V8.2 V8.3 V8.5 V8.6 — re-split updates the USE row in place) · own tenants qc-hr-pp1-*-{a,b} · 2031 dates · money = integer satang ·
 //   numbers: base 3,000,000 st, N = 480 ⇒ 100,000 st per unpaid day, 10,000 st per unpaid tenth of a day (notes §review)
 import { type Any, type Base, short, errText, failedKeys, canon, makeRegistry } from "./qc-hr-lib.mjs";
 import { setupPP1, nextScope, bk, dd, nowOf } from "./qc-hr-preprod-1-lib.mjs";
@@ -13,25 +13,27 @@ const PAID_TEXT = "เดือนนี้อนุมัติเงินเ�
 const SEV: Record<string, "CRITICAL" | "MAJOR" | "MINOR"> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
 Z0|house|C|G|own law rows: none before · 3 inserted
-V1.1|V1|C|R|27.0 + 0.3 used, 10–14 Mar ⇒ paid 2.7 exact · USE −2.7 · unpaid:2.3;from:2031-03-12 · split 2.7/2.3 · −30,000 −100,000 −100,000 = −230,000 · balance 0.0
-V2.1|V2|C|R|borrowing-branch manager + API-key viewer without pay keys see the leave row without paidDays/unpaidDays
+V1.1|V1|C|G|27.0 + 0.3 used, 10–14 Mar ⇒ paid 2.7 exact · USE −2.7 · unpaid:2.3;from:2031-03-12 · split 2.7/2.3 · −30,000 −100,000 −100,000 = −230,000 · balance 0.0
+V2.1|V2|C|G|borrowing-branch manager + API-key viewer without pay keys see the leave row without paidDays/unpaidDays
 V2.2|V2|M|G|control: home-branch pay viewer sees paidDays 2 / unpaidDays 3 · self sees unpaidDays 3.0
-V3.1|V3|C|R|SICK paid=false: within balance no split (USE −5.0 · note null · −500,000 · no split fields) · over balance refused LEAVE_TEXT.balance, no row
-V4.1|V4|C|R|race: decide passed the paid-month gate, policy flip paid→unpaid queued first on the row ⇒ never an APPROVED unpaid-policy leave in APPROVED Feb
+V3.1|V3|C|G|SICK paid=false: within balance no split (USE −5.0 · note null · −500,000 · no split fields) · over balance refused LEAVE_TEXT.balance, no row
+V4.1|V4|C|G|race: decide passed the paid-month gate, policy flip paid→unpaid queued first on the row ⇒ never an APPROVED unpaid-policy leave in APPROVED Feb
 V5.1|V5|M|G|two approvals race for the last 2.0 ⇒ both APPROVED · Σ paid 2.0 · Σ ledger 0
 V5.2|V5|M|G|malformed USE note ⇒ fully paid: no split · no split fields · no UNPAID_LEAVE
 V5.3|V5|M|G|half-day AM with 0.0 left ⇒ USE 0.0 · unpaid:0.5;from:2031-03-19 · −50,000
 V5.4|V5|M|G|approving a split leave outdates the month's work entries · rebuilt current · split note change outdates them again
 V5.5|V5|M|G|payroll page: REFUND_BEHIND row of a u2 employee hidden from the [u1] viewer · shown to owner · in-scope row shown
-V7.1|V7|C|R|OT 1 h filed by [u1] viewer for borrowed home-u2 employees: reply has no amount and is byte-identical for 45,600 ฿ · 91,200 ฿ · no salary profile
+V7.1|V7|C|G|OT 1 h filed by [u1] viewer for borrowed home-u2 employees: reply has no amount and is byte-identical for 45,600 ฿ · 91,200 ฿ · no salary profile
 V7.2|V7|M|G|the requester's adjustment list (pay scope [u1]) and payroll page show none of those rows / amounts
 V7.3|V7|M|G|control: in-scope employee reply "ยื่นแล้ว 187.5 บาท — รออนุมัติ" · all-branch viewer still gets 285 บาท for the borrowed employee
-V8.1|V8|C|R|January sick leave (28.0) revoked ⇒ March split 2/3 re-split to paid 5 / unpaid 0 · USE −5.0 note null · Σ 25.0 · no UNPAID_LEAVE in the March v2 run
-V8.2|V8|C|R|positive writer carry-top: 2030 leave (28.0) revoked after 2.0 carried into 2031 (carry max 5) ⇒ carry-top +3.0 ⇒ March 0/5 re-split to 3 / 2 · unpaid:2.0;from:2031-03-13 · −200,000 · Σ 2031 0.0 (quota raise writes no ledger row — no V8.2 quota check)
-V8.3|V8|C|R|partial return 1.5 ⇒ paid 3.5 / unpaid 1.5 · unpaid:1.5;from:2031-03-13 · −50,000 −100,000 = −150,000 · Σ 0.0
-V8.4|V8|M|G|control: March run APPROVED ⇒ split unchanged after the return (USE −2.0 · unpaid:3.0;from:2031-03-12 · Σ 28.0)
-V8.5|V8|C|R|two later split leaves re-split in date order: 3.0 back ⇒ March 5/0 · April stays 0/5 · Σ 0.0
-V9.1|V9|C|R|leaver (end 31 Oct) refund behind approved Sep with Oct DRAFT ⇒ moved to 2031-10 · Oct run carries REFUND:+50,000 exactly once · approved
+V8.1|V8|C|R|(V8b) January sick leave (28.0) revoked ⇒ March 2/3 re-split: original USE −2.0 kept · appended USE −3.0 'resplit;unpaid:0.0' · split 5/0 · Σ 25.0 · no UNPAID_LEAVE in the March v2 run
+V8.2|V8|C|R|positive writer carry-top: 2030 leave (28.0) revoked after 2.0 carried into 2031 (carry max 5) ⇒ carry-top +3.0 ⇒ March 0/5 re-split to 3 / 2 · appended USE −3.0 'resplit;unpaid:2.0;from:2031-03-13' · −200,000 · Σ 2031 0.0 (quota raise writes no ledger row — no V8.2 quota check)
+V8.3|V8|C|R|partial return 1.5 ⇒ paid 3.5 / unpaid 1.5 · appended USE −1.5 'resplit;unpaid:1.5;from:2031-03-13' · −50,000 −100,000 = −150,000 · Σ 0.0
+V8.4|V8|M|G|control: March run APPROVED ⇒ split unchanged after the return (single USE −2.0 · unpaid:3.0;from:2031-03-12 · Σ 28.0)
+V8.5|V8|C|R|two later split leaves re-split in date order: 3.0 back ⇒ March appended −3.0 'resplit;unpaid:0.0' (5/0) · April single USE 0.0 stays 0/5 · Σ 0.0
+V8.6|V8b|C|R|append-only: re-splits update/delete no ledger row (every earlier row of the system byte-same) · row count grows
+V8.7|V8b|M|G|revoking a re-split leave reverts Σ of its USE rows: use-revert +5.0 · Σ 30.0
+V9.1|V9|C|G|leaver (end 31 Oct) refund behind approved Sep with Oct DRAFT ⇒ moved to 2031-10 · Oct run carries REFUND:+50,000 exactly once · approved
 Z1|house|C|G|no residue
 Z2|house|M|G|no deadlock
 `.trim().split("\n").map((l) => {
@@ -104,6 +106,7 @@ function leaveKit(K: Any) {
   const req = (s: string, e: string, from: string, to: string, p: string, extra: Any = {}) => safe(() => SV.requestLeave(K.c(s), { employeeId: e, type: "SICK", fromDate: from, toDate: to, reason: "qc ป่วย", actorUserId: K.U.owner.id, policyId: p, ...extra }));
   const dec = (s: string, id: string, to = "APPROVED", from = "PENDING") => safe(() => SV.decideLeave(K.c(s), id, to, K.U.pay1.id, { from }).then(() => ({ ok: true })));
   const reqDec = async (s: string, e: string, from: string, to: string, p: string, extra: Any = {}) => { const r = await req(s, e, from, to, p, extra); const d = r?.id ? await dec(s, r.id) : r; return { id: (r?.id ?? "") as string, r, d }; };
+  const uses = async (id: string) => (await rows(`SELECT id, days::text AS d, note FROM "HrLeaveBalanceTxn" WHERE "leaveId" = $1 AND kind::text = 'USE' ORDER BY "createdAt", id`, id)) as Any[];
   const use = async (id: string) => (await rows(`SELECT days::text AS d, note FROM "HrLeaveBalanceTxn" WHERE "sourceKey" = $1`, `use:${id}`))[0];
   const sum = async (e: string, p: string) => num((await rows(`SELECT COALESCE(SUM(days), 0)::text AS n FROM "HrLeaveBalanceTxn" WHERE "employeeId" = $1 AND "policyId" = $2 AND "leaveYear" = 2031`, e, p))[0]?.n);
   const stOf = async (id: string) => (await rows(`SELECT status::text AS s FROM "HrLeave" WHERE id = $1`, id))[0]?.s;
@@ -113,7 +116,7 @@ function leaveKit(K: Any) {
   const judge = async () => { for (const d of ["2031-03-15", "2031-03-22", "2031-03-29", "2031-04-05"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT })); };
   const unpaid = async (runId: string | undefined, e: string) => (runId ? await linesOf(runId, e) : []).filter((x) => x.startsWith("UNPAID_LEAVE:")).sort();
   const blockers = async (s: string) => (await rows(`SELECT e.code, d.date::text AS d, d.review FROM "HrWorkDay" d JOIN "HrEmployee" e ON e.id = d."employeeId" WHERE d."systemId" = $1 AND cardinality(d.review) > 0 LIMIT 8`, s).catch(() => [])) as Any[];
-  return { pol, leaveRow, used, req, dec, reqDec, use, sum, stOf, split, item, rosterDays, judge, unpaid, blockers };
+  return { uses, pol, leaveRow, used, req, dec, reqDec, use, sum, stOf, split, item, rosterDays, judge, unpaid, blockers };
 }
 const noSplit = (it: Any) => !!it && !("paidDays" in it) && !("unpaidDays" in it);
 const MAR = ["2031-03-10", "2031-03-11", "2031-03-12", "2031-03-13", "2031-03-14"];
@@ -168,10 +171,10 @@ try {
     const a = await L.reqDec(s, E, MAR[0]!, MAR[4]!, sickU);
     await L.judge();
     const mar = await KA.create(s, "2031-03");
-    const u = await L.use(a.id), sp = await L.split(s, a.id), up = await L.unpaid(mar?.id, E);
+    const u = await L.use(a.id), sp = await L.split(s, a.id), up = await L.unpaid(mar?.id, E), nUse = (await L.uses(a.id)).length;
     const q = await L.req(so, Eo, MAR[0]!, MAR[4]!, sickO);
     const n = (await rows(`SELECT 1 FROM "HrLeave" WHERE "employeeId" = $1 AND "fromDate" = '2031-03-10'::date`, Eo)).length;
-    ck("V3.1", { within: a.d?.ok === true && num(u?.d) === -5 && u?.note === null && (!sp || !(num(sp.unpaidDays) > 0)) && noSplit(await L.item(s, ownV, a.id)) && tot(up) === -500_000,
+    ck("V3.1", { within: a.d?.ok === true && nUse === 1 && num(u?.d) === -5 && u?.note === null && (!sp || !(num(sp.unpaidDays) > 0)) && noSplit(await L.item(s, ownV, a.id)) && tot(up) === -500_000,
       over: !q?.id && q?.__throw?.message === LV.LEAVE_TEXT?.balance && n === 0 }, "no split · over refused", short({ d: a.d?.reason ?? a.d, u, sp, up: tot(up), q: q?.reason ?? q?.id }, 240));
   });
 
@@ -254,6 +257,8 @@ try {
     const setup = [m1, m2, m3, m5, a5].every((x) => x.d?.ok === true) && pre === canon(["unpaid:3.0;from:2031-03-12", "unpaid:5.0;from:2031-03-10", "unpaid:3.0;from:2031-03-12", "unpaid:3.0;from:2031-03-12"]);
     if (!setup) console.log(`  ⚠ setup V8: ${short({ pre, d: [m1, m2, m3, m5, a5].map((x) => x.d?.reason ?? x.d?.ok) }, 300)}`);
     await L.judge();
+    const ledger = async () => (await rows(`SELECT * FROM "HrLeaveBalanceTxn" WHERE "systemId" = $1 ORDER BY id`, s)) as Any[];
+    const before = await ledger();
     const rv1 = await L.dec(s, j1, "REJECTED", "APPROVED");
     const q = await L.dec(s, j2, "REJECTED", "APPROVED");
     const top = (await rows(`SELECT days::text AS d, "leaveYear" AS y FROM "HrLeaveBalanceTxn" WHERE "sourceKey" = $1`, `carry-top:${j2}`))[0];
@@ -261,25 +266,33 @@ try {
     const rv5 = await L.dec(s, j5b, "REJECTED", "APPROVED");
     const mar = await KA.create(s, "2031-03");
     if (mar?.ok !== true) console.log(`  ⚠ V8 run: ${short({ mar, bl: await L.blockers(s) }, 300)}`);
-    const look = async (id: string) => { const u = await L.use(id), sp = await L.split(s, id); return { u, sp, eq: !!sp && r1(-num(u?.d)) === r1(num(sp.paidDays)) }; };
+    const after = new Map((await ledger()).map((r: Any) => [r.id, canon(r)]));
+    ck("V8.6", { setup, grew: after.size > before.length, same: before.every((r: Any) => after.get(r.id) === canon(r)) }, "old rows byte-same", `rows ${before.length}→${after.size} changed=${before.filter((r: Any) => after.get(r.id) !== canon(r)).length}`);
+    /** USE rows of a leave (original first) · Σ = paid days · latest note = split */
+    const look = async (id: string) => { const us = await L.uses(id), sp = await L.split(s, id), tot5 = r1(-us.reduce((t: number, u: Any) => t + num(u.d), 0)); return { us: us.map((u: Any) => `${num(u.d)}|${u.note}`), sp, paid: tot5, eq: !!sp && tot5 === r1(num(sp.paidDays)) }; };
     {
       const x = await look(m1.id);
-      ck("V8.1", { setup, revoke: rv1?.ok === true, use: num(x.u?.d) === -5 && x.u?.note === null, split: !x.sp || num(x.sp.unpaidDays) === 0, sum: (await L.sum(E1, sick)) === 25, lines: mar?.ok === true && (await L.unpaid(mar?.id, E1)).length === 0 }, "5 / 0 · Σ 25.0 · no UNPAID_LEAVE", short({ rv1: rv1?.reason ?? rv1, ...x }, 240));
+      ck("V8.1", { setup, revoke: rv1?.ok === true, use: canon(x.us) === canon(["-2|unpaid:3.0;from:2031-03-12", "-3|resplit;unpaid:0.0"]), split: x.eq && x.paid === 5 && num(x.sp?.unpaidDays) === 0, sum: (await L.sum(E1, sick)) === 25, lines: mar?.ok === true && (await L.unpaid(mar?.id, E1)).length === 0 }, "5 / 0 · Σ 25.0 · no UNPAID_LEAVE", short({ rv1: rv1?.reason ?? rv1, ...x }, 240));
     }
     {
       const x = await look(m2.id);
       const up = await L.unpaid(mar?.id, E2);
-      ck("V8.2", { setup, revoke: q?.ok === true, carryTop: num(top?.d) === 3 && Number(top?.y) === 2031, use: num(x.u?.d) === -3 && x.u?.note === "unpaid:2.0;from:2031-03-13", split: x.eq && num(x.sp?.unpaidDays) === 2, sum: (await L.sum(E2, sickQ)) === 0,
+      ck("V8.2", { setup, revoke: q?.ok === true, carryTop: num(top?.d) === 3 && Number(top?.y) === 2031, use: canon(x.us) === canon(["0|unpaid:5.0;from:2031-03-10", "-3|resplit;unpaid:2.0;from:2031-03-13"]), split: x.eq && x.paid === 3 && num(x.sp?.unpaidDays) === 2, sum: (await L.sum(E2, sickQ)) === 0,
         lines: canon(up) === canon(["UNPAID_LEAVE:-100000@2031-03-13", "UNPAID_LEAVE:-100000@2031-03-14"]) }, "carry-top +3.0 ⇒ 3 / 2 · −200,000 · Σ 0", short({ q: q?.reason ?? q, top, ...x, up }, 260));
     }
     {
       const x = await look(m3.id), up = await L.unpaid(mar?.id, E3);
-      ck("V8.3", { setup, revoke: rv3?.ok === true, use: num(x.u?.d) === -3.5 && x.u?.note === "unpaid:1.5;from:2031-03-13", split: x.eq && num(x.sp?.unpaidDays) === 1.5, sum: (await L.sum(E3, sick)) === 0,
+      ck("V8.3", { setup, revoke: rv3?.ok === true, use: canon(x.us) === canon(["-2|unpaid:3.0;from:2031-03-12", "-1.5|resplit;unpaid:1.5;from:2031-03-13"]), split: x.eq && x.paid === 3.5 && num(x.sp?.unpaidDays) === 1.5, sum: (await L.sum(E3, sick)) === 0,
         lines: canon(up) === canon(["UNPAID_LEAVE:-100000@2031-03-14", "UNPAID_LEAVE:-50000@2031-03-13"]) && tot(up) === -150_000 }, "3.5 / 1.5 · −150,000 · Σ 0", short({ rv3: rv3?.reason ?? rv3, ...x, up }, 260));
     }
     {
       const x = await look(m5.id), y = await look(a5.id);
-      ck("V8.5", { setup, revoke: rv5?.ok === true, march: num(x.u?.d) === -5 && x.u?.note === null, april: num(y.u?.d) === 0 && y.u?.note === "unpaid:5.0;from:2031-04-07", sum: (await L.sum(E5, sick)) === 0 && (await L.sum(E5, sick)) >= 0 }, "March 5/0 · April 0/5", short({ rv5: rv5?.reason ?? rv5, m: x.u, a: y.u }, 240));
+      ck("V8.5", { setup, revoke: rv5?.ok === true, march: canon(x.us) === canon(["-2|unpaid:3.0;from:2031-03-12", "-3|resplit;unpaid:0.0"]) && x.eq, april: canon(y.us) === canon(["0|unpaid:5.0;from:2031-04-07"]), sum: (await L.sum(E5, sick)) === 0 && (await L.sum(E5, sick)) >= 0 }, "March 5/0 · April 0/5", short({ rv5: rv5?.reason ?? rv5, m: x.us, a: y.us }, 240));
+    }
+    { // V8.7: revoke the re-split March leave of E1 (no APPROVED March run here) ⇒ use-revert = Σ of its USE rows
+      const rv = await L.dec(s, m1.id, "REJECTED", "APPROVED");
+      const back = (await rows(`SELECT days::text AS d FROM "HrLeaveBalanceTxn" WHERE "sourceKey" = $1`, `use-revert:${m1.id}`))[0];
+      ck("V8.7", { setup, revoke: rv?.ok === true, back: num(back?.d) === 5, sum: (await L.sum(E1, sick)) === 30 }, "+5.0 · Σ 30.0", short({ rv: rv?.reason ?? rv, back }, 160));
     }
     // control: March run APPROVED before the return
     const sb = await KA.sys("คืนวันป่วยเดือนปิด-V8"), sickB = await L.pol(sb, "SICK", true, 30), shB = await KA.shift(sb);
@@ -291,8 +304,8 @@ try {
     const mb = await KA.create(sb, "2031-03");
     const mba = mb?.id ? await KA.approve(sb, mb.id) : mb;
     const rv4 = await L.dec(sb, j4, "REJECTED", "APPROVED");
-    const u4 = await L.use(m4.id);
-    ck("V8.4", { setup: m4.d?.ok === true && mba?.ok === true, revoke: rv4?.ok === true, use: num(u4?.d) === -2 && u4?.note === "unpaid:3.0;from:2031-03-12", sum: (await L.sum(E4, sickB)) === 28 }, "unchanged · Σ 28.0", short({ mb: mb?.reason ?? mba, rv4: rv4?.reason ?? rv4, u4 }, 240));
+    const u4 = await L.uses(m4.id);
+    ck("V8.4", { setup: m4.d?.ok === true && mba?.ok === true, revoke: rv4?.ok === true, use: canon(u4.map((u: Any) => `${num(u.d)}|${u.note}`)) === canon(["-2|unpaid:3.0;from:2031-03-12"]), sum: (await L.sum(E4, sickB)) === 28 }, "unchanged · Σ 28.0", short({ mb: mb?.reason ?? mba, rv4: rv4?.reason ?? rv4, u4 }, 240));
   });
 
   // ── V7: OT filing reply for borrowed employees (KB) ──
