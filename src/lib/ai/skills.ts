@@ -98,6 +98,8 @@ export const SKILLS: Skill[] = [
       "account_release_parked_vat", // ACC T1.2 ▸ ออกใบกำกับปล่อยภาษีขายที่ค้างพัก (ข้อเสนอ · ร้านเลือกวันที่) ◂
       "account_replace_tax_invoice", // ACC T2.2 ▸ ยกเลิกและออกใบกำกับภาษีแทน (ข้อเสนอ · เลขใหม่ วันที่เดิม) ◂
       "account_input_vat_not_claimable", // ACC T1.4 ▸ ใบกำกับภาษีซื้อไม่มา → ภาษีซื้อไม่ขอคืน (ข้อเสนอ) ◂
+      "account_approve_journal", // ACC T4.1 ▸ อนุมัติ JV มือ (ข้อเสนอ) ◂
+      "account_set_asset_tax_class", // ACC T4.3 ▸ ประเภททางภาษีของสินทรัพย์ — ที่ดินไม่คิดค่าเสื่อม (ข้อเสนอ) ◂
       "account_wht_replace_cert", "account_wht_additional_filing", "account_wht_mark_received", "account_wht_unmark_received", // ACC T3.3 ▸ ออก 50 ทวิ แทน · T3.4 ▸ แบบเพิ่มเติม ภ.ง.ด. · T3.5 ▸ ได้รับ 50 ทวิ แล้ว/ยกเลิก (ข้อเสนอ) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",

@@ -142,6 +142,7 @@ const WHT_INCOME_TYPES = [
 
 const REPORT_KINDS = [
   "trial-balance", "profit-loss", "balance-sheet", "cash-flow", "vat-pp30", "aging", "general-ledger",
+  "journal-book", "subsidiary-ledger", // ACC T4.2 ▸ สมุดรายวันแบบเต็ม · บัญชีย่อยลูกหนี้/เจ้าหนี้รายตัว ◂
 ] as const;
 type ReportKind = (typeof REPORT_KINDS)[number];
 
@@ -154,6 +155,8 @@ const REPORT_OP_OF: Record<ReportKind, string> = {
   "vat-pp30": "reports.vat-pp30",
   aging: "reports.aging",
   "general-ledger": "reports.general-ledger",
+  "journal-book": "reports.journal-book",
+  "subsidiary-ledger": "reports.subsidiary-ledger",
 };
 
 const reportArgs = z
@@ -163,9 +166,11 @@ const reportArgs = z
     to: z.string().regex(MONTH_OR_DAY).optional().describe("End of the range. Default: this month."),
     asOf: z.string().regex(MONTH_OR_DAY).optional().describe("Balance sheet and aging read the numbers at this date. Default: today."),
     period: z.string().regex(MONTH).optional().describe("Month `YYYY-MM` of the VAT PP30 return. Default: this month."),
-    direction: z.enum(["AR", "AP"]).optional().describe("Aging only: AR = customers owe us, AP = we owe vendors. Default AR."),
+    direction: z.enum(["AR", "AP"]).optional().describe("Aging and subsidiary-ledger: AR = customers owe us, AP = we owe vendors. Default AR."),
+    book: z.enum(["SALES", "PURCHASES", "RECEIPTS", "PAYMENTS", "GENERAL"]).optional().describe("Journal-book only: one journal book. Omit for every book."),
+    page: z.number().int().min(1).optional().describe("Journal-book only: page of 200 entries. Default 1."),
     accountId: z.string().min(1).max(40).optional().describe("General ledger only: which ledger account to read (from account_chart_of_accounts)."),
-    contactId: z.string().min(1).max(40).optional().describe("Aging only: limit to one contact."),
+    contactId: z.string().min(1).max(40).optional().describe("Aging and subsidiary-ledger: limit to one contact (subsidiary-ledger then also returns its lines)."),
   })
   .strict();
 
@@ -228,7 +233,7 @@ const ADAPTERS: Record<string, ToolAdapter> = {
   "reports.profit-loss": {
     args: reportArgs,
     description:
-      "Financial statements and tax reports of this accounting book: trial balance, profit and loss, balance sheet, cash flow, the monthly VAT PP30 return, receivable/payable aging and the general ledger of one account. Pick the report with `kind`; ranges default to the current Thai month.",
+      "Financial statements and tax reports of this accounting book: trial balance, profit and loss, balance sheet, cash flow, the monthly VAT PP30 return, receivable/payable aging, the general ledger of one account, the journal book in full form (every line with debit and credit) and the subsidiary ledger of receivables or payables per contact. Pick the report with `kind`; ranges default to the current Thai month. Financial statements from the system are drafts for the bookkeeper/auditor (field draftLabelTh) — say so when quoting them.",
     toCall: (a) => {
       const kind = String(a.kind) as ReportKind;
       const month = thaiMonthKey();
@@ -243,6 +248,20 @@ const ADAPTERS: Record<string, ToolAdapter> = {
           input: {
             direction: typeof a.direction === "string" ? a.direction : "AR",
             ...(typeof a.asOf === "string" && DAY.test(a.asOf) ? { asOf: a.asOf } : {}),
+            ...(typeof a.contactId === "string" ? { contactId: a.contactId } : {}),
+          },
+        };
+      }
+      if (kind === "journal-book") {
+        return { opId, input: { from: monthEdge(from, "start"), to: monthEdge(to, "end"), ...(typeof a.book === "string" ? { book: a.book } : {}), ...(typeof a.page === "number" ? { page: a.page } : {}) } };
+      }
+      if (kind === "subsidiary-ledger") {
+        return {
+          opId,
+          input: {
+            side: typeof a.direction === "string" ? a.direction : "AR",
+            from: monthEdge(from, "start"),
+            to: monthEdge(to, "end"),
             ...(typeof a.contactId === "string" ? { contactId: a.contactId } : {}),
           },
         };

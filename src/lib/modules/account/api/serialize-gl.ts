@@ -229,6 +229,9 @@ export function journalDetail(d: JournalEntryDetail) {
     reversalOf: d.reversalOf ? { id: d.reversalOf.id, journalNo: d.reversalOf.docNo } : null,
     lines: d.lines.map(journalLineView),
     createdBy: d.postedById ? { id: d.postedById, name: d.postedByName } : null,
+    // ACC T4.1 ▸ วันเวลาที่บันทึกจริง (เทียบวันที่รายการ = ลงช้าไหม) · ผู้อนุมัติ JV มือ ◂
+    recordedAt: d.createdAt.toISOString(),
+    approval: d.approvedAt ? { approvedAt: d.approvedAt.toISOString(), approvedBy: d.approvedById ? { id: d.approvedById, name: d.approvedByName } : null } : null,
     attachments: d.attachments.map((a) => ({
       id: a.id,
       fileName: a.fileName,
@@ -546,7 +549,10 @@ export function assetRowView(a: AssetRow) {
       usefulLifeMonths: a.usefulLifeMonths,
       monthsDepreciated: a.monthsDepreciated,
       accumDepreciation: a.accumDepreciation,
+      startDepDate: a.startDepDate,
+      taxClass: a.taxClass,
     }),
+    taxClass: a.taxClass,
     periodsPosted: a.monthsDepreciated,
     accumDepreciationSatang: a.accumDepreciation,
     netBookValueSatang: a.netBookValue,
@@ -574,6 +580,9 @@ export function assetDetailView(d: AssetDetail) {
     salvageValueSatang: d.salvageValue,
     usefulLifeMonths: d.usefulLifeMonths,
     monthlySatang: d.nextAmount,
+    // ACC T4.3 ▸ ประเภททางภาษี (LAND = ไม่คิดค่าเสื่อม) · เดือนแรกเฉลี่ยตามวัน ◂
+    taxClass: d.taxClass,
+    firstMonth: d.firstMonth,
     periodsPosted: d.monthsDepreciated,
     accumDepreciationSatang: d.accumDepreciation,
     netBookValueSatang: d.netBookValue,
@@ -665,6 +674,7 @@ export function settingsView(s: AccountSettingsView) {
 export function policyView(p: AccountPolicy) {
   return {
     fiscalYearStartMonth: p.fiscalYearStartMonth,
+    booksStartDate: ymd(p.booksStartDate), // ACC T4.6 ◂
     periodCloseDay: p.periodCloseDay,
     vatRegistered: p.vatRegistered,
     vatRateBp: p.vatRateBp,

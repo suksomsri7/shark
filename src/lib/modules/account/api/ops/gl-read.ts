@@ -39,6 +39,8 @@ import { pndFiledDifferences, vatFiledDifferences } from "../../filed-difference
 import { filingHistory } from "../../filing-history";
 import { revenueWithoutVat } from "../../revenue-novat";
 import { ymd } from "../serialize";
+import { STATEMENT_DRAFT_LABEL_TH, statementDraft } from "../../fiscal-rules";
+import { bookHeaderOf, journalBookPage, journalBookTitleTh, subsidiaryLedger, SUBSIDIARY_TITLE_TH } from "../../books-report";
 import { parkedOutputVat } from "../../tax-point";
 import { pendingInputVat } from "../../input-vat";
 import { ApiError, paged, type PagedInfo } from "../respond";
@@ -65,6 +67,15 @@ import {
 } from "../serialize-gl";
 
 const noQuery = z.object({}).strict();
+
+/**
+ * ACC T4.6 ▸ งบการเงิน (งบทดลอง · กำไรขาดทุน · ฐานะการเงิน · กระแสเงินสด) = ร่างสำหรับผู้ทำบัญชี/ผู้สอบบัญชี
+ *   ช่อง REST: draft · draftLabelTh · draftWarning (รูปคำเตือนกลาง) · CSV บรรทัดแรก = ป้าย ◂
+ */
+function statementDraftRest() {
+  const d = statementDraft();
+  return { draft: d.draft, draftLabelTh: d.labelTh, draftWarning: d.warning };
+}
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const YM = /^\d{4}-(0[1-9]|1[0-2])$/;
 /** วัน หรือ เดือน — รายงานคิดเป็น "งวด" อยู่แล้ว ⇒ รับได้ทั้งคู่ (ดูหัวไฟล์) */
@@ -333,7 +344,7 @@ const reportsTrialBalance = defineOp({
       periodOf(input.from),
       periodOf(input.to),
     );
-    return trialBalanceView(tb);
+    return { ...trialBalanceView(tb), ...statementDraftRest() };
   },
   csv(_ctx, data) {
     const d = data as ReturnType<typeof trialBalanceView>;
@@ -343,7 +354,7 @@ const reportsTrialBalance = defineOp({
     );
     const t = d.totals;
     const total = csvRow(["", "รวม", "", t.openingDebitSatang, t.openingCreditSatang, t.movementDebitSatang, t.movementCreditSatang, t.closingDebitSatang, t.closingCreditSatang]);
-    return [csvRow(cols), ...rows, total].join("\n");
+    return [csvRow([STATEMENT_DRAFT_LABEL_TH]), csvRow(cols), ...rows, total].join("\n");
   },
 });
 
@@ -370,11 +381,11 @@ const reportsProfitLoss = defineOp({
       periodOf(input.to),
       { compare: input.compare },
     );
-    return profitLossView(pl);
+    return { ...profitLossView(pl), ...statementDraftRest() };
   },
   csv(_ctx, data) {
     const d = data as ReturnType<typeof profitLossView>;
-    const out = [csvRow(["section", "code", "name", "amountSatang"])];
+    const out = [csvRow([STATEMENT_DRAFT_LABEL_TH]), csvRow(["section", "code", "name", "amountSatang"])];
     const push = (label: string, s: { rows: { code: string; name: string; amountSatang: number }[]; totalSatang: number }) => {
       for (const r of s.rows) out.push(csvRow([label, r.code, r.name, r.amountSatang]));
       out.push(csvRow([label, "", "รวม", s.totalSatang]));
@@ -408,11 +419,11 @@ const reportsBalanceSheet = defineOp({
     const bs = await balanceSheet(ctx, periodOf(input.asOf), {
       fiscalYearEndMonth: fiscalYearEndMonth(policy.fiscalYearStartMonth),
     });
-    return balanceSheetView(bs);
+    return { ...balanceSheetView(bs), ...statementDraftRest() };
   },
   csv(_ctx, data) {
     const d = data as ReturnType<typeof balanceSheetView>;
-    const out = [csvRow(["section", "code", "name", "amountSatang"])];
+    const out = [csvRow([STATEMENT_DRAFT_LABEL_TH]), csvRow(["section", "code", "name", "amountSatang"])];
     const push = (label: string, s: { rows: { code: string; name: string; amountSatang: number }[]; totalSatang: number }) => {
       for (const r of s.rows) out.push(csvRow([label, r.code, r.name, r.amountSatang]));
       out.push(csvRow([label, "", "รวม", s.totalSatang]));
@@ -444,11 +455,11 @@ const reportsCashFlow = defineOp({
       periodOf(input.from),
       periodOf(input.to),
     );
-    return cashFlowView(cf);
+    return { ...cashFlowView(cf), ...statementDraftRest() };
   },
   csv(_ctx, data) {
     const d = data as ReturnType<typeof cashFlowView>;
-    const out = [csvRow(["section", "code", "name", "amountSatang"])];
+    const out = [csvRow([STATEMENT_DRAFT_LABEL_TH]), csvRow(["section", "code", "name", "amountSatang"])];
     out.push(csvRow(["ยอดยกมา", "", "เงินสดต้นงวด", d.openingCashSatang]));
     for (const s of [d.operating, d.investing, d.financing]) {
       for (const r of s.rows) out.push(csvRow([s.activity, r.code, r.name, r.amountSatang]));
@@ -886,6 +897,119 @@ const assetsDepreciationPreview = defineOp({
   },
 });
 
+// ═══════════════ ACC T4.2 ▸ สมุดบัญชีแบบเต็ม ═══════════════
+
+const journalBookInput = z
+  .object({
+    from: ymdField("from"),
+    to: ymdField("to"),
+    book: z.enum(BOOKS).optional().describe("One journal book. Omit for every book."),
+    page: z.coerce.number().int().min(1).optional(),
+    pageSize: z.coerce.number().int().optional().describe("Entries per page, 1-500. Default 200. Read every page to get the whole book; nothing is cut."),
+  })
+  .strict();
+
+const reportsJournalBook = defineOp({
+  id: "reports.journal-book",
+  method: "GET",
+  path: "/reports/journal-book",
+  kind: "read",
+  action: "account.journal.view",
+  rate: "report",
+  paged: true,
+  summary:
+    "The journal book in full form: every entry of the range with every line (account code and name, description, debit, credit), in date order, with the report header (business name, tax id, branch, kind of book). Paged by entries; read every page for the whole book. Supports CSV (one row per line).",
+  label: "สมุดบัญชีรายวัน (แบบเต็ม)",
+  input: journalBookInput,
+  test: "T4.2-API.1",
+  async handler({ actor, input }) {
+    const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    const title = journalBookTitleTh(input.book ?? null);
+    const [header, r] = await Promise.all([
+      bookHeaderOf(ctx, title),
+      journalBookPage(ctx, { book: input.book ?? null, from: dayStart(input.from), to: dayEnd(input.to), page: input.page ?? 1, pageSize: input.pageSize ?? 200 }),
+    ]);
+    const rows = r.entries.map((e) => ({
+      id: e.id,
+      journalNo: e.docNo,
+      date: ymd(e.date),
+      book: e.book,
+      memo: e.memo,
+      refDocNo: e.refDocNo,
+      status: e.status,
+      lines: e.lines.map((l) => ({ accountCode: l.accountCode, accountName: l.accountName, contactName: l.contactName, note: l.note, debitSatang: l.debit, creditSatang: l.credit })),
+      totalDebitSatang: e.totalDebit,
+      totalCreditSatang: e.totalCredit,
+    }));
+    return paged(rows, pageInfoFrom(r.total, r.page, r.pageSize), {
+      header: { orgName: header.orgName, taxId: header.taxId, branch: header.branchLabel, bookTitle: title, from: input.from, to: input.to },
+      totals: { debitSatang: r.sumDebit, creditSatang: r.sumCredit },
+      warnings: header.warnings,
+    });
+  },
+  csv(_ctx, data) {
+    const d = data as { data?: { journalNo: string; date: string; book: string; memo: string | null; refDocNo: string | null; lines: { accountCode: string; accountName: string; note: string | null; debitSatang: number; creditSatang: number }[] }[] } | { journalNo: string }[];
+    const rows = (Array.isArray(d) ? d : (d.data ?? [])) as { journalNo: string; date: string; book: string; memo: string | null; refDocNo: string | null; lines: { accountCode: string; accountName: string; note: string | null; debitSatang: number; creditSatang: number }[] }[];
+    const out = [csvRow(["date", "journalNo", "book", "accountCode", "accountName", "description", "refDocNo", "debitSatang", "creditSatang"])];
+    for (const e of rows) for (const l of e.lines) out.push(csvRow([e.date, e.journalNo, e.book, l.accountCode, l.accountName, [e.memo, l.note].filter(Boolean).join(" · "), e.refDocNo ?? "", l.debitSatang, l.creditSatang]));
+    return out.join("\n");
+  },
+});
+
+const subsidiaryInput = z
+  .object({
+    side: z.enum(["AR", "AP"]).describe("AR = receivables per customer, AP = payables per vendor."),
+    from: ymdField("from"),
+    to: ymdField("to"),
+    contactId: z.string().min(1).max(40).optional().describe("One contact: also return its lines with a running balance. `none` = lines without a contact."),
+  })
+  .strict();
+
+const reportsSubsidiaryLedger = defineOp({
+  id: "reports.subsidiary-ledger",
+  method: "GET",
+  path: "/reports/subsidiary-ledger",
+  kind: "read",
+  action: "account.journal.view",
+  rate: "report",
+  summary:
+    "Subsidiary ledger of receivables (AR) or payables (AP) per contact, taken from the general ledger: opening, debit, credit and closing per contact; the totals equal the control account. With contactId also the lines of that contact. Supports CSV.",
+  label: "บัญชีย่อยลูกหนี้/เจ้าหนี้รายตัว",
+  input: subsidiaryInput,
+  test: "T4.2-API.2",
+  async handler({ actor, input }) {
+    const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    const title = SUBSIDIARY_TITLE_TH[input.side];
+    const [header, r] = await Promise.all([
+      bookHeaderOf(ctx, title),
+      subsidiaryLedger(ctx, { side: input.side, from: dayStart(input.from), to: dayEnd(input.to), contactId: input.contactId }),
+    ]);
+    return {
+      header: { orgName: header.orgName, taxId: header.taxId, branch: header.branchLabel, bookTitle: title, from: input.from, to: input.to },
+      side: r.side,
+      account: r.account,
+      rows: r.rows.map((x) => ({ contactId: x.contactId, contactName: x.contactName, openingSatang: x.opening, debitSatang: x.debit, creditSatang: x.credit, closingSatang: x.closing })),
+      totals: { openingSatang: r.totals.opening, debitSatang: r.totals.debit, creditSatang: r.totals.credit, closingSatang: r.totals.closing },
+      detail: r.detail
+        ? {
+            contactId: r.detail.contactId,
+            contactName: r.detail.contactName,
+            openingSatang: r.detail.opening,
+            closingSatang: r.detail.closing,
+            lines: r.detail.lines.map((l) => ({ date: ymd(l.date), journalNo: l.docNo, memo: l.memo, debitSatang: l.debit, creditSatang: l.credit, balanceSatang: l.balance })),
+          }
+        : null,
+      warnings: header.warnings,
+    };
+  },
+  csv(_ctx, data) {
+    const d = data as { rows: { contactName: string; openingSatang: number; debitSatang: number; creditSatang: number; closingSatang: number }[] };
+    const out = [csvRow(["contactName", "openingSatang", "debitSatang", "creditSatang", "closingSatang"])];
+    for (const r of d.rows) out.push(csvRow([r.contactName, r.openingSatang, r.debitSatang, r.creditSatang, r.closingSatang]));
+    return out.join("\n");
+  },
+});
+
 export const GL_READ_OPS: ApiOp[] = [
   chartList,
   chartGet,
@@ -894,6 +1018,8 @@ export const GL_READ_OPS: ApiOp[] = [
   journalList,
   journalGet,
   reportsGeneralLedger,
+  reportsJournalBook,
+  reportsSubsidiaryLedger,
   reportsTrialBalance,
   reportsProfitLoss,
   reportsBalanceSheet,

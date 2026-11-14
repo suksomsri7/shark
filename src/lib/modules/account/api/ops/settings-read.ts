@@ -35,9 +35,9 @@ import {
   fileRowView,
   inboxItemView,
   linkCardView,
-  policyView,
   settingsView,
 } from "../serialize-gl";
+import { policyViewWithRules } from "../policy-view"; // ACC T4.6 ◂
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const ymdField = (what: string) =>
@@ -111,12 +111,13 @@ const settingsPolicy = defineOp({
   path: "/settings/policy",
   kind: "read",
   action: "account.settings.manage",
-  summary: "Accounting policy: fiscal year, VAT timing, withholding tax defaults, date lock, duplicate rules and report emails.",
+  summary: "Accounting policy: fiscal year, day bookkeeping started (with the first fiscal period and a warning when it is shorter than 12 months), VAT timing, withholding tax defaults, date lock, duplicate rules and report emails.",
   label: "นโยบายบัญชี",
   test: "B4-G6.5",
   async handler({ actor }) {
-    const p = await getPolicy({ tenantId: actor.tenantId, systemId: actor.systemId });
-    return policyView(p);
+    const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    // ACC T4.6 ▸ + รอบบัญชีแรก (วันเริ่มทำบัญชี) และคำเตือนรอบแรกสั้น ◂
+    return policyViewWithRules(ctx, await getPolicy(ctx));
   },
 });
 
