@@ -245,7 +245,7 @@ export function runStaticH34(E: { F: Record<string, string>; FROZEN: string[]; T
     // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised): "HR MONEY-2" counts as a later-ticket mark like "HR-SET-<n>" · unmarked still fails ◂
     // ORACLE-EDIT (HR-PRIV-2 · controller): S1.6 laterOnly `/HR-SET-\d+|HR H\d+\.\d+/` → `/HR-SET-\d+|HR H\d+\.\d+|HR PRIV-\d+/` · unmarked still fails ◂
     // ORACLE-EDIT (HR LEAVE-3 · controller) S1.6: explicit allowlist — "HR LEAVE-3" counts only in the LEAVE-3 files this FROZEN list covers (judge.ts · service.ts · work-entries-rules.ts) · unmarked still fails ◂
-    const L3_ALLOW = new Set([`${H}judge.ts`, `${H}service.ts`, `${H}work-entries-rules.ts`]); // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+    const L3_ALLOW = new Set([`${H}judge.ts`, `${H}service.ts`, `${H}work-entries-rules.ts`, `${H}self.ts`]); // ORACLE-EDIT (HR LEAVE-3 · controller) ◂ // ORACLE-EDIT (HR LEAVE-3 · controller r3b): + self.ts (W4.2) ◂
     const laterOnly = (p: string) => pathInBase(F.rules, BASE) && (diffHunks(BASE, p) ?? []).length > 0 && (diffHunks(BASE, p) ?? []).every((h) => h.added.some((l) => (/HR-SET-\d+|HR H\d+\.\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || (p === `${H}law.ts` && /HR HF-SSO/.test(l)) || (L3_ALLOW.has(p) && /HR LEAVE-3/.test(l))) && !/HR H3\.4/.test(l))); // ORACLE-EDIT (HR HF-SSO · controller fix2) ◂ // ORACLE-EDIT (HR LEAVE-3 · controller): + L3_ALLOW ◂
     const ch = changedVsBase(BASE, FROZEN.filter((p) => pathInBase(p, BASE) && !laterOnly(p) && !((p === `${H}work-entries.ts` || p === `${H}judge.ts`) && onlyGateReaders(p)) && !(p === `${H}attendance-pay.ts` && apOnlyLeaver(p))));
     chk("S1.6", shaNow === PAYROLL_RULES_SHA && ch === "unchanged", "sha · unchanged", `sha=${shaNow.slice(0, 12)} ${ch}`);

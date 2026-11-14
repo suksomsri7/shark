@@ -232,7 +232,7 @@ function runStatic(): void {
       // ORACLE-EDIT (HR HF-SSO · controller fix2): "HR HF-SSO" counts only in the HF-SSO file this list covers (law.ts) — no standing pass elsewhere ◂
       const hfSso = f === `${H}law.ts`;
       // ORACLE-EDIT (HR LEAVE-3 · controller) S1.8: explicit allowlist — "HR LEAVE-3" counts only in the LEAVE-3 files this list covers (judge.ts · service.ts · work-entries-rules.ts) · unmarked still fails ◂
-      const l3 = [`${H}judge.ts`, `${H}service.ts`, `${H}work-entries-rules.ts`].includes(f); // ORACLE-EDIT (HR LEAVE-3 · controller) ◂
+      const l3 = [`${H}judge.ts`, `${H}service.ts`, `${H}work-entries-rules.ts`, `${H}ot.ts`].includes(f); // ORACLE-EDIT (HR LEAVE-3 · controller) ◂ // ORACLE-EDIT (HR LEAVE-3 · controller r3b): + ot.ts (W3) ◂
       return !hs || hs.some((h) => h.added.concat(h.removed).some((l) => /HR H3\.2/.test(l)) || !h.added.concat(h.removed).some((l) => /HR H\d|HR-SET-\d|HR MONEY-2|HR PRIV-\d/.test(l) || (hfSso && /HR HF-SSO/.test(l)) || (l3 && /HR LEAVE-3/.test(l)))); // ORACLE-EDIT (HR LEAVE-3 · controller): + l3 ◂
     }) : [ch];
     ck("S1.8", { sha: shaOk, frozen: bad.length === 0 }, "unchanged", bad.join(","));
