@@ -269,7 +269,7 @@ export default function LoginScreen() {
         <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={s.hero}>
             <AnimatedOrb size={96} />
-            <Text style={[s.brand, { color: c.text }]}>SHARK HUB</Text>
+            <Text style={[s.brand, { color: c.text }]}>Lekaa</Text>
             <Text style={[s.tagline, { color: c.textMuted }]}>{t("auth.login.tagline")}</Text>
           </View>
 

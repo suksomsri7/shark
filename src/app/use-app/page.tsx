@@ -11,9 +11,9 @@ export const metadata: Metadata = {
 export default function UseAppPage() {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
-      <h1 className="text-2xl font-semibold">ใช้งาน SHARK ผ่านแอป SHARK HUB</h1>
+      <h1 className="text-2xl font-semibold">ใช้งาน SHARK ผ่านแอป Lekaa</h1>
       <p className="text-sm text-[color:var(--color-muted)]">
-        ตอนนี้หลังบ้านร้านเปิดใช้งานได้ทางแอป SHARK HUB บน iPhone และ iPad เท่านั้น
+        ตอนนี้หลังบ้านร้านเปิดใช้งานได้ทางแอป Lekaa บน iPhone และ iPad เท่านั้น
         เข้าสู่ระบบในแอปด้วยบัญชีเดิมได้เลย ข้อมูลร้านทั้งหมดยังอยู่ครบ
       </p>
       <p className="text-sm text-[color:var(--color-muted)]">
@@ -23,7 +23,7 @@ export default function UseAppPage() {
         </a>
       </p>
       <p className="text-xs text-[color:var(--color-muted)]">
-        Store management is available in the SHARK HUB app for iPhone and iPad.
+        Store management is available in the Lekaa app for iPhone and iPad.
       </p>
     </div>
   );
