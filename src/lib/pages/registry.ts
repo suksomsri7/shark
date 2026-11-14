@@ -96,6 +96,13 @@ export const WIDGET_DEFS: WidgetDef[] = [
   S("HR", "/hr/leave", "ใบลา", "🏖️"),
   S("HR", "/hr/employees", "พนักงาน", "🧑‍🤝‍🧑"),
   S("HR", "/hr/payroll", "เงินเดือน", "💰"),
+  // HR H4.9 ▸ qc-pages RG-1: เมนู HR ที่เพิ่มใน childrenFor หลัง V1 — ตารางกะ (H2.2) · คำขอ (H2.11) · ตั้งค่า (H1.2) · ตารางกฎหมาย (H3.3)
+  //   widget = ลิงก์ธรรมดา · หน้าปลายทางกันสิทธิ์เอง (404 เมื่อผู้เปิดไม่มีสิทธิ์ — เหมือนเมนูข้าง) ◂
+  S("HR", "/hr/roster", "ตารางกะ", "🗓️"),
+  S("HR", "/hr/requests", "คำขอพนักงาน", "📥"),
+  S("HR", "/hr/settings", "ตั้งค่าพนักงาน", "⚙️"),
+  S("HR", "/hr/settings/law", "ตารางกฎหมาย (HR)", "⚖️"),
+  // ◂ HR H4.9
   S("INVENTORY", "", "ภาพรวมสินค้า/บริการ", "📦"),
   S("INVENTORY", "/inventory/items", "สินค้า", "📦"),
   S("INVENTORY", "/inventory/services", "บริการ", "✂️"),
