@@ -72,7 +72,7 @@ S4.8|D1 X7|C|R|[db] Bangkok boundaries: U1 01-31 cost 193,123 sales 70,000 · U1
 S4.9|D4|C|R|[db] holidays (U4 DAILY 40,000 m=480): PUBLIC 2027-01-20 ⇒ 82,000 · SHOP 2027-01-21 ⇒ 42,000
 S4.10|Q4b X8|C|R|[db] U3 (no POS) March: 03-05 35,001 · 03-16 89,250 · 03-21 54,250 · 03-31 54,249 · sales "NO_POS" · pct null · cost shown
 S4.11|D9 S4|C|R|[db] month: U1 2027-01 actual 1,391,667 (REVERSED ignored) · sales 1,870,000 · pct 744 · U2 695,833 · U1 2027-02 ESTIMATE 4,815,004 · prev 1,391,667 · U3 2027-03 ESTIMATE 1,839,250
-S4.12|R5|M|R|[db] no unitId = all units in scope (owner 01-16 = 247,723) · tenant with 21 units ⇒ UNIT_REQUIRED
+S4.12|R5|M|R|[db] no unitId = all units in scope (owner 01-16 = 281,594 incl. leaver N at U3) · tenant with 21 units ⇒ UNIT_REQUIRED
 S4.13|P4|C|R|[db] no per-person money: owner day/week/month carry no employee id/name, no "employeeId"/"name" key, none of HR_FORBIDDEN_DTO_KEYS
 S5.1|P1|C|R|[db] owner + payroll all-branch: day/week/month money · demand · settings read
 S5.2|P2 Q9|C|R|[db] payroll [U2]: U1 ⇒ NO · borrowed-in alone (01-12) ⇒ all money null + suppressed ≥ 1 + no J numbers (also no unitId) · 3 contributors (01-13) shown 110,250 · home 1-person (01-19) shown 36,750 · month U2 (borrowed E) suppressed
@@ -182,7 +182,8 @@ function runStatic(): void {
       gate: /\bcanManageHrSettings\s*\(/.test(set),
       audit: /["']hr\.labor\.settings["']/.test(svc),
       noOwnWrite: !/appSystem\s*\.\s*(update|updateMany|upsert)\s*\(|UPDATE\s+"AppSystem"/i.test(labor),
-      noPrisma: !importsOf(rd(F.svc)).some((i) => /\/core\/db$|^@prisma\/client$/.test(i.spec) && !i.type) && !/\bprisma\s*\./.test(svc),
+      // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (e): intent = no raw prisma client; tenantDb (house rule C.8) is allowed only as a static named import { tenantDb } from core/db · dynamic import of core/db rejected ◂
+      noPrisma: importsOf(rd(F.svc)).every((i) => i.type || (!/^@prisma\/client$/.test(i.spec) && (!/\/core\/db$/.test(i.spec) || /^\s*import\s*\{\s*tenantDb\s*\}\s*from\s*["']@\/lib\/core\/db["']/m.test(rd(F.svc))))) && !/\bprisma\s*\./.test(svc) && !/import\(\s*["']@\/lib\/core\/db["']\s*\)/.test(svc),
       dbGate: /\bmembership\s*\.\s*findFirst\s*\(/.test(svc),
     };
     ck("S1.5", r, "settings via HR-SET-1 helper · DB gate");
@@ -191,7 +192,9 @@ function runStatic(): void {
   {
     const posOthers = git(["diff", "--name-only", BASE, "--", "src/lib/modules/pos"]).split("\n").filter((f) => f && f !== F.posRep && f !== F.posIdx);
     const hrFrozen = srcFiles(H.replace(/\/$/, "")).filter((f) => /\/(payroll[^/]*|law\.ts|work-entries[^/]*|roster\.ts|roster-rules\.ts|roster-board[^/]*|reports[^/]*|privacy[^/]*|scope\.ts|settings-lock\.ts|inbox[^/]*)$/.test(f));
-    const oracles = git(["diff", "--name-only", BASE, "--", "scripts"]).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.2/.test(f));
+    // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (d): exactly one allowed oracle hunk set — scripts/qc-hr-h2.2.mts, every hunk carrying "ORACLE-EDIT (H4.2 · controller ruling)" ◂
+    const h22ok = (diffHunks(BASE, "scripts/qc-hr-h2.2.mts") ?? [{ added: [], removed: ["∅git"] }]).every((h) => h.added.some((l) => /ORACLE-EDIT \(H4\.2 · controller ruling\)/.test(l)));
+    const oracles = git(["diff", "--name-only", BASE, "--", "scripts"]).split("\n").filter((f) => /^scripts\/qc-.*\.mts$/.test(f) && !/^scripts\/qc-hr-h4\.2/.test(f) && !(f === "scripts/qc-hr-h2.2.mts" && h22ok));
     const r = {
       pos: posOthers.length === 0,
       hr: changedVsBase(BASE, hrFrozen) === "unchanged",
@@ -228,11 +231,12 @@ function runStatic(): void {
     const mp = msgParity(th, en, ["estimateNote", "smallGroup"]);
     const invIds = new Set(want.filter((t) => ids.has(t)));
     const inv = [inventoryParity("/app/sys/[id]", new Set([...invIds].filter((t) => t.startsWith("hr-labor-") && t !== "hr-labor-settings" && t !== "hr-labor-save")), "H4.2", "qc-hr-h4.2"), inventoryParity("/hr/roster", new Set([...invIds].filter((t) => t.startsWith("hr-roster-"))), "H4.2", "qc-hr-h4.2")];
+    const h42Rows = ((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((x) => x.wo === "H4.2" && /(\/app\/sys\/\[id\]|\/hr\/roster|\/hr\/settings)$/.test(String(x.page ?? ""))); // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (c) ◂
     const tk = tokensOnly(code(F.ui));
     const act = code(F.act);
     const r = {
       testids: want.every((t) => ids.has(t)),
-      inventory: inv.every((x) => x.rows > 0 && x.codeNoRow.length === 0 && x.meta),
+      inventory: inv.every((x) => x.codeNoRow.length === 0) && h42Rows.length > 0 && h42Rows.every((x) => x.oracle === "qc-hr-h4.2"), // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (c): wo/oracle judged on the H4.2 rows only ◂
       msg: Object.values(mp).every(Boolean),
       posLabel: JSON.stringify(th).includes("ยอดขายสุทธิตามรายงาน POS"),
       visual: /"4\.2":\s*\[/.test(rd(F.vis)),
@@ -412,7 +416,7 @@ async function runDb(): Promise<void> {
     const perDay = ((f44?.days ?? []) as Any[]).every((d) => dRows.get(d.date) === (d.hours ?? []).reduce((b: number, x: Any) => b + x.netSalesSatang, 0));
     const r = {
       ok: f1?.ok === true && f1?.connected === true, cutoff: f1?.cutoffMin === 0, today: f1?.today === before || f1?.today === after,
-      sameHours: (f1?.days ?? []).length === 1 && d0?.date === "2027-01-16" && nz(d0?.hours ?? []) === repNz && repNz.length === 3,
+      sameHours: (f1?.days ?? []).length === 1 && d0?.date === "2027-01-16" && nz(d0?.hours ?? []) === repNz && JSON.parse(repNz).length === 3, // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (a): repNz is a canon string ◂
       sparse: (d0?.hours ?? []).length <= 24 && !(f44?.days ?? []).some((d: Any) => d.date === "2027-01-10"),
       sum44: f44?.ok === true && sum44 === 2_670_000 && perDay,
     };
@@ -521,7 +525,8 @@ async function runDb(): Promise<void> {
     await P.businessUnit.createMany({ data: Array.from({ length: 21 }, (_, i) => ({ tenantId: T3, type: "SHOP", name: `QC H42 b${i}`, slug: `${SLUG}-b${i}` })) });
     const o3 = await mk(T3, "owner3", "OWNER", [], {});
     const r21 = await call(M.svc, "laborDay", { tenantId: T3, systemId: H3 }, vOf(o3), { day: "2027-01-16" }, O());
-    ck("S4.12", { all: okR(all) && cost(all) === 247_723, unitRequired: r21?.ok === false && r21?.code === "UNIT_REQUIRED" }, "R5", `all=${cost(all)} r21=${why(r21)}`);
+    // ORACLE-EDIT (H4.2 · oracle author + controller ruling) (b): all units on 01-16 include leaver N at U3 (D2: endDate 2027-03-20 ≥ d; Jan full month 1,000,000/31 ⇒ 32,258 + SSO 1,613) ⇒ 247,723 + 33,871 ◂
+    ck("S4.12", { all: okR(all) && cost(all) === 281_594, unitRequired: r21?.ok === false && r21?.code === "UNIT_REQUIRED" }, "R5", `all=${cost(all)} r21=${why(r21)}`);
   }
   {
     const empIds = Object.values(EM);
