@@ -97,3 +97,9 @@ ORACLE-EDITs this round: qc-hr-h4.5 (S1.2 relation field · S3.3/S8.4 name via g
 Conflicts: hr.prisma / scope.ts / hr-qc-env.mts registries (both kept) · qc-hr-h4.2-lib S1.6 = session/hr's IN_BASE form (my laterOk edit dropped; no extension needed) · messages via json3way · inventory rows 3-way by page+testid: base 530 · ours 547 · theirs 540 · merged 557 (0 rows lost).
 Lane: prisma generate · migrate deploy applied 20270110000001_hr_opening_ytd.
 Runs: seed-hr-qc 34/34 · qc-hr-h4.5 86/86 forced ×2 · h3.4-ytd 44/44 · h4.2 53/53 · h3.8 78/78 · h2.10 57/57 · h2.11 70/70 · set-1 25/25 · h2.4 68/68 · h0.1 67/67 · qc-hf-hr-privacy 194/194 · fitness 54/54 + fitness-hr 9/9 (both modes) · drift: H4.5 tables clean (exit 2 = DormUtilityRate + HrFilingProfile, other tickets) · typecheck clean 443 s.
+
+## 10. Gate fix — hr.payroll.reversed vs payslip notices
+- `skipRunSlipNotices` (line-notify): SLIP rows of the run in PENDING/HELD/FAILED/SENDING ⇒ SKIPPED(REVERSED); SENT unchanged; no new message. Glue `onHrEventForLine` handles `hr.payroll.reversed`; consumer wrapped `bothMain(async () => {}, onHrEventForLine)` inside the existing crmFirst/withAutomation. Belt: precheck skips SLIP of a REVERSED run; digest counts only HELD members. In-app SLIP note has no link (title/body only) — the slip page shows H3.8's WITHDRAWN state; H3.8 unchanged.
+- Oracle F4.1–F4.4; RED with the fix absent: `hr-H4.5-gate-red.txt` (87/90 — F4.1 digest "2" incl. slip, F4.3 slip SENT, F4.4 pushed).
+- Runs: seed 34/34 · h4.5 90/90 forced ×2 + unforced · h2.4 68/68 · h3.8 78/78 · qc-payroll-reverse 14/14 · fitness-hr 9/9 both · typecheck 491 s.
+- OPEN: qc-hr-h0.6 S8.1 (54/55) pins the consumer line literally as `withAutomation(async () => {})` ⇒ red with the bothMain wiring; ruling needed (ORACLE-EDIT of that regex, or a different wiring). qc-hr-h1.3 S6.1 (62/63) flags H3.4-YTD's payroll.ts reads — already fixed on session/hr by fb6b4fd06 (not in this branch; not H4.5).
