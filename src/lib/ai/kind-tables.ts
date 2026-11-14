@@ -62,7 +62,10 @@ export type StaticProposalKind =
   | "kb.save"
   | "memory.forget"
   // SEC S3a.1-S2 ▸ R-Z34: เปิดเคสแจ้งทีมงานจากห้องบริบทลูกค้า = ข้อเสนอ ◂
-  | "support.open";
+  | "support.open"
+  // HR H4.3 ▸ ร่างตารางกะ · บันทึกข้อสังเกตส่วนตัว (ข้อเสนอของเครื่องมือ HR — ไม่ใช่ DESTRUCTIVE) ◂
+  | "hr_draft_roster"
+  | "hr_flag_pattern";
 
 // action string ต่อ kind — ต้องตรงกับ assertCan ของปุ่มจริงในแต่ละโมดูล (ดู */actions.ts)
 export const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; action: string }> = {
@@ -117,6 +120,9 @@ export const STATIC_KIND_ACCESS: Record<StaticProposalKind, { module: string; ac
   "kb.save": { module: "kb", action: "kb.article.create" },
   "memory.forget": { module: "ai", action: "ai.chat.send" },
   "support.open": { module: "ai", action: "ai.chat.send" },
+  // HR H4.3 ▸ คีย์ของปุ่มจริง (ตารางกะ/บันทึก = hr.employee.create) · ด่านละเอียด (สาขาของทุกช่อง · canSeeLifecycle) ตรวจซ้ำก่อนจองใน hr/ai.ts ◂
+  hr_draft_roster: { module: "hr", action: "hr.employee.create" },
+  hr_flag_pattern: { module: "hr", action: "hr.employee.create" },
 };
 
 export type KindAccess = { module: string; action: string };

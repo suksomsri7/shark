@@ -402,6 +402,14 @@ export async function executeProposal(
     }
   }
 
+  // HR H4.3 ▸ มติ Q3: ข้อเสนอของเครื่องมือ HR — คนกดที่ไม่ใช่ผู้มีสิทธิ์ของงานนี้ / มองไม่เห็นสาขาหรือพนักงานของข้อเสนอ ⇒ ปฏิเสธ **ก่อนจอง**
+  //   (ข้อความคงที่ ไม่มีข้อมูล · คง PENDING ให้ผู้มีสิทธิ์กดทีหลัง · audit hr.ai.proposal.refused) — import ตอนเรียก (hr/ai → โมดูล HR ทั้งชุด) ◂
+  if (row.kind === "hr_draft_roster" || row.kind === "hr_flag_pattern") {
+    const { hrAiPreClaim } = await import("@/lib/modules/hr/ai");
+    const hrNote = await hrAiPreClaim(m, ctx.tenantId, row.id, row.kind, row.payload, opts?.userId ?? null);
+    if (hrNote) return { ok: false, note: hrNote };
+  }
+
   // ── ยืนยัน 2 ชั้น สำหรับรายการลบ/ยกเลิกถาวร (DESTRUCTIVE) ──
   // ชั้นแรก (ไม่มี confirm2x) → คง PENDING ไม่ทำจริง แจ้ง UI ให้ถามยืนยันอีกครั้ง
   if (row.risk === "DESTRUCTIVE" && !opts?.confirm2x) {
@@ -594,6 +602,13 @@ async function dispatch(
   if (isPosKind(kind)) {
     if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการของระบบขายหน้าร้านได้");
     return dispatchPosKind({ tenantId, ...m, userId: userId ?? "", proposalId }, kind, payload);
+  }
+
+  // HR H4.3 ▸ ร่างตารางกะ / บันทึกข้อสังเกต — ลงมือด้วยสิทธิ์ของคนกด (ผู้ดูจากแถว Membership ในฐาน) ผ่าน service ของ HR (stale ⇒ โยน = FAILED ไม่มีแถว) ◂
+  if (kind === "hr_draft_roster" || kind === "hr_flag_pattern") {
+    if (!m) throw new Error("ต้องรู้สิทธิ์ของผู้กดยืนยันก่อนจึงจะทำรายการพนักงานได้");
+    const { dispatchHrAiKind } = await import("@/lib/modules/hr/ai");
+    return dispatchHrAiKind(m, tenantId, proposalId, kind, payload, userId ?? null);
   }
 
   if (kind === "inventory_receive") {

@@ -26,6 +26,7 @@ import { memberTools } from "./tools-member";
 // CRM C1.10 ▸ สกิล crm (14 tool จากทะเบียน op ของ REST CRM · แทน crm_create_lead รุ่นเขียนมือ) ◂
 import { crmTools } from "./tools-crm";
 import { posTools } from "./tools-pos"; // POS P3.9 ▸ R1 ◂
+import { hrTools } from "./tools-hr"; // HR H4.3 ▸ เครื่องมือ HR 6 ตัว (อ่าน 4 · เสนอ 2) ◂
 import { createProposal, isKnownKind as isKnownKindName, type ProposalKind } from "./proposals";
 import { CHAT_SEND_BODY_MAX } from "./secretary/chat-send"; // SEC S1.12 (pure — ใช้ตอนโหลดโมดูล) ◂
 import { createPlan } from "./plans";
@@ -2748,6 +2749,8 @@ function registryTools(): AiTool[] {
     ...crmTools(),
     // POS P3.9 ▸ R1 มติ 1: สกิล sales จากทะเบียน op ของ REST POS (11 tool · kind `pos.*`) + pos_draft_po ◂
     ...posTools(),
+    // HR H4.3 ▸ สกิล hr: ใครทำงานวันนี้ · มาสาย · ค่าแรงต่อยอดขาย · วันลาคงเหลือ (อ่านด้วยสิทธิ์ของคนถาม) + ร่างตารางกะ · บันทึกข้อสังเกต (ข้อเสนอ) ◂
+    ...hrTools(),
   ];
 }
 

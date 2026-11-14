@@ -79,6 +79,10 @@ S6.2|R4|C|R|[db] bounds: targetTenths 50–600 · splhSatang null or 10,000–10
 S6.3|R6|M|R|[db] audit: one "hr.labor.settings" row per successful save · none for refusals or reads
 S6.4|R6|C|R|[db] lock race: raw tx holding hr:clockpolicy (A) / AppSystem row FOR UPDATE (B) blocks setLaborSettings (pg_blocking_pids) · stale write + marker committed first · hrLabor + marker survive (×2 each)
 S6.5|S8|C|R|[db] 10 lanes × 3 setLaborSettings ∥ 10 saveClockPolicy ⇒ all ok · hrLabor + hrClock both survive with written values
+S7.1|FIX1-a|C|R|[db] ORACLE-EDIT (H4.2-FIX1 via H4.3 · controller ruling) open month with a finalized run (U6 June, R 30,000 ฿/month, run 30,750 ฿): now 06-28 ⇒ month-to-date basis: cost 27 × 102,917 = 2,778,759 · sales 27,000,000 · pct 103 · throughDay 06-27 (not ACTUAL 3,075,000 ÷ 28,000,000 = 110) · now 07-05 ⇒ ACTUAL 3,075,000 · 28,000,000 · 110 · throughDay null
+S7.2|FIX1-b|M|R|[db+static] payroll [U2] month Feb: excludedHeadcount 1 + partial on the month and on prev (Jan) · labor-ui shows the excluded-pay note per figure (month.partial/excludedHeadcount · month.prev.partial/excludedHeadcount)
+S7.3|FIX1-c|M|R|[db+static] day 1 (U5 now 04-01): month costSatang null with pctTenths null · 201 borrowings on K ⇒ laborDay U2 01-19 truncated:true, cost 36,750 · labor-ui MTD label day through formatThaiDate/formatShortDate of @/lib/ui/date
+S7.4|FIX1-a R1|C|R|[db] ORACLE-EDIT (H4.3 · oracle author + controller ruling) limited viewer on an OPEN month with a finalized run: payroll [U2] laborMonth U2 2027-01 at now 01-17 10:00 ⇒ month-to-date (not ACTUAL) · throughDay 01-16 · cost 73,500 (K + L on 01-13, outsider J excluded) · excludedHeadcount 1 · partial · sales 1,050,000 · pct 70 · no J numbers · owner same month = 147,000 · pct 140
 X1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
 Z1|house|C|G|no residue (PosSale · HrWorkDay · HrLawTable qc-hr-h42-* included)
 `.trim().split("\n").map((l) => {
@@ -143,6 +147,7 @@ async function runDb(): Promise<void> {
   const U3 = await fx.newUnit(T, "QC H42 สาขาไม่มี POS", "u3");
   const U4 = await fx.newUnit(T, "QC H42 สาขาตัดวันตีสี่", "u4");
   const U5 = await fx.newUnit(T, "QC H42 สาขาเดือนเมษา", "u5"); // ORACLE-EDIT (H4.2 review · controller ruling) R3 ◂
+  const U6 = await fx.newUnit(T, "QC H42 สาขามิถุนา", "u6"); // ORACLE-EDIT (H4.2-FIX1 via H4.3 · controller ruling) FIX1-a ◂
   const UX = await fx.newUnit(T2, "QC H42 ร้านอื่น", "ux");
   const HRS = (await sysSvc.createSystem(T, "HR", `HR ${tag}`)).id as string;
   const HRX = (await sysSvc.createSystem(T2, "HR", `HR2 ${tag}`)).id as string;
@@ -152,6 +157,7 @@ async function runDb(): Promise<void> {
   await sysSvc.linkUnit(T2, HRX, UX);
   for (const u of [U1, U2, U5]) await sysSvc.linkUnit(T, POSA, u); // ORACLE-EDIT (H4.2 review · controller ruling) R3: + U5 ◂
   await sysSvc.linkUnit(T, HRS, U5);
+  for (const s6 of [HRS, POSA]) await sysSvc.linkUnit(T, s6, U6); // ORACLE-EDIT (H4.2-FIX1 via H4.3 · controller ruling) FIX1-a ◂
   await sysSvc.linkUnit(T, POSB, U4);
   await P.appSystem.update({ where: { id: POSB }, data: { settings: { pos: { reports: { dayCutoffMinutes: 240 } } } } });
   const ctx = { tenantId: T, systemId: HRS };
@@ -240,6 +246,13 @@ async function runDb(): Promise<void> {
   // ORACLE-EDIT (H4.2 review · controller ruling) R1/R3: U2 sales 01-13 (pct of the limited viewer) · U5 10,000 ฿ every day 04-01..04-16 (04-16 09:00 = today at now 10:00) ◂
   await sale(U2, POSA, bkkUtc("2027-01-13", "12:00"), 1_050_000);
   for (let i = 1; i <= 16; i++) await sale(U5, POSA, bkkUtc(`2027-04-${String(i).padStart(2, "0")}`, i === 16 ? "09:00" : "12:00"), 1_000_000);
+  // ORACLE-EDIT (H4.2-FIX1 via H4.3 · controller ruling) FIX1-a: R (MONTHLY 3,000,000 from 2027-06-01, home U6) · finalized APPROVED run 2027-06 (gross 3,000,000 + ssoEr 75,000) · 10,000 ฿ sales 06-01..06-28 (06-28 09:00) ◂
+  const R6 = await emp("R", U6, ["MONTHLY", 3_000_000], { startDate: "2027-06-01" });
+  {
+    const r6 = await P.hrPayrollRun.create({ data: { tenantId: T, systemId: HRS, periodKey: "2027-06", payDate: new Date("2027-06-30T00:00:00Z"), status: "APPROVED", engineVersion: 2, stepsJson: { finalized: true }, totalGrossSatang: 3_000_000, totalSsoEmployerSatang: 75_000 } });
+    await P.hrPayrollItem.create({ data: { tenantId: T, systemId: HRS, runId: r6.id, employeeId: R6, grossSatang: 3_000_000, ssoBaseSatang: 1_750_000, ssoEmployeeSatang: 75_000, ssoEmployerSatang: 75_000, whtSatang: 0, netSatang: 2_925_000 } });
+    for (let i = 1; i <= 28; i++) await sale(U6, POSA, bkkUtc(`2027-06-${String(i).padStart(2, "0")}`, i === 28 ? "09:00" : "12:00"), 1_000_000);
+  }
 
   // ═══ S3 POS seam ═══
   const actor = (w: Any) => ({ userId: w.id, role: w.role, unitAccess: w.unitAccess, permissions: w.permissions });
@@ -299,7 +312,8 @@ async function runDb(): Promise<void> {
   // ═══ S4 figures (owner) ═══
   const day = (v: Any, unitId: string | undefined, d: string, now = NOW) => call(M.svc, "laborDay", ctx, v, unitId ? { unitId, day: d } : { day: d }, O(now));
   const week = (v: Any, unitId: string, w = "2027-01-11") => call(M.svc, "laborWeek", ctx, v, { unitId, week: w }, O());
-  const month = (v: Any, unitId: string, p: string) => call(M.svc, "laborMonth", ctx, v, { unitId, periodKey: p }, O());
+  // ORACLE-EDIT (H4.3 · oracle author + controller ruling) item 3: ruling FIX1-a makes an open month month-to-date even with a finalized run ⇒ month() reads at 2027-04-20 10:00 BKK, where Jan/Feb/Mar have ended (Jan = ACTUAL from the run · Feb/Mar = full ESTIMATE) — every golden of S4.11/S5.1/S5.2/S5.7/S5.8 unchanged (note §H4.2-FIX1 r2) · open-month limited viewer = S7.4 ◂
+  const month = (v: Any, unitId: string, p: string) => call(M.svc, "laborMonth", ctx, v, { unitId, periodKey: p }, O(new Date("2027-04-20T03:00:00Z")));
   const cost = (r: Any) => mon(r)?.costSatang;
   const owner = V.owner;
   const d16pre = await day(owner, U1, "2027-01-16");
@@ -506,6 +520,42 @@ async function runDb(): Promise<void> {
     ck("S5.8", { readers: /"ok":true/.test(m1) && !/__throw/.test(m1), identical: m1 === m2, control: c1 !== c2 && c1 === c3 }, "no money for non-payroll", `len=${m1.length}/${m2.length}`);
   }
 
+  // ORACLE-EDIT (H4.2-FIX1 via H4.3 · controller ruling) FIX1-a/b/c ◂
+  {
+    const mo6 = (now: Date) => call(M.svc, "laborMonth", ctx, owner, { unitId: U6, periodKey: "2027-06" }, O(now));
+    const open = await mo6(new Date("2027-06-28T03:00:00Z"));
+    const done = await mo6(new Date("2027-07-05T03:00:00Z"));
+    ck("S7.1", {
+      open: okR(open) && mv(open, "basis") !== "ACTUAL" && mv(open, "costSatang") === 2_778_759 && mv(open, "salesSatang") === 27_000_000 && mv(open, "pctTenths") === 103 && mv(open, "throughDay") === "2027-06-27",
+      ended: okR(done) && mv(done, "basis") === "ACTUAL" && mv(done, "costSatang") === 3_075_000 && mv(done, "salesSatang") === 28_000_000 && mv(done, "pctTenths") === 110 && (mv(done, "throughDay") ?? null) === null,
+    }, "MTD while the month is open, actual after", `open=${mv(open, "basis")}/${mv(open, "costSatang")}/${mv(open, "salesSatang")}/${mv(open, "pctTenths")}/${mv(open, "throughDay")} done=${mv(done, "basis")}/${mv(done, "costSatang")}/${mv(done, "pctTenths")}`);
+    const f2 = await month(V.payU2, U2, "2027-02");
+    const ui = stripComments(rd(F.ui));
+    ck("S7.2", {
+      month: okR(f2) && mv(f2, "excludedHeadcount") === 1 && mv(f2, "partial") === true,
+      prev: f2?.prev?.excludedHeadcount === 1 && f2?.prev?.partial === true && f2?.prev?.periodKey === "2027-01",
+      ui: /\bmonth\??\.(partial|excludedHeadcount)\b/.test(ui) && /\bprev\??\.(partial|excludedHeadcount)\b/.test(ui),
+    }, "partial/excluded per figure", `month=${mv(f2, "excludedHeadcount")}/${mv(f2, "partial")} prev=${short(f2?.prev, 80)}`);
+    const d1 = await call(M.svc, "laborMonth", ctx, owner, { unitId: U5, periodKey: "2027-04" }, O(new Date("2027-04-01T03:00:00Z")));
+    await P.hrEmployeeUnit.createMany({ data: Array.from({ length: 201 }, (_, i) => ({ tenantId: T, systemId: HRS, employeeId: EM.K, unitId: U1, fromDate: dbDate(`2030-${String(1 + Math.floor(i / 28)).padStart(2, "0")}-${String(1 + (i % 28)).padStart(2, "0")}`), toDate: dbDate(`2030-${String(1 + Math.floor(i / 28)).padStart(2, "0")}-${String(1 + (i % 28)).padStart(2, "0")}`) })) });
+    const k19 = await day(owner, U2, "2027-01-19");
+    await P.hrEmployeeUnit.deleteMany({ where: { tenantId: T, employeeId: EM.K } });
+    const trK = k19?.flags?.truncated === true || k19?.money?.truncated === true || k19?.truncated === true;
+    const lbl = /\bt\(\s*["']monthToDate["']\s*,\s*\{[^}]*\bday\s*:\s*(formatThaiDate|formatShortDate)\s*\(/.test(ui) && /import\s*\{[^}]*\b(formatThaiDate|formatShortDate)\b[^}]*\}\s*from\s*["']@\/lib\/ui\/date["']/.test(rd(F.ui));
+    ck("S7.3", { day1: okR(d1) && mv(d1, "costSatang") === null && mv(d1, "pctTenths") === null, units200: okR(k19) && cost(k19) === 36_750 && trK, label: lbl }, "null on day 1 · nested cap · Thai date label", `d1=${mv(d1, "costSatang")}/${mv(d1, "pctTenths")} k19=${cost(k19)}/${trK}`);
+  }
+  // ORACLE-EDIT (H4.3 · oracle author + controller ruling) item 3: S7.4 ◂
+  {
+    const at = O(new Date("2027-01-17T03:00:00Z"));
+    const lim = await call(M.svc, "laborMonth", ctx, V.payU2, { unitId: U2, periodKey: "2027-01" }, at);
+    const own = await call(M.svc, "laborMonth", ctx, owner, { unitId: U2, periodKey: "2027-01" }, at);
+    ck("S7.4", {
+      mtd: okR(lim) && mv(lim, "basis") !== "ACTUAL" && mv(lim, "throughDay") === "2027-01-16",
+      money: mv(lim, "costSatang") === 73_500 && mv(lim, "salesSatang") === 1_050_000 && mv(lim, "pctTenths") === 70,
+      excl: mv(lim, "excludedHeadcount") === 1 && mv(lim, "partial") === true && !/\b(36750|35000|110250|147000)\b/.test(JSON.stringify(lim ?? null)),
+      owner: okR(own) && mv(own, "basis") !== "ACTUAL" && mv(own, "costSatang") === 147_000 && mv(own, "pctTenths") === 140,
+    }, "open month MTD for [U2]", `lim=${mv(lim, "basis")}/${mv(lim, "costSatang")}/${mv(lim, "pctTenths")}/${mv(lim, "excludedHeadcount")}/${mv(lim, "throughDay")} own=${mv(own, "costSatang")}/${mv(own, "pctTenths")}`);
+  }
   // ═══ S6 settings ═══
   const audits = () => P.auditLog.count({ where: { tenantId: T, action: "hr.labor.settings" } });
   const SETV = (v: Any, i: Any) => call(M.svc, "setLaborSettings", ctx, v, i);

@@ -102,6 +102,11 @@ export const HAND_TOOL_ACCESS: Readonly<Record<string, HandRule>> = {
   recent_leads: { needs: [], scopedData: true },
   // ── เขียนทันที ──
   kb_auto_save: { needs: [{ module: "kb", action: "kb.article.create" }], writesNow: true }, // app/kb/actions.ts · คู่ข้อเสนอ kb_create_article
+  // HR H4.3 ▸ อ่านด้วยสิทธิ์ของคนถาม (ผู้ดูจากแถว Membership ในฐาน · ขอบเขตตัดสินในตัวอ่านของ HR) — ไม่มีคน = ปฏิเสธ · คีย์ API = ปฏิเสธ (REST = H4.8) ◂
+  hr_who_is_on_today: { needs: [], needsPerson: true, scopedData: true },
+  hr_late_report: { needs: [], needsPerson: true, scopedData: true },
+  hr_labor_percent: { needs: [], needsPerson: true, scopedData: true },
+  hr_leave_balance: { needs: [], needsPerson: true, scopedData: true },
 };
 
 /** เครื่องมือเสนอการกระทำที่เขียนมือ → kind ของข้อเสนอ (ชื่อไม่ตรงกันเฉพาะ schedule_task) */
@@ -139,6 +144,8 @@ export const HAND_ACTION_KIND: Readonly<Record<string, string>> = {
   restaurant_close_bill: "restaurant_close_bill",
   refund_booking_deposit: "booking_refund_deposit", // SEC S1.12 ▸ R-S1.12b booking.deposit.refund ของคนกด ◂
   send_customer_message: "chat.send", // SEC S1.12 ▸ R-K14 chat.message.send ของคนกดอนุมัติ · ระดับ chat ต้อง DRAFT (ค่าเริ่มต้น READ ⇒ ไม่ยื่น) ◂
+  hr_draft_roster: "hr_draft_roster", // HR H4.3 ▸ ร่างตารางกะ (คนกด = hr.employee.create + สาขาของทุกช่อง) ◂
+  hr_flag_pattern: "hr_flag_pattern", // HR H4.3 ▸ บันทึกข้อสังเกตส่วนตัว (คนกด = ผู้ดูข้อมูลบันทึก) ◂
 };
 
 /**
@@ -158,6 +165,13 @@ export const HAND_TOOL_MODULE: Readonly<Record<string, string>> = {
   ticket_event_sales: "ticket",
   approvals_pending: "approval",
   recent_leads: "crm",
+  // HR H4.3 ▸ เครื่องมือ HR ของผู้ช่วย (ระดับต่อระบบ hr: OFF = ไม่ยื่น · READ = อ่านเท่านั้น) ◂
+  hr_who_is_on_today: "hr",
+  hr_late_report: "hr",
+  hr_labor_percent: "hr",
+  hr_leave_balance: "hr",
+  hr_draft_roster: "hr",
+  hr_flag_pattern: "hr",
 };
 
 /**
