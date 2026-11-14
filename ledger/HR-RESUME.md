@@ -660,3 +660,11 @@
 - e ที่ต้องจด: member 36 ชุด (เฉลย member-expected.json ไม่ตรงร้านทดสอบในฐานเลน) · crm-c2.7 CHANNEL_INVALID (แดงบนหัว H2 เหมือนกัน) · เลน 1 migrate-status: HrFilingProfile.rdFormFlag default 1 ในฐาน vs 2 ใน schema (migration hr_filings ถูกแก้ในที่หลังเลน 1 ลงแล้ว — QC4 ตรง · ต้องเช็กก่อน H5.3 ว่า prod ยังไม่เคยลง)
 - HF-SSO fix2 (e314704ad) merged เข้า session/hr ในเครื่อง · ใบแก้ H4.9-FIX1 (ข้อ 1,2,5,RG-1) เลน 3 · HR-PREPROD-1 ผู้สร้าง a7878aeefb74368f3 เลน 4
 - ทรีเลน 1, 2 ค้าง detached ที่ a4e2fb4ae (สาขา wip เดิมไม่ถูกแตะ)
+
+### 2026-11-14T17:45Z · จุดต่อ (4 เลนทำงาน)
+- เลน 1 `/root/projects/shark-hr` (detached 72bf1db1b): นักล่า a90f9f6dd84939a75 ล่า HR-PREPROD-1 · ก่อนหน้านี้ล่าเรื่องการลาเจอ F1–F4 (โพรบ scratchpad/h53l/) → ใบ HR-LEAVE-3
+- เลน 2 `/root/projects/shark-hr-b` `wip/hr-leave-3` 0af86c805: ใบสั่ง + คำตัดสิน Q1–Q10 · ผู้เขียนข้อสอบ aceb1aa709a1b580c กำลังทำ
+- เลน 3 `/root/projects/shark-hr-l3` `wip/hr-h4.9-fix1` de5bc2252+: ผู้สร้าง ae1d5d0fe57a43ab8 ใส่ข้อยกเว้นข้อสอบเก่า (h4.3 S1.3 ตรึงวลีอังกฤษ · H49_ALLOW · priv-2 S4/S5) แล้วรันซ้ำ → เสร็จแล้ว merge ได้เลย
+- เลน 4 `/root/projects/shark-hr-l4` `wip/hr-preprod-1` 72bf1db1b: ผู้สร้าง a7878aeefb74368f3 เสร็จ (57/57) · ผู้ตรวจ a1b65619da02eb50b · ค้างตัดสิน h3.8 S1.13 ตรึง sha ใหม่ของ privacy.ts/self.ts (รอผู้ตรวจยืนยัน)
+- ลำดับ merge: H4.9-FIX1 → PREPROD-1 → LEAVE-3 (re-merge ก่อน) → ด่าน pm-full สุดท้าย → HANDOVER-H4 → นับ H4.9 = 41/44
+- รายการเจ้าของเพิ่ม: F5 ลาบางส่วนของวันปิดคิวจองทั้งวัน · หนี้เพิ่ม: ลาป่วยรายชั่วโมงเกินสิทธิ์ยังถูกปฏิเสธ · เลขขั้นอนุมัติไม่ต่อเนื่อง
