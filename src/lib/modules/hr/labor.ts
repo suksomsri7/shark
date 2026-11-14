@@ -640,11 +640,13 @@ async function monthPart(ctx: Ctx, g: Gate, view: View, periodKey: string, now: 
     const wds = capped(c, wds0, 50_000);
     const home = new Map(emps.map((e) => [e.id, e.unitId]));
     const excluded = new Set<string>();
-    const m2 = await money2WageOf(ctx, runs); // HR MONEY-2 ▸ R2: ค่าจ้างตามบัญชีต่อแถว (ก่อนหักคืน · ไม่รวมคืนเงิน) ◂
+    const m2 = await money2WageOf(ctx, c, runs); // HR MONEY-2 ▸ R2: ค่าจ้างตามบัญชีต่อแถว (ก่อนหักคืน · ไม่รวมคืนเงิน) ◂
     const m2Unit = await money2DayUnits(db, wds); // HR MONEY-2 ▸ R3: สาขาของวันทำงาน = สาขาของกะที่ตัดสินเทียบ (ไม่มี = HrWorkDay.unitId) ◂
+    const m2DaysOf = new Map<string, number[]>(); // HR MONEY-2 ▸ R3/F2: ดัชนีวันทำงาน (workMin > 0) ต่อพนักงาน — จัดกลุ่มครั้งเดียว ◂
+    wds.forEach((w, j) => { if (w.workMin > 0) { const g = m2DaysOf.get(w.employeeId); if (g) g.push(j); else m2DaysOf.set(w.employeeId, [j]); } }); // HR MONEY-2 ◂
     for (const id of ids) {
       const byUnit = new Map<string, number>();
-      wds.forEach((w, j) => { if (w.employeeId === id && w.workMin > 0) { const u = m2Unit[j] ?? UNASSIGNED; byUnit.set(u, (byUnit.get(u) ?? 0) + w.workMin); } }); // HR MONEY-2 ▸ R3 ◂
+      for (const j of m2DaysOf.get(id) ?? []) { const u = m2Unit[j] ?? UNASSIGNED; byUnit.set(u, (byUnit.get(u) ?? 0) + wds[j]!.workMin); } // HR MONEY-2 ▸ R3 ◂
       if (!byUnit.size) byUnit.set(home.get(id) ?? UNASSIGNED, 1);
       const keys = [...byUnit.keys()].sort(unitOrder);
       if (!keys.some((k) => inView(k === UNASSIGNED ? null : k))) continue;
@@ -751,18 +753,20 @@ type Money2Db = Awaited<ReturnType<typeof dbOf>>;
 type Money2Item = { employeeId: string; runId: string; grossSatang: number; ssoEmployeeSatang: number; ssoEmployerSatang: number; whtSatang: number; netSatang: number; addSatang: number; snapshotJson: unknown };
 const MONEY2_CHUNK = 5000;
 const money2Chunks = <T,>(xs: T[]): T[][] => Array.from({ length: Math.ceil(xs.length / MONEY2_CHUNK) }, (_, i) => xs.slice(i * MONEY2_CHUNK, (i + 1) * MONEY2_CHUNK));
-async function money2WageOf(ctx: Ctx, runs: { id: string; engineVersion: number }[]): Promise<(i: Money2Item) => number> {
+async function money2WageOf(ctx: Ctx, c: Capper, runs: { id: string; engineVersion: number }[]): Promise<(i: Money2Item) => number> {
   const engine = new Map(runs.map((r) => [r.id, r.engineVersion]));
-  const { bound: byRun, claims } = await payrollAccrualInputsOfRuns(ctx, runs.map((r) => r.id)); // ตัวอ่านของ payroll.ts (รายการที่ผูกรอบ + รายการหักของการคืนเงิน)
+  const { bound, claims, truncated } = await payrollAccrualInputsOfRuns(ctx, runs.map((r) => r.id)); // ตัวอ่านของ payroll.ts (รายการที่ผูกรอบ จัดกลุ่มต่อ รอบ|พนักงาน + รายการหักของการคืนเงิน)
+  if (truncated) c.hit = true;
   return (i) => {
+    const mine = bound.get(`${i.runId}|${i.employeeId}`) ?? []; // เฉพาะแถวของพนักงานคนนี้ในรอบนี้ (ไม่วนทั้งรอบต่อคน)
     const snap = obj(i.snapshotJson);
     if (Array.isArray(snap.lines)) {
-      const am = accrualAmountsV2([{ employeeId: i.employeeId, grossSatang: i.grossSatang, ssoEmployeeSatang: i.ssoEmployeeSatang, ssoEmployerSatang: i.ssoEmployerSatang, whtSatang: i.whtSatang, netSatang: i.netSatang, snapshotJson: i.snapshotJson }], byRun.get(i.runId) ?? [], claims);
+      const am = accrualAmountsV2([{ employeeId: i.employeeId, grossSatang: i.grossSatang, ssoEmployeeSatang: i.ssoEmployeeSatang, ssoEmployerSatang: i.ssoEmployerSatang, whtSatang: i.whtSatang, netSatang: i.netSatang, snapshotJson: i.snapshotJson }], mine, claims);
       return am.ok ? am.amounts.salaryExpenseSatang : i.grossSatang;
     }
     const base = snap.baseSalarySatang;
     if ((engine.get(i.runId) ?? 2) < 2 && typeof base === "number" && Number.isSafeInteger(base)) {
-      const att = (byRun.get(i.runId) ?? []).filter((b) => b.employeeId === i.employeeId && b.kind === "DEDUCTION" && (b.sourceType === "LATE_RULE" || b.sourceType === "ABSENT_RULE")).reduce((a, b) => a + b.amountSatang, 0);
+      const att = mine.filter((b) => b.kind === "DEDUCTION" && (b.sourceType === "LATE_RULE" || b.sourceType === "ABSENT_RULE")).reduce((a, b) => a + b.amountSatang, 0);
       return base + i.addSatang - att;
     }
     return i.grossSatang;

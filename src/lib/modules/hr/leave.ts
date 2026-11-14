@@ -1124,9 +1124,10 @@ export async function inboxSubjects(
 }
 // ◂ HR H2.11
 
-// HR MONEY-2 ▸ R5 (H5.2 m4): ใบลาที่มีผลต่อเงิน (ประเภทการลา paid === false) ที่วันลาตกในเดือนที่ระบบ HR นี้มีรอบเงินเดือน APPROVED/PAID แล้ว ⇒
+// HR MONEY-2 ▸ R5 (H5.2 m4) + R6 (re-hunt N1): ใบลาที่มีผลต่อเงิน (ประเภทการลา paid === false) ที่วันลาตกในเดือนที่ระบบ HR นี้มีรอบเงินเดือน APPROVED/PAID แล้ว ⇒
 //   อนุมัติ / ถอนอนุมัติ / ยกเลิก ไม่ได้ (กติกาเดียวกับคำขอแก้เวลา — correction.ts paidMonthsOf: ทุกรอบของระบบในเดือนนั้น ไม่ใช่รายคน) ·
-//   ใบลารับค่าจ้าง / ใบรุ่นเก่าที่ไม่มีประเภทการลา = เหมือนเดิม · ผู้เรียกถือล็อก hr-leave:<id> → พนักงานอยู่แล้ว · คืนข้อความคงที่ (null = ผ่าน)
+//   R6: + ถอน/ยกเลิกใบลารับค่าจ้างในเดือนนั้น · + ใบลาใดก็ได้บนวันที่ถูกหักสาย/ขาดในรอบที่อนุมัติแล้ว · ใบลารับค่าจ้างวันอื่น/เดือนที่ยังเปิด = เหมือนเดิม ·
+//   ผู้เรียกถือล็อก hr-leave:<id> → พนักงานอยู่แล้ว · คืนข้อความคงที่ (null = ผ่าน)
 const monthsOfRange = (from: string, to: string): string[] => {
   const out: string[] = [];
   let y = Number(from.slice(0, 4));
@@ -1141,12 +1142,32 @@ const monthsOfRange = (from: string, to: string): string[] => {
   }
   return out;
 };
-export async function leavePaidRunRefusalInTx(tx: Tx, ctx: Ctx, leaveId: string): Promise<string | null> {
-  const l = await tx.hrLeave.findFirst({ where: { id: leaveId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { fromDate: true, toDate: true, policy: { select: { paid: true } } } });
-  if (!l || !l.policy || l.policy.paid !== false) return null;
-  const months = monthsOfRange(dayOf(l.fromDate), dayOf(l.toDate));
+/**
+ * R5/R6 ข้อความปฏิเสธ (null = ผ่าน):
+ *   (a) ใบลาไม่รับค่าจ้าง (paid === false) — หรือ `revoke` (ถอน/ยกเลิกใบที่อนุมัติแล้ว) ของใบลาที่มีประเภทการลา — ในเดือนที่มีรอบ APPROVED/PAID ·
+ *   (b) ใบลาใดก็ได้ (รับ/ไม่รับค่าจ้าง · ใบรุ่นเก่า) ที่ครอบวันที่มีรายการหักสาย/ขาด (HrAttendanceDeduction.linesJson วันนั้น) ผูกอยู่กับรอบ APPROVED/PAID
+ */
+export async function leavePaidRunRefusalInTx(tx: Tx, ctx: Ctx, leaveId: string, opts: { revoke?: boolean } = {}): Promise<string | null> {
+  const l = await tx.hrLeave.findFirst({ where: { id: leaveId, tenantId: ctx.tenantId, systemId: ctx.systemId }, select: { employeeId: true, fromDate: true, toDate: true, policy: { select: { paid: true } } } });
+  if (!l) return null;
+  const from = dayOf(l.fromDate);
+  const to = dayOf(l.toDate);
+  const months = monthsOfRange(from, to);
   if (!months.length) return null;
-  const run = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: { in: months }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
-  return run ? CORRECTION_TEXT.paid : null;
+  if (l.policy && (l.policy.paid === false || opts.revoke === true)) {
+    const run = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, periodKey: { in: months }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
+    if (run) return CORRECTION_TEXT.paid;
+  }
+  const heads = await tx.hrAttendanceDeduction.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId: l.employeeId, workPeriodKey: { in: months }, kind: "DEDUCTION" }, select: { adjustmentId: true, linesJson: true }, take: 1000 });
+  const onDay = heads.filter((h) => (Array.isArray(h.linesJson) ? (h.linesJson as unknown[]) : []).some((x) => {
+    const ln = (x && typeof x === "object" ? x : {}) as { day?: unknown; amountSatang?: unknown };
+    return typeof ln.day === "string" && ln.day >= from && ln.day <= to && Number(ln.amountSatang) > 0;
+  }));
+  if (!onDay.length) return null;
+  const bound = await tx.hrPayAdjustment.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: onDay.map((h) => h.adjustmentId) }, runId: { not: null } }, select: { runId: true } });
+  const runIds = [...new Set(bound.map((b) => b.runId).filter((x): x is string => !!x))];
+  if (!runIds.length) return null;
+  const paidRun = await tx.hrPayrollRun.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, id: { in: runIds }, status: { in: ["APPROVED", "PAID"] } }, select: { id: true } });
+  return paidRun ? CORRECTION_TEXT.paid : null;
 }
 // ◂ HR MONEY-2
