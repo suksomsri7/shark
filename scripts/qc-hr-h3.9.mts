@@ -339,7 +339,7 @@ function runStatic(): void {
     // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised) S1.5: "HR MONEY-2" counts as a later-ticket mark like "HR-SET-<n>" ◂
     // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.3): laterMark also accepts "HR PRIV-<n>" (fix ticket after the H5.2 hunt) — an unmarked hunk still fails ◂
     const laterMark = (l: string) =>
-      /HF-SSO/.test(l) || /HR-SET-\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9");
+      /HF-SSO/.test(l) || /HR-SET-\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9"); // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.3) ◂
     const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some(laterMark));
     const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
     const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
@@ -1258,7 +1258,7 @@ async function runDb(): Promise<void> {
       //   both cells here are NOT names (position · nationality) ⇒ still refused; a name cell is now exported sanitised instead (ruling 6, pinned in qc-hr-priv-2 W4/W5) ◂
       formula: f.value?.ok === false && f.value?.code === "FORMULA" && f.text === T.formula.replace(": {names}", ""),
       page: page.ok,
-      encoding: g.value?.ok === false && g.value?.code === "ENCODING" && g.text === T.encoding.replace(": {names}", ""),
+      encoding: g.value?.ok === false && g.value?.code === "ENCODING" && g.text === T.encoding.replace(": {names}", ""), // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.2) ◂
     }, "guard", `${f.text} | ${g.text}`);
   }
   // ── S6 performance (system sP · 300 employees) ──

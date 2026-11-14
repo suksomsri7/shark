@@ -88,3 +88,8 @@ fitness + fitness-hr env/noenv: 0 findings · typecheck: deferred to step two (c
 
 ## R11 run (oracle b34ed9cc4, 46 checks)
 priv-2 forced 46/46 x3 · unforced 46/46 · RESIDUE none · h2.9 58/58 · h4.4 86/86 · h3.8 78/78 · hf-hr-privacy 194/194 · fitness + fitness-hr env/noenv 0 findings
+
+## Step two (merge da06cf366 · head after merge)
+seed 34/34 · law draft created 6/unchanged 4 · priv-2 forced 46/46 x4 (last after the h3.9 mark fix) · unforced 46/46 · money-2 57/57 · hf-sso 41/41 · hf-hr-privacy 194 · h0.2 58 · h0.6 55 · h1.1 81 · h1.2 73 · h1.3 63 · h2.4 68 · h2.9 58 · h2.10 57 · h2.11 70 · h3.2 64 · h3.4 85 · h3.4-ytd 44 · h3.5 53 · h3.6 62 · h3.7 68 · h3.8 78 · h3.9 60 · h4.2 57 · h4.3 45/45 (after h3.9 mark fix; first run 44/45 S1.6) · h4.4 86 · h4.5 90 · h4.6 69 · h4.8 48 · set-1 25 · qc-payroll 19 · payroll-reverse 14 · payadjust 27 · audit-trail 21 · hr-leave-booking 14 · fitness + fitness-hr env/noenv 0 findings
+typecheck clean 435 s exit 2: 2 errors only in scripts/qc-hr-priv-2.mts:260-261 (oracle author, TS7006)
+inventory rows: base 574 · PRIV-2 574 · MONEY-2 574 · merged 574
