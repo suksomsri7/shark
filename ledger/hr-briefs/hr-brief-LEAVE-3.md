@@ -68,3 +68,8 @@ Same functions: **`hr/service.ts decideLeave`** (P1: second paid-run gate around
 8. Merge order — **default: PREPROD-1 first, LEAVE-3 rebases.** Ruled, in flight, adjacent hunks.
 9. Contiguous step orders — **default: no (debt).** Form cannot make gaps.
 10. F5 — **default: owner list only.**
+
+## CONTROLLER RULINGS (14 Nov) — drafter defaults ACCEPTED for Q1–Q10
+- Q1 withdrawal goes through the composition root to `hr.cancelLeave`, one transaction · Q2 `expectedStep` optional, missing ⇒ current step (web actions and the AI tool must pass it) · Q3 OWNER override written as an AuditLog row · Q4 duplicate ids in bulk dropped silently · Q5 legacy cancelled chain that already had a decision ⇒ only OWNER may decide the leave directly · Q6 time corrections and shift swaps get the same withdrawal fix · Q7 other legacy multi-leave days keep LEAVE_MISMATCH · Q8 PREPROD-1 merges first, LEAVE-3 re-merges · Q9 non-contiguous step numbers = debt · Q10 F5 owner list only.
+- Shared approval module: single-step chains must behave byte-identically (GREEN control required in the oracle).
+- Acceptances in older oracles: explicit allowlist style only. Oracle size cap 64 KB, coverage never dropped for size.
