@@ -1,7 +1,7 @@
 // QC — HR V2 · fix ticket HR-PREPROD-1 (six pre-prod debts) · brief ledger/hr-briefs/hr-brief-PREPROD-1.md · notes ledger/wo-notes/hr-PREPROD-1-oracle.md
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-preprod-1.mts  (--list)
-// Registry re-based to e8e3b24f4: every check GREEN there · V1–V9 review checks live in scripts/qc-hr-preprod-1b.mts (same lib)
+// Registry re-based to d048c9d48: every check GREEN there · V1–V9 review checks live in scripts/qc-hr-preprod-1b.mts (same lib)
 // Own tenants qc-hr-pp1-* (3 per run) · 2031 dates · own ACTIVE law rows removed in finally · money = integer satang, literals derived in the notes ·
 //   base = QC_PP1_BASE || merge-base(HEAD, session/hr) · diff statics are n/a once the base already carries `HR PREPROD-1` (in-base guard)
 import { execFileSync } from "node:child_process";

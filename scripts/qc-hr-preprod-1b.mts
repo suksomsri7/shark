@@ -1,7 +1,7 @@
 // QC — HR V2 · fix ticket HR-PREPROD-1 · review round (controller rulings V1–V9, brief "CONTROLLER RULINGS (review)") · second suite file, shares qc-hr-preprod-1-lib.mts
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-preprod-1b.mts  (--list)
-// Registry base = e8e3b24f4 (RED there: V7.1 no-profile reply ok · V7.4 closed-period refusal masked as ok); V1b · V8c checks live in scripts/qc-hr-preprod-1c.mts · own tenants qc-hr-pp1-*-{a,b} · 2031 dates · money = integer satang ·
+// Registry base = d048c9d48 (all GREEN there); V1b · V8c checks live in scripts/qc-hr-preprod-1c.mts · own tenants qc-hr-pp1-*-{a,b} · 2031 dates · money = integer satang ·
 //   numbers: base 3,000,000 st, N = 480 ⇒ 100,000 st per unpaid day, 10,000 st per unpaid tenth of a day (notes §review)
 import { type Any, type Base, short, errText, failedKeys, canon, isThai, makeRegistry } from "./qc-hr-lib.mjs";
 import { setupPP1, nextScope, bk, dd, nowOf } from "./qc-hr-preprod-1-lib.mjs";
@@ -23,8 +23,8 @@ V5.2|V5|M|G|malformed USE note ⇒ fully paid: no split · no split fields · no
 V5.3|V5|M|G|half-day AM with 0.0 left ⇒ USE 0.0 · unpaid:0.5;from:2031-03-19 · −50,000
 V5.4|V5|M|G|approving a split leave outdates the month's work entries · rebuilt current · split note change outdates them again
 V5.5|V5|M|G|payroll page: REFUND_BEHIND row of a u2 employee hidden from the [u1] viewer · shown to owner · in-scope row shown
-V7.1|V7b|C|R|(V7b) OT 1 h filed by [u1] viewer for borrowed home-u2 employees: success reply without amount, byte-identical for 45,600 ฿ · 91,200 ฿ · no salary profile ⇒ NON-success fixed Thai text (no digits, ≠ success) · nothing written
-V7.4|V7b|M|R|(V7b) pay-neutral refusal passes through: OT into a period with an APPROVED run — [u1] viewer's reply = all-branch viewer's reply, not ok, nothing written
+V7.1|V7b|C|G|(V7b) OT 1 h filed by [u1] viewer for borrowed home-u2 employees: success reply without amount, byte-identical for 45,600 ฿ · 91,200 ฿ · no salary profile ⇒ NON-success fixed Thai text (no digits, ≠ success) · nothing written
+V7.4|V7b|M|G|(V7b) pay-neutral refusal passes through: OT into a period with an APPROVED run — [u1] viewer's reply = all-branch viewer's reply, not ok, nothing written
 V7.2|V7|M|G|the requester's adjustment list (pay scope [u1]) and payroll page show none of those rows / amounts
 V7.3|V7|M|G|control: in-scope employee reply "ยื่นแล้ว 187.5 บาท — รออนุมัติ" · all-branch viewer still gets 285 บาท for the borrowed employee
 V8.1|V8|C|G|(V8b) January sick leave (28.0) revoked ⇒ March 2/3 re-split: original USE −2.0 kept · appended USE −3.0 'resplit;unpaid:0.0' · split 5/0 · Σ 25.0 · no UNPAID_LEAVE in the March v2 run

@@ -1,7 +1,7 @@
 // QC — HR V2 · fix ticket HR-PREPROD-1 · delta review (rulings V1b · V8c + year-job carry trigger) · third suite file, shares qc-hr-preprod-1-lib.mts
 // ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-preprod-1c.mts  (--list)
-// Registry base = e8e3b24f4 · own tenants qc-hr-pp1-*-{c,d} · base 3,000,000 st, N 480 ⇒ 100,000 st per unpaid day, 10,000 per unpaid tenth
+// Registry base = d048c9d48 (RED there: V8d.1–V8d.3) · own tenants qc-hr-pp1-*-{c,d} · base 3,000,000 st, N 480 ⇒ 100,000 st per unpaid day, 10,000 per unpaid tenth
 import { type Any, type Base, short, errText, failedKeys, canon, makeRegistry } from "./qc-hr-lib.mjs";
 import { setupPP1, bk, dd } from "./qc-hr-preprod-1-lib.mjs";
 
@@ -11,13 +11,19 @@ const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
 const SEV: Record<string, "CRITICAL" | "MAJOR" | "MINOR"> = { C: "CRITICAL", M: "MAJOR", m: "MINOR" };
 const CHECKS = `
 Z0|house|C|G|own law rows: none before · 3 inserted
-V1b.1|V1b|C|R|10–14 Mar paid 2.0 / unpaid 3.0, then 13 Mar becomes a holiday (roster removed) ⇒ counted 10,11,12,14 · UNPAID_LEAVE 12 + 14 = −200,000 · split 2 / 2 from 12 Mar (reader + DTO) · ledger untouched
-V1b.2|V1b|C|R|27.3 used, 10–14 Mar paid 2.7 / unpaid 2.3, roster of 13 Mar removed ⇒ 12 Mar 0.3 unpaid (−30,000) + 14 Mar (−100,000) = −130,000 · split 2.7 / 1.3 · ledger untouched
-V1b.3|V1b|C|R|day off 12 Mar inside 10–14 Mar (4.0 counted, paid 2 / unpaid 2) becomes a working day ⇒ paid stays Σ USE 2.0 (10, 11) · unpaid 12–14 = −300,000 · split 2 / 3 · ledger untouched
-V8c.1|V8c|C|R|v2 run reversed (no-book path): March approved −300,000 · January revoked (March skipped) · reverse ⇒ appended USE −3.0 'resplit;unpaid:0.0' · Σ 25.0 · re-run no UNPAID_LEAVE
-V8c.2|V8c|C|R|leave 27 Feb–3 Mar spanning APPROVED Feb: January revoked ⇒ untouched (control) · Feb run reversed ⇒ appended −3.0 'resplit;unpaid:0.0' · Σ 25.0
-V8c.3|V8c|C|R|engine v1 run with JV reversed (reverseRun path) ⇒ March leave re-split (appended −3.0 'resplit;unpaid:0.0') · Σ 25.0
+V1b.1|V1b|C|G|10–14 Mar paid 2.0 / unpaid 3.0, then 13 Mar becomes a holiday (roster removed) ⇒ counted 10,11,12,14 · UNPAID_LEAVE 12 + 14 = −200,000 · split 2 / 2 from 12 Mar (reader + DTO) · ledger untouched
+V1b.2|V1b|C|G|27.3 used, 10–14 Mar paid 2.7 / unpaid 2.3, roster of 13 Mar removed ⇒ 12 Mar 0.3 unpaid (−30,000) + 14 Mar (−100,000) = −130,000 · split 2.7 / 1.3 · ledger untouched
+V1b.3|V1b|C|G|day off 12 Mar inside 10–14 Mar (4.0 counted, paid 2 / unpaid 2) becomes a working day ⇒ paid stays Σ USE 2.0 (10, 11) · unpaid 12–14 = −300,000 · split 2 / 3 · ledger untouched
+V8c.1|V8c|C|G|v2 run reversed (no-book path): March approved −300,000 · January revoked (March skipped) · reverse ⇒ appended USE −3.0 'resplit;unpaid:0.0' · Σ 25.0 · re-run no UNPAID_LEAVE
+V8c.2|V8c|C|G|leave 27 Feb–3 Mar spanning APPROVED Feb: January revoked ⇒ untouched (control) · Feb run reversed ⇒ appended −3.0 'resplit;unpaid:0.0' · Σ 25.0
+V8c.3|V8c|C|G|engine v1 run with JV reversed (reverseRun path) ⇒ March leave re-split (appended −3.0 'resplit;unpaid:0.0') · Σ 25.0
 V8c.4|V8c|M|G|year job writes carry +5.0 into 2031 ⇒ March 0/5 leave re-split (appended −5.0 'resplit;unpaid:0.0') · Σ 2031 0.0
+V8c.5|V8c|C|G|v2 booked run reversed (H3.7 book path) ⇒ March leave re-split (appended −3.0 'resplit;unpaid:0.0') · Σ 25.0 · re-run no UNPAID_LEAVE
+V1b.4|V1b|m|G|(accepted, debt) surplus: fully paid 10–14 Mar (USE −5.0), 13 Mar becomes a holiday ⇒ all remaining days paid · unpaid 0 · no UNPAID_LEAVE · ledger unchanged
+V8d.1|V8d|C|R|missed re-split (employee not in the reversed run) ⇒ creating the March v2 draft re-splits first (appended −3.0 'resplit;unpaid:0.0') · draft has no UNPAID_LEAVE for that employee
+V8d.2|V8d|C|R|same through recompute of an existing draft
+V8d.3|V8d|M|R|idempotent: second recompute and delete + re-create append no ledger row · still no UNPAID_LEAVE
+V8d.4|V8d|M|G|a leave with a day in APPROVED Feb stays untouched by the March draft (single USE row) · draft deducts Mar 1–3 = −300,000
 Z1|house|C|G|no residue
 Z2|house|M|G|no deadlock
 `.trim().split("\n").map((l) => {
@@ -100,22 +106,25 @@ try {
   await section("V1b", async () => {
     const sA = await KC.sys("วันหยุดในใบลา-A"), pA = await L.pol(sA), shA = await KC.shift(sA);
     const sB = await KC.sys("นับวันใหม่-B"), pB = await L.pol(sB), shB = await KC.shift(sB);
+    const A2 = await KC.emp(sA, "WA2");
     const A = await KC.emp(sA, "WA"), [B, C] = [await KC.emp(sB, "WB"), await KC.emp(sB, "WC")];
     await L.used(sA, A, pA, "28.0");
     await L.txn(sB, B, pB, "GRANT", "30.0", 2031, "2031-01-01", `grant:${B}:${pB}:2031`);
     for (const [from, to, d] of [["2031-01-02", "2031-01-31", "27.0"], ["2031-02-03", "2031-02-03", "0.3"]] as const) { const l = await L.leaveRow(sB, B, from, to, pB, d); await L.txn(sB, B, pB, "USE", `-${d}`, 2031, from, `use:${l}`, l); }
     await L.used(sB, C, pB, "28.0");
     await L.roster(sA, shA, A, MAR);
+    await L.roster(sA, shA, A2, MAR);
     await L.roster(sB, shB, B, MAR);
     await L.roster(sB, shB, C, ["2031-03-10", "2031-03-11", "2031-03-13", "2031-03-14"]); // 12 Mar = day off in a rostered week
     const [a, b, cc] = [await L.reqDec(sA, A, MAR[0]!, MAR[4]!, pA), await L.reqDec(sB, B, MAR[0]!, MAR[4]!, pB), await L.reqDec(sB, C, MAR[0]!, MAR[4]!, pB)];
+    const a2 = await L.reqDec(sA, A2, MAR[0]!, MAR[4]!, pA);
     const u0 = [await L.uses(a.id), await L.uses(b.id), await L.uses(cc.id)];
     const setup = [a, b, cc].every((x) => x.d?.ok === true) && canon(u0) === canon([["-2|unpaid:3.0;from:2031-03-12"], ["-2.7|unpaid:2.3;from:2031-03-12"], ["-2|unpaid:2.0;from:2031-03-13"]]);
     if (!setup) console.log(`  ⚠ setup V1b: ${short({ u0, d: [a, b, cc].map((x) => x.d?.reason ?? x.d?.ok) }, 300)}`);
     const [gA, gB] = [await L.ledger(sA), await L.ledger(sB)];
     // after approval: 13 Mar holiday + roster removed (A) · roster of 13 removed (B) · roster added on 12 (C) — then judge
     await P.hrHoliday.create({ data: { tenantId: KC.TT, systemId: sA, unitId: null, date: dd("2031-03-13"), name: `วันหยุด qc ${tag}`, kind: "SHOP" } });
-    await P.hrRosterEntry.deleteMany({ where: { employeeId: { in: [A, B] }, date: dd("2031-03-13") } });
+    await P.hrRosterEntry.deleteMany({ where: { employeeId: { in: [A, A2, B] }, date: dd("2031-03-13") } });
     await L.roster(sB, shB, C, ["2031-03-12"]);
     await L.judge();
     const [mA, mB] = [await KC.create(sA, "2031-03"), await KC.create(sB, "2031-03")];
@@ -125,6 +134,10 @@ try {
     {
       const x = await look(sA, a.id, A, mA);
       ck("V1b.1", { setup, run: mA?.ok === true, lines: canon(x.up) === canon(["UNPAID_LEAVE:-100000@2031-03-12", "UNPAID_LEAVE:-100000@2031-03-14"]) && tot(x.up) === -200_000, split: sp(x, 2, 2), ledger: (await L.ledger(sA)) === gA }, "−200,000 · 2 / 2", short(x, 260));
+    }
+    {
+      const x = await look(sA, a2.id, A2, mA), us = await L.uses(a2.id);
+      ck("V1b.4", { setup: a2.d?.ok === true, run: mA?.ok === true, unpaid: (!x.sp || num(x.sp.unpaidDays) === 0) && !(num(x.it?.unpaidDays) > 0), lines: x.up.length === 0, ledger: canon(us) === canon(["-5|null"]) && (await L.ledger(sA)) === gA }, "all paid · ledger same", short({ x, us }, 220));
     }
     const gB1 = await L.ledger(sB);
     {
@@ -138,8 +151,10 @@ try {
   });
 
   // ── V8c: run reversal re-splits the period's split sick leaves ──
-  const reversal = async (K: Any, LL: Any, v1: boolean, label: string) => {
+  const reversal = async (K: Any, LL: Any, v1: boolean, label: string, book?: string) => {
     const s = await K.sys(label, !v1), p = await LL.pol(s), sh = await K.shift(s), E = await K.emp(s, "R8");
+    const bk2 = book ? await safe(() => S.PAY.setPayrollBook(K.c(s), K.V.owner, { accountSystemId: book })) : null;
+    if (book && bk2?.ok !== true) console.log(`  ⚠ book: ${short(bk2, 160)}`);
     const j = await LL.used(s, E, p, "28.0");
     await LL.roster(s, sh, E, MAR);
     const m = await LL.reqDec(s, E, MAR[0]!, MAR[4]!, p);
@@ -173,9 +188,11 @@ try {
         "untouched → re-split", short({ u0, rr: rr?.note ?? rr, after }, 220));
     }
     {
-      await KD.book("D");
+      const bookD = await KD.book("D");
       const r = await reversal(KD, kitL(KD), true, "กลับรอบรุ่นหนึ่ง-V8c3");
       ck("V8c.3", { setup: r.setup, skipped: r.skipped, reversed: r.reversed, resplit: r.resplit, sum: r.sum }, "re-split on v1 reverse", r.info);
+      const r5 = await reversal(KD, kitL(KD), false, "กลับรอบมีสมุด-V8c5", bookD);
+      ck("V8c.5", { setup: r5.setup, skipped: r5.skipped, reversed: r5.reversed, resplit: r5.resplit, sum: r5.sum, rerun: r5.rerun }, "re-split on booked reverse", r5.info);
     }
     { // year job carry: 2030 leftover 5.0 (carry max 5) · 2031 Σ 0 · March 0/5
       const s = await KC.sys("ยกวันลา-V8c4"), p = await L.pol(s, 5), E = await KC.emp(s, "YC");
@@ -191,6 +208,47 @@ try {
       ck("V8c.4", { setup: m.d?.ok === true && canon(u0) === canon(["0|unpaid:5.0;from:2031-03-10"]), carry: num(carry?.d) === 5, resplit: canon(after) === canon(["0|unpaid:5.0;from:2031-03-10", "-5|resplit;unpaid:0.0"]), sum: (await L.sum(E, p)) === 0 },
         "carry ⇒ re-split", short({ job, carry, u0, after }, 220));
     }
+  });
+  // ── V8d: draft create / recompute re-splits first (retry of a missed V8c) ──
+  await section("V8d", async () => {
+    const s = await KC.sys("ร่างแบ่งใหม่-V8d"), c = KC.c(s), p = await L.pol(s), sh = await KC.shift(s);
+    const [E, F, G] = [await KC.emp(s, "DE"), await KC.emp(s, "DF"), await KC.emp(s, "DG")];
+    await P.hrSalaryProfile.deleteMany({ where: { employeeId: { in: [E, F] } } }); // E, F are not in the March run that gets reversed
+    const prof = (e: string) => P.hrSalaryProfile.create({ data: { tenantId: KC.TT, systemId: s, employeeId: e, baseSalarySatang: 3_000_000, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+    const [jE, jF] = [await L.used(s, E, p, "28.0"), await L.used(s, F, p, "28.0")];
+    for (const e of [E, F]) await L.roster(s, sh, e, MAR);
+    const [mE, mF] = [await L.reqDec(s, E, MAR[0]!, MAR[4]!, p), await L.reqDec(s, F, MAR[0]!, MAR[4]!, p)];
+    await L.judge();
+    const run = await KC.create(s, "2031-03");
+    const ra = run?.id ? await KC.approve(s, run.id) : run;
+    const [rvE, rvF] = [await L.dec(s, jE, "REJECTED", "APPROVED"), await L.dec(s, jF, "REJECTED", "APPROVED")];
+    const rr = run?.id ? await KC.reverse(s, run.id) : run;
+    const ONE = canon(["-2|unpaid:3.0;from:2031-03-12"]), TWO = canon(["-2|unpaid:3.0;from:2031-03-12", "-3|resplit;unpaid:0.0"]);
+    const missed = canon(await L.uses(mE.id)) === ONE && canon(await L.uses(mF.id)) === ONE;
+    const setup = mE.d?.ok === true && mF.d?.ok === true && ra?.ok === true && rvE?.ok === true && rvF?.ok === true && rr?.ok === true && missed;
+    if (!setup) console.log(`  ⚠ setup V8d: ${short({ run: run?.reason ?? run?.id, ra, rvE, rvF, rr: rr?.note ?? rr, e: await L.uses(mE.id) }, 300)}`);
+    await prof(E);
+    const d1 = await KC.create(s, "2031-03");
+    ck("V8d.1", { setup, draft: d1?.ok === true, resplit: canon(await L.uses(mE.id)) === TWO, lines: d1?.ok === true && (await L.unpaid(d1.id, E)).length === 0, sum: (await L.sum(E, p)) === 25 }, "create re-splits", short({ d1: d1?.reason ?? d1?.ok, u: await L.uses(mE.id), up: await L.unpaid(d1?.id, E) }, 240));
+    await prof(F);
+    const rc = (id: string) => safe(() => S.PAY.recomputeDraftRun(c, id, { userId: KC.U.pay1.id, isOwner: false }, { viewer: KC.V.pay1, now: bk("2031-04-03") }));
+    const r1 = d1?.id ? await rc(d1.id) : d1;
+    ck("V8d.2", { setup, recompute: r1?.ok === true, resplit: canon(await L.uses(mF.id)) === TWO, lines: !!d1?.id && (await L.unpaid(d1.id, F)).length === 0 }, "recompute re-splits", short({ r1: r1?.reason ?? r1?.ok, u: await L.uses(mF.id), up: await L.unpaid(d1?.id, F) }, 240));
+    const n0 = (await L.ledger(s)).length, g0 = await L.ledger(s);
+    const r2 = d1?.id ? await rc(d1.id) : d1;
+    const del = d1?.id ? await safe(() => S.PAY.deleteDraftRun(c, d1.id, KC.ownA)) : d1;
+    const d2 = await KC.create(s, "2031-03");
+    ck("V8d.3", { setup, ran: r2?.ok === true && del?.ok === true && d2?.ok === true, same: (await L.ledger(s)) === g0, lines: d2?.ok === true && (await L.unpaid(d2.id, E)).length === 0 && (await L.unpaid(d2.id, F)).length === 0 }, "no new rows", short({ n0, r2: r2?.reason ?? r2?.ok, del, d2: d2?.reason ?? d2?.ok }, 200));
+    // (d) leave with a day in APPROVED Feb
+    const sd = await KC.sys("ร่างข้ามเดือนปิด-V8d"), pd = await L.pol(sd), H = await KC.emp(sd, "DH");
+    const jH = await L.used(sd, H, pd, "28.0");
+    const feb = await KC.create(sd, "2031-02");
+    const fa = feb?.id ? await KC.approve(sd, feb.id) : feb;
+    const mH = await L.reqDec(sd, H, "2031-02-27", "2031-03-03", pd);
+    const rvH = await L.dec(sd, jH, "REJECTED", "APPROVED");
+    const dH = await KC.create(sd, "2031-03");
+    const upH = await L.unpaid(dH?.id, H);
+    ck("V8d.4", { setup: fa?.ok === true && mH.d?.ok === true && rvH?.ok === true, draft: dH?.ok === true, untouched: canon(await L.uses(mH.id)) === canon(["-2|unpaid:3.0;from:2031-03-01"]), lines: tot(upH) === -300_000 }, "untouched · −300,000", short({ dH: dH?.reason ?? dH?.ok, u: await L.uses(mH.id), upH }, 220));
   });
 } catch (e) {
   crashed ||= errText(e);
