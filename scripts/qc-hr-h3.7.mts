@@ -224,12 +224,14 @@ function runStatic(): void {
   const gb = BASE ? fileAt(BASE, F.gl) : null;
   const gn = rd(F.gl);
   const mpB = fnBody(pb, "markPaid");
-  const apB = stripMarked(between(pb, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน"));
+  // ORACLE-EDIT (HR HF-SSO · controller): the one exact HF-SSO line is dropped from BOTH sides (base may already carry it once HF-SSO is in session/hr) — every other line stays frozen ◂
+  const apB0 = stripMarked(between(pb, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน")).split("\n");
   // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.7: the one marked "HR HF-SSO" line of v1 approveRun (RECOMPUTE → fixed note · ruling Q3) is a later ticket's hunk ◂
   //   (review MINOR) exactly ONE byte-exact line is dropped — any other HF-SSO-marked line still counts as a change to the frozen block ◂
   const HF_SSO_LINE = '    if (claimed.code === "RECOMPUTE") return { ok: false, note: APPROVE_RECOMPUTE, code: "RECOMPUTE" }; // HR HF-SSO ◂';
   const apN0 = stripMarked(between(pn, "export async function approveRun(", "\n// ── กลับรายการเงินเดือน")).split("\n");
   const apN = (apN0.filter((l) => l === HF_SSO_LINE).length === 1 ? apN0.filter((l) => l !== HF_SSO_LINE) : apN0).join("\n");
+  const apB = (apB0.filter((l) => l === HF_SSO_LINE).length === 1 ? apB0.filter((l) => l !== HF_SSO_LINE) : apB0).join("\n"); // ORACLE-EDIT (HR HF-SSO · controller) ◂
   const frozen = ["postPayrollJV", "reverseEntry", "reverseFor", "commitEntry", "resolveLine", "ensureAccounting", "postManualJV"].filter((n) => !fnBody(gb, n) || fnBody(gb, n) !== fnBody(gn, n));
   // ORACLE-EDIT (H3.7 fix r1 F8): v1 approveRun may carry exactly ONE marked line, byte-exact (the posting-key shadow of postPayrollJV — Q2)
   const V1_LINE = "    const postPayrollJV = (c: { tenantId: string; systemId: string }, i: Parameters<typeof postPayrollV1KeyedJV>[2]) => postPayrollV1KeyedJV(c, runId, i); // HR H3.7 ▸ Q2: JV รุ่น 1 มีคีย์กันซ้ำ (refId = รอบ) — ผูกไม่สำเร็จแล้วกดใหม่ = ผูกรายการเดิม ไม่ลงซ้ำ (ปิด JV กำพร้า) ◂";
