@@ -102,10 +102,11 @@ export async function HrTeamOverviewSection({ systemId, overview, preview, repor
   const left = [boardCard, labor].filter(Boolean) as ReactNode[];
   const right = [inboxCard, monthCard].filter(Boolean) as ReactNode[];
   const two = left.length > 0 && right.length > 0;
-  const cells = Array.from({ length: Math.max(left.length, right.length) }).flatMap((_, i) => [
-    left[i] ? { key: `l${i}`, node: left[i], at: two ? COL_AT[`1-${i + 1}`] : "" } : null,
-    right[i] ? { key: `r${i}`, node: right[i], at: two ? COL_AT[`2-${i + 1}`] : "" } : null,
-  ]).filter((c): c is { key: string; node: ReactNode; at: string } => !!c);
+  const cells: { key: string; node: ReactNode; at: string }[] = [];
+  for (let i = 0; i < Math.max(left.length, right.length); i++) {
+    if (left[i]) cells.push({ key: `l${i}`, node: left[i], at: two ? (COL_AT[`1-${i + 1}`] ?? "") : "" });
+    if (right[i]) cells.push({ key: `r${i}`, node: right[i], at: two ? (COL_AT[`2-${i + 1}`] ?? "") : "" });
+  }
   const kpiSub = (xs: string[]) => xs.filter(Boolean).join(" · ");
   return (
     <section data-testid="hr-overview" className="flex flex-col gap-4">
