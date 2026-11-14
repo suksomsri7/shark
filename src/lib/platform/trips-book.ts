@@ -533,8 +533,12 @@ function mapService(r: SellFailLike): BookFail {
  */
 function chooseSlot(tenantId: string, day: BookDaySlot[], token: string | null): { slot: BookDaySlot; token: string | null } | null {
   if (!day.length) return null;
-  const tokens = day.map((s) => bookSlotToken(tenantId, s.departureId));
-  const byToken = token === null ? -1 : tokens.findIndex((t) => t === token);
+  // มติ Y3: รอบที่ลูกค้าแยกจากกันไม่ได้ (เวลาออก · ช่วงเวลา · ชื่อตัวเลือก ซ้ำกันในวันเดียว) ไม่มีตัวอ้าง — กติกาเดียวกับหน้าสินค้า (slotTokensOfDay)
+  const keyOf = (s: BookDaySlot): string => JSON.stringify([Date.parse(s.startsAt), s.timeText, s.optionName.text, s.optionName.fallback]);
+  const seen = new Map<string, number>();
+  for (const s of day) seen.set(keyOf(s), (seen.get(keyOf(s)) ?? 0) + 1);
+  const tokens = day.map((s) => ((seen.get(keyOf(s)) ?? 0) > 1 ? null : bookSlotToken(tenantId, s.departureId)));
+  const byToken = token === null ? -1 : tokens.findIndex((t) => t !== null && t === token);
   const sellable = day.findIndex((s) => s.saleBlock === null && s.publicLeft > 0);
   const i = byToken >= 0 ? byToken : sellable >= 0 ? sellable : 0;
   const slot = day[i];
