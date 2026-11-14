@@ -19,12 +19,25 @@ export const BOOK_FORM_MAX_SEC = 7200;
 export const BOOK_PAY_MARGIN_SEC = 180;
 /** เหลือเวลาถือน้อยกว่านี้ ⇒ หน้ายืนยัน/ยืนยันตอบ HOLD_EXPIRED + ถือใหม่ โดยไม่เรียกบริการ (มติ W1: ระยะ "อย่าโอน" + 2 นาทีให้กรอก/โอน) */
 export const BOOK_HOLD_USABLE_SEC = BOOK_PAY_MARGIN_SEC + 120;
+/**
+ * เวลาถือของช่องทาง WEB (trips.sell.holdMinutes · วินาที) ต่ำกว่านี้ ⇒ ไม่ให้ถือตั้งแต่ต้น (มติ Y1: < 10 นาที)
+ * = ระยะที่ใช้ยืนยันไม่ได้ (BOOK_HOLD_USABLE_SEC) + 5 นาทีให้กรอกผู้จอง
+ */
+export const BOOK_HOLD_MIN_SEC = BOOK_HOLD_USABLE_SEC + 300;
+/** เวลาถือ (นาที · จากค่าตั้ง) สั้นเกินกว่าจะกรอก/ยืนยัน/โอนทัน (มติ Y1) — ค่าที่ไม่ใช่จำนวนเต็มบวก ⇒ true (ปิดเมื่อพัง) */
+export function bookHoldTooShort(holdMinutes: unknown): boolean {
+  return typeof holdMinutes !== "number" || !Number.isSafeInteger(holdMinutes) || holdMinutes <= 0 || holdMinutes * 60 < BOOK_HOLD_MIN_SEC;
+}
+/** นาทีที่ลูกค้ากรอกและยืนยันได้จริงหลังถือ = เวลาถือ − BOOK_HOLD_USABLE_SEC (ปัดลง · มติ Y1 — ข้อความ "ระบบจะถือที่ให้ N นาที") */
+export function bookFillMinutes(holdMinutes: number): number {
+  return Math.max(0, Math.floor((holdMinutes * 60 - BOOK_HOLD_USABLE_SEC) / 60));
+}
 /** ถือรอบเดียวกันได้กี่ครั้งต่อเครื่องต่อชั่วโมง — นับเฉพาะตะกร้าใหม่ (มติ R7 · แก้โดยมติ W2: 3 ครั้ง) */
 export const BOOK_SLOT_HOLD_PER_HOUR = 3;
 /** ยืนยันการจองได้กี่ครั้งต่อเครื่องต่อชั่วโมง (มติ R10) */
 export const BOOK_CONFIRM_PER_HOUR = 20;
 /** รุ่นของข้อความเงื่อนไข/ความเป็นส่วนตัวที่ลูกค้าติ๊กยอมรับ (มติ R14) — เปลี่ยนข้อความใน book.json ⇒ เปลี่ยนค่านี้ */
-export const BOOK_TERMS_VERSION = "2026-11-14.2";
+export const BOOK_TERMS_VERSION = "2026-11-14.3";
 
 export const BOOK_ERROR_CODES = [
   "NOT_FOUND",
@@ -308,13 +321,13 @@ export function bookerEmailOf(v: unknown): string | null {
 const enc = encodeURIComponent;
 const SELECT_ORDER = ["lang", "m", "d", "t"] as const;
 /** หน้าสินค้าพร้อมการเลือก (ปุ่ม "ถือใหม่" · กลับไปแก้เมื่อถือไม่สำเร็จ) — query จาก platform (ค่าที่ตรวจรูปแล้ว) + รหัสผิดพลาด */
-export function bookSelectHref(shopSlug: string, back: { productSlug: string; query: Record<string, string> }, e?: BookErrorCode | null): string {
+export function bookSelectHref(shopSlug: string, back: { productSlug: string; query: Record<string, string> }, e?: BookErrorCode | typeof BOOK_HOLD_LIMITED | null): string {
   const parts: string[] = [];
   const q = isRec(back.query) ? back.query : {};
   for (const k of SELECT_ORDER) if (typeof q[k] === "string" && q[k] !== "") parts.push(`${k}=${enc(q[k])}`);
   for (const k of Object.keys(q).filter((x) => x.startsWith("n.") || x.startsWith("x.")).sort(byStr)) parts.push(`${enc(k)}=${enc(q[k] ?? "")}`);
   if (typeof q.z === "string" && q.z !== "") parts.push(`z=${enc(q.z)}`);
-  if (e && isBookErrorCode(e)) parts.push(`e=${e}`);
+  if (e && (isBookErrorCode(e) || e === BOOK_HOLD_LIMITED)) parts.push(`e=${e}`);
   const path = `/book/${enc(shopSlug)}/t/${enc(back.productSlug)}`;
   return parts.length ? `${path}?${parts.join("&")}` : path;
 }
@@ -342,11 +355,17 @@ export function bookRedirectOk(v: { shopSlug?: unknown; basketToken?: unknown; s
   if ("token" in v && !okStr(v.token, BOOK_RES_TOKEN_RE, 43)) return false;
   return true;
 }
-/** รหัสผิดพลาด/ช่องจากพารามิเตอร์ของหน้า (`e` `f`) — เฉพาะค่าที่อยู่ในรายการ (ไม่สะท้อนค่าอื่น) */
-export function bookErrorParam(sp: unknown): { code: BookErrorCode; fields: BookFormField[] } | null {
+/**
+ * ค่า `e` ของหน้าสินค้าเมื่อถังถือ/ถังต่อรอบของเครื่องนี้เต็มจริง (มติ Y5) — แยกจาก `RATE_LIMITED` (ถังอ่านเต็ม/ด่านล่ม ⇒ ข้อความกลาง)
+ * อยู่ในรายการอนุญาตของ bookErrorParam (ไม่สะท้อนค่าอื่น)
+ */
+export const BOOK_HOLD_LIMITED = "HOLD_LIMITED";
+/** รหัสผิดพลาด/ช่องจากพารามิเตอร์ของหน้า (`e` `f`) — เฉพาะค่าที่อยู่ในรายการ (ไม่สะท้อนค่าอื่น) · `e=HOLD_LIMITED` ⇒ RATE_LIMITED + holdLimited */
+export function bookErrorParam(sp: unknown): { code: BookErrorCode; fields: BookFormField[]; holdLimited?: true } | null {
   try {
     if (!isRec(sp)) return null;
     const e = sp.e;
+    if (e === BOOK_HOLD_LIMITED) return { code: "RATE_LIMITED", fields: [], holdLimited: true };
     if (!isBookErrorCode(e)) return null;
     const f = typeof sp.f === "string" && sp.f.length <= 80 ? sp.f.split(",").filter(isBookFormField) : [];
     return { code: e, fields: f };
@@ -379,6 +398,8 @@ export type BookSummaryVM = {
   vatNote: BookVatNoteVM;
   cancelRows: BookCancelRow[];
   holdMinutes: number;
+  /** นาทีที่กรอก/ยืนยันได้จริงหลังถือ (bookFillMinutes · มติ Y1) — ข้อความ "ระบบจะถือที่ให้ N นาที" ใช้ค่านี้ */
+  fillMinutes: number;
 };
 export type BookRehold = { productSlug: string; query: Record<string, string> };
 export type BookCheckoutVM = {
@@ -392,15 +413,17 @@ export type BookCheckoutVM = {
   summary: BookSummaryVM;
   holdUntil: string;
   holdUntilLocal: string;
+  /** "กรอกและยืนยันภายใน HH:MM" = เวลาหมดถือ − BOOK_HOLD_USABLE_SEC (เวลาร้าน · มติ Y1) */
+  confirmByLocal: string;
   cancelRows: BookCancelRow[];
   legal: { licenseNo: string | null; termsVersion: string };
   form: { nonce: string };
 };
 /**
  * QR ยอดงวดแรกค้าง (บริการ) · ไม่มี QR พร้อมเหตุ: NO_RECEIVER ร้านยังไม่ตั้งผู้รับเงิน · TOO_LATE ใกล้หมดเวลาถือ (R8)
- * · NOTHING_DUE ไม่มียอดต้องโอนตอนนี้ · AGENT_COLLECTS เอเจนซี่เป็นผู้เก็บเงิน (มติ W5)
+ * · NOTHING_DUE ไม่มียอดต้องโอนตอนนี้ · AGENT_COLLECTS เอเจนซี่เป็นผู้เก็บเงิน (มติ W5) · NOT_SHOP ผู้เก็บเงินแบบอื่นที่ไม่ใช่ร้าน/เอเจนซี่ (มติ Y7 · ข้อความกลาง)
  */
-export type BookPayVM = null | { amountSatang: number; qrSvgDataUrl: string; receiverName: string } | { unavailable: "NO_RECEIVER" | "TOO_LATE" | "NOTHING_DUE" | "AGENT_COLLECTS" };
+export type BookPayVM = null | { amountSatang: number; qrSvgDataUrl: string; receiverName: string } | { unavailable: "NO_RECEIVER" | "TOO_LATE" | "NOTHING_DUE" | "AGENT_COLLECTS" | "NOT_SHOP" };
 export type BookReservationVM = {
   shop: BookShopInfo;
   brand: BookBrandVM;

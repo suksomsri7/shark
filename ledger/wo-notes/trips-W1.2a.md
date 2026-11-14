@@ -99,3 +99,42 @@
 - w1.2 **C-12** คงแดงตาม W3
 - w1.1 **IS-5 XR-6 XR-7 XR-9** ตรึงตัวอ้างรอบรูป HHMM (`0700` `1300` `0700-2`) · W5 เปลี่ยนเป็น ref 12 ตัว ⇒ ตรวจรูป `/^[a-z2-7]{12}$/` + ตัวอ้างต่างกันต่อรอบ + `?t=<ref>` เลือกรอบนั้น แทนค่าตายตัว · ส่วนอื่นของข้อ (ที่ว่าง/ราคา/สถานะ) ผ่าน
 - w1.2 ข้อสอบใหม่ที่ควรเพิ่ม: `nonceAt` ส่ง scope · W7 (ลบรอบหลังเปิดหน้า ⇒ SLOT_CLOSED ไม่มีที่ถือ)
+
+## 8. รอบแก้ r2 (14 พ.ย. · ทรี l1 @020fa639a · ไม่ commit) — มติ Y1–Y7
+| มติ | สิ่งที่แก้ |
+|---|---|
+| Y1 | core: `BOOK_HOLD_MIN_SEC = BOOK_HOLD_USABLE_SEC + 300` (600 วิ) · `bookHoldTooShort` · `bookFillMinutes` · trips-book: `holdTimeGate` อ่าน `trips.sell.holdMinutes` ขอบเขตเดียวกับบริการ (หน่วย/สินค้า · chain U_P · hold PAYMENT ของ WEB) → `quoteBookSelection` และ `startBookHold` ตอบ `UNAVAILABLE reason HOLD_TOO_SHORT` ทันทีหลังด่านเปิดปุ่ม (ก่อนฟอร์ม/ถังถือ/บริการ · ไม่ออก nonce) · อ่านไม่ได้ ⇒ UNAVAILABLE · หน้าสินค้าแสดง `book-closed` "ยังไม่เปิดจองออนไลน์ — ติดต่อร้าน" (BookProduct prop `closed`) · `summary.fillMinutes` (= เวลาถือ − 300 วิ) ใช้ใน "ระบบจะถือที่ให้ N นาทีสำหรับกรอกข้อมูลและยืนยันการจอง" · หน้า c/ `vm.confirmByLocal` (= เวลาหมดถือ − BOOK_HOLD_USABLE_SEC) "กรอกและยืนยันภายใน HH:MM" |
+| Y2 | POST ถือไม่มี `t` (หรือว่าง) ⇒ `INVALID fields ["t"]` · หา `t` ตรงตัวในรอบของวัน (ไม่ใช้ `chooseSlot` ใน POST) · ไม่เจอ/ผิดรูป ⇒ SLOT_CLOSED |
+| Y3 | `loadBookDay` คืน `optionName` (ตัวอ่านชื่อตัวเลือกแบบเดียวกับ public-catalog) · `slotTokensOfDay` เทียบ (เวลาออก · ช่วงเวลา · ชื่อตัวเลือก) · คู่ที่ซ้ำในวันเดียว ⇒ ตัวอ้างของทุกแถวในคู่ = null (หน้าสินค้าทำ `selectable` = false อยู่แล้ว) |
+| Y4 | `startBookHold`: quoteTrips + เทียบ `seen` ก่อนถังถือ/ถังต่อรอบ (ถังอ่านนับใน openProduct ตามเดิม) |
+| Y5 | ถังถือ/ถังต่อรอบเกิน (reason LIMIT) ⇒ ผลมี `holdLimited: true` ⇒ action ส่ง `e=HOLD_LIMITED` (core `BOOK_HOLD_LIMITED` · อยู่ในรายการอนุญาตของ `bookErrorParam`/`bookSelectHref`) ⇒ `select.holdLimited` · `e=RATE_LIMITED` (ถังอ่าน/ด่านล่ม/ค่าตั้งอ่านไม่ได้) ⇒ คีย์ใหม่ `select.holdUnavailable` "ตอนนี้ถือที่ไม่ได้ ลองใหม่ภายหลัง หรือติดต่อร้าน {contact}" |
+| Y6 | `res.pending` / `res.pay.nothingDue` = "… ติดต่อร้าน {contact} พร้อมรหัสการจอง {code} หากมีคำถาม" · PENDING: ผล `UNAVAILABLE reason PENDING` มี `pending { bookingCode, shop }` ⇒ หน้า my/ แสดง `book-res-code` + ทางติดต่อ · `priceChanged.termsBody` ไม่ระบุว่าร้านเปลี่ยน ("เงื่อนไขของการจองนี้เปลี่ยน เช่น ตารางชำระหรือการยกเลิก") · `BOOK_TERMS_VERSION` → `2026-11-14.3` |
+| Y7 | `issueBookFormNonce` ไม่มี scope/scope ผิดรูป ⇒ null · `nonceMsg`/`checkNonce` เหลือรูป v2 อย่างเดียว · ความเห็นเรื่องรุ่น 1 ลบแล้ว · `collectMode`: AGENT ⇒ AGENT_COLLECTS · อื่นที่ไม่ใช่ SHOP ⇒ `NOT_SHOP` + คีย์ใหม่ `res.pay.notShop` (ข้อความกลาง + ทางติดต่อ + รหัส) · หน้า c/ redirect DONE ผ่าน `bookRedirectOk` · ส่งฟอร์มถือเดิมซ้ำเมื่อตะกร้ายังไม่ CHECKED_OUT แต่ไม่มีที่ถือ ACTIVE ที่ยังไม่หมดเวลา ⇒ STALE_FORM กลับหน้าสินค้า |
+
+### จุดที่ตัดสินเอง (r2)
+1. ด่าน HOLD_TOO_SHORT วางหลังด่านเปิดปุ่ม (ส่วนหนึ่งของ §4 ข้อ 4) ทั้ง quote และถือ — ฟอร์มผิดของร้านเวลาถือสั้นได้ UNAVAILABLE ไม่ใช่ INVALID · ไม่แตะ `bookSaleState` (หน้ายืนยัน/ยืนยันของที่ถือเดิมไม่ถูกปิดย้อนหลังเมื่อร้านลดเวลาถือ — W1 จัดการเวลาเหลืออยู่แล้ว) · หน้าสินค้ายังเปิดปฏิทิน/ราคา W1.1 ได้ แค่ปุ่มปิด
+2. `summary.holdMinutes` คงค่าตั้ง (ข้อสอบตรึง) · เพิ่ม `fillMinutes` แทน · `vm.holdUntil/holdUntilLocal` คง + เพิ่ม `confirmByLocal`
+3. ข้อความ "กรอกและยืนยันภายใน" ใช้ **คีย์เดิม `checkout.holdUntil`** (เปลี่ยนข้อความ) — w1.2 LG-1 ตรึงชื่อคีย์นี้ และ w1.1 LG-2 ห้ามคีย์ที่ไม่มีที่ใช้ ⇒ ไม่เพิ่มคีย์ `checkout.confirmBy`
+4. แยก "ถือถี่เกิน" ด้วยค่า `e=HOLD_LIMITED` (ค่าแยกนอก `BOOK_ERROR_CODES` · ไม่เพิ่มรหัสใน P-1) — `bookErrorParam` แปลงเป็น `{code: RATE_LIMITED, holdLimited: true}`
+5. Y7 STALE_FORM: ตะกร้า CHECKED_OUT ไม่เข้ากฎนี้ (ส่งฟอร์มถือซ้ำหลังจองเสร็จ ⇒ เส้นผลซ้ำเดิม → หน้ายืนยัน → DONE → หน้าการจอง) · ที่ถือ ACTIVE แต่เลยเวลาแล้ว (ตัวกวาดยังไม่วิ่ง) นับว่าไม่มีที่ถือ
+6. Y3 เทียบชื่อตัวเลือก (text + fallback) ไม่ใช่ id — PublicSlot ไม่มี id ตัวเลือก และห้ามแตะ public-catalog.ts
+7. BOOK_TERMS_VERSION ขยับครั้งเดียวสำหรับข้อความ Y6 ทั้งชุด
+
+### หนี้ใหม่ (r2)
+- ร้านเวลาถือสั้น: ไม่มีคำเตือนในหน้าตั้งค่า (มติ: W1.2b) · ผู้ดูแลเห็นแค่ "ยังไม่เปิดจองออนไลน์" ที่หน้าสินค้า
+- ดับเบิลคลิกพร้อมกันนับถังต่อรอบ 2 ครั้ง (ได้ตะกร้าเดียว · มติ Y4 รับ)
+- `checkout.holdUntil` ชื่อคีย์ไม่ตรงความหมายใหม่ — เปลี่ยนชื่อเมื่อข้อสอบ LG ปรับ
+- หน้าสินค้าเรียก holdMinutes เพิ่ม 1 ครั้งต่อการเปิด (resolveSettings)
+
+### ข้อแย้งต่อข้อสอบ (r2 · ปล่อยแดง · w1.2 = 40/91)
+- **ตัวช่วยถือของข้อสอบไม่ส่ง `t`** (`scripts/qc-trips-w1.2.mts:444` `form: { d, ...selQuery, nonce, seen }` และการเรียกตรงบรรทัด 947 962 975 ฯลฯ) · คาด: ถือได้โดยถอยไปรอบแรกที่ขายได้ · มติ Y2 เปลี่ยนเป็น INVALID(t) · ทำให้แดง 49 ข้อ: Q-9 Q-10 H-1 H-2 H-3 C-1…C-15 (ยกเว้น C-12 แดงเดิม) R-1…R-11 RL-1…RL-4 X-1 X-2 X-3 X-4 X-5 X-7 X-8 WR-1 WR-2 WR-3 WR-4 WR-6 WR-7 WR-8 WR-9 · ควรแก้: ตัวช่วยหา `t` ของรอบที่ต้องการ (เช่น `quoteBookSelection` ⇒ `options.slot.token` หรือ `summary.slotToken` ของวันนั้น / `openBookProduct` ⇒ `selected.slots[i].token`) แล้วใส่ในฟอร์มทุกที่ที่ถือ + เพิ่มข้อ Y2 (ไม่มี t ⇒ INVALID t · ไม่มีที่ถือ)
+- **หลักฐานว่าไม่มีแดงอื่นซ่อน:** รันวินิจฉัยครั้งเดียวโดยผ่อน Y2 ชั่วคราว (ไม่มี t ⇒ รอบแรกที่ขายได้ · คืนโค้ดทันที · `scratchpad/w1.2/r2-qc-w1.2-diag-noY2.log`) ⇒ 89/91 แดงเฉพาะ C-12 (W3) + WR-12
+- **WR-12** · คาด: `issueBookFormNonce` ไม่มี scope คืนสตริงรูปเก่าแล้วด่านปฏิเสธ INVALID(nonce) · มติ Y7 ลบทางออก nonce ไม่มี scope ⇒ คืน null · ควรแก้: คาด `null` (หรือสร้าง nonce รูปเก่าในข้อสอบด้วย HMAC เองแล้วยิงเข้าด่าน)
+- **C-12** คงแดงตามมติ W3
+
+### ผลรันจริง r2
+- seed ×2: รอบแรก `created {} updated {}` · รอบสอง `created {} updated {}` (ไม่เขียน)
+- qc-trips-w1.2: 40/91 (แดงเพราะ Y2 49 ข้อ · WR-12 เพราะ Y7 · C-12 รู้จัก) · วินิจฉัยไม่มี Y2: 89/91
+- qc-trips-w1.1: 83/84 — แดง S-12 (ขอบเขต: ไฟล์ seed/fixture/defs/permissions/fitness/t0.1 ที่มาจากรอบก่อน/ผู้คุม · แดงที่รู้จัก)
+- fitness 54/54 · CRITICAL 0
+- typecheck 0 error

@@ -7,7 +7,7 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { confirmBookHold, releaseBookHold, startBookHold } from "@/lib/platform/trips-book";
-import { bookCheckoutHref, bookRedirectOk, bookReservationHref, bookSelectHref } from "@/lib/platform/trips-book-core";
+import { BOOK_HOLD_LIMITED, bookCheckoutHref, bookRedirectOk, bookReservationHref, bookSelectHref } from "@/lib/platform/trips-book-core";
 import { bookRequestFromHeaders } from "@/lib/platform/trips-public";
 
 /** ค่าสตริงของฟอร์ม (ตัวแรกของแต่ละชื่อ · ไม่เกิน 200 ช่อง) — ไฟล์/ค่าอื่นทิ้ง */
@@ -22,13 +22,16 @@ function formOf(data: unknown): Record<string, string> {
   return Object.fromEntries(out);
 }
 
-/** หน้าสินค้า → ถือที่ → หน้ายืนยัน (ไม่สำเร็จ ⇒ กลับหน้าสินค้าพร้อมการเลือกเดิมและรหัสผิดพลาด) */
+/**
+ * หน้าสินค้า → ถือที่ → หน้ายืนยัน (ไม่สำเร็จ ⇒ กลับหน้าสินค้าพร้อมการเลือกเดิมและรหัสผิดพลาด)
+ * ถังถือ/ถังต่อรอบของเครื่องเต็มจริง ⇒ `e=HOLD_LIMITED` · ถังอ่านเต็ม/ด่านล่ม ⇒ `e=RATE_LIMITED` (ข้อความกลาง · มติ Y5)
+ */
 export async function startBookHoldAction(shop: unknown, productSlug: unknown, data: unknown): Promise<void> {
   const h = await headers();
   const req = bookRequestFromHeaders((name) => h.get(name), "POST");
   const r = await startBookHold({ shop, productSlug, form: formOf(data), acceptLanguage: req.acceptLanguage, clientKey: req.clientKey });
   if (r.ok && bookRedirectOk({ shopSlug: r.shopSlug, basketToken: r.basketToken, sel: r.sel })) redirect(bookCheckoutHref(r.shopSlug, r.basketToken, r.sel, null, r.lang));
-  if (!r.ok && r.back && bookRedirectOk({ shopSlug: r.shopSlug })) redirect(bookSelectHref(r.shopSlug ?? "", r.back, r.code));
+  if (!r.ok && r.back && bookRedirectOk({ shopSlug: r.shopSlug })) redirect(bookSelectHref(r.shopSlug ?? "", r.back, r.holdLimited ? BOOK_HOLD_LIMITED : r.code));
   notFound();
 }
 

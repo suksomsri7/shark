@@ -68,11 +68,15 @@ export function BookReservation({ vm, frame }: { vm: BookReservationVM; frame: F
               </p>
             ) : pay && pay.unavailable === "NOTHING_DUE" ? (
               <p data-testid="book-pay-nothing-due" className={NOTE}>
-                {t("res.pay.nothingDue")}
+                {t("res.pay.nothingDue", { contact: bookContactText(vm.shop), code: vm.code })}
               </p>
             ) : pay && pay.unavailable === "AGENT_COLLECTS" ? (
               <p data-testid="book-pay-agent" className={NOTE}>
                 {t("res.pay.agentCollects")}
+              </p>
+            ) : pay && pay.unavailable === "NOT_SHOP" ? (
+              <p data-testid="book-pay-not-shop" className={NOTE}>
+                {t("res.pay.notShop", { contact: bookContactText(vm.shop), code: vm.code })}
               </p>
             ) : (
               <p data-testid="book-pay-unavailable" className={NOTE}>

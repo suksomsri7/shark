@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { cache } from "react";
-import { BookError } from "@/components/book/BookFlowParts";
+import { BookError, bookContactText } from "@/components/book/BookFlowParts";
 import { BookRateLimited } from "@/components/book/BookRateLimited";
 import { BookReservation } from "@/components/book/BookReservation";
 import { BookNoticeFrame } from "@/components/book/BookShell";
@@ -44,11 +44,16 @@ export default async function BookReservationPage(props: Props) {
     const h = await headers();
     const locale = bookLocaleOf(lang, h.get("accept-language"));
     // รอร้านยืนยัน (PENDING · AWAIT_SHOP = W1.2b) มีข้อความของตัวเอง (มติ W5) — ไม่ใช่ "ยังจองออนไลน์ไม่ได้"
-    if (r.code === "UNAVAILABLE" && r.reason === "PENDING") {
+    // แสดงรหัสการจอง + ทางติดต่อร้าน · ไม่สัญญาว่าร้านจะติดต่อ (มติ Y6)
+    if (r.code === "UNAVAILABLE" && r.reason === "PENDING" && r.pending) {
+      const t = bookT(locale);
       return (
         <BookNoticeFrame testId="book-res-pending">
+          <p data-testid="book-res-code" className="text-xl font-semibold">
+            {t("res.code", { code: r.pending.bookingCode })}
+          </p>
           <p role="status" className="text-base">
-            {bookT(locale)("res.pending")}
+            {t("res.pending", { contact: bookContactText(r.pending.shop), code: r.pending.bookingCode })}
           </p>
         </BookNoticeFrame>
       );

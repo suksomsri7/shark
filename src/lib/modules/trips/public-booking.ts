@@ -19,7 +19,8 @@ export type BookCatalog = {
   extras: { id: string; productLevel: boolean; mandatory: boolean; active: boolean; basis: string; name: BookText; note: BookText }[];
   zones: { id: string; kind: string; name: BookText; areas: BookText; surchargeSatang: number; active: boolean }[];
 };
-export type BookDaySlot = { departureId: string; optionId: string | null; startsAt: string; startTime: string; timeText: string; status: string; publicLeft: number; saleBlock: string | null };
+/** optionName = ชื่อตัวเลือกของรอบตามภาษา (ตัวอ่านเดียวกับหน้าสินค้า) — ใช้จับคู่รอบกับแถวของหน้าสินค้า (มติ Y3) */
+export type BookDaySlot = { departureId: string; optionId: string | null; optionName: BookText; startsAt: string; startTime: string; timeText: string; status: string; publicLeft: number; saleBlock: string | null };
 export type BookDepartureRow = {
   departureId: string;
   productId: string;
@@ -103,8 +104,13 @@ export async function loadBookDay(ref: { tenantId: string; unitId: string; produ
   if (!av.ok) return null;
   const rows = [...av.value].sort((a, b) => (a.startsAt < b.startsAt ? -1 : a.startsAt > b.startsAt ? 1 : a.slotId < b.slotId ? -1 : 1));
   if (!rows.length) return [];
-  const deps = await dbOf(tenantId, unitId).tripDeparture.findMany({ where: { tenantId, unitId, productId, id: { in: rows.map((r) => r.slotId) } }, select: { id: true, optionId: true, startsAt: true, endsAt: true } });
+  const db = dbOf(tenantId, unitId);
+  const [deps, options] = await Promise.all([
+    db.tripDeparture.findMany({ where: { tenantId, unitId, productId, id: { in: rows.map((r) => r.slotId) } }, select: { id: true, optionId: true, startsAt: true, endsAt: true } }),
+    db.tripOption.findMany({ where: { tenantId, unitId, productId }, select: { id: true, name: true } }),
+  ]);
   const byId = new Map(deps.map((d) => [d.id, d]));
+  const optById = new Map(options.map((o) => [o.id, o]));
   const out: BookDaySlot[] = [];
   for (const r of rows) {
     const d = byId.get(r.slotId);
@@ -112,6 +118,7 @@ export async function loadBookDay(ref: { tenantId: string; unitId: string; produ
     out.push({
       departureId: d.id,
       optionId: d.optionId,
+      optionName: textOf(d.optionId ? optById.get(d.optionId)?.name : null, opts.locale),
       startsAt: d.startsAt.toISOString(),
       startTime: local(tz, d.startsAt),
       timeText: timeTextOf(tz, d.startsAt, d.endsAt),

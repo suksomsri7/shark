@@ -59,6 +59,8 @@ import {
   bookerEmailOf,
   bookerNameOf,
   bookerPhoneOf,
+  bookFillMinutes,
+  bookHoldTooShort,
   bookTodoOf,
   cancelDeadlinesOf,
   parseBookSelection,
@@ -98,6 +100,10 @@ export type BookFail = {
   back?: BookRehold;
   /** ภาษาที่ตรวจแล้ว (th/en) จากฟอร์ม — action พาข้าม redirect (มติ W5) */
   lang?: BookLocale | null;
+  /** (ถือ · RATE_LIMITED) ถังถือ/ถังต่อรอบของเครื่องนี้เต็มจริง — ไม่ใช่ถังอ่าน/ด่านล่ม (มติ Y5) */
+  holdLimited?: true;
+  /** (หน้าการจอง · UNAVAILABLE reason PENDING) รหัสการจอง + ผู้ขาย ให้ข้อความ "ติดต่อร้าน … พร้อมรหัสการจอง" (มติ Y6) */
+  pending?: { bookingCode: string; shop: BookShopInfo };
 };
 /**
  * `nonce` = nonce ของฟอร์มถือที่ (โดเมน hold ผูกร้าน · มติ W5) — มีเมื่อมีสรุปยอด · ไม่มีกุญแจ ⇒ null
@@ -180,12 +186,11 @@ const safeEq = (a: string, b: string): boolean => {
 
 /** ฟอร์มที่ nonce ใช้ได้ (มติ W5: MAC แยกโดเมน ถือ/ยืนยัน + ผูกร้าน) */
 export type BookNonceScope = { tenantId: string; purpose: "hold" | "confirm" };
-const nonceMsg = (rand: string, sec: string, scope: BookNonceScope | null): string =>
-  scope ? `trips.public.nonce.v2:${scope.purpose}:${scope.tenantId}:${rand}.${sec}` : `trips.public.nonce.v1:${rand}.${sec}`;
+const nonceMsg = (rand: string, sec: string, scope: BookNonceScope): string => `trips.public.nonce.v2:${scope.purpose}:${scope.tenantId}:${rand}.${sec}`;
 /**
  * nonce ของฟอร์ม = `<สุ่ม 22>.<วินาที>.<HMAC 22>` · ไม่มีกุญแจ ⇒ null
- * `scope` = ร้าน + ฟอร์ม (หน้า/ตัวโหลดของเส้นจองส่งเสมอ: หน้าสินค้า = hold ผ่าน quoteBookSelection · หน้ายืนยัน = confirm ผ่าน loadBookCheckout)
- * ไม่ส่ง scope = รูปรุ่น 1 (ช่องทดสอบแบบ opts.now — ไม่มีหน้าสาธารณะใดออกรูปนี้) · ดู checkNonce
+ * `scope` = ร้าน + ฟอร์ม (บังคับ · หน้าสินค้า = hold ผ่าน quoteBookSelection · หน้ายืนยัน = confirm ผ่าน loadBookCheckout)
+ * ไม่มี scope/scope ผิดรูป ⇒ null — ไม่มีรูปที่ไม่ผูกร้าน/ฟอร์มอีกแล้ว (มติ Y7)
  */
 export function issueBookFormNonce(opts?: { now?: Date; scope?: BookNonceScope }): string | null {
   const secret = secretOf();
@@ -193,15 +198,13 @@ export function issueBookFormNonce(opts?: { now?: Date; scope?: BookNonceScope }
   const now = opts?.now instanceof Date && Number.isFinite(opts.now.getTime()) ? opts.now : new Date();
   const sc = opts?.scope;
   const scope = sc && typeof sc.tenantId === "string" && sc.tenantId && (sc.purpose === "hold" || sc.purpose === "confirm") ? { tenantId: sc.tenantId, purpose: sc.purpose } : null;
+  if (!scope) return null;
   const rand = randomBytes(16).toString("base64url");
   const sec = String(Math.floor(now.getTime() / 1000));
   return `${rand}.${sec}.${mac(secret, nonceMsg(rand, sec, scope)).toString("base64url").slice(0, 22)}`;
 }
 type NonceCheck = { ok: true; nonce: string } | { ok: false; code: "INVALID" | "TOO_FAST" | "STALE_FORM" };
-/**
- * ลายเซ็นต้องตรงโดเมนของฟอร์มนี้ที่ร้านนี้ (nonce ของร้านอื่น/ของอีกฟอร์ม ⇒ INVALID)
- * รูปรุ่น 1 (ไม่มี scope) ยังรับ — ออกได้เฉพาะโค้ดฝั่งเซิร์ฟเวอร์ที่เรียก issueBookFormNonce ตรง ๆ (ข้อสอบ) · ⚠️ ปิดเมื่อข้อสอบส่ง scope (wo-notes r1)
- */
+/** ลายเซ็นต้องตรงโดเมนของฟอร์มนี้ที่ร้านนี้ (nonce ของร้านอื่น/ของอีกฟอร์ม/รูปที่ไม่ผูก scope ⇒ INVALID · มติ W5 Y7) */
 function checkNonce(secret: string, v: unknown, now: Date, scope: BookNonceScope): NonceCheck {
   if (typeof v !== "string" || v.length > 80) return { ok: false, code: "INVALID" };
   const m = /^([A-Za-z0-9_-]{22})\.(\d{1,12})\.([A-Za-z0-9_-]{22})$/.exec(v);
@@ -209,8 +212,7 @@ function checkNonce(secret: string, v: unknown, now: Date, scope: BookNonceScope
   const rand = m[1] ?? "";
   const sec = m[2] ?? "";
   const got = m[3] ?? "";
-  const signed = (sc: BookNonceScope | null): boolean => safeEq(mac(secret, nonceMsg(rand, sec, sc)).toString("base64url").slice(0, 22), got);
-  if (!signed(scope)) return { ok: false, code: "INVALID" };
+  if (!safeEq(mac(secret, nonceMsg(rand, sec, scope)).toString("base64url").slice(0, 22), got)) return { ok: false, code: "INVALID" };
   const age = Math.floor(now.getTime() / 1000) - Number(sec);
   if (age < BOOK_FORM_MIN_SEC) return { ok: false, code: "TOO_FAST" };
   if (age > BOOK_FORM_MAX_SEC) return { ok: false, code: "STALE_FORM" };
@@ -525,7 +527,10 @@ function mapService(r: SellFailLike): BookFail {
 }
 
 // ═══════════════ รอบของวัน ═══════════════
-/** รอบที่หน้าอ้าง: ตัวอ้างตรง (ref ของ id รอบ · มติ W5) ⇒ รอบนั้น · ไม่งั้นรอบแรกที่ขายได้ · ไม่มี ⇒ รอบแรก (ให้บริการตัดสินเหตุ) */
+/**
+ * รอบที่หน้าสินค้าอ้าง (GET · quoteBookSelection เท่านั้น): ตัวอ้างตรง (ref ของ id รอบ · มติ W5) ⇒ รอบนั้น · ไม่งั้นรอบแรกที่ขายได้ · ไม่มี ⇒ รอบแรก
+ * ฟอร์มถือ (POST) ไม่ใช้ตัวนี้ — ต้องมี `t` ที่ชี้รอบจริง (มติ W7 Y2)
+ */
 function chooseSlot(tenantId: string, day: BookDaySlot[], token: string | null): { slot: BookDaySlot; token: string | null } | null {
   if (!day.length) return null;
   const tokens = day.map((s) => bookSlotToken(tenantId, s.departureId));
@@ -576,9 +581,13 @@ async function optionsOf(o: Opened, ctx: QuoteCtx, base: { unitId: string; produ
   return { pax, extras, zones, maxSeats: BOOK_MAX_SEATS, left: base.slot.publicLeft, slot: { token: base.token, timeText: base.slot.timeText } };
 }
 
-async function holdMinutesOf(tenantId: string, unitId: string, productId: string, departureId: string, now: Date): Promise<number | null> {
+/**
+ * เวลาถือของช่องทาง WEB = `trips.sell.holdMinutes` ที่ขอบเขตเดียวกับบริการ (capacity-service policiesFor: หน่วย/สินค้า/รอบ · chain U_P · hold PAYMENT)
+ * อ่านไม่ได้/ผิดรูป ⇒ null (ผู้เรียกปิด)
+ */
+async function holdMinutesOf(tenantId: string, unitId: string, productId: string, departureId: string | null, now: Date): Promise<number | null> {
   try {
-    const v = (await resolveSettings({ tenantId }, [K_HOLD_MIN], { unitId, productId, departureId }, now))[K_HOLD_MIN]?.value;
+    const v = (await resolveSettings({ tenantId }, [K_HOLD_MIN], { unitId, productId, ...(departureId ? { departureId } : {}) }, now))[K_HOLD_MIN]?.value;
     return isInt(v) && v > 0 ? v : null;
   } catch {
     return null;
@@ -607,8 +616,19 @@ async function summaryOf(ctx: QuoteCtx, line: LineReq, cat: BookCatalog, meta: {
       vatNote: v.totals.vatSatang === 0 ? "NONE" : built.added ? "ADDED" : "INCLUDED",
       cancelRows: cancelRowsOf(v.cancelLadder),
       holdMinutes: hm,
+      fillMinutes: bookFillMinutes(hm),
     },
   };
+}
+
+/**
+ * มติ Y1: ร้านตั้งเวลาถือ WEB สั้นกว่า BOOK_HOLD_MIN_SEC (< 10 นาที) ⇒ ไม่ให้ถือตั้งแต่ต้น (ไม่ออก nonce · ไม่กินถังถือ · ไม่เรียกบริการ)
+ * ใช้คู่กับด่าน "เปิดปุ่ม" ของ openProduct · อ่านค่าตั้งไม่ได้ ⇒ UNAVAILABLE (ปิดเมื่อพัง)
+ */
+async function holdTimeGate(o: OpenedProduct): Promise<BookFail | null> {
+  const hm = await holdMinutesOf(o.shop.tenantId, o.unit.id, o.productId, null, o.now);
+  if (hm === null) return fail("UNAVAILABLE");
+  return bookHoldTooShort(hm) ? fail("UNAVAILABLE", { reason: "HOLD_TOO_SHORT" }) : null;
 }
 
 // ═══════════════ 1) เลือก: ตัวเลือก + สรุปยอด ═══════════════
@@ -617,6 +637,8 @@ export async function quoteBookSelection(input: { shop: unknown; productSlug: un
   try {
     const o = await openProduct(input, opts);
     if (isFail(o)) return o;
+    const short = await holdTimeGate(o);
+    if (short) return { ...short, shopSlug: o.shop.slug };
     const q = field(input, "query");
     const locale = bookLocaleOf(str(q, "lang"), field(input, "acceptLanguage"));
     const d = str(q, "d");
@@ -700,6 +722,9 @@ export async function startBookHold(input: { shop: unknown; productSlug: unknown
     const locale = bookLocaleOf(lang, field(input, "acceptLanguage"));
     const back: BookRehold = { productSlug: o.productSlug, query: backQuery };
     const withBack = (f: BookFail): BookFail => (f.code === "NOT_FOUND" ? NOT_FOUND() : { ...f, shopSlug: o.shop.slug, back, lang });
+    // ข้อ 4 (ต่อ · มติ Y1): เวลาถือของร้านสั้นเกิน ⇒ ปิดก่อนถังถือ/บริการ
+    const short = await holdTimeGate(o);
+    if (short) return withBack(short);
     // ข้อ 5: ฟอร์ม (ผิด = ไม่กินโควตาถือ ไม่เรียกบริการ)
     const nc = checkNonce(o.secret, form.nonce, o.now, { tenantId: o.shop.tenantId, purpose: "hold" });
     if (!nc.ok) return withBack(nc.code === "INVALID" ? fail("INVALID", { fields: ["nonce"] }) : fail(nc.code));
@@ -709,26 +734,41 @@ export async function startBookHold(input: { shop: unknown; productSlug: unknown
     if (!d) return withBack(fail("INVALID", { fields: ["d"] }));
     if (!selRaw) return withBack(fail("INVALID", { fields: selectionFieldsOf(plainSelection(form)) }));
     if (!selRaw.pax.length) return withBack(fail("INVALID", { fields: ["pax"] }));
+    // มติ Y2 (ปิด W7): ฟอร์มถือต้องระบุรอบ — ไม่มี `t` ⇒ INVALID(t) · ไม่ถอยไปรอบแรกที่ขายได้ (ทางสำรองนั้นมีเฉพาะ GET · quoteBookSelection)
+    const askedSlot = typeof form.t === "string" && form.t !== "" ? form.t : null;
+    if (askedSlot === null) return withBack(fail("INVALID", { fields: ["t"] }));
     // ข้อ 6: ref → id
     const day = await loadBookDay({ tenantId: o.shop.tenantId, unitId: o.unit.id, productId: o.productId, tz: o.unit.tz }, d, { now: o.now, locale });
     if (!day) return withBack(fail("UNAVAILABLE"));
-    const askedSlot = typeof form.t === "string" && form.t !== "" ? form.t : null;
-    const chosen = chooseSlot(o.shop.tenantId, day, slotParam(form));
-    if (!chosen) return withBack(askedSlot !== null ? fail("SLOT_CLOSED") : fail("INVALID", { fields: ["d"] }));
-    // ตัวอ้างรอบที่ส่งมาต้องชี้รอบจริงของวันนั้น — หาไม่เจอ (รอบถูกลบ/ไม่อยู่ในรายการขายแล้ว) ⇒ SLOT_CLOSED กลับหน้าสินค้า
-    // ห้ามถอยไปถือรอบอื่น (มติ W7 · คู่ W5) — ทางสำรอง "รอบแรกที่ขายได้" มีเฉพาะตอนเปิดหน้า (GET · quoteBookSelection) · พบแต่ขายไม่ได้ ⇒ blockCode ข้างล่าง
-    // (ตัวอ้างผิดรูป เช่นรูป HHMM เดิมจากหน้าที่เปิดค้าง ⇒ หาไม่เจอเช่นกัน)
-    if (askedSlot !== null && chosen.token !== askedSlot) return withBack(fail("SLOT_CLOSED"));
+    // ตัวอ้างรอบต้องชี้รอบจริงของวันนั้น — หาไม่เจอ (รอบถูกลบ/ไม่อยู่ในรายการขายแล้ว/รูปเดิม HHMM จากหน้าที่เปิดค้าง) ⇒ SLOT_CLOSED กลับหน้าสินค้า
+    // ห้ามถอยไปถือรอบอื่น (มติ W7 · คู่ W5) · พบแต่ขายไม่ได้ ⇒ blockCode ข้างล่าง
+    const k = BOOK_SLOT_TOKEN_RE.test(askedSlot) ? day.findIndex((x) => bookSlotToken(o.shop.tenantId, x.departureId) === askedSlot) : -1;
+    const slot = k >= 0 ? day[k] : undefined;
+    if (!slot) return withBack(fail("SLOT_CLOSED"));
+    const chosen = { slot, token: askedSlot };
     const cat = await loadBookCatalog({ tenantId: o.shop.tenantId, unitId: o.unit.id, productId: o.productId }, locale);
     const mapped = mapSelection(o.secret, o.shop.tenantId, cat, selRaw);
     if (!mapped.ok) return withBack(fail("INVALID", { fields: mapped.fields }));
     if (!selectionSeatsOk(selRaw, mapped.m.seatCodes, BOOK_MAX_SEATS)) return withBack(fail("INVALID", { fields: ["pax"] }));
     const blocked = blockCode(chosen.slot.saleBlock);
     if (blocked) return withBack(fail(blocked));
-    // ข้อ 7: ถังถือต่อเครื่อง (X8) + ถังต่อรอบต่อเครื่อง (R7 · มติ W2: นับเฉพาะตะกร้าใหม่) — คำสั่งเดียว ปิดเมื่อพัง
-    // nonce ที่มีตะกร้าแล้ว (ส่งซ้ำ/ดับเบิลคลิก) ⇒ ข้ามถัง แล้ววิ่งเส้นผลซ้ำของ holdTrips (คีย์เดิม ⇒ ผลเดิม · คำขอต่าง ⇒ STALE_FORM) — ไม่ถือเพิ่ม
+    // ตะกร้าของ nonce นี้ (มติ W2): มีแล้ว ⇒ ส่งซ้ำ/ดับเบิลคลิก — ข้ามถัง แล้ววิ่งเส้นผลซ้ำของ holdTrips (คีย์เดิม ⇒ ผลเดิม · คำขอต่าง ⇒ STALE_FORM)
+    // มติ Y7: ตะกร้ายังไม่ยืนยันแต่ไม่มีที่ถือที่ยังมีผล (ปล่อยแล้วด้วย "ถือใหม่"/หมดเวลา) ⇒ ฟอร์มนี้ใช้ไม่ได้แล้ว STALE_FORM กลับหน้าสินค้า
     const basketToken = mac(o.secret, `trips.public.basket.v1:${o.shop.tenantId}:${nc.nonce}`).toString("base64url");
     const existing = await findBookBasket({ tenantId: o.shop.tenantId, unitIds: o.shop.units.map((u) => u.id) }, sha256hex(basketToken));
+    if (existing && existing.status !== "CHECKED_OUT" && !existing.holds.some((x) => x.status === "ACTIVE" && Date.parse(x.expiresAt) > o.now.getTime())) {
+      return withBack(fail("STALE_FORM"));
+    }
+    // ข้อ 8 (ก่อนถังถือ · มติ Y4): ยอดที่ลูกค้าเห็นต้องเท่ายอดของบริการตอนนี้ (มติ R6) — ราคาเปลี่ยน ⇒ PRICE_CHANGED โดยไม่เสียโควตาถือ (ถังอ่านนับแล้ว)
+    const ctx = ctxOf(o, o.unit.id, locale);
+    const line = lineOf(o.unit.id, o.productId, chosen.slot.departureId, chosen.slot.optionId, mapped.m);
+    const qt = await quoteTrips(ctx, { lines: [line] });
+    if (!qt.ok) return withBack(mapService(qt));
+    const payable = qt.value.totals.payable.satang;
+    if (qt.value.totals.payable.currency !== "THB" || !isInt(payable)) return withBack(fail("UNAVAILABLE"));
+    if (payable !== seen) return withBack(fail("PRICE_CHANGED", { totalSatang: payable }));
+    // ข้อ 7: ถังถือต่อเครื่อง (X8) + ถังต่อรอบต่อเครื่อง (R7 · มติ W2: นับเฉพาะตะกร้าใหม่) — คำสั่งเดียว ปิดเมื่อพัง
+    // เต็มจริง ⇒ holdLimited (ข้อความ "เครื่องนี้ถือที่รอบนี้หลายครั้งแล้ว" · มติ Y5) · ค่าตั้งอ่านไม่ได้/ด่านล่ม ⇒ ข้อความกลาง
     if (!existing) {
       const lim = await rateLimitsOf(o.shop.tenantId, o.unit.id, o.now);
       if (!lim) return withBack(limiterDown());
@@ -740,16 +780,8 @@ export async function startBookHold(input: { shop: unknown; productSlug: unknown
         o.now,
         opts,
       );
-      if (hg) return withBack(hg);
+      if (hg) return withBack(hg.reason === "LIMIT" ? { ...hg, holdLimited: true } : hg);
     }
-    // ข้อ 8: บริการ — ยอดที่ลูกค้าเห็นต้องเท่ายอดของบริการตอนนี้ (มติ R6)
-    const ctx = ctxOf(o, o.unit.id, locale);
-    const line = lineOf(o.unit.id, o.productId, chosen.slot.departureId, chosen.slot.optionId, mapped.m);
-    const qt = await quoteTrips(ctx, { lines: [line] });
-    if (!qt.ok) return withBack(mapService(qt));
-    const payable = qt.value.totals.payable.satang;
-    if (qt.value.totals.payable.currency !== "THB" || !isInt(payable)) return withBack(fail("UNAVAILABLE"));
-    if (payable !== seen) return withBack(fail("PRICE_CHANGED", { totalSatang: payable }));
     const h = await holdTrips(ctx, { quote: { lines: [line] }, quoteId: qt.value.quoteId, quoteExpiresAt: qt.value.expiresAt, idempotencyKey: `bh_${sha256hex(nc.nonce).slice(0, 64)}`, basketToken });
     if (!h.ok) return withBack(mapService(h));
     const sel = makeSel(o.secret, o.shop.tenantId, o.unit.id, basketToken, {
@@ -860,6 +892,7 @@ export async function loadBookCheckout(input: { shop: unknown; basketToken: unkn
         summary: s.s,
         holdUntil,
         holdUntilLocal: localHm(h.unit.tz, new Date(holdUntil)),
+        confirmByLocal: localHm(h.unit.tz, new Date(Date.parse(holdUntil) - BOOK_HOLD_USABLE_SEC * 1000)),
         cancelRows: s.s.cancelRows,
         legal: { licenseNo, termsVersion: BOOK_TERMS_VERSION },
         form: { nonce },
@@ -1017,8 +1050,8 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
     const snap = isRec(row.policySnapshot) ? row.policySnapshot : null;
     const items = pricedOf(snap?.lines);
     const totals = totalsOf(snap?.totals);
-    // รอร้านยืนยัน (AWAIT_SHOP = W1.2b) ⇒ ข้อความของตัวเอง ไม่ใช่ "ยังจองออนไลน์ไม่ได้" (มติ W5)
-    if (row.status === "PENDING") return fail("UNAVAILABLE", { reason: "PENDING" });
+    // รอร้านยืนยัน (AWAIT_SHOP = W1.2b) ⇒ ข้อความของตัวเอง ไม่ใช่ "ยังจองออนไลน์ไม่ได้" (มติ W5) + รหัสการจอง/ทางติดต่อร้าน (มติ Y6 · ไม่สัญญาว่าร้านจะติดต่อ)
+    if (row.status === "PENDING") return fail("UNAVAILABLE", { reason: "PENDING", pending: { bookingCode: row.code, shop: (await shopInfoOf(o.shop, unit.id, o.now)).info } });
     const state = reservationStateOf({ status: row.status, holdExpiresAt: row.holdExpiresAt, now: o.now.toISOString() });
     if (!dep || !items || !totals || !state || snap?.currency !== "THB") return fail("UNAVAILABLE");
     const cat = await loadBookCatalog({ tenantId: o.shop.tenantId, unitId: unit.id, productId: dep.productId }, locale);
@@ -1040,8 +1073,9 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
     const holdUntil = state === "PAY" ? row.holdExpiresAt : null;
     if (state === "PAY" && holdUntil) {
       // เหลือเวลาถือน้อยกว่าระยะเผื่อ ⇒ ไม่ออก QR (ตัดสินที่ตัวโหลด · มติ R8)
-      // QR เฉพาะการจองที่ร้านเป็นผู้เก็บเงิน — เอเจนซี่เก็บเงินเอง ⇒ ไม่มี QR ของร้าน (มติ W5)
-      if (row.collectMode !== "SHOP") pay = { unavailable: "AGENT_COLLECTS" };
+      // QR เฉพาะการจองที่ร้านเป็นผู้เก็บเงิน (มติ W5 Y7) — AGENT ⇒ เอเจนซี่เก็บเงินเอง · ค่าอื่นที่ไม่ใช่ SHOP ⇒ ไม่มี QR + ข้อความกลาง
+      if (row.collectMode === "AGENT") pay = { unavailable: "AGENT_COLLECTS" };
+      else if (row.collectMode !== "SHOP") pay = { unavailable: "NOT_SHOP" };
       else if (Date.parse(holdUntil) - o.now.getTime() < BOOK_PAY_MARGIN_SEC * 1000) pay = { unavailable: "TOO_LATE" };
       else {
         const pi = await tripPaymentIntent(ctx, { publicToken: token });

@@ -17,8 +17,11 @@ const BADGE = "inline-flex w-fit items-center rounded-lg border px-2.5 py-1 text
 const SLOT = "group flex flex-col gap-1.5 rounded-xl border p-3 data-[selected=true]:border-2 data-[selected=true]:border-[color:var(--color-accent)]";
 const PICK = "inline-flex min-h-11 w-fit max-w-full items-center rounded-lg border px-3 text-sm font-medium text-[color:var(--color-accent)] hover:border-[color:var(--color-accent)]";
 
-/** select = แผงเลือกคน/รับส่ง/เสริม + สรุป + ถือที่ (W1.2 · มีเมื่อปุ่มจองเปิด) · ไม่มี ⇒ หน้าอ่านอย่างเดียวแบบ W1.1 */
-export function BookProduct({ vm, carry, select }: { vm: BookProductVM; carry: BookCarry; select?: BookSelectData | null }) {
+/**
+ * select = แผงเลือกคน/รับส่ง/เสริม + สรุป + ถือที่ (W1.2 · มีเมื่อปุ่มจองเปิด) · ไม่มี ⇒ หน้าอ่านอย่างเดียวแบบ W1.1
+ * closed = platform ปิดการถือของร้านนี้ (เวลาถือสั้นเกิน · มติ Y1) ⇒ แสดงแบบปิดจอง "ติดต่อร้าน"
+ */
+export function BookProduct({ vm, carry, select, closed: closedByHold }: { vm: BookProductVM; carry: BookCarry; select?: BookSelectData | null; closed?: boolean }) {
   const t = bookT(vm.locale);
   const names = bookDateNames(vm.locale);
   const shop = vm.shop.slug;
@@ -29,7 +32,7 @@ export function BookProduct({ vm, carry, select }: { vm: BookProductVM; carry: B
   /** มีรอบให้เลือกมากกว่า 1 ⇒ แสดงตัวเลือกรอบ และพาตัวอ้างรอบไปกับลิงก์สลับภาษา */
   const multi = (sel?.slots.filter((s) => s.selectable).length ?? 0) > 1;
   /** ร้านปิดปุ่มจองออนไลน์ / สินค้าที่ร้านต้องยืนยันก่อน (มติ R7 R8) ⇒ บอกให้ติดต่อร้าน */
-  const closed = vm.cta.reason === "BOOKING_OFF" || vm.cta.reason === "SHOP_CONFIRMS";
+  const closed = closedByHold === true || vm.cta.reason === "BOOKING_OFF" || vm.cta.reason === "SHOP_CONFIRMS";
   const view = { a: carry.a, m: vm.month, d: sel?.date ?? null, t: multi ? (chosen?.token ?? null) : null };
   /** "YYYY-MM-DD HH:MM" (เวลาร้านจาก VM) ⇒ วันแบบอ่านง่าย + เวลา */
   const closeText = (cutoffLocal: string): string => {

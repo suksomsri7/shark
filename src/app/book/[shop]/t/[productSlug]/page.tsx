@@ -53,6 +53,8 @@ export default async function BookProductPage(props: Props) {
   const sp = await props.searchParams;
   const vm = r.vm;
   let select: BookSelectData | null = null;
+  /** ร้านตั้งเวลาถือสั้นเกินกว่าจะกรอก/โอนทัน ⇒ แสดงแบบปิดจอง "ติดต่อร้าน" (มติ Y1 · platform ตัดสิน) */
+  let closed = false;
   const chosen = vm.selected?.slots.find((s) => s.selected && s.selectable) ?? null;
   if (vm.cta.enabled && vm.selected && chosen) {
     const base: Record<string, string> = { ...(r.carry.lang ? { lang: r.carry.lang } : {}), m: vm.month, d: vm.selected.date, ...(chosen.token ? { t: chosen.token } : {}) };
@@ -70,6 +72,7 @@ export default async function BookProductPage(props: Props) {
       const state = (!error || error.code !== "INVALID" ? parseBookSelection(params) : null) ?? { pax: [], extras: [], zone: null };
       select = { options: q.options, summary: q.summary, state, nonce: q.summary ? q.nonce : null, error, base, shop: vm.shop.slug, seller: q.shop, productSlug: vm.product.slug, holdAction: startBookHoldAction.bind(null, shop, productSlug) };
     } else if (q.code === "RATE_LIMITED") return <BookRateLimited />;
+    else if (q.code === "UNAVAILABLE" && q.reason === "HOLD_TOO_SHORT") closed = true;
   }
-  return <BookProduct vm={vm} carry={r.carry} select={select} />;
+  return <BookProduct vm={vm} carry={r.carry} select={select} closed={closed} />;
 }

@@ -26,7 +26,8 @@ export type BookSelectData = {
   state: BookSelection;
   /** nonce ของฟอร์มถือที่ (null = ไม่มีกุญแจเซิร์ฟเวอร์ ⇒ ไม่มีปุ่มถือ) */
   nonce: string | null;
-  error: { code: BookErrorCode; fields: BookFormField[] } | null;
+  /** holdLimited = ถังถือ/ถังต่อรอบของเครื่องนี้เต็มจริง (`e=HOLD_LIMITED` · มติ Y5) */
+  error: { code: BookErrorCode; fields: BookFormField[]; holdLimited?: true } | null;
   /** พารามิเตอร์ของหน้าที่ต้องพาไปทุกฟอร์ม (lang · m · d · t) */
   base: Record<string, string>;
   shop: string;
@@ -65,9 +66,10 @@ export function BookSelectPanel({ data, locale }: { data: BookSelectData; locale
         </span>
       </div>
       {data.error?.code === "RATE_LIMITED" ? (
-        // ถือถี่เกินจากเครื่องนี้ (ถังถือ/ถังต่อรอบ) — ลองใหม่ได้ภายหลัง + ทางติดต่อร้าน (มติ W2 · ไม่สัญญา "รอสักครู่")
-        <div data-testid="book-error" data-code="RATE_LIMITED" role="alert" className="rounded-xl border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-4 py-3 text-sm text-[color:var(--color-danger)]">
-          <p>{t("select.holdLimited", { contact: bookContactText(data.seller) })}</p>
+        // ถือไม่ได้ตอนนี้ — ลองใหม่ได้ภายหลัง + ทางติดต่อร้าน (มติ W2 · ไม่สัญญา "รอสักครู่")
+        // "เครื่องนี้ถือหลายครั้งแล้ว" เฉพาะถังถือ/ถังต่อรอบเต็มจริง · ถังอ่านเต็ม/ด่านล่ม ⇒ ข้อความกลาง (มติ Y5)
+        <div data-testid="book-error" data-code="RATE_LIMITED" data-hold-limited={data.error.holdLimited ? "true" : "false"} role="alert" className="rounded-xl border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-4 py-3 text-sm text-[color:var(--color-danger)]">
+          <p>{t(data.error.holdLimited ? "select.holdLimited" : "select.holdUnavailable", { contact: bookContactText(data.seller) })}</p>
         </div>
       ) : data.error ? (
         <BookError code={data.error.code} fields={data.error.fields} locale={locale} />
@@ -223,7 +225,7 @@ export function BookSummaryPanel({ data, locale }: { data: BookSelectData; local
         <BookError code="UNAVAILABLE" locale={locale} />
       )}
       <p data-testid="book-hold-note" className="text-sm text-[color:var(--color-muted)]">
-        {t("summary.holdNote", { min: s.holdMinutes })}
+        {t("summary.holdNote", { min: s.fillMinutes })}
       </p>
     </div>
   );

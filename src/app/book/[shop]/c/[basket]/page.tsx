@@ -10,7 +10,7 @@ import { BookCheckout, BookCheckoutStop } from "@/components/book/BookCheckout";
 import { BookRateLimited } from "@/components/book/BookRateLimited";
 import { bookT } from "@/components/book/book-i18n";
 import { loadBookCheckout } from "@/lib/platform/trips-book";
-import { bookCheckoutHref, bookErrorParam, bookReservationHref } from "@/lib/platform/trips-book-core";
+import { bookCheckoutHref, bookErrorParam, bookRedirectOk, bookReservationHref } from "@/lib/platform/trips-book-core";
 import { bookRequestFromHeaders } from "@/lib/platform/trips-public";
 import { bookHref, bookLocaleOf, parseBookQuery } from "@/lib/platform/trips-public-core";
 import { confirmBookHoldAction, reholdBookAction } from "../../actions";
@@ -40,7 +40,8 @@ export default async function BookCheckoutPage(props: Props) {
   const lang = parseBookQuery(sp).lang;
   const r = await loadOnce(shop, basket, sel, lang);
   if (!r.ok) {
-    if (r.code === "DONE" && r.shopSlug && r.token) redirect(bookReservationHref(r.shopSlug, r.token, lang));
+    // ยืนยันไปแล้ว ⇒ หน้าการจองเดิม — ค่าใน Location ผ่าน bookRedirectOk แบบเดียวกับ action (มติ Y7)
+    if (r.code === "DONE" && bookRedirectOk({ shopSlug: r.shopSlug, token: r.token })) redirect(bookReservationHref(r.shopSlug ?? "", r.token ?? "", lang));
     if (r.code === "NOT_FOUND") notFound();
     if (r.code === "RATE_LIMITED") return <BookRateLimited />;
   }

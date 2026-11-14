@@ -374,20 +374,26 @@ async function shopVM(shop: BookShop, locale: "th" | "en"): Promise<BookShopVM> 
 
 /**
  * ตัวอ้างรอบ `t` ของทุกรอบในวันที่เลือก = ref สาธารณะของ id รอบ (มติ W5 · ไม่อิงลำดับในวัน)
- * id รอบมาจากตัวอ่านของเส้นจอง (loadBookDay · listAvailability ตัวกรองสาธารณะชุดเดียวกัน เรียง startsAt, id เหมือนกัน) จับคู่ทีละตำแหน่ง
- * แล้วตรวจเวลาออก/ช่วงเวลาซ้ำทุกแถว — จำนวนไม่เท่า/แถวไม่ตรง (รอบเพิ่ม/หายระหว่างสองคิวรี) ⇒ null ทั้งวัน (เลือกด้วยลิงก์ไม่ได้ · ไม่มีทางชี้ผิดรอบ)
+ * id รอบมาจากตัวอ่านของเส้นจอง (loadBookDay · listAvailability ตัวกรองสาธารณะชุดเดียวกัน) จับคู่ทีละตำแหน่ง
+ * แล้วตรวจ (เวลาออก · ช่วงเวลา · ชื่อตัวเลือก) ทุกแถว (มติ Y3) — จำนวนไม่เท่า/แถวไม่ตรง (รอบเพิ่ม/หายระหว่างสองคิวรี) ⇒ null ทั้งวัน
+ * คู่ (เวลาออก · ช่วงเวลา · ตัวเลือก) ที่ซ้ำกันในวันเดียว = แยกกันไม่ได้ด้วยตำแหน่ง ⇒ ตัวอ้างของทุกแถวในคู่นั้นเป็น null (เลือกด้วยลิงก์ไม่ได้ · ไม่ชี้ผิดรอบ)
  */
 async function slotTokensOfDay(shop: BookShop, ask: ProductAsk, date: string, slots: readonly PublicSlot[], now: Date): Promise<(string | null)[]> {
   const none = slots.map(() => null);
   try {
     const rows = await loadBookDay({ tenantId: shop.tenantId, unitId: ask.unit.id, productId: ask.productId, tz: ask.unit.tz }, date, { now, locale: ask.locale });
     if (!rows || rows.length !== slots.length) return none;
+    const keyOf = (startsAt: string, timeText: string, opt: { text: string | null; fallback: boolean }): string => JSON.stringify([Date.parse(startsAt), timeText, opt.text, opt.fallback]);
+    const seen = new Map<string, number>();
     for (let k = 0; k < rows.length; k++) {
       const r = rows[k];
       const s = slots[k];
-      if (!r || !s || Date.parse(r.startsAt) !== Date.parse(s.startsAt) || r.timeText !== s.timeText) return none;
+      if (!r || !s) return none;
+      const key = keyOf(r.startsAt, r.timeText, r.optionName);
+      if (key !== keyOf(s.startsAt, s.timeText, s.optionName)) return none;
+      seen.set(key, (seen.get(key) ?? 0) + 1);
     }
-    return rows.map((r) => bookSlotToken(shop.tenantId, r.departureId));
+    return rows.map((r) => ((seen.get(keyOf(r.startsAt, r.timeText, r.optionName)) ?? 0) > 1 ? null : bookSlotToken(shop.tenantId, r.departureId)));
   } catch {
     return none;
   }

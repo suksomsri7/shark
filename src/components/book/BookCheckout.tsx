@@ -36,8 +36,9 @@ export function BookCheckout({
           <BookSteps current="details" locale={vm.locale} />
           <header className="flex flex-wrap items-baseline justify-between gap-2">
             <h1 className="text-2xl font-semibold">{t("checkout.title")}</h1>
+            {/* เวลาที่ยืนยันได้จริง (เวลาหมดถือ − ระยะที่ใช้ยืนยันไม่ได้) ตัดสินในตัวโหลด (มติ Y1) · คีย์เดิม checkout.holdUntil ข้อความใหม่ "กรอกและยืนยันภายใน" */}
             <p data-testid="book-hold-until" className="text-sm font-semibold text-[color:var(--color-accent)]">
-              {t("checkout.holdUntil", { time: vm.holdUntilLocal })}
+              {t("checkout.holdUntil", { time: vm.confirmByLocal })}
             </p>
           </header>
           {error ? <BookError code={error.code} fields={error.fields} locale={vm.locale} /> : null}
