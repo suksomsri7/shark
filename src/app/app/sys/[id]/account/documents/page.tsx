@@ -45,6 +45,7 @@ type SP = {
   q?: string;
   page?: string;
   pageSize?: string;
+  size?: string;
   upload?: string;
   bulkIds?: string;
   bulkOp?: string;
@@ -81,7 +82,7 @@ export default async function DocumentsPage({
   const to = parseDay(toIso, true);
 
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
-  const pageSize = Math.max(1, parseInt(sp.pageSize ?? "10", 10) || 10);
+  const pageSize = Math.max(1, parseInt(sp.size ?? sp.pageSize ?? "10", 10) || 10);
 
   const [list, folders, uploaders] = await Promise.all([
     listAttachmentsPaged(tenantId, systemId, {
@@ -117,7 +118,7 @@ export default async function DocumentsPage({
     uploader: sp.uploader,
     folder: sp.folder,
     q: sp.q,
-    pageSize: sp.pageSize,
+    size: sp.size ?? sp.pageSize,
   };
 
   const cols: DocColumn<AttachmentRowView>[] = [

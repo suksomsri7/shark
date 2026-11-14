@@ -28,6 +28,7 @@ type SP = {
   q?: string;
   page?: string;
   pageSize?: string;
+  size?: string;
   upload?: string;
   /** เปิดแผ่นยืนยันของไฟล์นี้ทันที — ลิงก์ "สร้างบันทึกค่าใช้จ่าย" จากหน้าคลังเอกสาร (WO 7.1) ชี้มาที่นี่ */
   create?: string;
@@ -57,7 +58,7 @@ export default async function InboxPage({
   const tab: AttachmentTab = sp.tab === "linked" ? "linked" : "unlinked";
   const source = sp.source && SOURCES.has(sp.source as AttachmentSource) ? (sp.source as AttachmentSource) : undefined;
   const page = Math.max(1, parseInt(sp.page ?? "1", 10) || 1);
-  const pageSize = Math.max(1, parseInt(sp.pageSize ?? "12", 10) || 12);
+  const pageSize = Math.max(1, parseInt(sp.size ?? sp.pageSize ?? "12", 10) || 12);
 
   const [list, stats, folders] = await Promise.all([
     listAttachmentsPaged(tenantId, systemId, {
@@ -77,7 +78,7 @@ export default async function InboxPage({
     tab,
     source: sp.source,
     q: sp.q,
-    pageSize: sp.pageSize,
+    size: sp.size ?? sp.pageSize,
   };
   // 🔴 ส่งเป็น "แม่แบบข้อความ" ไม่ใช่ฟังก์ชัน — server component ส่งฟังก์ชันให้ client component ไม่ได้
   //    (Next โยน "Functions cannot be passed directly to Client Components" ⇒ หน้า 500 ทั้งหน้า)

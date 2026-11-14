@@ -38,6 +38,13 @@ function prevPeriodKey(date: Date): string {
  * ปิดงวดเดือนก่อนหน้าอัตโนมัติ ทุกระบบบัญชีทั้งแพลตฟอร์ม
  * @returns จำนวนงวดที่ปิดสำเร็จรอบนี้
  */
+/** ACCOUNT-FIX A6 — วันที่ (เวลาไทย) ถึงวันปิดงวดที่ร้านตั้งไว้แล้วหรือยัง · null/นอกช่วง = ถึงแล้ว (พฤติกรรมเดิม) */
+export function closeDayReached(now: Date, periodCloseDay: number | null): boolean {
+  if (!periodCloseDay || periodCloseDay < 1 || periodCloseDay > 28) return true;
+  const bkkDay = new Date(now.getTime() + 7 * 3_600_000).getUTCDate();
+  return bkkDay >= periodCloseDay;
+}
+
 export async function sweepAutoClosePeriods(now: Date = new Date()): Promise<number> {
   const periodKey = prevPeriodKey(now);
 
@@ -53,7 +60,7 @@ export async function sweepAutoClosePeriods(now: Date = new Date()): Promise<num
   //    ร้านที่สร้างใหม่จะเสียฟีเจอร์เดิมไปเงียบ ๆ (qc-account-deep AD-2.1–2.4 จับได้)
   const settingsRows = await prisma.accountSettings.findMany({
     where: { systemId: { in: systems.map((x) => x.id) } },
-    select: { systemId: true, autoClosePeriods: true, autoCloseNotify: true },
+    select: { systemId: true, autoClosePeriods: true, autoCloseNotify: true, periodCloseDay: true },
   });
   const policyBySystem = new Map(settingsRows.map((r) => [r.systemId, r]));
 
@@ -65,6 +72,9 @@ export async function sweepAutoClosePeriods(now: Date = new Date()): Promise<num
     const pol = policyBySystem.get(sys.id);
     if (!(pol?.autoClosePeriods ?? true)) continue;
     const notify = pol?.autoCloseNotify ?? true;
+    // ACCOUNT-FIX A6 — "วันปิดงวดของแต่ละเดือน" (นโยบายบัญชี): ตั้งไว้ = ปิดงวดเดือนก่อนอัตโนมัติตั้งแต่วันนั้นของเดือน (เวลาไทย)
+    //   ก่อนถึงวัน = ยังไม่ปิด (ทีมบัญชียังลงรายการเดือนก่อนได้) · ไม่ตั้ง = ปิดตั้งแต่วันแรกของเดือนเหมือนเดิม
+    if (!closeDayReached(now, pol?.periodCloseDay ?? null)) continue;
 
     // CLOSED แล้ว → ข้ามเงียบ
     const existing = await prisma.accountPeriod.findFirst({

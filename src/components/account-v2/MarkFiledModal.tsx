@@ -4,7 +4,7 @@
 // เปิดผ่าน query `?markFiled=1&ids=…` (pattern เดียวกับ FinanceModal `?edit=`) — server หน้า wht เตรียม
 // `summary` มาให้แล้ว (ตรวจว่า certs ที่เลือกอยู่แบบ/งวดเดียวกันหรือยัง) ตัวนี้แค่ยืนยัน+เรียก server action
 import type { PndFormNumber } from "@/lib/modules/account/wht-forms";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Modal } from "./Modal";
 import { formatBaht } from "@/lib/ui/money";
@@ -34,13 +34,17 @@ export function MarkFiledModal({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [err, setErr] = useState("");
   const close = () => router.push(closeHref);
 
   const confirm = () => {
     if (!summary.ok) return;
     start(async () => {
+      setErr("");
       const res = await markFiledAction(systemId, { form: summary.form as PndFormNumber, periodKey: summary.periodKey });
+      // ACCOUNT-FIX A5 — เดิมไม่มี else: ล้มเหลวแล้วโมดัลเงียบ ผู้ใช้ไม่รู้ว่าไม่ได้บันทึก
       if (res.ok) router.push(closeHref);
+      else setErr(res.reason);
     });
   };
 
@@ -84,13 +88,18 @@ export function MarkFiledModal({
           {summary.reason}
         </p>
       )}
+      {err && (
+        <p className="mt-3 text-sm text-[color:var(--color-danger)]" role="alert" data-testid="mark-filed-action-err">
+          {err}
+        </p>
+      )}
       <div className="mt-4 flex justify-end gap-2">
         <button type="button" className="btn btn-ghost" onClick={close}>
           ยกเลิก
         </button>
         {summary.ok && (
           <button type="button" className="btn btn-primary" disabled={pending} onClick={confirm} data-testid="mark-filed-confirm">
-            {pending ? "กำลังบันทึก…" : "✓ ยืนยันทำเครื่องหมายนำส่งแล้ว"}
+            {pending ? "กำลังบันทึก…" : "ยืนยันนำส่งทั้งงวด"}
           </button>
         )}
       </div>

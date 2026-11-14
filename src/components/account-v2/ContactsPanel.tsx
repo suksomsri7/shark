@@ -449,7 +449,7 @@ function PageSizeFooter({
           aria-label="จำนวนต่อหน้า"
           defaultValue={String(pageSize)}
           className="border-0 bg-transparent underline outline-none"
-          onChange={(e) => go(buildHref(pathname, searchParams, { pageSize: e.target.value, page: undefined }))}
+          onChange={(e) => go(buildHref(pathname, searchParams, { size: e.target.value, pageSize: undefined, page: undefined }))}
         >
           {[8, 10, 20, 50].map((n) => (
             <option key={n} value={n}>

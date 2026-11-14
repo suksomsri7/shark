@@ -35,6 +35,7 @@ import {
   draftReceiptAttachedPayments,
 } from "./service";
 import { computeDueDate, defaultDaysFor } from "./settings-schema";
+import { tagsForDocType } from "./doc-settings";
 import { defaultPriceModeOf, whtDefaultForAccountCode } from "./policy"; // §9.3
 import { previewNextExpenseDocNo, creditAvailableExpenseNow } from "./expense";
 import { listPaymentChannels } from "./payment";
@@ -81,6 +82,7 @@ export async function DocEditorPage({
   docId,
   refId,
   prefill,
+  copyFromId,
 }: {
   systemId: string;
   docType: AccountDocType;
@@ -90,6 +92,8 @@ export async function DocEditorPage({
   /** WO 9.4 §0.3 ข้อ 3 — เติมค่าเริ่มต้นจากแผง "สร้างด่วน" (⌘K) ผ่าน query `?contactId=&amount=` — เฉพาะตอน
    * สร้างใหม่จริง ๆ (ไม่ใช่แก้ร่างเดิม/ไม่ใช่ wizard ปรับปรุงหนี้ที่มี refDoc ของตัวเองอยู่แล้ว) */
   prefill?: { contactId?: string; amountSatang?: number };
+  /** ACCOUNT-FIX A7 — "คัดลอกเป็นร่างใหม่" (`?copy=<docId>`): เติมผู้ติดต่อ/รายการ/หมายเหตุจากใบชนิดเดียวกัน · วันที่/เลขที่ใหม่ · ยังไม่บันทึกจนกดบันทึก */
+  copyFromId?: string;
 }) {
   const def = editorDefOf(docType);
   if (!def) notFound();
@@ -110,6 +114,11 @@ export async function DocEditorPage({
   const doc = docId ? await getDocument(tenantId, systemId, docId) : null;
   if (docId && (!doc || doc.docType !== docType)) notFound();
   if (doc && doc.status !== "DRAFT") redirect(editorDetailPath(base, docType, doc.id));
+  // ACCOUNT-FIX A7 — ต้นฉบับของ "คัดลอก": ชนิดเดียวกันเท่านั้น (getDocument กรอง tenant/system แล้ว) · ไม่ใช้กับใบปรับปรุงหนี้ (มีเอกสารอ้างอิงของตัวเอง)
+  const copyRaw = !docId && copyFromId && !adjustMode ? await getDocument(tenantId, systemId, copyFromId) : null;
+  const copy = copyRaw && copyRaw.docType === docType ? copyRaw : null;
+  /** ใบที่ให้ค่าหัวเอกสาร (ร่างเดิม หรือ ต้นฉบับที่คัดลอก) — วันที่/เลขที่/สถานะ ไม่เอามาจากต้นฉบับ */
+  const head = doc ?? copy;
 
   // ── WO 1.6 §5.2 J — เอกสารอ้างอิงของ wizard ปรับปรุงหนี้ (ขั้น ②) ──
   // ร่างเดิม (docId มีค่า) → อ้างอิงมาจาก doc.sourceDocId ที่ persist ไว้แล้วเสมอ (ตัด `?ref=` ทิ้ง กันคนแก้ผ่าน URL)
@@ -141,7 +150,10 @@ export async function DocEditorPage({
       listIncomeAccounts(tenantId, systemId),
       listExpenseAccounts(tenantId, systemId),
       listTenantMembers(tenantId),
-      listUsedTags(tenantId, systemId),
+      // ACCOUNT-FIX A6 — แท็กที่ตั้งไว้ในหน้าตั้งค่า (เฉพาะที่ใช้กับชนิดนี้ · ไม่รวมที่เก็บเข้ากรุ) มาก่อน ตามด้วยแท็กที่เคยใช้
+      Promise.all([tagsForDocType({ tenantId, systemId }, docType), listUsedTags(tenantId, systemId)]).then(([defined, used]) => [
+        ...new Set([...defined.map((t) => t.name), ...used]),
+      ]),
       doc ? listAttachments(tenantId, systemId, { documentId: doc.id }) : Promise.resolve([]),
       outstandingByContacts(tenantId, systemId),
       getDocFavorites(tenantId, systemId),
@@ -194,16 +206,19 @@ export async function DocEditorPage({
   const seededContact = adjustSeedContact(doc, refDoc);
   // WO 9.4 — prefill จาก ⌘K "สร้างด่วน" ใช้ได้เฉพาะตอนสร้างใหม่จริง ๆ (ไม่มีร่างเดิม/ไม่ใช่ wizard ปรับปรุงหนี้
   // ที่มีเอกสารอ้างอิงของตัวเองอยู่แล้ว — ไม่งั้นจะไปทับผู้ติดต่อ/ยอดของร่าง/เอกสารอ้างอิงที่ถูกต้องอยู่แล้ว)
-  const prefillActive = !doc && !refDoc && !!prefill;
-  const contactId = seededContact.contactId || (prefillActive ? (prefill?.contactId ?? null) : null);
+  const prefillActive = !doc && !refDoc && !copy && !!prefill;
+  const contactId = seededContact.contactId || (copy?.contactId ?? null) || (prefillActive ? (prefill?.contactId ?? null) : null);
   const contactRow = contactRows.find((c) => c.id === contactId);
   // WO 8.1 (§9.2 "วันที่ครบกำหนด"): ค่าเริ่มต้นต่อชนิดมาจากหน้าตั้งค่า · เครดิตเทอมของลูกค้ารายนั้นชนะเสมอ
   // (ตั้งไว้ที่ผู้ติดต่อ = ข้อตกลงเฉพาะราย ย่อมเจาะจงกว่าค่ากลางของกิจการ)
   const dueDays =
     docType === "QUOTATION"
       ? settings.doc.due.quotationValidDays
-      : (contactRow?.creditTermDays || defaultDaysFor(settings.doc, docType) || settings.defaultDueDays);
-  const lineSourceDoc = doc ?? (!doc ? refDoc : null);
+      : docType === "PURCHASE_ORDER" || docType === "ASSET_PURCHASE_ORDER"
+        ? // ACCOUNT-FIX A6 — ใบสั่งซื้อ = "กำหนดส่ง" (ค่าตั้ง purchaseOrderDueDays) ไม่ใช่เครดิตเทอมของผู้ขาย
+          (defaultDaysFor(settings.doc, docType) ?? settings.defaultDueDays)
+        : (contactRow?.creditTermDays || defaultDaysFor(settings.doc, docType) || settings.defaultDueDays);
+  const lineSourceDoc = doc ?? refDoc ?? copy;
   const lines: LineDraft[] = lineSourceDoc?.lines.length
     ? lineSourceDoc.lines.map((l) => {
         const { name, description } = unpackDescription(l.description);
@@ -236,20 +251,20 @@ export async function DocEditorPage({
   }
 
   const lineBaseSum = lines.reduce((s, l) => s + Math.max(0, Math.round(l.qty * l.unitPriceSatang) - l.discount.satang * l.qty), 0);
-  const docDiscountAmount = doc?.discountAmount ?? 0;
+  const docDiscountAmount = head?.discountAmount ?? 0;
   const reasonSeed = unpackAdjustReason(doc?.adjustReason);
   const initial: DocDraftValue = {
     docNo: docNoPreview,
     contactId,
-    contactLabel: seededContact.contactLabel || (prefillActive ? (contactRow?.name ?? "") : ""),
+    contactLabel: seededContact.contactLabel || (copy || prefillActive ? (contactRow?.name ?? "") : ""),
     issueDate,
     dueDate:
       isoOf(docType === "QUOTATION" ? doc?.validUntil : doc?.dueDate) ||
       // นับจากวันที่ออก หรือ "สิ้นเดือนของวันที่ออก + n วัน" ตามที่ตั้งไว้ (§9.2)
       computeDueDate(issueDate, dueDays, settings.doc.due.basis),
-    reference: doc?.reference ?? "",
+    reference: head?.reference ?? "",
     // §9.3: ประเภทราคาเริ่มต้นมาจากนโยบายบัญชี (ไม่ได้ตั้ง = พฤติกรรมเดิม จด VAT → แยก VAT)
-    priceMode: doc ? priceModeOf(doc.vatMode) : defaultPriceModeOf(settings.policy),
+    priceMode: head ? priceModeOf(head.vatMode) : defaultPriceModeOf(settings.policy),
     autoTaxInvoice: doc?.autoTaxInvoice ?? null,
     autoReceipt: doc?.autoReceipt ?? null,
     // ACC T1.4 — สถานะที่ตรงกับค่าเริ่มของคู่ค้า = ไม่ได้เลือกเอง ⇒ ส่ง null (เปลี่ยนคู่ค้าในฟอร์มแล้วค่าเริ่มคำนวณใหม่)
@@ -258,16 +273,16 @@ export async function DocEditorPage({
         ? doc.inputVatStatus
         : null,
     recognizeVatNow: doc ? doc.vatTiming !== "ON_PAYMENT" : settings.taxPointBasis !== "ON_PAYMENT",
-    salesUserId: doc?.salesUserId ?? null,
-    tags: doc?.tags ?? [],
+    salesUserId: head?.salesUserId ?? null,
+    tags: head?.tags ?? [],
     lines,
     docDiscount:
-      doc?.discountMode === "PERCENT" && lineBaseSum > 0
+      head?.discountMode === "PERCENT" && lineBaseSum > 0
         ? { mode: "percent", satang: 0, percentBp: Math.round((docDiscountAmount * 10000) / lineBaseSum) }
         : { mode: "amount", satang: docDiscountAmount, percentBp: 0 },
     // หมายเหตุท้ายเอกสาร: ของชนิดนี้ก่อน (§9.2) → ข้อความกลางของกิจการ → ว่าง
-    note: doc?.note ?? settings.doc.notes[docType]?.footer ?? settings.footerNote ?? "",
-    internalNote: doc?.internalNote ?? "",
+    note: head?.note ?? settings.doc.notes[docType]?.footer ?? settings.footerNote ?? "",
+    internalNote: head?.internalNote ?? "",
     adjustReasonCode: doc?.adjustReasonCode ?? reasonSeed.code, // ACC T2.3 ▸ รหัสที่เก็บไว้ชนะการแกะข้อความ ◂
     adjustReasonText: reasonSeed.text,
     vendorDocDate: doc?.vendorInvoiceDate ? new Date(new Date(doc.vendorInvoiceDate).getTime() + 7 * 3600_000).toISOString().slice(0, 10) : "", // ACC T2.3 ◂

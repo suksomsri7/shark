@@ -10,11 +10,16 @@ import { revalidatePath } from "next/cache";
 import type { AccountDocType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan, writeAudit } from "./access";
+import { DOC_LABEL } from "./service";
+import { EXP_DOC_LABEL } from "./expense";
 import {
   archiveDocTag,
   createDocTag,
   getDocSettings,
   resetDocSettings,
+  DOC_SETTINGS_RESET_SCOPES,
+  DOC_SETTINGS_RESET_LABEL,
+  type DocSettingsResetScope,
   saveDocSettings,
   setDocNextNo,
   setDocTypeAccount,
@@ -33,7 +38,9 @@ import {
   PRINT_FIELDS,
 } from "./settings-schema";
 
-export type ActionResult = { ok: true } | { ok: false; reason: string };
+export type ActionResult = { ok: true; notice?: string } | { ok: false; reason: string };
+
+const DOC_LABEL_OF = (dt: AccountDocType): string => DOC_LABEL[dt] ?? EXP_DOC_LABEL[dt] ?? dt;
 
 const SETTINGS_PATH = (systemId: string) => `/app/sys/${systemId}/account/settings/documents`;
 
@@ -80,27 +87,21 @@ export async function saveDocNumberingAction(formData: FormData): Promise<Action
       reset: toSeqReset(s(formData, `seq_${dt}_reset`)),
     };
   }
-  // การ์ด "กฎอัตโนมัติของเอกสาร" (f10) มี 2 สวิตช์ที่เป็นค่าเดียวกับหัวข้อย่อยอื่น
-  // ⇒ อ่านค่าปัจจุบันมาก่อน แล้วแก้เฉพาะช่อง on/off (ไม่ล้างข้อความ/ตัวเลือกละเอียดที่ตั้งไว้)
+  // ACCOUNT-FIX A6 — การ์ด "กฎอัตโนมัติของเอกสาร" เหลือ "เตือนเมื่อเลขที่ข้ามลำดับ" ตัวเดียว:
+  //   · สวิตช์ใบกำกับอัตโนมัติ/ลิงก์ขอใบกำกับ ที่ซ้ำกับหัวข้อย่อยเอาออก (ตั้งที่หัวข้อของมันที่เดียว · เดิมเปิดแล้วทับโหมด "พร้อมใบแจ้งหนี้")
+  //   · "ล็อกเลขที่เมื่อออกแล้ว" เอาออก — เลขล็อกโดยโครงสร้างอยู่แล้ว (เอกสารพ้นร่างแก้ไม่ได้) ไม่มีทางปิดได้จริง
   const cur = await getDocSettings({ tenantId, systemId });
+  const warnOnGap = on(formData, "warnOnGap");
   const patch: DocSettingsPatch = {
     sequences,
-    rules: { lockNumberOnIssue: on(formData, "lockNumberOnIssue"), warnOnGap: on(formData, "warnOnGap") },
-    autoTaxInvoice: {
-      ...cur.autoTaxInvoice,
-      mode: on(formData, "autoTaxOnPayment")
-        ? "ON_PAYMENT"
-        : cur.autoTaxInvoice.mode === "ON_PAYMENT"
-          ? "MANUAL"
-          : cur.autoTaxInvoice.mode,
-    },
-    taxRequest: { ...cur.taxRequest, enabled: on(formData, "publicTaxRequest") },
+    rules: { lockNumberOnIssue: cur.rules.lockNumberOnIssue, warnOnGap },
   };
   const saved = await saveDocSettings({ tenantId, systemId }, patch);
   if (!saved.ok) return saved;
 
   // "เลขถัดไป" แก้แยกจาก pattern เพราะมันเขียนตัวนับ ไม่ใช่ตั้งค่า — ปฏิเสธได้รายชนิด
   const now = new Date();
+  const gapNotices: string[] = [];
   for (const dt of NUMBERED_DOC_TYPES) {
     const raw = formData.get(`seq_${dt}_next`);
     if (raw === null || String(raw).trim() === "") continue;
@@ -109,11 +110,13 @@ export async function saveDocNumberingAction(formData: FormData): Promise<Action
     if (!Number.isFinite(want) || want === current) continue; // ไม่ได้แก้ = ไม่ต้องเขียนตัวนับ
     const res = await setDocNextNo({ tenantId, systemId }, dt, want, now);
     if (!res.ok) return res;
+    if (warnOnGap && res.skipped && res.skipped > 0) gapNotices.push(`${DOC_LABEL_OF(dt)} ข้าม ${res.skipped} เลข (ใบถัดไปได้เลข ${res.nextNo})`);
   }
 
   await audit(tenantId, userId, systemId, "เลขที่เอกสาร");
   revalidatePath(SETTINGS_PATH(systemId));
-  return { ok: true };
+  // ACCOUNT-FIX A6 — กฎ "เตือนเมื่อเลขที่ข้ามลำดับ": ตั้งเลขถัดไปจนข้ามเลข = บันทึกได้ แต่บอกชัดว่าข้ามกี่เลข (ไม่บล็อก)
+  return gapNotices.length ? { ok: true, notice: `บันทึกแล้ว — เลขที่เอกสารจะข้ามลำดับ: ${gapNotices.join(" · ")}` } : { ok: true };
 }
 
 // ─────────────────── ② หมายเหตุ + เงื่อนไขการชำระ ต่อชนิด ───────────────────
@@ -308,9 +311,12 @@ export async function saveDocTypeAccountAction(formData: FormData): Promise<Acti
 export async function resetDocSettingsAction(formData: FormData): Promise<ActionResult> {
   const systemId = s(formData, "systemId");
   const { tenantId, userId } = await gate(systemId);
-  const res = await resetDocSettings({ tenantId, systemId });
+  const raw = s(formData, "scope");
+  const scope = (DOC_SETTINGS_RESET_SCOPES as readonly string[]).includes(raw) ? (raw as DocSettingsResetScope) : null;
+  if (!scope) return { ok: false, reason: "ไม่ทราบว่าจะคืนค่าเริ่มต้นของหัวข้อใด" };
+  const res = await resetDocSettings({ tenantId, systemId }, scope);
   if (!res.ok) return res;
-  await audit(tenantId, userId, systemId, "คืนค่าเริ่มต้น");
+  await audit(tenantId, userId, systemId, `คืนค่าเริ่มต้น: ${DOC_SETTINGS_RESET_LABEL[scope]}`);
   revalidatePath(SETTINGS_PATH(systemId));
   return { ok: true };
 }

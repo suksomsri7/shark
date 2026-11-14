@@ -7,7 +7,7 @@ import Section from "@/components/ui/Section";
 import FormField from "@/components/ui/FormField";
 import { DataTable } from "@/components/ui/DataList";
 import MoneyText from "@/components/ui/MoneyText";
-import { formatThaiDate as fmtDate } from "@/lib/ui/date";
+import { formatThaiDate as fmtDate, formatThaiPeriodBE, thaiPeriodKey } from "@/lib/ui/date";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
@@ -28,9 +28,9 @@ function backHref(self: string, r: { ok: boolean; reason?: string }, okText: str
   return `${self}&${r.ok ? `ok=${encodeURIComponent(okText)}` : `err=${encodeURIComponent(r.reason ?? "")}`}`;
 }
 
+// ACCOUNT-FIX B5 — งวดเริ่มต้น = เดือนปัจจุบันตามเวลาไทย (เดิมใช้นาฬิกาเครื่อง UTC: คืนวันสิ้นเดือนหลัง 17:00 ได้เดือนผิด)
 function defaultPeriod(): string {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  return thaiPeriodKey(new Date());
 }
 
 // ACC T3.4 — แบบ ภ.ง.ด. แยกตาม ประเภทเงินได้ × ผู้รับ (ตาราง SYSTEM_WHT_FORM_ROWS) · 1ก = ภ.ง.ด.1 รายปีรวมต่อผู้รับ
@@ -61,6 +61,7 @@ export default async function TaxPage({
   const base = `/app/sys/${id}/account`;
   const ctx = { tenantId, systemId };
   const label = PND_FORM_LABEL_TH[type];
+  const periodTh = formatThaiPeriodBE(period);
 
   const [report, counts, annualRep, creditYear, st, hist] = await Promise.all([
     pnd(tenantId, systemId, { type, period }),
@@ -93,7 +94,7 @@ export default async function TaxPage({
     const r = await markFiled(tenantId, systemId, { form: type, periodKey: period, filedById: userId });
     if (r.ok) await writeAudit({ tenantId, actorId: userId, action: "account.wht.manage", targetType: "AccountWhtFiling", targetId: `${systemId}:${type}:${period}`, after: { form: type, periodKey: period, certCount: r.certCount } });
     revalidatePath(`${base}/tax`);
-    redirect(backHref(self, r.ok ? { ok: true } : r, `ทำเครื่องหมายนำส่ง ${label} งวด ${period} แล้ว`));
+    redirect(backHref(self, r.ok ? { ok: true } : r, `ทำเครื่องหมายนำส่ง ${label} งวด ${periodTh} แล้ว`));
   }
 
   async function additionalAction(fd: FormData) {
@@ -150,13 +151,10 @@ export default async function TaxPage({
           <input name="period" type="month" defaultValue={period} className="input" />
         </FormField>
         <button className="btn btn-primary text-sm">ดู</button>
-        <a
-          href={annual ? `${base}/tax/export?kind=pnd1k&year=${year}` : `${base}/tax/export?kind=pnd&type=${type}&period=${period}`}
-          className="btn btn-ghost text-sm"
-          data-testid="pnd-csv"
-        >
-          ดาวน์โหลดรายการ {annual ? "ภ.ง.ด.1ก" : label} (CSV ช่วยกรอกแบบ)
-        </a>
+        {/* ACCOUNT-FIX B5 — CSV ใช้ "แบบ + งวด ที่เลือกในฟอร์มตอนนี้" (ส่งฟอร์มไปตัวส่งออก) ไม่ใช่งวดที่โหลดหน้าไว้ก่อนเปลี่ยน */}
+        <button type="submit" formAction={`${base}/tax/export`} name="kind" value="pnd" className="btn btn-ghost text-sm" data-testid="pnd-csv">
+          ดาวน์โหลด CSV ช่วยกรอกแบบ (ตามแบบและงวดที่เลือก)
+        </button>
       </form>
 
       {sp.ok && <p className="text-sm font-medium" data-testid="pnd-ok">{sp.ok}</p>}
@@ -193,7 +191,7 @@ export default async function TaxPage({
             {filing ? (
               <div className="flex flex-wrap items-center gap-3">
                 <span data-testid="pnd-filed-state">
-                  ทำเครื่องหมายนำส่ง {label} งวด {period} แล้ว เมื่อ {fmtDate(filing.filedAt)}
+                  ทำเครื่องหมายนำส่ง {label} งวด {periodTh} แล้ว เมื่อ {fmtDate(filing.filedAt)}
                   {filing.filedById ? ` โดย ${names.get(filing.filedById) ?? "ผู้ใช้"}` : ""} · {filing.certCount} รายการ · ภาษี <MoneyText satang={filing.totalTaxSatang} decimals />
                 </span>
                 {canUnmark && st.additional.length === 0 && (
@@ -202,7 +200,7 @@ export default async function TaxPage({
                     reasonField={{ name: "reason", label: "เหตุผลที่ยกเลิกเครื่องหมาย (เก็บในประวัติ)", required: true }}
                     triggerLabel="ยกเลิกเครื่องหมาย"
                     triggerClassName="text-sm text-[color:var(--color-muted)] hover:underline"
-                    title={`ยกเลิกเครื่องหมายนำส่ง ${label} งวด ${period}?`}
+                    title={`ยกเลิกเครื่องหมายนำส่ง ${label} งวด ${periodTh}?`}
                     detail="50 ทวิ ของงวดนี้จะกลับไปเป็น “ยังไม่นำส่ง” · ตัวเลขที่นำส่งและประวัติยังเก็บไว้"
                     confirmLabel="ยืนยัน"
                     danger
@@ -213,14 +211,14 @@ export default async function TaxPage({
             ) : (
               <div className="flex flex-wrap items-center gap-3">
                 <span data-testid="pnd-filed-state">
-                  ยังไม่ได้ทำเครื่องหมายนำส่ง {label} งวด {period}
+                  ยังไม่ได้ทำเครื่องหมายนำส่ง {label} งวด {periodTh}
                 </span>
                 {canManage && report.rows.length > 0 && (
                   <ConfirmDialog
                     action={markAction}
                     triggerLabel={`ทำเครื่องหมายนำส่ง ${label} งวดนี้`}
                     triggerClassName="btn btn-ghost text-sm"
-                    title={`ทำเครื่องหมายนำส่ง ${label} งวด ${period}?`}
+                    title={`ทำเครื่องหมายนำส่ง ${label} งวด ${periodTh}?`}
                     detail={`${report.rows.length} รายการ · ภาษี ${(report.grandWht / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })} บาท${report.uncertifiedCount ? ` · ในนี้ ${report.uncertifiedCount} รายการยังไม่ออก 50 ทวิ` : ""}`}
                     confirmLabel="ยืนยัน"
                     testId="pnd-mark"
@@ -281,7 +279,7 @@ export default async function TaxPage({
           {hist.length > 0 && (
             <section className="flex flex-col gap-1 rounded-lg border px-3 py-2 text-xs print:hidden" data-testid="pnd-filing-history">
               <h3 className="text-sm font-medium">
-                ประวัติการทำเครื่องหมายนำส่ง {label} งวด {period}
+                ประวัติการทำเครื่องหมายนำส่ง {label} งวด {periodTh}
               </h3>
               <ul className="flex flex-col gap-0.5">
                 {hist.map((h, i) => (
@@ -296,7 +294,7 @@ export default async function TaxPage({
           )}
 
           {/* สรุปตามประเภทเงินได้ */}
-          <Section title={`${label} — งวด ${period} · สรุปตามประเภทเงินได้`}>
+          <Section title={`${label} — งวด ${periodTh} · สรุปตามประเภทเงินได้`}>
             <DataTable<SummaryRow>
               cols={[
                 { key: "label", header: "ประเภทเงินได้", render: (r) => (r.total ? <span className="font-semibold">{r.label}</span> : r.label) },

@@ -45,6 +45,15 @@ export function ContactPicker({
   const [results, setResults] = useState<ContactSearchResult[]>(initialResults ?? []);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const boxRef = useRef<HTMLDivElement>(null);
+  // ACCOUNT-FIX B4 — ผู้เรียกเลือกผู้ติดต่อให้จากภายนอก (สร้างใหม่ใน modal ซ้อน) ⇒ ช่องแสดงชื่อที่เลือกตาม
+  const lastDefaultId = useRef(defaultId ?? "");
+  useEffect(() => {
+    const next = defaultId ?? "";
+    if (next === lastDefaultId.current) return;
+    lastDefaultId.current = next;
+    setSelectedId(next);
+    setQuery(defaultLabel ?? "");
+  }, [defaultId, defaultLabel]);
 
   useEffect(() => {
     if (!open) return;

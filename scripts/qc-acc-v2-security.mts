@@ -858,13 +858,15 @@ try {
   // ORDER BY จาก allowlist
   const svcSrc = readFileSync(join(MODULE_DIR, "service.ts"), "utf8");
   assert(
-    "S9 ORDER BY ของรายการเอกสารมาจากตารางคงที่ (DOC_SORT_ORDER)",
-    /const DOC_SORT_ORDER: Record<DocSort,/.test(svcSrc) && /orderBy: DOC_SORT_ORDER\[input\.sort \?\? "recent"\]/.test(svcSrc),
+    // ORACLE-EDIT (ACCOUNT-FIX A4): ตารางคงที่ DOC_SORT_ORDER → docSortOrder(sort, dir) — คอลัมน์ยังมาจากตารางคงที่ (Record<DocSort,…>) · ทิศถูกทำให้เหลือ asc|desc ก่อนเข้า Prisma
+    "S9 ORDER BY ของรายการเอกสารมาจากตารางคงที่ (docSortOrder · ทิศเหลือ asc|desc)",
+    /const col: Record<DocSort, Prisma\.AccountDocumentOrderByWithRelationInput>/.test(svcSrc) && /const d = dir === "asc" \? "asc" : "desc";/.test(svcSrc) && /orderBy: docSortOrder\(input\.sort, input\.sortDir\)/.test(svcSrc),
   );
   const listPageSrc = readFileSync(join(ROUTE_DIR, "docs/[docType]/page.tsx"), "utf8");
   assert(
     "S9 หน้ารายการกรอง sort จาก query ให้เหลือค่าที่รู้จักก่อนส่งเข้า service",
-    /sp\.sort === "docNo" \|\| sp\.sort === "amount" \|\| sp\.sort === "issueDate" \? sp\.sort : "issueDate"/.test(listPageSrc),
+    // ORACLE-EDIT (ACCOUNT-FIX A4): ตัวกรองย้ายไป parseDocSort (ค่าที่รู้จักเท่านั้น · อื่น = issueDate) + readSortDir — ทดสอบตัวกรองตรง ๆ ด้วย
+    /const sort = parseDocSort\(sp\.sort\)/.test(listPageSrc) && /readSortDir\(sp\.dir\)/.test(listPageSrc) && acc.parseDocSort("issueDate; DROP") === "issueDate" && acc.parseDocSort("recent") === "recent",
   );
   // ขอบเขตหน้า/ขนาดหน้า (กันดึงทั้งตาราง)
   const big = await acc.listDocumentsPaged(A.tenantId, A.systemId, { docType: "INVOICE", pageSize: 100000 });

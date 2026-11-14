@@ -2,6 +2,7 @@
 
 import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { AccountIcon } from "./AccountIcon";
 import { Modal } from "./Modal";
 import { LegalWarnings } from "./LegalWarnings"; // ACC T2.10 ◂
@@ -55,7 +56,7 @@ export type ChannelRow = { id: string; name: string; detail: string };
 export type LedgerRow = { id: string; code: string; name: string };
 export type DocTypeAccountRow = { docType: string; label: string; accountId: string | null };
 
-type Action = (fd: FormData) => Promise<{ ok: true } | { ok: false; reason: string }>;
+type Action = (fd: FormData) => Promise<{ ok: true; notice?: string } | { ok: false; reason: string }>;
 
 export type DocSettingsPanelProps = {
   systemId: string;
@@ -113,7 +114,7 @@ export function DocSettingsPanel(p: DocSettingsPanelProps) {
     const fd = new FormData(e.currentTarget);
     start(async () => {
       const res = await action(fd);
-      setMsg(res.ok ? { ok: true, text: "บันทึกแล้ว" } : { ok: false, text: res.reason });
+      setMsg(res.ok ? { ok: true, text: ("notice" in res && res.notice) || "บันทึกแล้ว" } : { ok: false, text: res.reason });
       if (res.ok) setDirty(false);
     });
   }
@@ -334,34 +335,15 @@ function NumberingSection(p: DocSettingsPanelProps) {
       <section className="card flex flex-col p-5" data-testid="doc-rules-card">
         <h2 className="text-sm font-medium">กฎอัตโนมัติของเอกสาร</h2>
         <div className="mt-2 divide-y">
-          {/* 🔴 2 ตัวบนคือค่าเดียวกับหัวข้อย่อย "ใบกำกับภาษีอัตโนมัติ"/"ลิงก์สาธารณะและ QR"
-              (สวิตช์ที่นี่ = เปิด/ปิด · หัวข้อย่อย = ตั้งละเอียด) — เขียนคีย์เดียวกัน ไม่มีค่าซ้ำสองที่ */}
-          <ToggleRow
-            name="autoTaxOnPayment"
-            title="ออกใบกำกับภาษีอัตโนมัติเมื่อรับชำระ"
-            desc="ใช้กับใบเสร็จรับเงินและใบแจ้งหนี้ที่จด VAT"
-            defaultChecked={p.settings.autoTaxInvoice.mode === "ON_PAYMENT"}
-          />
-          <ToggleRow
-            name="publicTaxRequest"
-            title="เปิดลิงก์สาธารณะให้ลูกค้าขอใบกำกับภาษีเอง"
-            desc="แนบ QR ท้ายใบเสร็จ · ลูกค้ากรอกเลขภาษีเองได้"
-            defaultChecked={p.settings.taxRequest.enabled}
-          />
-          <ToggleRow
-            name="lockNumberOnIssue"
-            title="ล็อกเลขที่เอกสารเมื่อออกแล้ว"
-            desc="แก้เลขที่ย้อนหลังไม่ได้ (แนะนำให้เปิดไว้)"
-            defaultChecked={p.settings.rules.lockNumberOnIssue}
-          />
+          {/* ACCOUNT-FIX A6 — เหลือตัวเดียวที่มีผลจริง: ใบกำกับอัตโนมัติ/ลิงก์ขอใบกำกับ ตั้งที่หัวข้อของมัน · เลขที่ล็อกเมื่อออกเสมอ (เอกสารพ้นร่างแก้ไม่ได้) */}
           <ToggleRow
             name="warnOnGap"
             title="เตือนเมื่อเลขที่เอกสารข้ามลำดับ"
-            desc="ส่งแจ้งเตือนให้ผู้ดูแลบัญชี"
+            desc="ตั้ง “เลขถัดไป” จนข้ามเลขที่ยังไม่ได้ใช้ ระบบบอกว่าข้ามกี่เลขตอนบันทึก (บันทึกได้ตามปกติ) · เลขที่ออกแล้วถูกล็อกเสมอ แก้ย้อนหลังไม่ได้"
             defaultChecked={p.settings.rules.warnOnGap}
           />
         </div>
-        <CardFooter systemId={p.systemId} reset={p.actions.reset} />
+        <CardFooter systemId={p.systemId} reset={p.actions.reset} scope="rules" />
       </section>
     </div>
   );
@@ -402,7 +384,7 @@ function NotesSection(p: DocSettingsPanelProps) {
           </label>
         </div>
       ))}
-      <CardFooter systemId={p.systemId} reset={p.actions.reset} />
+      <CardFooter systemId={p.systemId} reset={p.actions.reset} scope="notes" />
     </section>
   );
 }
@@ -435,20 +417,18 @@ function PublicSection(p: DocSettingsPanelProps) {
         <ToggleRow
           name="taxRequestEnabled"
           title="เปิดให้ลูกค้าขอใบกำกับภาษีเอง"
-          desc="แนบ QR ท้ายใบเสร็จ · ลูกค้ากรอกเลขภาษีเองได้"
+          desc="หน้าลิงก์เอกสาร (เมนู ส่ง ▾ › คัดลอกลิงก์เอกสาร) มีฟอร์มให้ลูกค้ากรอกชื่อ/เลขภาษี — คำขอเข้ามาเป็นร่างให้ร้านตรวจก่อนออก"
           defaultChecked={t.enabled}
         />
       </div>
+      {/* ACCOUNT-FIX A6 — "ข้อความบนใบเสร็จ (ข้าง QR)" เอาออก: ใบพิมพ์ไม่มี QR ขอใบกำกับ (ไม่มีที่แสดงข้อความนี้) */}
+      <input type="hidden" name="receiptText" value={t.receiptText} />
       <label className={`${label} mt-3`}>
-        ข้อความบนใบเสร็จ (ข้าง QR)
-        <input name="receiptText" defaultValue={t.receiptText} maxLength={200} className={input} />
-      </label>
-      <label className={`${label} mt-3`}>
-        เงื่อนไข
+        ข้อความเงื่อนไขที่แสดงบนหน้าลิงก์ (เช่น ขอได้ภายใน 7 วัน — ระบบแสดงให้ลูกค้าอ่าน ไม่ได้ตรวจวันให้)
         <input name="conditionNote" defaultValue={t.conditionNote} maxLength={200} className={input} />
       </label>
       <label className={`${label} mt-3`}>
-        ยอดขั้นต่ำที่ขอได้ (บาท) — 0 = ไม่จำกัด
+        ยอดขั้นต่ำที่ขอได้ (บาท) — 0 = ไม่จำกัด · เอกสารที่ยอดต่ำกว่านี้ หน้าลิงก์ไม่มีฟอร์มขอ
         <input
           name="minAmountBaht"
           defaultValue={(t.minAmountSatang / 100).toFixed(2)}
@@ -456,7 +436,7 @@ function PublicSection(p: DocSettingsPanelProps) {
           className={`${input} w-32`}
         />
       </label>
-      <CardFooter systemId={p.systemId} reset={p.actions.reset} />
+      <CardFooter systemId={p.systemId} reset={p.actions.reset} scope="public" />
     </section>
   );
 }
@@ -490,7 +470,7 @@ function DueSection(p: DocSettingsPanelProps) {
           <option value="MONTH_END">{DUE_BASIS_LABEL.MONTH_END}</option>
         </select>
       </label>
-      <CardFooter systemId={p.systemId} reset={p.actions.reset} />
+      <CardFooter systemId={p.systemId} reset={p.actions.reset} scope="due" />
     </section>
   );
 }
@@ -543,7 +523,7 @@ function ChannelsSection(p: DocSettingsPanelProps) {
           })}
         </ol>
       )}
-      <CardFooter systemId={p.systemId} reset={p.actions.reset} />
+      <CardFooter systemId={p.systemId} reset={p.actions.reset} scope="channels" />
     </section>
   );
 }
@@ -568,7 +548,13 @@ function TagsSection(
   return (
     <section className="card flex flex-col gap-3 p-5" data-testid="tags-card">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-medium">กลุ่มจัดประเภท (แท็ก)</h2>
+        <span className="flex flex-col">
+          <h2 className="text-sm font-medium">กลุ่มจัดประเภท (แท็ก)</h2>
+          {/* ACCOUNT-FIX A6 — บอกตรง ๆ ว่าค่าเหล่านี้มีผลที่ไหน */}
+          <span className="text-xs text-[color:var(--color-muted)]">
+            แท็กที่ตั้งไว้เป็นตัวเลือกในฟอร์มเอกสารของชนิดที่เลือก · เก็บเข้ากรุ = ไม่เสนอในฟอร์มอีก · สีใช้แยกแท็กในหน้านี้
+          </span>
+        </span>
         <button
           type="button"
           data-testid="tag-add"
@@ -772,7 +758,7 @@ function AutoTaxSection(p: DocSettingsPanelProps) {
         </select>
         <span>ค่าเริ่มต้นของระบบ — ภาษีซื้อเคลมได้เมื่อมีใบกำกับเต็มรูป (ม.82/5) · เปลี่ยนต่อเอกสารได้ที่ฟอร์ม · โปรดตรวจกับนักบัญชีของร้าน</span>
       </label>
-      <CardFooter systemId={p.systemId} reset={p.actions.reset} />
+      <CardFooter systemId={p.systemId} reset={p.actions.reset} scope="autotax" />
     </section>
   );
 }
@@ -889,7 +875,7 @@ function PrintSection(p: DocSettingsPanelProps) {
           </p>
         </Modal>
       )}
-      <CardFooter systemId={p.systemId} reset={p.actions.reset} />
+      <CardFooter systemId={p.systemId} reset={p.actions.reset} scope="print" />
     </section>
   );
 }
@@ -987,25 +973,30 @@ function ToggleRow({
 }
 
 /** ปุ่มท้ายการ์ด (f10: "คืนค่าเริ่มต้น" มีเส้นขอบ + "บันทึกการตั้งค่า" ปุ่มดำ) — footer อยู่ในการ์ด ไม่ลอย */
-function CardFooter({ systemId, reset }: { systemId: string; reset: Action }) {
+// ACCOUNT-FIX B5 — "คืนค่าเริ่มต้น" ของการ์ดไหน = คืนเฉพาะหัวข้อของการ์ดนั้น และต้องยืนยันก่อน (บอกขอบเขตในกล่อง)
+const RESET_SCOPE_LABEL: Record<string, string> = {
+  rules: "กฎอัตโนมัติของเอกสาร",
+  notes: "ข้อความท้ายเอกสารและเงื่อนไขการชำระเงิน ของทุกชนิดเอกสาร",
+  public: "ลิงก์สาธารณะและลิงก์ขอใบกำกับภาษี",
+  due: "วันครบกำหนด",
+  channels: "ลำดับช่องทางรับชำระบนเอกสาร",
+  autotax: "การออกใบกำกับภาษี ใบเสร็จ เงินมัดจำ และภาษีซื้อ",
+  print: "เทมเพลตพิมพ์",
+};
+
+function CardFooter({ systemId, reset, scope }: { systemId: string; reset: Action; scope?: string }) {
   const [busy, start] = useTransition();
+  const [confirm, setConfirm] = useState(false);
+  const [err, setErr] = useState("");
+  const router = useRouter();
   return (
-    <div className="-mx-5 mt-4 flex justify-end gap-2 border-t px-5 pt-4">
-      <button
-        type="button"
-        disabled={busy}
-        data-testid="settings-reset"
-        className="btn btn-ghost btn-sm"
-        onClick={() => {
-          const fd = new FormData();
-          fd.set("systemId", systemId);
-          start(async () => {
-            await reset(fd);
-          });
-        }}
-      >
-        คืนค่าเริ่มต้น
-      </button>
+    <div className="-mx-5 mt-4 flex flex-wrap items-center justify-end gap-2 border-t px-5 pt-4">
+      {err && <span className="mr-auto text-xs text-[color:var(--color-danger)]">{err}</span>}
+      {scope && (
+        <button type="button" disabled={busy} data-testid="settings-reset" data-scope={scope} className="btn btn-ghost btn-sm" onClick={() => setConfirm(true)}>
+          คืนค่าเริ่มต้น
+        </button>
+      )}
       <button
         type="submit"
         data-testid="settings-save"
@@ -1013,6 +1004,48 @@ function CardFooter({ systemId, reset }: { systemId: string; reset: Action }) {
       >
         บันทึกการตั้งค่า
       </button>
+      {scope && (
+        <Modal
+          open={confirm}
+          onClose={() => setConfirm(false)}
+          size="sm"
+          title="คืนค่าเริ่มต้น?"
+          testId="settings-reset-confirm"
+          actions={
+            <>
+              <button type="button" className="btn btn-ghost btn-sm" onClick={() => setConfirm(false)}>
+                ยกเลิก
+              </button>
+              <button
+                type="button"
+                className="btn btn-sm bg-[color:var(--color-ink)] text-[color:var(--color-surface)]"
+                disabled={busy}
+                data-testid="settings-reset-confirm-btn"
+                onClick={() => {
+                  const fd = new FormData();
+                  fd.set("systemId", systemId);
+                  fd.set("scope", scope);
+                  start(async () => {
+                    const res = await reset(fd);
+                    setConfirm(false);
+                    if (!res.ok) setErr(res.reason);
+                    else {
+                      setErr("");
+                      router.refresh();
+                    }
+                  });
+                }}
+              >
+                คืนค่าเริ่มต้น
+              </button>
+            </>
+          }
+        >
+          <p className="text-sm">
+            ค่าในหัวข้อ <b>{RESET_SCOPE_LABEL[scope] ?? scope}</b> จะกลับเป็นค่าเริ่มต้นของระบบ — หัวข้ออื่นไม่เปลี่ยน · เลขที่เอกสารและเอกสารที่ออกแล้วไม่เปลี่ยน
+          </p>
+        </Modal>
+      )}
     </div>
   );
 }

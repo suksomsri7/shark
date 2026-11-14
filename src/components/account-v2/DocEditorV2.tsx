@@ -18,6 +18,8 @@ import {
 import { approveReceiptWithPaymentsAction } from "@/lib/modules/account/payment-actions";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { ContactPicker, type ContactSearchResult } from "./ContactPicker";
+import { ContactModal } from "./ContactModal";
+import { contactModalBootAction, type ContactModalBoot } from "@/lib/modules/account/contact-modal-actions";
 import { InputVatSection } from "./InputVatSection";
 import { DEFAULT_INPUT_VAT_SETTINGS, defaultInputVatStatus, type InputVatStatus } from "@/lib/modules/account/input-vat-shared";
 import { legalWarning } from "@/lib/core/settings/legal/warnings";
@@ -388,6 +390,16 @@ function EditorBody(props: DocEditorV2Props) {
     return rows;
   };
 
+  // ACCOUNT-FIX B4 — "+ สร้างผู้ติดต่อ" เปิด ContactModal ซ้อนในฟอร์ม (ไม่ออกจากหน้า ร่างที่กรอกไม่หาย) แล้วเลือกผู้ติดต่อใหม่ให้เลย
+  const [contactBoot, setContactBoot] = useState<ContactModalBoot | null>(null);
+  const [contactBootErr, setContactBootErr] = useState("");
+  const openContactModal = () => {
+    setContactBootErr("");
+    contactModalBootAction(props.systemId)
+      .then(setContactBoot)
+      .catch(() => setContactBootErr("เปิดหน้าต่างสร้างผู้ติดต่อไม่สำเร็จ — ลองใหม่อีกครั้ง"));
+  };
+
   const pickContact = (id: string, name: string) => {
     const c = contacts.find((x) => x.id === id);
     setValue((p) => {
@@ -556,6 +568,27 @@ function EditorBody(props: DocEditorV2Props) {
 
   return (
     <div className="flex w-full max-w-5xl flex-col gap-4 pb-40 md:pb-28" data-testid="doc-editor-v2">
+      {contactBootErr && <p className="text-sm text-[color:var(--color-danger)]" role="alert">{contactBootErr}</p>}
+      {contactBoot && (
+        <ContactModal
+          systemId={props.systemId}
+          contactsPath={`${props.basePath}/contacts`}
+          contact={null}
+          nextCode={contactBoot.nextCode}
+          groups={contactBoot.groups}
+          owners={contactBoot.owners}
+          dbdEnabled={contactBoot.dbdEnabled}
+          dbdDisabledReason={contactBoot.dbdDisabledReason}
+          defaultTab={contactBoot.defaultTab}
+          whtRates={contactBoot.whtRates}
+          onSaved={(c) => {
+            setContactBoot(null);
+            pickContact(c.id, c.name);
+            setMobileFieldSheet(null);
+          }}
+          onClose={() => setContactBoot(null)}
+        />
+      )}
       {/* มือถือ (g17 รอบ 2): แถบบนสุด ‹ ย้อนกลับ + ชื่อชนิดเอกสาร + ⋯ — เดสก์ท็อปใช้ breadcrumb ของ shell แทน */}
       <div className="-mx-4 flex items-center justify-between border-b bg-[color:var(--color-surface)] px-2 py-2 md:hidden">
         <Link href={props.listPath} aria-label="ย้อนกลับ" className="flex h-11 w-11 items-center justify-center text-xl" data-testid="editor-back-m">
@@ -795,8 +828,11 @@ function EditorBody(props: DocEditorV2Props) {
                 placeholder="ออกอัตโนมัติเมื่ออนุมัติ"
                 data-testid="fld-docno"
               />
+              {/* ACCOUNT-FIX B4 — ไปหัวข้อ "รูปแบบเลขที่เอกสาร" ตรง ๆ ในแท็บใหม่ (ร่างที่กรอกอยู่ไม่หาย) */}
               <Link
-                href={`${props.basePath}/settings`}
+                href={`${props.basePath}/settings/documents?s=numbering`}
+                target="_blank"
+                rel="noreferrer"
                 className="btn-sm h-11 w-11 shrink-0 px-0"
                 aria-label="ตั้งค่าเลขที่เอกสาร"
                 title="ตั้งค่าเลขที่เอกสาร"
@@ -824,7 +860,7 @@ function EditorBody(props: DocEditorV2Props) {
                     defaultLabel={value.contactLabel}
                     search={searchContacts}
                     onSelect={(r) => pickContact(r.id, r.name)}
-                    onCreate={() => router.push(`${props.basePath}/contacts`)}
+                    onCreate={openContactModal}
                     testId="contact-picker"
                   />
                 )}
@@ -1067,7 +1103,7 @@ function EditorBody(props: DocEditorV2Props) {
               pickContact(r.id, r.name);
               setMobileFieldSheet(null);
             }}
-            onCreate={() => router.push(`${props.basePath}/contacts`)}
+            onCreate={openContactModal}
             testId="contact-picker-m"
           />
         )}

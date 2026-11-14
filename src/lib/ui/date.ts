@@ -116,3 +116,16 @@ export function formatDateTh(d: Date | string, opts?: { withYear?: boolean }): s
   const month = THAI_MONTH_SHORT[m - 1] ?? "";
   return withYear ? `${dayNum} ${month} ${y}` : `${dayNum} ${month}`;
 }
+
+/**
+ * ACCOUNT-FIX B5 — งวดภาษี "YYYY-MM" → "กันยายน 2569" (เดือนเต็ม · พ.ศ.) สำหรับหน้าแบบ ภ.ง.ด./ภ.พ.30 (แบบของกรมสรรพากรใช้ พ.ศ.)
+ * ค่าที่ไม่ใช่รูปแบบงวด = คืนค่าเดิม
+ */
+export function formatThaiPeriodBE(periodKey: string): string {
+  const m = /^(\d{4})-(\d{2})$/.exec(periodKey);
+  if (!m) return periodKey;
+  const month = Number(m[2]);
+  if (month < 1 || month > 12) return periodKey;
+  return `${THAI_MONTH_LONG[month - 1]} ${Number(m[1]) + 543}`;
+}
+export const THAI_MONTH_LONG = ["มกราคม", "กุมภาพันธ์", "มีนาคม", "เมษายน", "พฤษภาคม", "มิถุนายน", "กรกฎาคม", "สิงหาคม", "กันยายน", "ตุลาคม", "พฤศจิกายน", "ธันวาคม"];

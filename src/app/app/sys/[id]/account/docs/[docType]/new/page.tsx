@@ -37,6 +37,8 @@ export default async function Page({
     ids?: string;
     /** WO 9.4 — จาก ⌘K "สร้างด่วน" เท่านั้น (บาท เป็นสตริง) — ไม่ใช้ตอน wizard ปรับปรุงหนี้ (ขั้น ①) */
     amount?: string;
+    /** ACCOUNT-FIX A7 — คัดลอกเป็นร่างใหม่ */
+    copy?: string;
   }>;
 }) {
   const { id, docType } = await params;
@@ -107,5 +109,5 @@ export default async function Page({
 
   const amountSatang = parseAmountQueryToSatang(sp.amount);
   const prefill = sp.contactId || amountSatang != null ? { contactId: sp.contactId, amountSatang } : undefined;
-  return <DocEditorPage systemId={id} docType={dt} refId={adjust && sp.ref ? sp.ref : undefined} prefill={prefill} />;
+  return <DocEditorPage systemId={id} docType={dt} refId={adjust && sp.ref ? sp.ref : undefined} prefill={prefill} copyFromId={sp.copy} />;
 }

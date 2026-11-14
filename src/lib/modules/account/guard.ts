@@ -51,6 +51,8 @@ export type AccountPermFlags = {
   void: boolean;
   issue: boolean;
   create: boolean;
+  /** ACCOUNT-FIX B1 — ยกเลิกรายการชำระ (แผงการชำระของใบที่ชำระครบแล้ว) */
+  voidPayment?: boolean;
 };
 
 export async function accountPermFlags(systemId: string): Promise<AccountPermFlags> {
@@ -61,6 +63,7 @@ export async function accountPermFlags(systemId: string): Promise<AccountPermFla
     void: accountCan(auth, "account.doc.void"),
     issue: accountCan(auth, "account.doc.issue"),
     create: accountCan(auth, "account.doc.create"),
+    voidPayment: accountCan(auth, "account.payment.void"),
   };
 }
 
@@ -169,6 +172,7 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "po/new/page.tsx": "account.doc.create",
   "po/page.tsx": "account.doc.view",
   "print/[docId]/page.tsx": "account.doc.view",
+  "print/batch/page.tsx": "account.doc.view", // ACCOUNT-FIX A4 — พิมพ์ที่เลือก (หลายใบ)
   "products/page.tsx": "account.product.manage",
   "purchase-tax-invoice/[docId]/edit/page.tsx": "account.doc.create",
   "purchase-tax-invoice/[docId]/page.tsx": "account.doc.view", // WO 1.2 (PURCHASE_TAX_INVOICE)

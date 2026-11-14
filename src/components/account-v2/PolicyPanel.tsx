@@ -551,21 +551,21 @@ function AccountsSection({ v, income, expense }: { v: PolicyView; income: Ledger
       <label className={labelCls}>
         บัญชีขาย (รายได้)
         <select name="defaultSalesAccountCode" defaultValue={v.defaultSalesAccountCode} className="input" data-testid="policy-acc-sales">
-          <option value="">— ใช้ค่ามาตรฐานของระบบ —</option>
+          <option value="">— คงตามผังบัญชี (ไม่เปลี่ยน) —</option>
           {opt(income)}
         </select>
       </label>
       <label className={labelCls}>
         บัญชีซื้อสินค้า
         <select name="defaultPurchaseAccountCode" defaultValue={v.defaultPurchaseAccountCode} className="input" data-testid="policy-acc-purchase">
-          <option value="">— ใช้ค่ามาตรฐานของระบบ —</option>
+          <option value="">— คงตามผังบัญชี (ไม่เปลี่ยน) —</option>
           {opt(expense)}
         </select>
       </label>
       <label className={labelCls}>
         บัญชีค่าใช้จ่ายทั่วไป
         <select name="defaultExpenseAccountCode" defaultValue={v.defaultExpenseAccountCode} className="input" data-testid="policy-acc-expense">
-          <option value="">— ใช้ค่ามาตรฐานของระบบ —</option>
+          <option value="">— คงตามผังบัญชี (ไม่เปลี่ยน) —</option>
           {opt(expense)}
         </select>
       </label>

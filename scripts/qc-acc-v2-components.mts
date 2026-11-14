@@ -216,7 +216,8 @@ console.log("\nC6 ตัวสร้างลิงก์ tab/sort/pagination �
   assert("page href ยังมี contactId เดิม", pageHref.includes("contactId=c1"), pageHref);
 
   const pageSizeHref = buildPageSizeHref("/x", { ...base, page: "3", pageSize: "20" }, 50);
-  assert("pageSize href = 50", pageSizeHref.includes("pageSize=50"), pageSizeHref);
+  // ORACLE-EDIT (ACCOUNT-FIX A4): ขนาดหน้าใช้พารามิเตอร์ `size` ชื่อเดียวทั้งระบบ (เดิมตั้ง pageSize= แต่หน้ารายการอ่าน size ⇒ เลือกแล้วไม่มีผล)
+  assert("pageSize href = 50 (พารามิเตอร์ size)", pageSizeHref.includes("size=50") && !pageSizeHref.includes("pageSize="), pageSizeHref);
   assert("pageSize href รีเซ็ต page (ชุดข้อมูลใหม่)", !pageSizeHref.includes("page=3"), pageSizeHref);
 
   const cleared = buildHref("/x", { q: "abc" }, { q: undefined });

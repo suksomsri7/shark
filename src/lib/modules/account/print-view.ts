@@ -13,7 +13,7 @@ import type { PrintAdjustBlock, PrintView } from "@/components/account-v2/PrintD
 import { documentPaymentChannels } from "./doc-settings";
 import { EXP_DOC_LABEL } from "./expense";
 import { isGroupDocType } from "./group";
-import { buildPrintOptions } from "./print-options";
+import { PURCHASE_SIDE_DOC_TYPES, buildPrintOptions } from "./print-options";
 import { buyerBranchLabel, dedupeNotes, realPaymentTerms, section864Text, stripSection864, taxInvoiceMissing } from "./print-shared";
 import { DOC_LABEL, baht, getDocument, getSettings, orgDisplayName } from "./service";
 import { docVatRateGroups, vatSummaryRows } from "./totals";
@@ -77,7 +77,8 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
   const isAdjust = ADJUST_TYPES.has(doc.docType);
   const isGroup = isGroupDocType(doc.docType);
   // จอนอกข้อ 6: ใบลด/เพิ่มหนี้ไม่มีครบกำหนดและช่องทางชำระ
-  const channels = po.show.paymentChannels && !isAdjust ? await documentPaymentChannels({ tenantId, systemId }) : [];
+  // ACCOUNT-FIX B3 — เอกสารฝั่งซื้อ/จ่าย: ช่องทางรับเงินของร้านเราไม่เกี่ยว (เราเป็นผู้จ่าย) ⇒ ไม่พิมพ์
+  const channels = po.show.paymentChannels && !isAdjust && !PURCHASE_SIDE_DOC_TYPES.has(doc.docType) ? await documentPaymentChannels({ tenantId, systemId }) : [];
   const snap = (doc.contactSnapshot as Record<string, unknown> | null) ?? null;
   const str = (v: unknown) => (typeof v === "string" ? v : "");
   const buyerBranchCode = str(snap?.branchCode) || doc.contact?.branchCode || "";
@@ -144,6 +145,8 @@ export async function loadPrintView(tenantId: string, systemId: string, docId: s
     validUntilText: po.show.dueDate && doc.validUntil ? formatThaiDateLong(doc.validUntil) : null,
     reference: po.show.reference ? (doc.reference ?? null) : null,
     seller,
+    // ACCOUNT-FIX A6 — ชื่ออังกฤษ · อีเมล · เว็บไซต์ จากข้อมูลกิจการ (ค่าปัจจุบัน แบบเดียวกับโลโก้/ตราประทับ) ขึ้นหัวเอกสาร
+    sellerExtra: { nameEn: s.orgNameEn?.trim() || null, email: s.email?.trim() || null, website: s.website?.trim() || null },
     sellerFrozenAt: frozen ? formatThaiDateLong(new Date(frozen.frozenAt)) : null,
     buyer,
     lines: doc.lines.map((l) => ({

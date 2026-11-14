@@ -1,3 +1,4 @@
+import { AccountIcon } from "@/components/account-v2/AccountIcon";
 import Link from "next/link";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { loadReport } from "./_shared";
@@ -51,7 +52,7 @@ export default async function ReportsIndexPage({ params }: { params: Promise<{ i
         ))}
         {/* §11.6 — DBD e-Filing ยังไม่เปิด (เตรียมจาก งบฐานะ + กำไรขาดทุน + ปีบัญชี) */}
         <div className="card cursor-not-allowed opacity-50" title="เตรียมจากงบแสดงฐานะการเงิน + งบกำไรขาดทุน + ปีบัญชี" data-testid="reports-dbd-soon">
-          <div className="font-medium">ยื่นงบ DBD e-Filing 🕓</div>
+          <div className="flex items-center gap-1.5 font-medium">ยื่นงบ DBD e-Filing <AccountIcon name="clock" className="h-4 w-4" /></div>
           <div className="mt-1 text-xs text-[color:var(--color-muted)]">เร็ว ๆ นี้</div>
         </div>
       </div>

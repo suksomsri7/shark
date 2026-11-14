@@ -307,7 +307,8 @@ try {
     const ALLOW_EN = new Set(["PDF", "WHT", "VAT"]);
     const files = [
       "src/components/account-v2/DocDetailPage.tsx",
-      "src/components/account-v2/ShareLinkButton.tsx",
+      // ORACLE-EDIT (ACCOUNT-FIX B1): ShareLinkButton ถูกรวมเข้าเมนู "ส่ง ▾" (SendMenu) — ตรวจไฟล์ที่แทนที่ด้วยกติกาเดิม
+      "src/components/account-v2/SendMenu.tsx",
       "src/components/account-v2/DocMoreMenu.tsx",
     ];
     for (const f of files) {

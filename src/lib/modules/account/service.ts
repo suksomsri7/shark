@@ -161,6 +161,8 @@ import {
   defaultDocSettings,
   fallbackPrefixOf,
   parseDocSettings,
+  computeDueDate as computeDueDateYmd,
+  type DueBasis,
   type DocSettings as DocSettingsView,
   type SeqReset as DocSeqReset,
   type SeqConfig as DocSeqConfig,
@@ -1442,6 +1444,8 @@ export type ListDocumentsInput = {
   /** ค่าเริ่มต้น 20 · สูงสุด 100 */
   pageSize?: number;
   sort?: DocSort;
+  /** ACCOUNT-FIX A4 — ทิศการเรียง (ค่าเริ่ม desc) · tie-breaker `id` ตามทิศเดียวกันเสมอ */
+  sortDir?: "asc" | "desc";
   /** ตัดรายการที่พ้นกำหนดออก (แท็บ "รอชำระ/รอตอบรับ" ที่ไม่รวมพ้นกำหนด) */
   excludeOverdue?: boolean;
   /** ACC T3 merge ▸ ตัดใบมัดจำที่คืน/ริบ (แท็บ "หักมัดจำครบแล้ว") ◂ */
@@ -1527,12 +1531,21 @@ export function parseDay(v: Date | string | undefined, endOfDay: boolean): Date 
   return d;
 }
 
-const DOC_SORT_ORDER: Record<DocSort, Prisma.AccountDocumentOrderByWithRelationInput[]> = {
-  recent: [{ updatedAt: "desc" }, { id: "desc" }],
-  issueDate: [{ issueDate: "desc" }, { id: "desc" }],
-  docNo: [{ docNo: "desc" }, { id: "desc" }],
-  amount: [{ grandTotal: "desc" }, { id: "desc" }],
-};
+/** ACCOUNT-FIX A4 — ลำดับของหน้ารายการ: คอลัมน์ตามที่เลือก + `id` เป็นตัวตัดสินเสมอ (หน้าถัดไปไม่ซ้ำ/ไม่หล่น) · ใช้ร่วมฝั่งรายจ่าย */
+export function docSortOrder(sort: DocSort | undefined, dir: "asc" | "desc" | undefined): Prisma.AccountDocumentOrderByWithRelationInput[] {
+  const d = dir === "asc" ? "asc" : "desc";
+  const col: Record<DocSort, Prisma.AccountDocumentOrderByWithRelationInput> = {
+    recent: { updatedAt: d },
+    issueDate: { issueDate: d },
+    docNo: { docNo: { sort: d, nulls: "last" } },
+    amount: { grandTotal: d },
+  };
+  return [col[sort ?? "recent"], { id: d }];
+}
+/** อ่าน `?sort=` ของหน้ารายการ — ไม่รู้จัก = วันที่ออก */
+export function parseDocSort(v: string | undefined): DocSort {
+  return v === "docNo" || v === "amount" || v === "issueDate" || v === "recent" ? v : "issueDate";
+}
 
 export async function listDocumentsPaged(
   tenantId: string,
@@ -1588,7 +1601,7 @@ export async function listDocumentsPaged(
 
   const listArgs = {
     where,
-    orderBy: DOC_SORT_ORDER[input.sort ?? "recent"],
+    orderBy: docSortOrder(input.sort, input.sortDir),
     skip: (page - 1) * pageSize,
     take: pageSize,
   };
@@ -2786,7 +2799,7 @@ export async function convertDocument(
     assertNotLockedWith(settings.policy.lockBeforeDate, new Date());
     const dueDate =
       toDocType === "INVOICE" && source.contactId
-        ? await computeDueDate(tenantId, systemId, source.contactId, settings.defaultDueDays)
+        ? await computeDueDate(tenantId, systemId, source.contactId, settings.defaultDueDays, settings.doc.due.basis)
         : null;
 
     // F-02: ใบกำกับภาษีของใบแจ้งหนี้ที่หักมัดจำ → รับรู้ VAT เฉพาะส่วนคงเหลือ
@@ -2919,12 +2932,21 @@ async function computeDueDate(
   systemId: string,
   contactId: string,
   fallbackDays: number,
+  basis: DueBasis = "ISSUE",
 ): Promise<Date> {
   const c = await prisma.accountContact.findFirst({ where: { id: contactId, tenantId, systemId } });
   const days = c?.creditTermDays ?? fallbackDays;
+  // ACCOUNT-FIX A6 — "วิธีนับวัน: นับจากสิ้นเดือน" มีผลกับใบแจ้งหนี้ที่แปลงมาด้วย (เดิมอ่านแค่ฟอร์มสร้างเอกสาร)
+  if (basis === "MONTH_END") return dueDateMonthEnd(new Date(), days);
   const d = new Date();
   d.setDate(d.getDate() + days);
   return d;
+}
+
+/** ACCOUNT-FIX A6 — ครบกำหนดแบบ "สิ้นเดือนของวันที่ออก + n วัน" (ปฏิทินไทย) → เที่ยงคืนเวลาไทยของวันนั้น */
+export function dueDateMonthEnd(issue: Date, days: number): Date {
+  const ymd = new Date(issue.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+  return new Date(`${computeDueDateYmd(ymd, days, "MONTH_END")}T00:00:00+07:00`);
 }
 
 /**
@@ -4673,6 +4695,8 @@ export type DocPaymentRow = {
   note: string | null;
   chequeNo: string | null;
   certNo: string | null;
+  /** ACCOUNT-FIX B2 — id ของ 50 ทวิ (ลิงก์ไปหน้าพิมพ์หนังสือรับรอง) */
+  certId?: string | null;
   voidedAt: Date | null;
   /** WO 1.5 §5.3 — ชื่อผู้บันทึกการชำระ (resolve จาก membership+user ของร้านนี้ · ไม่เจอ = null) */
   createdByName: string | null;
@@ -4761,6 +4785,7 @@ export async function listDocPayments(
     note: p.note,
     chequeNo: p.chequeId ? (chequeNo.get(p.chequeId) ?? null) : null,
     certNo: p.whtCertDocId ? (certNo.get(p.whtCertDocId) ?? null) : null,
+    certId: p.whtCertDocId ?? null,
     voidedAt: p.voidedAt,
     createdByName: p.createdById ? (creatorName.get(p.createdById) ?? null) : null,
   }));
@@ -5249,6 +5274,11 @@ export async function publicDocumentByToken(token: string): Promise<{ tenantId: 
 }
 
 /** อ่านเอกสารสาธารณะจาก publicToken (ไม่ต้องล็อกอิน — token คือ capability) */
+/** ACCOUNT-FIX A6 — เกณฑ์ "ยอดขั้นต่ำที่ให้ขอใบกำกับผ่านลิงก์" (0 = ไม่จำกัด) · pure ใช้ทั้งหน้า /r/ และด่านขอ */
+export function publicTaxRequestBelowMin(grandTotalSatang: number, minAmountSatang: number): boolean {
+  return minAmountSatang > 0 && grandTotalSatang < minAmountSatang;
+}
+
 export async function getPublicTaxContext(token: string): Promise<{
   systemId: string;
   tenantId: string;
@@ -5322,7 +5352,8 @@ export async function getPublicTaxContext(token: string): Promise<{
     pendingRequest: !!pending,
     outstandingSatang: pub.showOutstanding ? Math.max(0, doc.grandTotal - doc.paidTotal) : null,
     payToken: payToken,
-    taxRequestEnabled: settings.doc.taxRequest.enabled,
+    // ACCOUNT-FIX A6 — "ยอดขั้นต่ำที่ขอได้" มีผลจริง: ต่ำกว่าเกณฑ์ = ไม่มีฟอร์มขอ (ด่านจริงอยู่ issuePublicTaxInvoice)
+    taxRequestEnabled: settings.doc.taxRequest.enabled && !publicTaxRequestBelowMin(doc.grandTotal, settings.doc.taxRequest.minAmountSatang),
     taxRequestNote: settings.doc.taxRequest.conditionNote,
   };
 }
@@ -5371,6 +5402,11 @@ export async function issuePublicTaxInvoice(
       return { ok: false, reason: "ลิงก์ไม่ถูกต้องหรือหมดอายุ" };
     if (!settings.doc.taxRequest.enabled)
       return { ok: false, reason: "ร้านนี้ปิดการขอใบกำกับภาษีผ่านลิงก์อยู่ — ติดต่อร้านค้าโดยตรง" };
+    if (publicTaxRequestBelowMin(source.grandTotal, settings.doc.taxRequest.minAmountSatang))
+      return {
+        ok: false,
+        reason: `ยอดเอกสารต่ำกว่ายอดขั้นต่ำที่ร้านตั้งไว้สำหรับขอใบกำกับภาษีผ่านลิงก์ (${(settings.doc.taxRequest.minAmountSatang / 100).toLocaleString("th-TH", { minimumFractionDigits: 2 })} บาท) — ติดต่อร้านค้าโดยตรง`,
+      };
     if (!settings.vatRegistered)
       return { ok: false, reason: "กิจการนี้ไม่ได้จดทะเบียนภาษีมูลค่าเพิ่ม" };
 
@@ -7870,7 +7906,8 @@ async function generateOneRecurringDocument(
 
   const issueDate = new Date(rule.nextRunAt.getTime());
   const dueDays = template.dueDays ?? settings.defaultDueDays ?? 30;
-  const dueDate = new Date(issueDate.getTime() + dueDays * REC_DAY_MS);
+  // ACCOUNT-FIX A6 — วิธีนับวันของหน้าตั้งค่า (สิ้นเดือน + n) ใช้กับเอกสารประจำด้วย · นับจากวันที่ออก = สูตรเดิม
+  const dueDate = settings.doc.due.basis === "MONTH_END" ? dueDateMonthEnd(issueDate, dueDays) : new Date(issueDate.getTime() + dueDays * REC_DAY_MS);
   const validDate = new Date(issueDate.getTime() + (template.dueDays ?? settings.defaultValidDays ?? 30) * REC_DAY_MS);
 
   const lineInputs = template.lines.map((l) => ({

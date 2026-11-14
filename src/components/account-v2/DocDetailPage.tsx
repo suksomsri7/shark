@@ -6,7 +6,7 @@ import type { AccountDocType } from "@prisma/client";
 import { getDocDetailData, type DocDetailData, type RelatedSlot, type JvEntryView } from "@/lib/modules/account/doc-detail";
 import { getSettings, DOC_LABEL, visibleConvertTargets } from "@/lib/modules/account/service";
 import { payChannelLabel } from "@/lib/modules/account/pay-channel-label";
-import { editorListPath, editorDetailPath, editorEditPath, editorNewPath, sideOf } from "@/lib/modules/account/doc-editor-config";
+import { editorListPath, editorDetailPath, editorEditPath, editorNewPath, sideOf, canCreateDirect, isAdjustType } from "@/lib/modules/account/doc-editor-config";
 import { EXP_DOC_LABEL } from "@/lib/modules/account/expense";
 import { accountTone, StatusBadge } from "@/lib/modules/account/ui";
 import { auditActionLabelTh } from "@/lib/modules/account/access";
@@ -49,11 +49,11 @@ import { isRecurringDocType } from "@/lib/modules/account/recurring-shared";
 import { isGroupDocType, groupDefOf } from "@/lib/modules/account/group";
 import { PaymentPanel } from "./PaymentPanel";
 // WO 5.5 — ลิงก์ชำระเงิน / QR PromptPay (§0.3 ข้อ 5)
-import { PayLinkButton, type PayLinkView } from "./PayLinkButton";
+import type { PayLinkView } from "./PayLinkButton";
 import { PAYMENT_REQUEST_DOC_TYPES } from "@/lib/modules/account/payment-request";
 import { confirmPaymentRequestAction, cancelPaymentRequestAction } from "@/lib/modules/account/payment-actions";
 import { GroupPaymentPanel } from "./GroupPaymentPanel";
-import { ShareLinkButton } from "./ShareLinkButton";
+import { SendMenu } from "./SendMenu";
 import { PrintMenu } from "./PrintMenu"; // ACC T2.7 ◂
 import { PRINT_CHANNEL_LABEL_TH } from "@/lib/modules/account/print-shared";
 import { Stepper, type StepDef } from "./Stepper";
@@ -418,7 +418,6 @@ const CNR_DNR_SOURCE_TYPES: readonly AccountDocType[] = ["PURCHASE", "EXPENSE"];
 function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocType[], systemId: string, detailPath: string): RowActionItem[] {
   const dt = data.docType;
   const items: RowActionItem[] = [];
-  const soon = (label: string): RowActionItem => ({ label: `${label} (เร็ว ๆ นี้)`, href: "#" });
   const wizard = (adjustType: AccountDocType) => `${editorNewPath(base, adjustType)}?ref=${data.id}`;
 
   for (const t of targets) {
@@ -429,7 +428,7 @@ function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocTy
     // ACCOUNT-FIX A1: เดิม href `docs/<ชนิดปลายทาง>/<id ใบต้นทาง>` → 404 · ตอนนี้ส่งฟอร์มไป convertDocumentAction
     //   (สร้างร่างใบปลายทาง + relation แล้ว redirect ไปหน้าร่าง) — ทางเดียวกับปุ่ม "ออกใบกำกับ"
     items.push({
-      label: `แปลงเป็น${labelOf(t)}`,
+      label: t === "TAX_INVOICE" ? "ออกใบกำกับภาษี" : `แปลงเป็น${labelOf(t)}`,
       submit: {
         action: convertDocumentAction,
         fields: { systemId, docType: dt, id: data.id, toDocType: t },
@@ -452,7 +451,7 @@ function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocTy
       );
     }
   }
-  items.push(soon("ส่งอีเมล"));
+  // ACCOUNT-FIX A7 — "ส่งอีเมล" เอาออก (ยังไม่มีระบบส่งเอกสารทางอีเมล · ledger "ค้าง")
 
   // WO 1.9 §5.3 — "เตือนชำระ" ส่งอีเมลถึงลูกค้าจริง (IV/BN/DN ที่ยังค้างชำระ)
   //   ไม่มีอีเมล / ไม่มียอดค้าง → รายการยังอยู่ในเมนูแต่กดไม่ได้ **พร้อมเหตุผลไทย**
@@ -489,7 +488,10 @@ function moreActionsFor(data: DocDetailData, base: string, targets: AccountDocTy
       !data.groupChip && (data.status === "AWAITING_PAYMENT" || data.status === "PARTIAL")) {
     items.push({ label: "ใส่ในใบรวมจ่าย", href: `${base}/combined-payment/new?ids=${data.id}` });
   }
-  items.push(soon("คัดลอก"));
+  // ACCOUNT-FIX A7 — "คัดลอก" = ร่างใหม่ชนิดเดียวกันจากใบนี้ (ผู้ติดต่อ/รายการ/หมายเหตุ · วันที่และเลขที่ใหม่) ผ่านฟอร์มสร้างเอกสารเดิม
+  if (canCreateDirect(dt) && !isGroupDocType(dt) && !isAdjustType(dt)) {
+    items.push({ label: "คัดลอกเป็นร่างใหม่", href: `${editorNewPath(base, dt)}?copy=${data.id}`, sepBefore: true });
+  }
   return items;
 }
 
@@ -663,7 +665,18 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
       <div className="card text-sm">
         <div className="text-xs text-[color:var(--color-muted)]">ผู้ติดต่อ</div>
         <div className="font-medium">{data.contact?.name ?? "ไม่ระบุ"}</div>
-        {data.contact?.taxId && <div className="text-xs text-[color:var(--color-muted)]">เลขภาษี {data.contact.taxId}</div>}
+        {/* ACCOUNT-FIX B2 — ข้อมูลผู้ซื้อตามที่พิมพ์บนเอกสาร (snapshot): เลขภาษี · สาขา · ที่อยู่ */}
+        {(data.buyerSnapshot?.taxId || data.contact?.taxId) && (
+          <div className="text-xs text-[color:var(--color-muted)]" data-testid="detail-buyer-taxid">
+            เลขประจำตัวผู้เสียภาษี {data.buyerSnapshot?.taxId || data.contact?.taxId}
+            {data.buyerSnapshot?.branchCode ? ` · ${data.buyerSnapshot.branchCode === "00000" ? "สำนักงานใหญ่" : `สาขาที่ ${data.buyerSnapshot.branchCode}`}` : ""}
+          </div>
+        )}
+        {data.buyerSnapshot?.address && (
+          <div className="text-xs text-[color:var(--color-muted)]" data-testid="detail-buyer-address">
+            {data.buyerSnapshot.address}
+          </div>
+        )}
         {/* ACC T2.9 ▸ ผู้ขายที่พิมพ์บนเอกสาร = ค่าที่ตรึงไว้ตอนออก (แก้ค่าตั้งกิจการภายหลัง ใบนี้ไม่เปลี่ยน) ◂ */}
         {data.seller && (
           <div className="mt-2 border-t pt-2 text-xs text-[color:var(--color-muted)]" data-testid="detail-seller-frozen">
@@ -674,6 +687,9 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
           </div>
         )}
       </div>
+      {(data.docType === "CREDIT_NOTE" || data.docType === "DEBIT_NOTE" || data.docType === "CREDIT_NOTE_RECEIVED" || data.docType === "DEBIT_NOTE_RECEIVED") && (
+        <AdjustInfoCard data={data} base={base} />
+      )}
       {data.groupChildren ? <GroupChildrenTable data={data} base={base} /> : (
       <div className="card">
         {/* WO 9.1 (§13 · f14): มือถือ = ลิสต์ย่อ (ชื่อ · จำนวน×ราคา · ยอด) ไม่ใช่ตารางเลื่อนแนวนอน — เดิม (1.5) ใช้ตารางเดียวกันทั้ง 2 จอ ทำให้มือถือต้องเลื่อนในการ์ด */}
@@ -764,6 +780,34 @@ function DetailTab({ data, vatRegistered, base }: { data: DocDetailData; vatRegi
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// ACCOUNT-FIX B2 — ใบลด/เพิ่มหนี้: เหตุผล + เอกสารเดิม (ลิงก์) บนหน้าเอกสาร (เดิมเห็นแค่บนใบพิมพ์)
+function AdjustInfoCard({ data, base }: { data: DocDetailData; base: string }) {
+  const ref = data.related.find((r) => r.kind === "REFERENCE")?.doc ?? null;
+  return (
+    <div className="card flex flex-col gap-1 text-sm" data-testid="detail-adjust">
+      <div>
+        <span className="text-xs text-[color:var(--color-muted)]">เหตุผลการออก: </span>
+        <span data-testid="detail-adjust-reason">{data.adjustReason || "—"}</span>
+      </div>
+      <div>
+        <span className="text-xs text-[color:var(--color-muted)]">เอกสารเดิม: </span>
+        {ref ? (
+          <Link href={editorDetailPath(base, ref.docType, ref.id)} className="underline" data-testid="detail-adjust-orig">
+            {labelOf(ref.docType)} {ref.docNo ?? "(ร่าง)"}
+          </Link>
+        ) : data.reference ? (
+          <span data-testid="detail-adjust-orig">
+            {data.reference}
+            {data.vendorInvoiceDate ? ` ลงวันที่ ${fmtDate(data.vendorInvoiceDate)}` : ""}
+          </span>
+        ) : (
+          <span data-testid="detail-adjust-orig">ไม่ได้อ้างอิงเอกสารเดิมในระบบ</span>
+        )}
+      </div>
     </div>
   );
 }
@@ -879,8 +923,10 @@ function PaymentsTab({
   systemId,
   side,
   perm,
+  base,
 }: {
   data: DocDetailData;
+  base: string;
   systemId: string;
   side: "revenue" | "expense";
   perm: AccountPermFlags;
@@ -899,6 +945,7 @@ function PaymentsTab({
             <col />
             <col className="w-28" />
             <col className="w-20" />
+            <col className="w-32" />
             <col className="w-44" />
           </colgroup>
           <thead>
@@ -908,6 +955,7 @@ function PaymentsTab({
               <th className="py-2 font-normal">ช่องทาง</th>
               <th className="py-2 text-right font-normal">จำนวน</th>
               <th className="py-2 text-right font-normal">WHT</th>
+              <th className="py-2 pl-3 font-normal">50 ทวิ</th>
               <th className="py-2 font-normal">ผู้บันทึก</th>
             </tr>
           </thead>
@@ -926,18 +974,34 @@ function PaymentsTab({
                 </td>
                 <td className="py-2 text-right tabular-nums"><MoneyText satang={p.amount} decimals /></td>
                 <td className="py-2 text-right tabular-nums">{p.whtAmount > 0 ? <MoneyText satang={p.whtAmount} decimals /> : "—"}</td>
+                {/* ACCOUNT-FIX B2 — เลข 50 ทวิ เป็นลิงก์ไปหน้าพิมพ์หนังสือรับรอง */}
+                <td className="truncate py-2 pl-3">
+                  {p.certId ? (
+                    <Link href={`${base}/wht/${p.certId}/print`} className="underline" data-testid={`pay-cert-${i + 1}`}>
+                      {p.certNo ?? "ดู"}
+                    </Link>
+                  ) : (
+                    "—"
+                  )}
+                </td>
                 <td className="py-2">{p.createdByName ? <Avatar name={p.createdByName} /> : "—"}</td>
               </tr>
             ))}
             {data.payments.length === 0 && (
               <tr>
-                <td colSpan={6} className="py-4 text-center text-[color:var(--color-muted)]">
+                <td colSpan={7} className="py-4 text-center text-[color:var(--color-muted)]">
                   ยังไม่มีการรับชำระ
                 </td>
               </tr>
             )}
           </tbody>
         </table>
+        {/* ACCOUNT-FIX B1 — ใบที่ชำระครบแล้วยังยกเลิกรายการชำระได้ (แผงเดียวกันแสดงประวัติ + ปุ่มยกเลิกต่อรายการ) */}
+        {!canPay && perm.voidPayment && data.payments.some((p) => !p.voidedAt && !p.derived) && !isGroupDocType(data.docType) && (
+          <div className="mt-3" data-testid="pay-void-entry">
+            <PaymentPanel systemId={systemId} docId={data.id} triggerLabel="ยกเลิกรายการชำระ…" triggerClassName="btn btn-ghost text-sm" />
+          </div>
+        )}
         {canPay && (
           <div className="mt-3">
             {isGroupDocType(data.docType) ? (
@@ -965,7 +1029,11 @@ function PaymentsTab({
       <div className="card">
         <div className="mb-2 flex items-center justify-between">
           <h3 className="text-sm font-semibold">บัญชี (ตัวอย่างสมุดรายวัน)</h3>
-          <span className="text-xs text-[color:var(--color-muted)]">ดูสมุดรายวัน ›</span>
+          {data.jv[0] ? (
+            <Link href={journalHref(base, data.jv[0])} className="text-xs underline" data-testid="pay-journal-link">
+              ดูสมุดรายวัน ›
+            </Link>
+          ) : null}
         </div>
         <JvTable entries={data.jv.slice(0, 1)} testPrefix="jv-line" />
       </div>
@@ -973,14 +1041,22 @@ function PaymentsTab({
   );
 }
 
+/** ACCOUNT-FIX B2 — ลิงก์ไปสมุดรายวันกรองที่รายการของเอกสารนี้ (ค้นเลขที่ JV ตรงตัว + ช่วงวันที่ของรายการ) */
+function journalHref(base: string, e: JvEntryView): string {
+  const day = new Date(e.date.getTime() + 7 * 3_600_000).toISOString().slice(0, 10);
+  return `${base}/journal?q=${encodeURIComponent(e.docNo ?? "")}&from=${day}&to=${day}`;
+}
+
 function GlTab({ data, base }: { data: DocDetailData; base: string }) {
   return (
     <div className="card flex flex-col gap-2">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold">รายการบัญชี (Dr/Cr)</h3>
-        <Link href={`${base}/journal`} className="text-xs underline">
-          ดูสมุดรายวัน ›
-        </Link>
+        {data.jv[0] && (
+          <Link href={journalHref(base, data.jv[0])} className="text-xs underline" data-testid="gl-journal-link">
+            ดูสมุดรายวัน ›
+          </Link>
+        )}
       </div>
       <JvTable entries={data.jv} testPrefix="jv-line" />
     </div>
@@ -1082,7 +1158,15 @@ export async function DocDetailPage({
   const targets = preferred
     ? [...rawTargets].sort((a, b) => (a === preferred ? -1 : b === preferred ? 1 : 0))
     : rawTargets;
-  const canShareLink = ["RECEIPT", "DEPOSIT_RECEIPT", "INVOICE"].includes(dt) && !ACTIVE_STATUSES.has(data.status);
+  // ACCOUNT-FIX B1 — แชร์ลิงก์กดไม่ได้ต้องบอกเหตุผลจริง (เดิม "เร็ว ๆ นี้")
+  const SHARE_TYPES = ["RECEIPT", "DEPOSIT_RECEIPT", "INVOICE"];
+  const shareBlockReason = !SHARE_TYPES.includes(dt)
+    ? "แชร์ลิงก์ได้เฉพาะใบแจ้งหนี้ ใบเสร็จ และใบรับมัดจำ"
+    : data.status === "DRAFT"
+      ? "ต้องออกเอกสารก่อนจึงแชร์ลิงก์ได้"
+      : ACTIVE_STATUSES.has(data.status)
+        ? "เอกสารนี้ถูกยกเลิกแล้ว"
+        : null;
   // WO 5.5 — "ลิงก์ชำระเงิน" ใช้ได้เฉพาะเอกสารรายรับที่ออกแล้วและยังค้างชำระ
   //   กดไม่ได้ต้องบอกเหตุผลไทยเสมอ (BLUEPRINT §0.3 ข้อ 9 — ห้ามซ่อนปุ่มเงียบ ๆ)
   const payLinkBlockReason = !PAYMENT_REQUEST_DOC_TYPES.includes(dt)
@@ -1164,10 +1248,11 @@ export async function DocDetailPage({
 
   return (
     <div className="flex max-w-4xl flex-col gap-5">
-      {err && <p className="text-sm text-[color:var(--color-danger)]" data-testid="doc-err">{decodeURIComponent(err)}</p>}
+      {/* ACCOUNT-FIX B2 — searchParams ถอดรหัสมาแล้ว · ถอดซ้ำทำข้อความที่มี % โยน URIError (หน้าแตก) */}
+      {err && <p className="text-sm text-[color:var(--color-danger)]" data-testid="doc-err">{err}</p>}
       {msg && (
         <p className="text-sm font-medium" data-testid="doc-msg">
-          {decodeURIComponent(msg)}
+          {msg}
         </p>
       )}
 
@@ -1203,20 +1288,19 @@ export async function DocDetailPage({
             )}
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:shrink-0 lg:flex-nowrap">
-            <ShareLinkButton systemId={systemId} docId={data.id} disabled={!canShareLink} />
-            <PayLinkButton
-              systemId={systemId}
-              docId={data.id}
-              docNo={data.docNo}
-              disabled={!canPayLink}
-              disabledHint={payLinkBlockReason ?? undefined}
-              current={currentPayLink}
-            />
+            {/* ACCOUNT-FIX B1 — แชร์ลิงก์ + ลิงก์ชำระเงิน รวมเป็นเมนู "ส่ง ▾" · ชนิดที่ไม่รองรับทั้งคู่ = ไม่มีเมนู */}
+            {(SHARE_TYPES.includes(dt) || PAYMENT_REQUEST_DOC_TYPES.includes(dt)) && (
+              <SendMenu
+                systemId={systemId}
+                docId={data.id}
+                docNo={data.docNo}
+                shareBlockReason={shareBlockReason}
+                payLinkBlockReason={canPayLink ? null : payLinkBlockReason}
+                currentPayLink={currentPayLink}
+              />
+            )}
             {/* ACC T2.7 ▸ ปุ่มพิมพ์จริง (ต้นฉบับ/สำเนา/ชุด/ใบแทน/ต้นฉบับซ้ำ) + บันทึกประวัติการพิมพ์ — แทนลิงก์ PDF เดิม ◂ */}
             <PrintMenu systemId={systemId} docId={data.id} base={base} isTaxInvoice={dt === "TAX_INVOICE"} isDraft={data.status === "DRAFT"} originalPrinted={data.originalPrinted} />
-            <button type="button" className="btn btn-ghost text-sm" disabled title="เร็ว ๆ นี้">
-              อีเมล
-            </button>
             <DocMoreMenu
               testId="doc-more-actions"
               items={moreActionsFor(data, base, targets, systemId, selfPath)}
@@ -1339,7 +1423,7 @@ function DocDetailTabsPanel({
         ))}
       </div>
       {active === "detail" && <DetailTab data={data} vatRegistered={vatRegistered} base={base} />}
-      {active === "payments" && <PaymentsTab data={data} systemId={systemId} side={side} perm={perm} />}
+      {active === "payments" && <PaymentsTab data={data} systemId={systemId} side={side} perm={perm} base={base} />}
       {active === "gl" && <GlTab data={data} base={base} />}
       {active === "attachments" && <AttachmentsTab data={data} systemId={systemId} />}
       {active === "history" && <HistoryTab data={data} />}

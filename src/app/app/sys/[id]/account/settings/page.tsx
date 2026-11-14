@@ -2,6 +2,7 @@ import Link from "next/link";
 import { loadAccountSystem } from "@/lib/modules/account/guard";
 import {
   getSettings,
+  isValidThaiTaxId,
   ORG_PREFIXES,
   orgDisplayName,
 } from "@/lib/modules/account/service";
@@ -58,6 +59,8 @@ export default async function AccountSettingsPage({
           className="card grid min-w-0 flex-1 grid-cols-1 gap-3 sm:grid-cols-2 md:max-w-2xl"
         >
         <input type="hidden" name="systemId" value={systemId} />
+        {/* ACCOUNT-FIX B4 — เมนูย่อย 3 ตัวแสดงเฉพาะส่วนของตัวเอง (ช่องที่ซ่อนยังส่งค่าเดิมไปพร้อมฟอร์ม ไม่หาย) */}
+        <div className={sub === "general" ? "contents" : "hidden"} data-testid="org-sub-general">
         <h2 className="text-sm font-medium sm:col-span-2">ข้อมูลกิจการ</h2>
         <label className={labelCls}>
           คำนำหน้า
@@ -84,7 +87,13 @@ export default async function AccountSettingsPage({
         </label>
         <label className={labelCls}>
           เลขผู้เสียภาษี
-          <input name="taxId" defaultValue={s.taxId ?? ""} className={inputCls} />
+          <input name="taxId" defaultValue={s.taxId ?? ""} className={inputCls} data-testid="org-taxid" />
+          {/* ACCOUNT-FIX B4 — เตือนใต้ช่อง (ไม่บล็อกการบันทึก) เมื่อเลขที่บันทึกไว้ไม่ผ่านการตรวจหลักตรวจสอบ 13 หลัก */}
+          {s.taxId && !isValidThaiTaxId(s.taxId) && (
+            <span className="text-[11px] text-[color:var(--color-danger)]" data-testid="org-taxid-warn">
+              เลขผู้เสียภาษีนี้ไม่ผ่านการตรวจ 13 หลัก — ตรวจกับหนังสือ ภ.พ.20 / หนังสือรับรองบริษัทอีกครั้ง (บันทึกได้ตามปกติ แต่เลขนี้จะพิมพ์บนเอกสารทุกใบ)
+            </span>
+          )}
         </label>
         <label className={labelCls}>
           ประเภทผู้ประกอบการ
@@ -99,6 +108,8 @@ export default async function AccountSettingsPage({
             แยกจากสถานะจด VAT · ใช้ตัดสินว่าร้านเป็นผู้จ่ายแบบนิติบุคคลหรือไม่ในหัก ณ ที่จ่าย ({CHECK_WITH_ACCOUNTANT_TH})
           </span>
         </label>
+        </div>
+        <div className={sub === "address" ? "contents" : "hidden"} data-testid="org-sub-address">
         <label className={labelCls}>
           รหัสสาขา
           <input name="branchCode" defaultValue={s.branchCode ?? "00000"} className={inputCls} />
@@ -135,6 +146,8 @@ export default async function AccountSettingsPage({
           </span>
         </label>
 
+        </div>
+        <div className={sub === "general" ? "contents" : "hidden"} data-testid="org-sub-general-docs">
         {/* WO 8.2: บล็อก VAT (จด/ไม่จด · อัตรา · จุดรับรู้) ย้ายไปหน้า "นโยบายบัญชี" ตาม §9.3
             — ที่นี่เหลือเฉพาะ "ข้อมูลกิจการ" ตาม §9.1 (ไม่มีค่าเดียวกันอยู่ 2 หน้า) */}
         <h2 className="mt-2 text-sm font-medium sm:col-span-2">เอกสาร</h2>
@@ -151,6 +164,8 @@ export default async function AccountSettingsPage({
           <textarea name="footerNote" defaultValue={s.footerNote ?? ""} rows={2} className={inputCls} />
         </label>
 
+        </div>
+        <div className={sub === "brand" ? "contents" : "hidden"} data-testid="org-sub-brand">
         <h2 className="mt-2 text-sm font-medium sm:col-span-2">โลโก้ / ตราประทับ / ลายเซ็น</h2>
         <p className="text-[11px] text-[color:var(--color-muted)] sm:col-span-2">
           {storageEnabled()
@@ -182,6 +197,7 @@ export default async function AccountSettingsPage({
           enabled={storageEnabled()}
         />
 
+        </div>
         {/* WO 8.1: ตั้งค่าเลขที่/หมายเหตุ/ลิงก์สาธารณะ ย้ายไปหน้า "เอกสารและเลขที่" (§9.2) แล้ว
             — เดิมตารางนี้เก็บ prefix/ลิงก์ซ้ำกับที่นั่น ซึ่งเป็นค่าเดียวกัน 2 ที่ (ต้นเหตุคลาสสิกของค่าไม่ตรงกัน) */}
         <p className="mt-2 text-xs text-[color:var(--color-muted)] sm:col-span-2">

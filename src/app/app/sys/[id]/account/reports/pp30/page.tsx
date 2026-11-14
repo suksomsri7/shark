@@ -293,6 +293,7 @@ export default async function Pp30Page({
   const sp = await searchParams;
   const { tenantId, systemId } = await loadReport(id);
   const base = `/app/sys/${id}/account`;
+  // ACCOUNT-FIX A5 — งวดอ่านจาก `period` ตัวเดียว (แถบเครื่องมือตั้งค่านี้) · `to` = ลิงก์เก่าเท่านั้น
   const period = sp.period || sp.to || currentPeriodKey();
   // ?carry= (บาท) = ค่าลองดูชั่วคราว ไม่บันทึก (ACC T1.3: ค่าจริงจำจากเดือนก่อน / ร้านแก้ในกล่องเครดิตยกมา)
   const carryTry = sp.carry !== undefined && sp.carry !== "" && Number.isFinite(Number(sp.carry)) ? Math.round(Number(sp.carry) * 100) : null;
@@ -421,15 +422,25 @@ export default async function Pp30Page({
         <ReportHeader base={base} title="ภ.พ.30 + รายงานภาษีขาย/ซื้อ" subtitle={`เดือนภาษี ${st.header.monthLabel} (${period})`} />
       </div>
       {/* ภ.พ.30 ยื่นเป็น "งวด" ⇒ ใช้แถบเครื่องมือโหมด ณ สิ้นเดือน · ไม่มีตัวเลือกเทียบงวดก่อน (แบบยื่นไม่เทียบ) */}
-      <ReportToolbar filename={`ภพ30-${period}`} csv={csv} mode="asof" to={period} showCompare={false} />
+      <ReportToolbar
+        filename={`ภพ30-${period}`}
+        csv={csv}
+        mode="asof"
+        to={period}
+        showCompare={false}
+        asOfParam="period"
+        resetOnPeriodChange={["carry", "ok", "err", "excess"]}
+        extraExports={
+          <a href={`${base}/tax/export?kind=pp30&period=${period}${carryTry !== null ? `&carry=${carryTry}` : ""}`} className="btn btn-ghost text-sm" download data-testid="pp30-filing-csv">
+            CSV ยื่น ภ.พ.30
+          </a>
+        }
+      />
 
       {sp.err && <p className="text-sm text-[color:var(--color-danger)]">{sp.err}</p>}
       {sp.ok && <p className="text-sm font-medium">{sp.ok}</p>}
 
       <div className="flex flex-wrap items-center gap-2 print:hidden">
-        <a href={`${base}/tax/export?kind=pp30&period=${period}${carryTry !== null ? `&carry=${carryTry}` : ""}`} className="btn-sm" download>
-          ดาวน์โหลด CSV ยื่น
-        </a>
         {carryTry !== null && (
           <span className="text-xs text-[color:var(--color-muted)]">
             กำลังลองดูด้วยเครดิตยกมา {bahtTh(carryTry)} บาท (ไม่บันทึก) · <Link href={`${path}?period=${period}`} className="underline">กลับค่าที่บันทึก</Link>

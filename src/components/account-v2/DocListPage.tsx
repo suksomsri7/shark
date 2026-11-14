@@ -5,7 +5,7 @@ import { MoneyText } from "@/components/ui/MoneyText";
 import { StatusTabs, type StatusTabDef, type TabCounts } from "./StatusTabs";
 import { ListFilters, type ListFiltersValue, type ContactOption } from "./ListFilters";
 import { DocTable, type DocColumn } from "./DocTable";
-import { RowActions, type RowActionItem } from "./RowActions";
+import { RowActions, type RowActionItem, type RowActionsDangerItem } from "./RowActions";
 import { CreateSection } from "./CreateSection";
 import { PrintButton } from "./PrintButton";
 import type { QueryLike } from "./url";
@@ -121,6 +121,9 @@ export function DocListPage<T extends { id: string }>({
   belowTable,
   errorText,
   pageSizeOptions,
+  sort,
+  sortDir,
+  rowDangerFor,
 }: {
   base: string;
   pathname: string;
@@ -170,6 +173,11 @@ export function DocListPage<T extends { id: string }>({
   errorText?: string;
   /** WO 10.1 — ตัวเลือกจำนวนแถวต่อหน้าของ Pagination (ค่าเริ่มต้น [10,20,50]) — ไม่ส่ง = พฤติกรรมเดิม */
   pageSizeOptions?: number[];
+  /** ACCOUNT-FIX A4 — คอลัมน์ที่เรียงอยู่ + ทิศ (หัวคอลัมน์โชว์ลูกศร · คลิกซ้ำสลับทิศ) */
+  sort?: string;
+  sortDir?: "asc" | "desc";
+  /** ACCOUNT-FIX A4 — ข้อยกเลิก (ConfirmDialog + เหตุผล) ท้ายเมนูต่อแถว · ไม่มี = ไม่มีข้อยกเลิก */
+  rowDangerFor?: (row: T) => RowActionsDangerItem | undefined;
 }) {
   return (
     <div className="flex flex-col gap-5 pb-28">
@@ -234,7 +242,9 @@ export function DocListPage<T extends { id: string }>({
           rows={rows}
           pathname={pathname}
           searchParams={searchParams}
-          rowActions={rowActionsFor ? (r) => <RowActions items={rowActionsFor(r)} testId={`${testId}-row-actions-${r.id}`} /> : undefined}
+          sort={sort}
+          sortDir={sortDir}
+          rowActions={rowActionsFor ? (r) => <RowActions items={rowActionsFor(r)} danger={rowDangerFor?.(r)} testId={`${testId}-row-actions-${r.id}`} /> : undefined}
           bulkActions={bulkActions ? <>{bulkActions.map((a, i) => <BulkButton key={i} a={a} />)}</> : undefined}
           selectionActions={selectionActions}
           rowGroupKey={rowGroupKey}
