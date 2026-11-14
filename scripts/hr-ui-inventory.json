@@ -10140,6 +10140,31 @@
   },
   {
    "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-run2-banner",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payroll-run-ui.tsx",
+   "conditional": "มีรอบที่เลือก",
+   "roles": [
+    "owner",
+    "payroll",
+    "manager"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5a",
+   "oracle": "qc-hr-vis-5a",
+   "note": "ป้ายสถานะรอบ: ร่าง · อนุมัติแล้ว · จ่ายแล้ว · กลับรายการ (ดูอย่างเดียว · role=note) · รอบเครื่องรุ่นเดิม (ลิงก์ ?view=history)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
    "testid": "hr-run2-row-*",
    "kind": "link",
    "interactive": true,
@@ -10170,7 +10195,7 @@
    "kind": "button",
    "interactive": true,
    "file": "src/lib/modules/hr/payroll-run-ui.tsx",
-   "conditional": "ร้านที่เปิดเครื่องรุ่น 2 เท่านั้น (seed = รุ่น 1 ⇒ ไม่แสดง)",
+   "conditional": "ร้านที่เปิดเครื่องรุ่น 2 เท่านั้น (seed = รุ่น 1 ⇒ ไม่แสดง) · VIS-5a: เฉพาะงวดที่ยังไม่มีรอบที่ใช้อยู่ (ไม่นับรอบกลับรายการ)",
    "roles": [
     "owner",
     "payroll"

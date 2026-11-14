@@ -16,7 +16,7 @@ import { OPENING_TEXT } from "./payroll-opening-rules"; // HR H3.4-YTD ▸ ข�
 import { PAY_SCOPE_EXCLUDED_TEXT } from "./scope"; // HR PRIV-2 ▸ หมายเหตุจำนวนคนที่ไม่รวม (ไทล์ยอด = แถวที่เห็นเท่านั้น) ◂
 import { MONEY2_TEXT } from "./payroll"; // HR MONEY-2 ▸ R7: ข้อความปฏิเสธ REFUND_BOUND · refundStuck · RUN_LIMIT ◂
 import { runFigures, workedDaysOf } from "./pay-run-view"; // HR VIS-5a ▸ stored-value figures of the run screen (Q1 · Q2) ◂
-import { dayLabel } from "./period-label"; // HR VIS-5a ◂
+import { dayLabel, periodLabel } from "./period-label"; // HR VIS-5a ◂
 import { canUseBankFiles } from "./bank-files/service"; // HR VIS-5a ▸ doc links only where the docs gates pass ◂
 import { canUseFilings } from "./filings/service"; // HR VIS-5a ◂
 
@@ -65,8 +65,12 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
   const t = await getTranslations("hr.run2");
   const locale = await getLocale(); // HR VIS-5a ◂
   const act: Run2Actions = payV ? actions : { create: null, rebuild: null, approve: null, pay: null, reverse: null, sync: null, confirm: actions.confirm };
-  const runs = await tenantDb(ctx).hrPayrollRun.findMany({ where: { systemId, engineVersion: 2 }, orderBy: [{ periodKey: "desc" }, { createdAt: "desc" }], select: { id: true, periodKey: true, status: true }, take: 24 });
-  const pick = runs.find((r) => r.id === runId) ?? runs.find((r) => r.periodKey === periodKey && r.status !== "REVERSED") ?? null;
+  // HR VIS-5a ▸ x4: list every run of the shop (engine-1 runs too — read only; preview handles them) · x3: a period whose only run is REVERSED shows that run read-only ·
+  //   x1/x2: create only when the period has no live (non-REVERSED) run — visibility only, the server still refuses duplicates ◂
+  const runs = await tenantDb(ctx).hrPayrollRun.findMany({ where: { systemId }, orderBy: [{ periodKey: "desc" }, { createdAt: "desc" }], select: { id: true, periodKey: true, status: true, engineVersion: true }, take: 24 });
+  const pick = runs.find((r) => r.id === runId) ?? runs.find((r) => r.periodKey === periodKey && r.status !== "REVERSED") ?? runs.find((r) => r.periodKey === periodKey && r.status === "REVERSED") ?? null;
+  const live = (await tenantDb(ctx).hrPayrollRun.count({ where: { systemId, periodKey, status: { not: "REVERSED" } } })) > 0; // HR VIS-5a ◂
+  const v2run = !!pick && pick.engineVersion === 2; // HR VIS-5a ▸ v1 run: no v2-only controls ◂
   const pv = pick ? await previewPayrollRunV2(ctx, viewer, { runId: pick.id }) : null;
   const canMoney = !!pv && pv.ok && "review" in pv;
   const canMgr = !!pv && pv.ok && !("review" in pv);
@@ -92,6 +96,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
   const reviewN = pv && pv.ok && "review" in pv ? pv.review.length : 0;
   const people = pv && pv.ok ? pv.rows.length : 0;
   const runPeriod = String(run?.periodKey ?? periodKey);
+  const label = (k: string) => periodLabel(k, locale); // HR VIS-5a ▸ "ก.ย. 2569" / "Sep 2026" ◂
   const runQs = `${base}?view=run&period=${runPeriod}${run ? `&run=${encodeURIComponent(String(run.id))}` : ""}`;
   const tiles = [
     ["net", totals.netSatang],
@@ -120,7 +125,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
     </div>
   );
   const reviewGroups = pv && pv.ok && "review" in pv ? [...new Set(pv.review.map((x) => x.code))].map((code) => [code, pv.review.filter((x) => x.code === code)] as const) : [];
-  const docLinks = canMoney && run && (status === "APPROVED" || status === "PAID")
+  const docLinks = canMoney && run && v2run && (status === "APPROVED" || status === "PAID")
     ? ([
         ["bank", bankOk, `${base}?view=docs&bank=${encodeURIComponent(String(run.id))}#hr-bank`, t("docBank")],
         ["pnd1", filingOk, `${base}?view=docs&fk=PND1&fp=${runPeriod}#hr-filing`, t("docPnd1")],
@@ -134,7 +139,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
           <p className="text-xs text-[color:var(--color-muted)]">
             {t("crumb")} › {t("title")}
           </p>
-          <h2 className="text-2xl font-semibold">{t("heading", { period: runPeriod })}</h2>
+          <h2 className="text-2xl font-semibold">{t("heading", { period: label(runPeriod) })}</h2>
           {run && <p className={muted}>{t("subline", { payDate: dayLabel(run.payDate as Date | string | null, locale), n: people })}</p>}
           {/* HR PRIV-2 ▸ R1(c): ผู้ดูที่จำกัดสาขา — ยอดในไทล์มาจากแถวที่เห็นเท่านั้น (previewPayrollRunV2) · บอกจำนวนคนที่ไม่รวม ไม่มีชื่อ/ยอด ◂ */}
           {canMoney && run && Number(run.excludedHeadcount ?? 0) > 0 && <p className={muted} data-testid="hr-run2-excluded">{PAY_SCOPE_EXCLUDED_TEXT.replace("{n}", String(Number(run.excludedHeadcount)))}</p>}
@@ -148,7 +153,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
               </button>
             </form>
           )}
-          {canMoney && run && status === "DRAFT" && act.rebuild && (
+          {canMoney && run && v2run && status === "DRAFT" && act.rebuild && (
             <form action={act.rebuild}>
               {hidden({ runId: String(run.id), periodKey })}
               <button type="submit" className={ghost} data-testid="hr-run2-rebuild">
@@ -173,7 +178,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
           {runs.filter((r, i) => i < 12 || r.id === pick?.id).map((r) => (
             <li key={r.id} data-testid={`hr-run2-row-${r.id}`}>
               <Link href={`?period=${r.periodKey}&run=${r.id}#hr-run2`} aria-current={r.id === pick?.id ? "page" : undefined} className={`inline-flex min-h-[44px] items-center gap-1.5 rounded-full border px-3 text-xs ${r.id === pick?.id ? "border-[color:var(--color-ink)] font-semibold" : "border-[color:var(--color-line)]"}`}>
-                {t("runRow", { period: r.periodKey })}
+                {t("runRow", { period: label(r.periodKey) })}
                 <span className="text-[color:var(--color-muted)]">· {t(`st_${r.status}`)}</span> {/* HR VIS-5a ◂ */}
               </Link>
               {/* HR VIS-5a ▸ status inside the chip ◂ */}
@@ -183,9 +188,18 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
       )}
       {/* HR VIS-5a ▸ empty state ◂ */}
       {!run && (
-        <p className={`rounded-2xl border border-dashed border-[color:var(--color-line)] p-4 ${muted}`}>{t("empty", { period: periodKey })}</p>
+        <p className={`rounded-2xl border border-dashed border-[color:var(--color-line)] p-4 ${muted}`}>{t("empty", { period: label(periodKey) })}
+          {runs[0] ? (
+            <>
+              {" · "}
+              <Link href={`?period=${runs[0].periodKey}&run=${runs[0].id}#hr-run2`} className="underline-offset-2 hover:underline">
+                {t("latest", { period: label(runs[0].periodKey) })}
+              </Link>
+            </>
+          ) : null}
+        </p>
       )}
-      {act.create && (
+      {act.create && !live && (
         <form action={act.create} className="flex flex-wrap items-end gap-2">
           {hidden({ periodKey })}
           <label className="flex flex-col text-sm">
@@ -193,14 +207,27 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
             <input type="date" name="payDate" required className="input min-h-[44px]" />
           </label>
           <button type="submit" className={btn} data-testid="hr-run2-create">
-            {t("create", { period: periodKey })}
+            {t("create", { period: label(periodKey) })} {/* HR VIS-5a ◂ */}
           </button>
           <span className={`w-full ${muted}`}>{t("syncHint")}</span> {/* HR VIS-5a ◂ */}
         </form>
       )}
       {run && (
         <>
-          <p className="text-sm font-semibold md:hidden">{t("stepNow", { i: step + 1, label: t(STEPS[step]!) })}</p> {/* HR VIS-5a ◂ */}
+          {/* HR VIS-5a ▸ state banner (§5): draft · approved · paid · REVERSED (read-only) · engine-1 run (act in Run history) ◂ */}
+          <p data-testid="hr-run2-banner" role={status === "REVERSED" ? "note" : undefined} className={`rounded-2xl border p-3 text-sm ${status === "REVERSED" ? "border-[color:var(--color-danger)] text-[color:var(--color-danger)]" : "border-[color:var(--color-line)]"}`}>
+            {status === "REVERSED" ? t("banner_REVERSED") : !v2run ? t("bannerV1") : canMoney && status === "DRAFT" ? t("banner_DRAFT", { n: reviewN }) : canMoney && status === "PAID" ? t("banner_PAID", { date: dayLabel(run.payDate as Date | string | null, locale) }) : canMoney && status === "APPROVED" ? t("banner_APPROVED") : t(`st_${status}`)}
+            {!v2run ? (
+              <>
+                {" "}
+                <Link href={`${base}?view=history&period=${runPeriod}`} className="font-medium underline underline-offset-2">
+                  {t("bannerV1Link")}
+                </Link>
+              </>
+            ) : null}
+          </p>
+          {status !== "REVERSED" && <p className="text-sm font-semibold md:hidden">{t("stepNow", { i: step + 1, label: t(STEPS[step]!) })}</p>} {/* HR VIS-5a ◂ */}
+          {status !== "REVERSED" && (
           <ol className="hidden items-center gap-2 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-stage)] p-3 md:flex" data-testid="hr-run2-steps" aria-label={t("steps")}>
             {STEPS.map((s, i) => (
               <li key={s} aria-current={i === step ? "step" : undefined} className="flex min-w-0 flex-1 items-center gap-2"> {/* HR VIS-5a ◂ */}
@@ -213,6 +240,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
               </li>
             ))}
           </ol>
+          )}{/* HR VIS-5a ◂ */}
           {canMoney && (
             <dl className="grid grid-cols-2 gap-3 lg:grid-cols-4" data-testid="hr-run2-tiles"> {/* HR VIS-5a ◂ */}
               {tile("net", tileOf.net, t("tileNotePeople", { n: people }), true)}
@@ -393,8 +421,8 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
               ))}
             </ul>
           )}
-          <BranchConfirm systemId={systemId} runId={String(run.id)} status={status} steps={run.stepsJson} act={act.confirm} t={t} unitIds={[...new Set(((pv && pv.ok ? pv.rows : []) as { unitId: string | null }[]).map((r) => r.unitId).filter((x): x is string => !!x))]} />
-          {canMoney && (
+          {v2run && <BranchConfirm systemId={systemId} runId={String(run.id)} status={status} steps={run.stepsJson} act={act.confirm} t={t} unitIds={[...new Set(((pv && pv.ok ? pv.rows : []) as { unitId: string | null }[]).map((r) => r.unitId).filter((x): x is string => !!x))]} />} {/* HR VIS-5a ▸ v2 runs only ◂ */}
+          {canMoney && v2run && (
             <div className="flex flex-wrap items-end gap-2 max-md:contents"> {/* HR VIS-5a ◂ */}
               <div data-testid="hr-run2-bar" className={`flex flex-wrap items-end gap-2 ${status === "DRAFT" ? "max-md:sticky max-md:bottom-0 max-md:z-10 max-md:border-t max-md:border-[color:var(--color-line)] max-md:bg-[color:var(--color-surface)] max-md:py-3" : ""}`}>
                 {status === "DRAFT" && act.approve && (
@@ -408,7 +436,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                 {status === "APPROVED" && act.pay && (
                   <form action={act.pay} className="flex flex-wrap items-end gap-2">
                     {hidden({ runId: String(run.id), periodKey })}
-                    <PayFields ctx={ctx} runId={String(run.id)} periodKey={periodKey} />
+                    <PayFields ctx={ctx} runId={String(run.id)} periodKey={label(periodKey)} /> {/* HR VIS-5a ▸ label shown in the date hint ◂ */}
                     <button type="submit" className={btn} data-testid="hr-run2-pay">
                       {t("pay")}
                     </button>
@@ -430,7 +458,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
               ))}
             </div>
           )}
-          {canMoney && status !== "REVERSED" && (
+          {canMoney && v2run && status !== "REVERSED" && (
             <p data-testid="hr-run2-jv" className="rounded-2xl border border-dashed border-[color:var(--color-line)] bg-[color:var(--color-stage)] p-4 text-sm"> {/* HR VIS-5a ◂ */}
               <span className="font-semibold">{t("jvTitle")}</span> {t("jv")}
             </p>
