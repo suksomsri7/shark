@@ -10,6 +10,7 @@
 import type { ActorType, Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { likeStartsWith } from "@/lib/core/ci-equals";
+import { csvRow } from "@/lib/core/csv";
 import { auditActionLabelTh, listSignInLogs } from "./access";
 import { isLegalWarningCode, LEGAL_WARNINGS } from "@/lib/core/settings/legal/warnings";
 
@@ -259,12 +260,8 @@ export async function listAccountChanges(ctx: { tenantId: string; systemId: stri
 
 /** CSV (UTF-8 BOM) ของรายงาน — คอลัมน์ตามรายงานการแก้ไข (ฉ.89 ข้อ 12): วันเวลา · ผู้ทำ · รายการ · เอกสาร · จำนวนเงิน · เหตุผล */
 export function auditTrailCsv(rows: readonly AuditTrailRow[]): string {
-  const esc = (v: unknown) => {
-    const s = v === null || v === undefined ? "" : String(v);
-    return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
-  };
   const bkk = (d: Date) => new Intl.DateTimeFormat("sv-SE", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" }).format(d);
   const head = ["วันเวลา (เวลาไทย)", "ผู้ทำ", "รายการ", "เอกสาร/ใบสำคัญ", "จำนวนเงิน (บาท)", "เหตุผล", "รายละเอียด"];
-  const body = rows.map((r) => [bkk(r.at), r.actorName, r.actionLabel, r.ref ?? "", r.amountSatang === null ? "" : (r.amountSatang / 100).toFixed(2), r.reason ?? "", r.detail ?? ""].map(esc).join(","));
-  return `﻿${[head.join(","), ...body].join("\n")}\n`;
+  const body = rows.map((r) => csvRow([bkk(r.at), r.actorName, r.actionLabel, r.ref ?? "", r.amountSatang === null ? "" : (r.amountSatang / 100).toFixed(2), r.reason ?? "", r.detail ?? ""]));
+  return `﻿${[csvRow(head), ...body].join("\n")}\n`;
 }

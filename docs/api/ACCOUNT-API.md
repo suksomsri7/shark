@@ -526,7 +526,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/documents" \
 
 #### `dorm.deposit-check`
 
-**GET /dorm/deposit-check** - Security deposits of the dorm leases linked to this book checked against the limits under which a residential deposit is not income of the landlord (deposit at most N times the monthly rent and contract at most M years — values from the legal table). · scope: `account.report.view` · read · AI tool: `account_dorm_deposit_check`
+**GET /dorm/deposit-check** - Security deposits of the dorm leases linked to this book checked against the limits under which a residential deposit is not income of the landlord (deposit at most N times the monthly rent and contract at most M years; values come from the legal table). · scope: `account.report.view` · read · AI tool: `account_dorm_deposit_check`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |
@@ -828,7 +828,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/account/ping" \
 
 #### `points.outstanding`
 
-**GET /points/outstanding** - Loyalty points still outstanding at the end of a day (the period end), per point system, with their value at the redemption rate — for the accountant's choice between booking a liability or recognising a discount when used. · scope: `account.report.view` · read · AI tool: `account_points_outstanding`
+**GET /points/outstanding** - Loyalty points still outstanding at the end of a day (the period end), per point system, with their value at the redemption rate, for the accountant's choice between booking a liability or recognising a discount when used. · scope: `account.report.view` · read · AI tool: `account_points_outstanding`
 
 | Query | Type | Required | Rules |
 | --- | --- | --- | --- |

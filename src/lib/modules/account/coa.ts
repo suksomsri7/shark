@@ -72,7 +72,7 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   // V2 (WO 4.3 · SPEC §8.4) — เอกสารปรับปรุงสต็อก/ต้นทุน
   ["5300", "COGS", "สินค้าที่เบิกใช้ในกิจการ", "Goods Issued for Internal Use"],
   ["5310", "COGS", "กำไร/ขาดทุนจากการปรับมูลค่าสินค้า", "Inventory Cost Adjustment Gain/Loss"],
-  ["5320", "COGS", "สินค้าเสียหาย/ทำลาย/ขาด", "Inventory Waste and Shrinkage"], // ACC T4.8 — ของเสีย · สินค้าขาด
+  ["5330", "COGS", "สินค้าเสียหาย/ทำลาย/ขาด", "Inventory Waste and Shrinkage"], // ACC T4.8 — ของเสีย · สินค้าขาด
   ["5800", "COGS", "ส่วนลดรับ (contra)", "Discounts Received"],
   // 6000-6999 ค่าใช้จ่าย
   ["6000", "EXPENSE", "เงินเดือนและค่าแรง", "Salaries & Wages"],
@@ -145,7 +145,7 @@ const MAPPINGS: [string, string][] = [
   ["OWNER_DRAWINGS", "3100"],
   ["STAFF_WELFARE", "6050"],
   ["PROMO_GOODS", "6310"],
-  ["GOODS_WASTE", "5320"],
+  ["GOODS_WASTE", "5330"],
 ];
 
 /** ACC T1.4 — ธง `vatTreatment` ของบัญชีระบบที่เป็นหมวดภาษีซื้อต้องห้าม (common-vat-invoice.md §17 · checklist C2) */

@@ -29,8 +29,8 @@ export const GOODS_ISSUE_REASON_DEFS: readonly GoodsIssueReasonDef[] = [
   { code: "GIVEAWAY", labelTh: "ของแถม", mappingKey: "PROMO_GOODS", defaultCode: "6310", warning: "STOCK_ISSUE_GIVEAWAY", separateApprover: false, deemedSale: false },
   { code: "STAFF_MEAL", labelTh: "อาหารพนักงาน", mappingKey: "STAFF_WELFARE", defaultCode: "6050", warning: "STOCK_ISSUE_STAFF_MEAL", separateApprover: false, deemedSale: false },
   { code: "PERSONAL_USE", labelTh: "ใช้ส่วนตัวเจ้าของ", mappingKey: "OWNER_DRAWINGS", defaultCode: "3100", warning: "STOCK_ISSUE_PERSONAL_USE", separateApprover: true, deemedSale: true },
-  { code: "WASTE", labelTh: "ของเสีย/ทำลาย", mappingKey: "GOODS_WASTE", defaultCode: "5320", warning: "STOCK_ISSUE_WASTE", separateApprover: true, deemedSale: false },
-  { code: "SHORTAGE", labelTh: "สินค้าขาด (นับแล้วขาด)", mappingKey: "GOODS_WASTE", defaultCode: "5320", warning: "STOCK_ISSUE_SHORTAGE", separateApprover: true, deemedSale: true },
+  { code: "WASTE", labelTh: "ของเสีย/ทำลาย", mappingKey: "GOODS_WASTE", defaultCode: "5330", warning: "STOCK_ISSUE_WASTE", separateApprover: true, deemedSale: false },
+  { code: "SHORTAGE", labelTh: "สินค้าขาด (นับแล้วขาด)", mappingKey: "GOODS_WASTE", defaultCode: "5330", warning: "STOCK_ISSUE_SHORTAGE", separateApprover: true, deemedSale: true },
   { code: "OTHER", labelTh: "อื่น ๆ", mappingKey: "GOODS_ISSUE_EXPENSE", defaultCode: "5300", warning: null, separateApprover: false, deemedSale: false },
 ];
 

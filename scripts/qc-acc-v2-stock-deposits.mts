@@ -6,7 +6,7 @@
 // เฉลยมือ (สตางค์): สินค้า ทุน 1,000/หน่วย สต็อก 100
 //   G1 ของแถม 2 หน่วย (ออกทันที โดยเจ้าของ) → Dr 6310 2,000 / Cr 1200 2,000 · ผู้อนุมัติ = เจ้าของ · คำเตือน GIVEAWAY
 //   G2 ใช้ส่วนตัวเจ้าของ 3 หน่วย: ไม่ยืนยัน = ไม่เขียนอะไร (legal STOCK_ISSUE_PERSONAL_USE) · ยืนยัน → Dr 3100 3,000 + แถวยืนยัน + APPROVER_SAME
-//   G3 ของเสีย 1 หน่วย ร่างโดยพนักงาน → อนุมัติโดยเจ้าของ → Dr 5320 1,000 · ผู้อนุมัติ = เจ้าของ · ไม่มี APPROVER_SAME
+//   G3 ของเสีย 1 หน่วย ร่างโดยพนักงาน → อนุมัติโดยเจ้าของ → Dr 5330 1,000 · ผู้อนุมัติ = เจ้าของ · ไม่มี APPROVER_SAME
 //   G4 สินค้าขาด 1 หน่วย ร่างและอนุมัติโดยเจ้าของ → APPROVER_SAME
 //   G5 "ชำรุด/สูญหาย" (สาเหตุเดิม) 1 หน่วย → Dr 5300 (บัญชีเดิม ไม่เปลี่ยน) + คำเตือน WASTE
 //   หอ: L1 ค่าเช่า 5,000 ประกัน 30,000 (6 เท่า) 12 เดือน = ผ่าน · L2 ประกัน 35,000 (7 เท่า) = เกิน · L3 ค่าเช่า 4,000 ประกัน 8,000 สัญญา 48 เดือน = เกินปี
@@ -62,7 +62,7 @@ console.log("\n── K0 สาเหตุการเบิก ──");
   const d = SR.GOODS_ISSUE_REASON_DEFS as Any[];
   const by = (c: string) => d.find((x) => x.code === c);
   chk("K0.1", "สาเหตุครบ: ของแถม · อาหารพนักงาน · ใช้ส่วนตัว · ของเสีย · สินค้าขาด + สาเหตุเดิม 5 ตัว", ["GIVEAWAY", "STAFF_MEAL", "PERSONAL_USE", "WASTE", "SHORTAGE"].every((c) => by(c)) && ["ใช้ในกิจการ", "ตัวอย่าง/แจก", "ชำรุด/สูญหาย", "โอนสาขา", "อื่น ๆ"].every((l) => PR.GOODS_ISSUE_REASONS.includes(l)), "ครบ", d.map((x) => x.code));
-  chk("K0.2", "สาเหตุเดิมคงบัญชี 5300 · ใหม่: ของแถม 6310 · อาหาร 6050 · ใช้ส่วนตัว 3100 · ของเสีย/ขาด 5320", ["BUSINESS_USE", "SAMPLE", "DAMAGED", "TRANSFER", "OTHER"].every((c) => by(c).defaultCode === "5300") && by("GIVEAWAY").defaultCode === "6310" && by("STAFF_MEAL").defaultCode === "6050" && by("PERSONAL_USE").defaultCode === "3100" && by("WASTE").defaultCode === "5320" && by("SHORTAGE").defaultCode === "5320", "ตามนั้น", d.map((x) => [x.code, x.defaultCode]));
+  chk("K0.2", "สาเหตุเดิมคงบัญชี 5300 · ใหม่: ของแถม 6310 · อาหาร 6050 · ใช้ส่วนตัว 3100 · ของเสีย/ขาด 5330", ["BUSINESS_USE", "SAMPLE", "DAMAGED", "TRANSFER", "OTHER"].every((c) => by(c).defaultCode === "5300") && by("GIVEAWAY").defaultCode === "6310" && by("STAFF_MEAL").defaultCode === "6050" && by("PERSONAL_USE").defaultCode === "3100" && by("WASTE").defaultCode === "5330" && by("SHORTAGE").defaultCode === "5330", "ตามนั้น", d.map((x) => [x.code, x.defaultCode]));
   const pw = W.legalWarning("STOCK_ISSUE_PERSONAL_USE");
   chk("K0.3", "ใช้ส่วนตัว = ถือเป็นขาย [V] ม.77/1(8)(ง) · ต้องยืนยัน", pw.tag === "V" && pw.ack === true && /ม\.77\/1\(8\)\(ง\)/.test(pw.lawTh ?? "") && by("PERSONAL_USE").deemedSale === true, "V+ack", pw);
   chk("K0.4", "ของแถม ฉ.40 ข้อ 2(1) · อาหาร ข้อ 2(8) · ตัวอย่าง ข้อ 2(7) [V] · ขาด [U]", /ข้อ 2\(1\)/.test(W.legalWarning("STOCK_ISSUE_GIVEAWAY").lawTh) && /ข้อ 2\(8\)/.test(W.legalWarning("STOCK_ISSUE_STAFF_MEAL").lawTh) && /ข้อ 2\(7\)/.test(W.legalWarning("STOCK_ISSUE_SAMPLE").lawTh) && W.legalWarning("STOCK_ISSUE_SHORTAGE").tag === "U", "ครบ", "ขาด");
@@ -102,7 +102,7 @@ try {
   const g3 = await mk("ของเสีย/ทำลาย", 1, clerk.id, { asDraft: true });
   const g3a = await PR.approveGoodsMovement(tid, SYS, g3.id, { allowNegative: true, approverId: owner.id });
   const g3d = await prisma.accountDocument.findUnique({ where: { id: g3.id } });
-  chk("K2.4", "ของเสีย: ร่างโดยพนักงาน → เจ้าของอนุมัติ: Dr 5320 1,000 · ผู้อนุมัติ = เจ้าของ · ไม่มี APPROVER_SAME", g3a.ok && dr(await jvOf(g3.id)) === "5320:1000" && g3d?.approvedById === owner.id && !g3a.warnings?.some((w: Any) => w.code === "STOCK_ISSUE_APPROVER_SAME") && g3a.warnings?.some((w: Any) => w.code === "STOCK_ISSUE_WASTE"), "5320:1000", { g3a, dr: dr(await jvOf(g3.id)) });
+  chk("K2.4", "ของเสีย: ร่างโดยพนักงาน → เจ้าของอนุมัติ: Dr 5330 1,000 · ผู้อนุมัติ = เจ้าของ · ไม่มี APPROVER_SAME", g3a.ok && dr(await jvOf(g3.id)) === "5330:1000" && g3d?.approvedById === owner.id && !g3a.warnings?.some((w: Any) => w.code === "STOCK_ISSUE_APPROVER_SAME") && g3a.warnings?.some((w: Any) => w.code === "STOCK_ISSUE_WASTE"), "5330:1000", { g3a, dr: dr(await jvOf(g3.id)) });
   const g4 = await mk("สินค้าขาด (นับแล้วขาด)", 1, owner.id, { asDraft: true });
   const g4a = await PR.approveGoodsMovement(tid, SYS, g4.id, { allowNegative: true, approverId: owner.id });
   chk("K2.5", "สินค้าขาด: ร่างและอนุมัติโดยคนเดียวกัน → SHORTAGE + APPROVER_SAME (แจ้ง ไม่บล็อก)", g4a.ok && JSON.stringify(g4a.warnings?.map((w: Any) => w.code)) === JSON.stringify(["STOCK_ISSUE_SHORTAGE", "STOCK_ISSUE_APPROVER_SAME"]), ["SHORTAGE", "APPROVER_SAME"], g4a);

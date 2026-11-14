@@ -192,6 +192,11 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "reports/pp30/page.tsx": "account.report.view",
   "reports/profit-loss/page.tsx": "account.report.view",
   "reports/revenue-novat/page.tsx": "account.report.view", // ACC T1.9 — รายได้ที่ไม่มี VAT (loadReport)
+  "reports/audit-trail/page.tsx": "account.report.view", // ACC T4.4 — รายงานการแก้ไขของบัญชี (loadReport)
+  "reports/pos-link/page.tsx": "account.report.view", // ACC T4.7 — POS กับสมุดบัญชี (loadReport · ปุ่มลงบัญชีตรวจ journal.adjust ที่ action)
+  "reports/dorm-deposits/page.tsx": "account.report.view", // ACC T4.8 — ตรวจเงินประกันหอพัก (loadReport)
+  "reports/points-outstanding/page.tsx": "account.report.view", // ACC T4.8 — แต้มคงค้าง ณ วันสิ้นงวด (loadReport)
+  "export/books/route.ts": "account.report.view", // ACC T4.5 — ส่งออกสมุดบัญชี + ไฟล์แนบ (ZIP) ก่อนลบร้าน
   "reports/trial-balance/page.tsx": "account.report.view",
   "settings/page.tsx": "account.settings.manage",
   // WO 8.1 (§9.2): หน้า "ตั้งค่า › เอกสารและเลขที่" — แก้เลขรัน/นโยบายเอกสาร ⇒ ต้องมีสิทธิ์ตั้งค่าเต็ม
