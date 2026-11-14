@@ -1,0 +1,76 @@
+# PRIV-2 green run — code head 1c734d9cf (product 5a291458e+c23c0fc6b, ORACLE-EDITs 1c734d9cf) · lane qc-hr.sh · 14 Nov 2026
+## seed-hr-qc
+===== seed-hr-qc ===== ผ่าน 34/34
+## qc-hr-priv-2 (forced ×3 + unforced ×1)
+priv2-f1: ===== qc-hr-priv-2 ===== passed 39/39 (QC_FORCE) RESIDUE none (tenants=1 users=7)
+priv2-f2: ===== qc-hr-priv-2 ===== passed 39/39 (QC_FORCE) RESIDUE none (tenants=1 users=7)
+priv2-f3: ===== qc-hr-priv-2 ===== passed 39/39 (QC_FORCE) RESIDUE none (tenants=1 users=7)
+priv2-u1: ===== qc-hr-priv-2 ===== passed 39/39 RESIDUE none (tenants=1 users=7)
+
+  ✅ [S1] [static] scope.ts exports pure inPayScope(scope, homeUnitId) + payScopeWhere(scope) (no borrowing term) + PAY_SCOPE_EXCLUDED_TEXT
+  ✅ [S2] [static] ONE helper: privacy (profile + loadPayslipForViewer) · payslip homeInScope · labor sees · payroll previewPayrollRunV2
+  ✅ [S3] [static] [control] every run action (create/approve/markPaid/reverse/deleteDraft/recompute v1 · create/recompute/approve/pay/rev
+  ✅ [S4] [static] [control] frozen files unchanged vs ticket base (prisma · core · ai · hr/api · filings · bank-files · non-pay HR m
+  ✅ [S5] [static] every changed src file is in the allowed list (or a new hr file whose header says HR PRIV-2) · every hunk of an allowed
+  ✅ [S6] [static] [control] in-base guard: ticket base is an ancestor of HEAD · oracle + lib + brief present
+  ✅ [S7] [static] export refusals never interpolate employee names (no {names} in reports.ts / reports-rules texts) · export cells reuse 
+  ✅ [P1] [pure] inPayScope truth table: OWNER/*/[] ⇒ true for every home incl. null · [U1] ⇒ U1 true · U2/U3/null false · payScopeW
+  ✅ [A1] [db] 🔴 F1: payU1s + payU1m open the profile of each borrowed employee (started-after · spanning · leaver-with-open-borrowing
+  ✅ [A2] [db] borrowed employee's profile for payU1m is byte-identical to mgrU1's (manager without payroll) — same DTO, same docs, same 
+  ✅ [A3] [db] [control] payU1s sees every sensitive sentinel of a1/a2/aLeft (home U1 incl. the leaver) · OWNER + payAll see them for borr
+  ✅ [A4] [db] latent twin + ruling 4: loadPayslipForViewer(payU1s, PAID run, bNow/bSpan) = null · a1 = slip (control) carrying none of th
+  ✅ [A5] [db] [control] refusal parity: payU1s profile of c2 (U3) / cNo (no branch) / unknown id = null each · loadPayslipForViewer same
+  ✅ [B1] [db] 🔴 F2: payU1s + payU1m loadReport payroll-month · payroll-year · tax-month · tax-year · wages · register (PERIOD): ro
+  ✅ [B2] [db] 🔴 F2: same 6 reports exported CSV + XLSX for payU1s/payU1m: no borrowed name, national id, slip amount or rate in the byt
+  ✅ [B3] [db] OT report for payU1m (ruling 1): borrowed bSpan row STAYS with the same non-money cells mgrU1 sees · its money cells absent
+  ✅ [B4] [db] [control] OWNER + payAll payroll-month/tax-month/register include bNow + bSpan + bLeft rows · payU1s includes aLeft (home-U
+  ✅ [B5] [db] [control] money totals of every payU1s money report = Σ of its own rows (H3.9) · opening YTD / salary-cert / filing / bank
+  ✅ [C1] [page] 🔴 F3: PayrollSection rendered for payU1m (HTML + every prop handed down): no borrowed / other-branch name, salary, rate
+  ✅ [C2] [page] 🔴 F3: no whole-run total (gross/net/SSO/WHT) nor whole-run headcount of either run in HTML or props · the PAID run sho
+  ✅ [C3] [page] [control] OWNER render shows whole-run totals, every name, no exclusion note
+  ✅ [C5] [db] inbox (H2.11) of payU1s/payU1m: no adjustment item (nor its amount) of an out-of-pay-scope employee — as for mgrU1, whose 
+  ✅ [C4] [db] previewPayrollRunV2(payU1m): rows ⊆ pay scope · totals = Σ rows · run.excludedHeadcount = hidden count (7 PAID / 6 DRAF
+  ✅ [E1] [db] [regression] payU1m + mgrU1 still see borrowed bNow on listRoster(U1, today) · loadRosterBoard · loadAttendanceBoard(U1, p
+  ✅ [G1] [action] [control] payU1m (all pay keys, [U1]) approve DRAFT / markPaid / reverse PAID / delete + recompute DRAFT / create run (v
+  ✅ [D0] [R2] [control] stability: every covered payload digests identically twice before the change (else the doubling test proves nothin
+  ✅ [D1] [R2] doubling every out-of-pay-scope employee's pay changes NO byte of payU1s/payU1m reports (9 × page/CSV/XLSX)
+  ✅ [D2] [R2] … nor of profile / loadPayslipForViewer / slipForViewer / slipHistory for every employee
+  ✅ [D3] [R2] … nor of the payroll page (HTML + props) for payU1m
+  ✅ [D4] [R2] … nor of previewPayrollRunV2 · labour day/week/month · attendance-pay + work-entry previews · opening YTD · certs · f
+  ✅ [D5] [R2] [regression] … nor of AI tools T1–T4 as payU1s/payU1m · REST key hr-read (13 GETs + reports) · hrAdmin/mgrU1/emp profi
+  ✅ [D6] [R2] [positive control] OWNER payroll-month CSV · OWNER page · OWNER previewPayrollRunV2 · REST key hr-payroll-read payroll-mo
+  ✅ [E2] [db] [regression] payU1m still acts on bNow: leaveDetail ok · decideLeaveAs REJECTED ok · decideOtRequest REJECTED ok — resul
+  ✅ [W1] [db] createEmployee / updateEmployee / saveEmployeeProfile refuse a name with each of 18 bad characters (C0 · DEL · C1 · ALM �
+  ✅ [W2] [db] those refusals are fixed text: no bad character, no part of the submitted name
+  ✅ [W3] [db] [control] Thai with tone marks · apostrophe · inner hyphen · emoji · digits are accepted by all three write paths
+  ✅ [W4] [db] 🔴 F4: with stored names carrying RLO/isolate/BEL and a formula prefix, OWNER exports of all 9 reports (CSV + XLSX) succee
+  ✅ [W5] [db] those exports are sanitised: no bad character, no text cell a spreadsheet reads as a formula, no XLSX <f>
+  ✅ [Z1] residue: tenants qc-hr-priv2-* gone · no row of ours in any tenantId table · users/sessions gone · no outbound request
+## older suites (forced)
+qc-hf-hr-privacy: "total":194,"passed":194 
+qc-hr-h0.2: "total":58,"passed":58 
+qc-hr-h0.6: "total":55,"passed":55 
+qc-hr-h1.1: "total":81,"passed":81 
+qc-hr-h1.2: "total":73,"passed":73 
+qc-hr-h1.3: "total":63,"passed":63 
+qc-hr-h2.4: "total":68,"passed":68 
+qc-hr-h2.10: "total":57,"passed":57 
+qc-hr-h2.11: "total":70,"passed":70 
+qc-hr-h3.4-ytd: "total":44,"passed":44 
+qc-hr-h3.5: "total":53,"passed":53 
+qc-hr-h3.6: "total":62,"passed":62 
+qc-hr-h3.7: "total":68,"passed":68 
+qc-hr-h3.8: "total":78,"passed":78 
+qc-hr-h3.9: "total":60,"passed":59   ❌ [H3.9-S2.1] [pure] REPORT_TEXT / REPORT_TEXT_EN = texts fixture byte-exact · reportTextFor(locale) —  
+qc-hr-h4.2: "total":57,"passed":57 
+qc-hr-h4.3: "total":45,"passed":43   ❌ [H43-S1.6] [static] [control] frozen unchanged vs base (ai/actor · service · persona · pos/account/cr   ❌ [H43-S1.7] [static] every hunk vs base marked: HR H4.3 in tools/tool-access/kind-tables/proposals/plans/ 
+qc-hr-h4.8: "total":48,"passed":48 
+qc-hr-set-1: "total":25,"passed":25 
+qc-payroll: "total":19,"passed":19 
+qc-audit-trail: PASS — 21/21 
+## fitness
+fitness env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+## typecheck (clean, 437 s): 0 errors in tracked code · 5 errors all in untracked scratchpad/h52p/p1-sweep.mts (H5.2 hunter probe, not ours, left alone) · exit 2
