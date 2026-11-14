@@ -25,7 +25,7 @@ const OLD = readdirSync(join(ROOT, "scripts")).filter((n) => /^qc-.*\.mts$/.test
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
 const CHECKS: Def[] = [
  D("S1", "R1", "CG", "scope.ts helper + note"),
- D("S2", "R1 R6", "CR", "one helper on every pay path"),
+ D("S2", "R1 R6", "CG", "one helper on every pay path"),
  D("S3", "R4", "CG", "run actions/doc gates all-branch"),
  D("S4", "R9", "MG", "frozen · oracle edits marked (R9)"),
  D("S5", "§files", "MG", "allowed files · marked hunks"),
@@ -51,8 +51,9 @@ const CHECKS: Def[] = [
  D("N1", "R6 N1", "MG", "OT list: borrowed = mgrU1 (R6)"),
  D("N2", "R6 N2", "MG", "stock list + flags: no bSpan (R6)"),
  D("N3", "R6", "MG", "salary doubling: OT/stock identical"),
- D("N5", "R11", "MR", "stock claims/attention scope (R11)"),
+ D("N5", "R11", "MG", "stock claims/attention scope (R11)"),
  D("N4", "R6", "MG", "[control] owner + in-scope money"),
+ D("L1", "R2 MONEY-2", "MG", "labour ACTUAL split: borrowed U1 work days add nothing for payU1m · owner U1 share"),
  D("D0", "R2", "MG", "[control] payloads stable"),
  D("D1", "R2", "CG", "doubling: reports"),
  D("D2", "R2", "CG", "doubling: profile/slips"),
@@ -202,6 +203,11 @@ async function buildFixture() {
  for (const [e, from, to] of [["bNow", addDay(D0, -3), null], ["bSpan", addDay(`${PERIOD}-01`, -40), null], ["bEnded", `${PERIOD}-05`, `${PERIOD}-20`], ["bLeft", `${PERIOD}-01`, null]] as [string, string, string | null][])
   await P.hrEmployeeUnit.create({ data: { ...sc, employeeId: E[e]!.id, unitId: U1, fromDate: dbDate(from), toDate: to ? dbDate(to) : null } });
  const SH1 = (await P.hrShift.create({ data: { ...sc, unitId: U1, name: `เช้า1 ${tag}`, startMin: 480, endMin: 1020, breakMin: 60 } })).id;
+ const SH2 = (await P.hrShift.create({ data: { ...sc, unitId: U2, name: `เช้า2 ${tag}`, startMin: 480, endMin: 1020, breakMin: 60 } })).id; // L1: PERIOD work days (bSpan 2 × U1 + 1 × U2 · a1 U1)
+ for (const [e, dd, u, sh] of [["bSpan", 10, U1, SH1], ["bSpan", 11, U1, SH1], ["bSpan", 12, U2, SH2], ["a1", 10, U1, SH1]] as [string, number, string, string][]) {
+  const date = dbDate(`${PERIOD}-${dd}`), re = await P.hrRosterEntry.create({ data: { ...sc, employeeId: E[e]!.id, date, shiftId: sh, unitId: u, startMin: 480, endMin: 1020, breakMin: 60, crossesMidnight: false, published: true, publishedAt: new Date() } });
+  await P.hrWorkDay.create({ data: { ...sc, employeeId: E[e]!.id, date, periodKey: PERIOD, unitId: u, dayClass: "WORKDAY", dayStatus: "WORKED", plannedMin: 480, workMin: 480, sourcesJson: { rosterEntryIds: [re.id] }, inputHash: "qc", digest: "qc", builtAt: new Date() } });
+ }
  for (const e of ["a1", "bNow"]) {
   for (const day of [D0, DM1]) await P.hrRosterEntry.create({ data: { ...sc, employeeId: E[e]!.id, date: dbDate(day), shiftId: SH1, unitId: U1, startMin: 480, endMin: 1020, breakMin: 60, crossesMidnight: false, published: true, publishedAt: new Date() } });
   for (const [kind, min] of [["IN", 485], ["OUT", 1022]] as const) await P.hrAttendance.create({ data: { ...sc, employeeId: E[e]!.id, kind, at: bkk(DM1, min), source: "MOBILE" } });
@@ -257,8 +263,8 @@ const kOf = new Map(Object.values(E).map((e) => [e.id, e.key]));
 const LS = vOf(W.payU1s), LM = vOf(W.payU1m), LIM = { payU1s: LS, payU1m: LM }, VM = vOf(W.mgrU1), VO = vOf(W.owner);
 const money = (s: number) => String(M.money?.formatBaht?.(s));
 const baht = (s: number) => [String(s), (s / 100).toFixed(2), (s / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })];
-const sensOf = (e) => [e.nid, `${e.z}SSO`, `${e.z}HOUSE`, `${e.z}BANKNAME`, `${e.z}DOC`];
-const payOf = (e) => [...baht(e.gross), ...baht(e.net), ...baht(e.pay === "HOURLY" ? e.rate : e.base)].filter((s) => s.length >= 5);
+const sensOf = (e: Any): string[] => [e.nid, `${e.z}SSO`, `${e.z}HOUSE`, `${e.z}BANKNAME`, `${e.z}DOC`];
+const payOf = (e: Any): string[] => [...baht(e.gross), ...baht(e.net), ...baht(e.pay === "HOURLY" ? e.rate : e.base)].filter((s) => s.length >= 5);
 const num = (v: unknown) => Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0;
 console.log(`fixture ok: PERIOD=${PERIOD} MONTH=${MONTH}`);
 {
@@ -398,6 +404,21 @@ const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: {
  for (const p of p0) await P.hrSalaryProfile.update({ where: { id: p.id }, data: { baseSalarySatang: p.baseSalarySatang, hourlyRateSatang: p.hourlyRateSatang } });
  const ch = ["otRequestList", "listStockCharges", "capFlags"].filter((_, i) => s1[i] !== s2[i]);
  chk("N3", !ch.length, "", ch.join(",") || "identical");
+}
+{ // L1 (MONEY-2 labour ACTUAL): bSpan (home U2) worked 2 rostered days in U1 in the PAID period
+ const d = `${PERIOD}-10`, wk = addDay(d, -((new Date(`${d}T00:00:00Z`).getUTCDay() + 6) % 7)), o = { now: NOW };
+ const reads = async (v: Any) => [await q("labor", "laborMonth", v, { periodKey: PERIOD, unitId: U1 }, o), await q("labor", "laborDay", v, { day: d, unitId: U1 }, o), await q("labor", "laborWeek", v, { week: wk, unitId: U1 }, o)];
+ const b = await reads(LM), ob = await reads(VO), w = { employeeId: E.bSpan!.id };
+ const its = (await P.hrPayrollItem.findMany({ where: w })) as Any[], pf = (await P.hrSalaryProfile.findFirst({ where: w })) as Any;
+ const put = async (k: number) => {
+  for (const it of its) await P.hrPayrollItem.update({ where: { id: it.id }, data: { grossSatang: it.grossSatang * k, netSatang: it.netSatang * k, ssoEmployerSatang: it.ssoEmployerSatang * k, snapshotJson: typeof it.snapshotJson?.baseSalarySatang === "number" ? { ...it.snapshotJson, baseSalarySatang: it.snapshotJson.baseSalarySatang * k } : it.snapshotJson } });
+  await P.hrSalaryProfile.update({ where: { id: pf.id }, data: { baseSalarySatang: pf.baseSalarySatang * k } });
+ };
+ await put(2);
+ const a = await reads(LM), oa = await reads(VO);
+ await put(1);
+ const l1 = { month: digest(a[0]) === digest(b[0]), day: digest(a[1]) === digest(b[1]), week: digest(a[2]) === digest(b[2]), actual: b[0]?.basis === "ACTUAL", excluded: b[0]?.excludedHeadcount >= 1 && b[0]?.partial === true, owner: Number(oa[0]?.costSatang) > Number(ob[0]?.costSatang) };
+ chk("L1", all(l1), "", `${fails(l1)} lim=${b[0]?.costSatang}/${b[0]?.excludedHeadcount} owner=${ob[0]?.costSatang}→${oa[0]?.costSatang}`);
 }
 {
  const e1: string[] = [], has = (r: Any, w: string) => (T(r).includes(E.bNow!.id) || T(r).includes(E.bNow!.name) ? "" : w);
