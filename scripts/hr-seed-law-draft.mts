@@ -1,4 +1,4 @@
-// HR H1.3 ▸ hr-seed-law-draft — ลงแถวกฎหมายเงินเดือน 4 แถว (สถานะ DRAFT) ใน HrLawTable จาก "ค่าที่เครื่องรุ่น 1 ใช้อยู่จริงวันนี้"
+// HR H1.3 ▸ hr-seed-law-draft — ลงแถวกฎหมายเงินเดือน (สถานะ DRAFT · HR HF-SSO ▸ 4 → 10 แถว: + SSO/DEDUCTION ตามช่วงวันที่ ◂) ใน HrLawTable จาก "ค่าที่เครื่องรุ่น 1 ใช้อยู่จริงวันนี้"
 //
 // ทำไม: ค่ากฎหมาย (ประกันสังคม · ขั้นภาษี · ค่าลดหย่อน · OT) วันนี้เป็นค่าคงที่ในโค้ด src/lib/modules/hr/payroll-rules.ts (FREEZE — ไม่แก้ ไม่ export ค่า)
 //   H1.3 ย้าย "ตัวเลข" มาเป็นข้อมูลก่อน (ยังไม่มีใครอ่าน) · เครื่องรุ่น 2 (H3.3) จะอ่านแถวที่ ACTIVE เท่านั้น
@@ -9,7 +9,7 @@
 //   pnpm exec tsx scripts/hr-seed-law-draft.mts [--apply] [--key-prefix <p>]      (ค่าปริยาย prefix "v1" ⇒ sourceKey "v1:SSO" …)
 //   (ไม่ใส่อะไร) = dry-run: ตรวจ 2 ชั้นกับค่าคงที่ · พิมพ์ 4 แถว + digest · อ่านฐานแล้วบอกว่าจะสร้าง/มีอยู่แล้ว/ไม่ตรง — ไม่เขียนอะไร
 //   --apply      = ธุรกรรมเดียว: INSERT … ON CONFLICT ("sourceKey") DO NOTHING ต่อแถว → อ่านกลับ → ไม่ตรง = ย้อนทั้งก้อน
-//                  บรรทัดผล: `created <n> · unchanged <n> · mismatched <n>` · รันซ้ำ = created 0 · unchanged 4
+//                  บรรทัดผล: `created <n> · unchanged <n> · mismatched <n>` · รันซ้ำ = created 0 · unchanged 10 (HR HF-SSO)
 //   แถวเดิมที่ sourceKey เดียวกันแต่ค่าไม่ตรง ⇒ exit 1 + ข้อความไทย · ไม่เขียนอะไรเลย (ไม่สร้างแถวอื่นด้วย)
 //
 // env (ทางเดียวกับ hr-backfill-pin-hash.mts):
@@ -18,7 +18,7 @@
 //     มี DATABASE_URL ใน shell มาก่อน = หยุด exit 1 (ค่าใน shell จะชนะไฟล์เงียบ ๆ) · host production โดยไม่มี HR_SEED_LAW_PROD=1 = หยุด exit 3
 //
 // exports (import ไฟล์นี้ไม่รัน main — ข้อสอบ qc-hr-h1.3 import ใน process ลูก):
-//   LAW_V1_ROWS · LAW_V1_DIGEST (sha256 ของ JSON เรียงกุญแจของ [kind, "YYYY-MM-DD", json] ×4 · ∞ = null) · verifyAgainstFrozen()
+//   LAW_V1_ROWS · LAW_V1_DIGEST (sha256 ของ JSON เรียงกุญแจของ [kind, "YYYY-MM-DD", json] ทุกแถว · ∞ = null) · verifyAgainstFrozen() · lawSourceKey() (HR HF-SSO)
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Any = any;
 import { createHash, randomUUID } from "node:crypto";
@@ -29,9 +29,16 @@ import { fileURLToPath } from "node:url";
 export type LawKindV1 = "SSO" | "TAX_BRACKET" | "DEDUCTION" | "OT";
 export type LawRowV1 = { kind: LawKindV1; effectiveFrom: string; json: Record<string, unknown> };
 
-/** 4 แถว v1 — ตัวเลขจำนวนเต็มล้วน (สตางค์ + basis point) · ลำดับ SSO, TAX_BRACKET, DEDUCTION, OT */
+/** แถว v1 — ตัวเลขจำนวนเต็มล้วน (สตางค์ + basis point) · เรียงตามชนิด SSO, TAX_BRACKET, DEDUCTION, OT แล้วตามวันมีผล (HR HF-SSO ▸ 4 → 10 แถว · ลำดับเดียวกับที่ข้อสอบอ่านจากฐาน ◂) */
 export const LAW_V1_ROWS: readonly LawRowV1[] = [
   { kind: "SSO", effectiveFrom: "1970-01-01", json: { rateBp: 500, minBaseSatang: 165000, maxBaseSatang: 1500000, rounding: "BAHT_HALF_UP", employerEqualsEmployee: true } },
+  // HR HF-SSO ▸ Q4 · Q1: แถวตามช่วงวันที่ของกฎกระทรวงฐานค่าจ้าง ม.33 พ.ศ. 2568 (shark-thai-law §ซ [V]) — DRAFT · แถว 1970 ด้านบนคงเดิมทุกไบต์
+  //   SSO: เพดานฐาน 17,500 (1 ม.ค. 2569) · 20,000 (1 ม.ค. 2572) · 23,000 (1 ม.ค. 2575) · ค่าอื่นเท่าแถว 1970
+  //   DEDUCTION: เพดานลดหย่อนเงินสมทบ = 12 × เงินสมทบสูงสุดต่อเดือนของช่วง ("ตามจำนวนที่จ่ายจริง" ม.47(1)(ฌ) · T-HR-10 10,500) · ค่าอื่นเท่าแถว 1970
+  //   sourceKey = "<prefix>:<ชนิด>:<ปี พ.ศ.>" (lawSourceKey) ◂
+  { kind: "SSO", effectiveFrom: "2026-01-01", json: { rateBp: 500, minBaseSatang: 165000, maxBaseSatang: 1750000, rounding: "BAHT_HALF_UP", employerEqualsEmployee: true } },
+  { kind: "SSO", effectiveFrom: "2029-01-01", json: { rateBp: 500, minBaseSatang: 165000, maxBaseSatang: 2000000, rounding: "BAHT_HALF_UP", employerEqualsEmployee: true } },
+  { kind: "SSO", effectiveFrom: "2032-01-01", json: { rateBp: 500, minBaseSatang: 165000, maxBaseSatang: 2300000, rounding: "BAHT_HALF_UP", employerEqualsEmployee: true } },
   {
     kind: "TAX_BRACKET",
     effectiveFrom: "1970-01-01",
@@ -50,17 +57,10 @@ export const LAW_V1_ROWS: readonly LawRowV1[] = [
     },
   },
   { kind: "DEDUCTION", effectiveFrom: "1970-01-01", json: { expenseRateBp: 5000, expenseCapSatang: 10000000, personalSatang: 6000000, spouseSatang: 6000000, childSatang: 3000000, ssoAllowanceCapSatang: 900000 } },
+  { kind: "DEDUCTION", effectiveFrom: "2026-01-01", json: { expenseRateBp: 5000, expenseCapSatang: 10000000, personalSatang: 6000000, spouseSatang: 6000000, childSatang: 3000000, ssoAllowanceCapSatang: 1050000 } }, // HR HF-SSO ◂
+  { kind: "DEDUCTION", effectiveFrom: "2029-01-01", json: { expenseRateBp: 5000, expenseCapSatang: 10000000, personalSatang: 6000000, spouseSatang: 6000000, childSatang: 3000000, ssoAllowanceCapSatang: 1200000 } }, // HR HF-SSO ◂
+  { kind: "DEDUCTION", effectiveFrom: "2032-01-01", json: { expenseRateBp: 5000, expenseCapSatang: 10000000, personalSatang: 6000000, spouseSatang: 6000000, childSatang: 3000000, ssoAllowanceCapSatang: 1380000 } }, // HR HF-SSO ◂
   { kind: "OT", effectiveFrom: "1970-01-01", json: { workdayMultiplierBp: 15000, daysPerMonth: 30, hoursPerDay: 8 } },
-  // HR HF-SSO ▸ Q4 · Q1: แถวตามช่วงวันที่ของกฎกระทรวงฐานค่าจ้าง ม.33 พ.ศ. 2568 (shark-thai-law §ซ [V]) — DRAFT · แถว 1970 ด้านบนคงเดิมทุกไบต์
-  //   SSO: เพดานฐาน 17,500 (1 ม.ค. 2569) · 20,000 (1 ม.ค. 2572) · 23,000 (1 ม.ค. 2575) · ค่าอื่นเท่าแถว 1970
-  //   DEDUCTION: เพดานลดหย่อนเงินสมทบ = 12 × เงินสมทบสูงสุดต่อเดือนของช่วง ("ตามจำนวนที่จ่ายจริง" ม.47(1)(ฌ) · T-HR-10 10,500) · ค่าอื่นเท่าแถว 1970
-  //   sourceKey = "<prefix>:<ชนิด>:<ปี พ.ศ.>" (lawSourceKey) ◂
-  { kind: "SSO", effectiveFrom: "2026-01-01", json: { rateBp: 500, minBaseSatang: 165000, maxBaseSatang: 1750000, rounding: "BAHT_HALF_UP", employerEqualsEmployee: true } },
-  { kind: "SSO", effectiveFrom: "2029-01-01", json: { rateBp: 500, minBaseSatang: 165000, maxBaseSatang: 2000000, rounding: "BAHT_HALF_UP", employerEqualsEmployee: true } },
-  { kind: "SSO", effectiveFrom: "2032-01-01", json: { rateBp: 500, minBaseSatang: 165000, maxBaseSatang: 2300000, rounding: "BAHT_HALF_UP", employerEqualsEmployee: true } },
-  { kind: "DEDUCTION", effectiveFrom: "2026-01-01", json: { expenseRateBp: 5000, expenseCapSatang: 10000000, personalSatang: 6000000, spouseSatang: 6000000, childSatang: 3000000, ssoAllowanceCapSatang: 1050000 } },
-  { kind: "DEDUCTION", effectiveFrom: "2029-01-01", json: { expenseRateBp: 5000, expenseCapSatang: 10000000, personalSatang: 6000000, spouseSatang: 6000000, childSatang: 3000000, ssoAllowanceCapSatang: 1200000 } },
-  { kind: "DEDUCTION", effectiveFrom: "2032-01-01", json: { expenseRateBp: 5000, expenseCapSatang: 10000000, personalSatang: 6000000, spouseSatang: 6000000, childSatang: 3000000, ssoAllowanceCapSatang: 1380000 } },
 ];
 /** HR HF-SSO ▸ แถว 1970 (ค่าเครื่องรุ่น 1 = payroll-rules.ts FREEZE) — ตัวที่ verifyAgainstFrozen เทียบ · แถวตามช่วงวันที่เทียบกับ payroll-rules-sso.ts แทน ◂ */
 const LAW_V1_FROZEN_ROWS: readonly LawRowV1[] = LAW_V1_ROWS.filter((r) => r.effectiveFrom === "1970-01-01");
@@ -313,7 +313,7 @@ async function main(): Promise<number> {
     console.error(`❌ ${SCRIPT}: ค่าในสคริปต์ไม่ตรงกับเครื่องคิดเงินเดือนรุ่น 1 — ไม่ได้เขียนอะไร (${v.note})`);
     return 1;
   }
-  for (const r of LAW_V1_ROWS) console.log(`  ${lawSourceKey(r, PREFIX).padEnd(24)} ${r.kind.padEnd(12)} ${r.effectiveFrom} DRAFT ${JSON.stringify(canon(r.json))}`);
+  for (const r of LAW_V1_ROWS) console.log(`  ${lawSourceKey(r, PREFIX).padEnd(24)} ${r.kind.padEnd(12)} ${r.effectiveFrom} DRAFT ${JSON.stringify(canon(r.json))}`); // HR HF-SSO ◂
   console.log(`  digest ${LAW_V1_DIGEST}`);
 
   // 2) env (เหมือน hr-backfill-pin-hash.mts)

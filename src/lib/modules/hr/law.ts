@@ -79,7 +79,7 @@ export type LawSetResult<R> =
   | { ok: false; code: "LAW_MISSING" | "LAW_AMBIGUOUS" | "LAW_BAD_DAY"; kinds: string[] };
 
 /** ชุดกฎหมายครบสำหรับเครื่องรุ่น 2 · ขาด/ซ้อน = ปฏิเสธพร้อมรายชื่อชนิด (ไม่มีค่าสำรอง) · ids เรียงตัวอักษร */
-export function pickLawSet<R extends LawRowIn>(rows: readonly R[], onDay: string, kinds: readonly string[] = LAW_KINDS_V2, opts?: LawSetOpts): LawSetResult<R> {
+export function pickLawSet<R extends LawRowIn>(rows: readonly R[], onDay: string, kinds: readonly string[] = LAW_KINDS_V2, opts?: LawSetOpts): LawSetResult<R> { // HR HF-SSO ▸ + opts.ssoDay ◂
   if (!isLawDay(onDay)) return { ok: false, code: "LAW_BAD_DAY", kinds: [...kinds] };
   if (opts?.ssoDay !== undefined && !isLawDay(opts.ssoDay)) return { ok: false, code: "LAW_BAD_DAY", kinds: [...kinds] }; // HR HF-SSO ◂
   const set: Record<string, R> = {};
@@ -108,7 +108,7 @@ export async function loadLawSet(onDay: string, db?: LawDb, opts?: LawSetOpts) {
   if (!isLawDay(onDay) || (opts?.ssoDay !== undefined && !isLawDay(opts.ssoDay))) return { ok: false as const, code: "LAW_BAD_DAY" as const, kinds: [...LAW_KINDS_V2] as string[] }; // HR HF-SSO ▸ + ssoDay ◂
   const upTo = opts?.ssoDay !== undefined && opts.ssoDay > onDay ? opts.ssoDay : onDay; // HR HF-SSO ▸ อ่านถึงวันที่ช้ากว่า (งวดอาจหลังวันจ่าย) ◂
   const rows = await dbOf(db).hrLawTable.findMany({
-    where: { status: "ACTIVE", kind: { in: [...LAW_KINDS_V2] }, effectiveFrom: { lte: toUtcDate(upTo) } },
+    where: { status: "ACTIVE", kind: { in: [...LAW_KINDS_V2] }, effectiveFrom: { lte: toUtcDate(upTo) } }, // HR HF-SSO ◂
     orderBy: [{ effectiveFrom: "asc" }, { id: "asc" }],
     select: { id: true, kind: true, effectiveFrom: true, status: true, json: true },
   });

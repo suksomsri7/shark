@@ -18,6 +18,7 @@ import { canViewPayroll, evaluate, type MembershipCtx } from "@/lib/core/rbac"; 
 import { employeeIdOfAdjustment, employeeUnitsOf, hrScopeOf, unitTargetOf } from "./scope"; // HR H2.11 ▸ สาขาของเจ้าของรายการ (แบบ payTarget) ◂
 import { INBOX_TEXT } from "./inbox-shared"; // HR H2.11 ◂
 import {
+  // HR HF-SSO ▸ ssoContribution / monthlyWhtSatang ไม่ import แล้ว — รุ่น 1 ใช้ payroll-rules-sso.ts (payroll-rules.ts คง FREEZE ไว้ให้ประวัติ/ข้อสอบ) ◂
   otHourlyRateSatang,
   otAmountSatang,
   sumAdjustments,
@@ -475,7 +476,7 @@ function computeItem(profile: {
   addSatang?: number;
   deductSatang?: number;
   adjustDetail?: { kind: string; amountSatang: number; note: string | null }[];
-}, law: RunLawV1): {
+}, law: RunLawV1): { // HR HF-SSO ▸ + กฎของรอบ (งวด · ปีภาษี) ◂
   employeeId: string;
   grossSatang: number;
   ssoBaseSatang: number;
@@ -493,14 +494,14 @@ function computeItem(profile: {
   const base = profile.baseSalarySatang;
   const gross = payableGrossSatang({ baseSalarySatang: base, addSatang, deductSatang });
   const sso = profile.ssoEligible
-    ? ssoContributionForPeriod(base, law.periodKey)
+    ? ssoContributionForPeriod(base, law.periodKey) // HR HF-SSO ▸ เพดานตามงวดค่าจ้าง ◂
     : { baseSatang: 0, employeeSatang: 0, employerSatang: 0 };
 
   const d = (profile.personalDeductionJson ?? {}) as { spouse?: boolean; children?: number };
   const deductions: WhtDeductions = { spouse: !!d.spouse, children: Math.max(0, d.children ?? 0) };
 
   const ssoEmployeeYearSatang = sso.employeeSatang * 12;
-  const wht = monthlyWhtForTaxYear({ monthlySalarySatang: base, ssoEmployeeYearSatang, deductions }, law.taxYear);
+  const wht = monthlyWhtForTaxYear({ monthlySalarySatang: base, ssoEmployeeYearSatang, deductions }, law.taxYear); // HR HF-SSO ▸ เพดานลดหย่อนตามปีภาษี ◂
   const net = gross - sso.employeeSatang - wht;
 
   return {
@@ -658,7 +659,7 @@ async function buildRunRows(
         addSatang,
         deductSatang,
         adjustDetail: rows.map((r) => ({ kind: r.kind, amountSatang: r.amountSatang, note: r.note })),
-      }, law),
+      }, law), // HR HF-SSO ◂
       member.partial.has(p.employeeId),
     );
   });
