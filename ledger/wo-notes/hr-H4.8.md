@@ -19,6 +19,8 @@
 | `src/lib/core/permissions.ts` | marked hunk | `hr.employee.read` / `hr.roster.read` (brief labels) |
 | `src/lib/api-keys/scopes.ts` | marked hunks | `HR_SCOPE_KEYS`, bundle ids, `hr-read` / `hr-leave` / `hr-payroll-read` |
 | `hr/roster.ts canRead` · `hr/roster-board.ts canReadRoster` · `hr/privacy.ts openProfile` | one OR-term each (marked) | ruling Q1 additive |
+| `src/components/account-v2/ConnectionsPanel.tsx` | marked hunk | 3 Thai lines in `BUNDLE_HELP_TH: Record<ApiScopeBundleId,…>` (forced by the new bundle ids — typecheck) |
+| `scripts/qc-hr-h3.8.mts` | ORACLE-EDIT (pre-authorised frozen-static re-take) | S1.13 privacy.ts sha pin 9b95844d… → ba518b3d… (the marked openProfile OR-term) |
 | HR settings `page.tsx` (import + owner-only slot) · `developers/page.tsx` (link) · messages th/en `hr.apiKeys.*` · `hr-ui-inventory.json` (17 rows wo H4.8) · `visual-hr.mts` `"4.8"` | marked | UI wiring |
 
 ## 2. Decisions (how each brief section was met)
@@ -48,7 +50,15 @@
 ## 4. Other key-issuing paths (task: can anything else mint a key the HR dispatcher accepts?)
 Callers of `createApiKey`/`rotateApiKey`: account `connections-actions.ts` (scopes ⊆ `ACCOUNT_SCOPE_KEYS`, ACCOUNT system; rotate limited to ACCOUNT-bound account-only keys), CRM `settings/api/actions.ts` (crm bundles, CRM system), kanban `settings-actions.ts` (kanban bundles/keys, KANBAN system), member `api-actions.ts` + member REST `apikeys.create` (member bundles, bound to the member system), POS `api-key-actions.ts` (pos bundles, POS system), platform `/app/settings/api` (`createApiKey(ctx,name)` → unbound, scopes `[]`). **None can bind a key to an HR system, and none can grant hr.* scopes** (an hr.* scope on a non-HR-bound key is useless under ruling 4). No change needed outside HR; nothing in the frozen core needed.
 
-## 5. Runs — see `hr-H4.8-green.txt`
+## 5. Runs — full lines in `hr-H4.8-green.txt`
+- qc-hr-h4.8: forced 41/41 ×4 (incl. final head), unforced 41/41 · residue none.
+- green: qc-hr-h2.2 60/60 (after F6.1 fix) · h2.7 94/94 · h2.10 57/57 · h3.8 78/78 (after ORACLE-EDIT) · h3.9 60/60 · h0.1 67/67 · qc-hf-hr-privacy 194/194 · qc-audit-trail 21/21 · qc-pos-p0.2 56/56 · qc-account-api-keys 51/51 · qc-account-api-core 64/64 · qc-hf-apiv1-scope 143/143 · qc-public-api 18/18 · qc-crm-c1.10 66/66 (HTTP part SKIPPED, server down).
+- fitness 53/53 + fitness-hr 9/9 with env (qc-hr.sh) and with `env -u DATABASE_URL -u DIRECT_URL` · typecheck clean (406 s, after the ConnectionsPanel hunk; first run 442 s found that TS2739).
+- NOT green, outside this ticket:
+  - seed-hr-qc 3/4: `setPin keng: ระบบยังไม่ได้ตั้งค่าความปลอดภัยของ PIN` (HR_PIN_PEPPER not available in this lane's env; pin.ts untouched) ⇒ HQC seed incomplete ⇒ qc-hr-h1.1 S9.2 80/81 (seeded home units/borrowing missing — data, not code).
+  - qc-member-m1.11 7/10 + crash (member fixture count 63≠60, null profile) — shared-DB state; no member code touched.
+  - qc-kanban-k1.15 28/30: S3.2/S3.4 = `skills/shark-kanban-api/references/endpoints.md` absent in the tree (static; same on base — `skills/` holds only shark-pos-api + shark-hr-api).
+  - qc-pos-p2.13, qc-pos-api-skill: refuse the lane DB (QC4 only) — controller.
 
 ## 6. Debts / owner items
 - **D-H48-cursor**: offset paging on `GET /employees` (an insert sorting before page 1 shifts later pages) — cursor paging later (ruling 1).

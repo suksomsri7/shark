@@ -1,0 +1,96 @@
+# H4.8 green — builder runs on wip/hr-h4.8 (lane DB via scripts/qc-hr.sh)
+
+## qc-hr-h4.8 (final forced run, head after all code commits)
+  ✅ [H4.8-S1] [static] route [...path] = 5 thin exports → hr/api/dispatch (no prisma/if) · openapi.json route · developers/hr.md route exist
+  ✅ [H4.8-S2] [static] HR_OPS = the 14 pinned ops (id·method·path·action·rate·kind) · module hr · auditAction hr.api.<id> · no tool · (method,path) unique · employees.list paged · GET query keys ⊆ ids/filters (R7) · POST fields = brief, strict
+  ✅ [H4.8-S3] [static] nothing left out is exposed (decide/approve/clock/swap/correction/payroll action/bank/filing/cert/PDF/CSV/register/labour/YTD) · exactly one write op
+  ✅ [H4.8-S4] [static] scopes.ts HR_SCOPE_KEYS ∋ every op.action · bundles hr-read (no pay) / hr-leave / hr-payroll-read exact
+  ✅ [H4.8-S5] [static] [control] every non-HR bundle byte-identical to base (golden digest)
+  ✅ [H4.8-S6] [static] permissions.ts: hr.employee.read / hr.roster.read, module hr, the brief's Thai labels
+  ✅ [H4.8-S7] [static] HR_API_CONFIG {module hr · systemType HR · scopePrefix hr. · rateNs hr} + Thai messages
+  ✅ [H4.8-S8] [static] hr/api/**: no prisma. / $transaction · ops import only §4 readers from hr/ · hrIssuerViewer only in ops/reports+ops/payslips · serialize.ts never spreads an object
+  ✅ [H4.8-S9] [static] [control] frozen files unchanged vs base (core api, api-keys service/route-auth, ai, other modules' api, payroll*/payslip*/reports*/filings/bank-files/service/leave/judge/settings/scope, prisma, package.json, sync-skills) · payroll-rules sha
+  ✅ [H4.8-S10] [static] marked hunks "HR H4.8 ▸ … ◂" in the 8 code files · messages th/en change only hr.apiKeys.* (th = en) · inventory adds only rows wo H4.8
+  ✅ [H4.8-S11] [static] gate hunks = one OR-term each: roster.ts canRead + roster-board.ts canReadRoster add hr.roster.read · privacy.ts openProfile adds hr.employee.read · nothing else in the 3 files
+  ✅ [H4.8-S12] [static] ApiKeysCard.tsx + settings page slot + O1 label "ข้อมูลเงินเดือนจะออกจากระบบ" · api-key-actions.ts "use server" → requireTenant + issueHrApiKey/revokeHrApiKey of hr/api/keys.ts
+  ✅ [H4.8-S13] [static] developers page links /developers/hr.md
+  ✅ [H4.8-P1] [pure] serializer probe: serializeEmployee / serializeSlip / serializeReport keep exactly the allow-list of poisoned rows (unknown + sensitive keys dropped)
+  ✅ [H4.8-P2] [route] GET /api/v1/hr/openapi.json (no key) = the 14 (method, path) of the registry
+  ✅ [H4.8-P3] [run] gen-hr-api-docs --check exit 0 · HR-API.md + endpoints.md name exactly the 14 ops
+  ✅ [H4.8-P4] [static] SKILL.md ≤ 14 KB · name shark-hr-api · ASCII description · §7 sections + privacy rules · recipes ≥ 6 (6 tasks) · every curl = registered op with documented fields · valid Error branch
+  ✅ [H4.8-P5] [route] GET /developers/hr.md = text naming every op path
+  ✅ [H4.8-D0] [db] [control] seed carries every PII (OWNER profile: national id/phone/address/bank · SICK reason · GPS+photo punch) so A3/A4 are not vacuous
+  ✅ [H4.8-Q1] [db] [control] human roles × 3 reader gates (canReadRoster · hrAccessOf · listRoster) = golden of the base
+  ✅ [H4.8-A14] [db] holder of hr.roster.read + hr.employee.read: reads roster + profile · publish refused · no seeSensitive · no slip
+  ✅ [H4.8-A2] [db] scope matrix 7 keys × 22 requests ⇒ exact status:code (401 / 403 scope_missing / 404 register / 200)
+  ✅ [H4.8-A3] [db] allow-list: every 2xx data has EXACTLY the pinned keys per op (reports: P, + $ only with hr.payroll.read, never I)
+  ✅ [H4.8-A2b] [db] POS-bound key ⇒ 403 system_mismatch on every op · general key ⇒ 400 system_required / 403 scope_missing
+  ✅ [H4.8-A2c] [db] only keys bound to THIS HR system: unbound key with hr scopes + X-Shark-System ⇒ every op refused with the bytes of a bound key without hr scopes · POS-bound key with hr scopes ⇒ 403 · no 2xx, nothing written/audited
+  ✅ [H4.8-A5] [db] other tenant/system: header ⇒ 403 system_mismatch · foreign ids (path + body) ⇒ 404 bytes = unknown id · lists filtered
+  ✅ [H4.8-A6] [db] roster = published entries only · DRAFT slip ⇒ 409 state_conflict · other-system employee ≡ random id
+  ✅ [H4.8-A8] [db] POST /leaves: data exactly {id, status PENDING} · approval request row · filedBy = issuer · audit hr.api.leaves.create API_KEY + keyName, no name/reason
+  ✅ [H4.8-A8b] [db] idempotency: no header 400 · replay byte-equal + Idempotent-Replayed · other body 409 · one row
+  ✅ [H4.8-A8c] [db] two identical requests while the employee lock is held: one 200 + one 409 idempotency_in_progress · one row
+  ✅ [H4.8-A8d] [db] OWNER-linked 403 forbidden · no hr.leave.decide 403 · overlap 409 duplicate · reason ⇒ 422 · service refusal ⇒ 422 unprocessable with the UI's Thai text · 0 rows each
+  ✅ [H4.8-A9] [db] 57 × pageSize 20 ⇒ 3 pages, union exact, (name,id) order, stable across an insert · pageSize 25 ⇒ 422 · leaves cap ⇒ truncated:true (absent/false below cap)
+  ✅ [H4.8-A11] [db] pay reads count in hr:api:report:<keyId> (reads in hr:api:read:<keyId>) · 31st report read ⇒ 429 + Retry-After
+  ✅ [H4.8-A12] [db] issuer core: non-OWNER / non-hr bundle / hr.payroll.create / non-HR system / pay without consent / pay never ⇒ refused, nothing written · default hr-read · audit keys exact
+  ✅ [H4.8-A13] [db] pay audit: one row per read · after keys exactly R8 · API_KEY · no names
+  ✅ [H4.8-A16] [db] recipes replay 2xx with $SHARK_API_KEY $SHARK_SYSTEM_ID $UNIT_ID $EMPLOYEE_ID $RUN_ID $FROM $TO $(uuidgen)
+  ✅ [H4.8-A10] [db] every refusal = {error:{code,message_th,message_en[,hint,details]},requestId} (code ∈ API_ERROR_CODES, th Thai, en ASCII) · 405 + Allow · unknown path 404
+  ✅ [H4.8-A7] [db] revoked ⇒ 401 unauthorized · expired ⇒ 401 key_expired
+  ✅ [H4.8-A7b] [db] issuer demoted / not accepted ⇒ all 14 ops 403 forbidden (fixed text, nothing written) · restored ⇒ 200
+  ✅ [H4.8-A4] [db] no forbidden key and no seeded secret value in any 2xx body (≥ 25 bodies)
+RESIDUE none (tenants=2 users=5)
+  ✅ [H4.8-Z1] no residue (tenants · keys · idempotency rows · rate buckets)
+===== qc-hr-h4.8 ===== passed 41/41 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.8","total":41,"passed":41,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":36,"baseGreen":5,"offBase":["H4.8-S1(RED→pass)","H4.8-S2(RED→pass)","H4.8-S3(RED→pass)","H4.8-S4(RED→pass)","H4.8-S6(RED→pass)","H4.8-S7(RED→pass)","H4.8-S8(RED→pass)","H4.8-S10(RED→pass)","H4.8-S11(RED→pass)","H4.8-S12(RED→pas
+
+## qc-hr-h4.8 unforced
+===== qc-hr-h4.8 ===== passed 41/41
+
+## batch 1
+seed exit=1 ===== seed-hr-qc ===== ผ่าน 3/4
+h48f2 exit=0 ===== qc-hr-h4.8 ===== passed 41/41 (QC_FORCE)
+h48f3 exit=0 ===== qc-hr-h4.8 ===== passed 41/41 (QC_FORCE)
+h48u exit=0 ===== qc-hr-h4.8 ===== passed 41/41
+h22 exit=1 ===== qc-hr-h2.2 ===== passed 59/60 (QC_FORCE)
+h27 exit=0 ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+h210 exit=0 ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+h38 exit=1 ===== qc-hr-h3.8 ===== passed 77/78 (QC_FORCE)
+h39 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+h11 exit=1 ===== qc-hr-h1.1 ===== passed 80/81 (QC_FORCE)
+h01 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+hfpriv exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+audit exit=0 
+DONE
+
+## batch 2
+h22b exit=0 ===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+h38b exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+h11b exit=1 ===== qc-hr-h1.1 ===== passed 80/81 (QC_FORCE)
+posp213 exit=4 
+posskill exit=4 
+posp02 exit=0 ===== QC: POS P0.2 ทะเบียน op =====
+kb115 exit=1 ===== QC Kanban K1.15 =====
+mb111 exit=1 
+crm110 exit=0   ⏭️  [C1.10-H] SKIPPED — server down (fetch failed) · the controller re-runs this oracle after build
+acckeys exit=0 ===== QC Account API Keys (A1) =====
+acccore exit=0 ===== QC Account API Core (A3) =====
+apiv1 exit=0 ===== QC HF-APIV1 scope =====
+pubapi exit=0 ===== QC Public API =====
+h48f4 exit=0 ===== qc-hr-h4.8 ===== passed 41/41 (QC_FORCE)
+DONE
+
+## fitness
+fitness-noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-noenv: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr-env: FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+## after fix round
+fitness-noenv (after ConnectionsPanel hunk): FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+typecheck run1: exit=2 secs=442 TS2739 ConnectionsPanel BUNDLE_HELP_TH
+typecheck run2: exit=0 secs=406 (clean)
+seed-hr-qc:   ❌ [X0] seed ทำงานจนจบ — expected จบ | actual Error: setPin keng: ระบบยังไม่ได้ตั้งค่าคว�
+h1.1:   ❌ [H1.1-S9.2] [db read] seeded qc-hr-v2: every employee's unitId = the HQC home unit (by slug) · jay has one open borrowing to huahin — expected 14 home units · jay → huahin open | actual ba
