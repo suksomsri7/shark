@@ -14,6 +14,7 @@ import {
   type Any, type Base, type Sev, ROOT, short, errText, sleep, failedKeys, canon, keysDeep, loadOpt, modState, isThai, addDay,
   makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, vOf, fitnessNoEnv, tagOf, dbDate, underRosterLock, HR_FORBIDDEN_DTO_KEYS,
 } from "./qc-hr-lib.mjs";
+import { runFixRound } from "./qc-hr-h4.3-lib.mjs"; // ORACLE-EDIT (H4.3 fix round · controller ruling) ◂
 import { runStatic, runPure, baseOf, textOf, F, TOOLS, ALL_TOOLS, READ_TOOLS, PROP_TOOLS, NET, installNetGuard, nameOk, norm, num, parse, errOf, stringsAt, dataFree, bytes, sweepTenants, sweepResidue, BAD_CHARS } from "./qc-hr-h4.3-lib.mjs";
 
 const SUITE = "qc-hr-h4.3";
@@ -58,6 +59,11 @@ V1|R11|C|R|[db] level hr OFF ⇒ 6 tools not offered + refused · READ ⇒ T1–
 B1|Q1 R10|C|R|[db] hrTodayLine owner counts {onLeave 1 · lateOrNotIn 2 · absent 0} = board rows (LEAVE · LATE or NOT_IN not on leave · ABSENT) · line has no names/ids · null for leaveStaff/member · digest hrToday per viewer (owner yes · member no · hr OFF no)
 N1|harness|C|G|[run] [control] no outbound network request attempted (fetch/http/https guard)
 X1|X12|M|G|[run] fitness + fitness-hr without env ⇒ exit 0
+FX1|fix 1|C|R|[db] ORACLE-EDIT (H4.3 fix round · controller ruling) T5: slot with a shift in ANY branch ⇒ EXISTS (owner unitId:A · hidden-B ≡ visible-A bytes) · no proposal · shift/leave after propose ⇒ stale
+FX2|fix 2|M|R|[db] ORACLE-EDIT (H4.3 fix round) data change (shift closed) ⇒ FAILED stale once · no refused audit
+FX4|fix 4|M|R|[db] ORACLE-EDIT (H4.3 fix round) T6 one note per employee+month: 2nd proposal (any caller) ⇒ same fixed bytes · confirming a copy ⇒ no 2nd note
+FX5|fix 5|M|R|[pure] ORACLE-EDIT (H4.3 fix round) fence strips zero-width · summary has no markdown/HTML chars
+FX6|fix 6|m|R|[db] ORACLE-EDIT (H4.3 fix round) T1 alerts > 20 ⇒ truncated:true
 Z1|house|C|G|no residue (every table with tenantId · users · sessions)
 `.trim().split("\n").map((l) => {
   const [id, g, sv, b, t] = l.split("|");
@@ -486,6 +492,8 @@ async function runDb(): Promise<void> {
       audit: au?.actorId === W.owner.id && au?.actorType === "USER" && (au?.after as Any)?.via === "AI" && (au?.after as Any)?.kind === TOOLS.T5,
       // ORACLE-EDIT (H4.3 · oracle author + controller ruling) accepted decision D-b: no per-entry hr.roster.entry.add for AI rows — the confirm audit lists exactly the created entry ids ◂
       entryIds: canon([...(((au?.after as Any)?.entryIds ?? []) as string[])].sort()) === canon(((await P.hrRosterEntry.findMany({ where: { tenantId: T, source: "AI", employeeId: { in: [E.A1, E.A2] }, date: { in: [dbDate(FD(30)), dbDate(FD(31))] } }, select: { id: true } })) as Any[]).map((r) => r.id).sort()) && ((au?.after as Any)?.entryIds ?? []).length === 3,
+      // ORACLE-EDIT (H4.3 fix round · controller ruling) ruling 3: + one hr.roster.entry.add per AI row (via AI · proposalId · confirmer) ◂
+      perEntry: ((await P.auditLog.findMany({ where: { tenantId: T, action: "hr.roster.entry.add", targetId: { in: ((au?.after as Any)?.entryIds ?? ["∅"]) as string[] } } })) as Any[]).filter((a) => a.after?.via === "AI" && a.after?.proposalId === P1 && a.actorId === W.owner.id).length === 3,
     }, "T5 confirm", `x=${short(x, 80)} rows=${rows.map((r) => r.length).join("/")}`);
   }
   {
@@ -666,6 +674,7 @@ async function runDb(): Promise<void> {
     const badL = blobs.flatMap((b) => [...sent.filter((x) => b.s.includes(x)).map((x) => `${b.k}:${x.slice(0, 8)}`), ...(!b.t3 && b.s.includes(S.salary) ? [`${b.k}:salary`] : []), ...[...keysDeep(parse(b.s))].filter((k) => forb.has(k)).map((k) => `${b.k}:key ${k}`)]);
     chk("A1", badL.length === 0 && OUT.length > 100 && rows.length >= 8, `${blobs.length} outputs clean`, badL.slice(0, 5).join(" ") || `ok outs=${OUT.length} props=${rows.length}`);
   }
+  await runFixRound({ P, M, E, W, T, HRS, UA, UB, SM, FD, D0, MONTH, TXT, tag, ck, rt, exec, propRow, aiRows, entry, work, dbDate, nProps, call, fx, sysSvc }); // ORACLE-EDIT (H4.3 fix round · controller ruling) ◂
 }
 
 // ═════════════════════════ main ═════════════════════════

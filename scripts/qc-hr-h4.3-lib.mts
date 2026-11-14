@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { join } from "node:path";
-import { type Any, ROOT, rd, canon, isThai, stripComments, importsOf, baseRef, commitInBase, pathInBase, changedVsBase, diffHunks, srcFiles, errText } from "./qc-hr-lib.mjs";
+import { type Any, ROOT, rd, canon, isThai, stripComments, importsOf, baseRef, commitInBase, pathInBase, changedVsBase, diffHunks, srcFiles, errText, short } from "./qc-hr-lib.mjs"; // ORACLE-EDIT (H4.3 fix round · controller ruling): + short ◂
 
 type Chk = (id: string, ok: unknown, expected: unknown, actual: unknown) => boolean;
 type Ck = (id: string, r: Record<string, unknown>, exp: string, extra?: string) => boolean;
@@ -286,5 +286,100 @@ export function runPure(R: Any, chk: Chk, ck: Ck): void {
       head: Array.isArray(out?.rows) && canon(out.rows) === canon(rows.slice(0, out.rows.length)),
       small: small?.truncated === false && small?.rows?.length === 2,
     }, "capHrToolResult ≤ 8 KB, drops tail rows, truncated:true", `bytes=${bytes(s)} rows=${out?.rows?.length}`);
+  }
+}
+
+// ═════════════════════════ ORACLE-EDIT (H4.3 fix round · controller ruling) — checks FX1 FX2 FX4 FX5 FX6 (FX3 = per-entry audits inside L2) ═════════════════════════
+// Rulings 1 (review MAJOR-1 = hunt F1) · 2 (MINOR-3) · 4 (hunt F2) · 5 (MINOR-1 + hunt I1) · 6 (MINOR-2) · ports the hunter's F1/F2 repro (ledger/wo-notes/hr-H4.3-hunt-probes.mts.txt) ◂
+export async function runFixRound(X: Any): Promise<void> {
+  const { P, M, E, W, T, HRS, UA, UB, SM, FD, D0, MONTH, TXT, tag, ck, rt, exec, propRow, aiRows, entry, work, dbDate, nProps, call, fx, sysSvc } = X;
+  const T5 = TOOLS.T5;
+  const T6 = TOOLS.T6;
+  const pid = (s: string) => String(parse(s)?.proposalId ?? "");
+  const one = (e: string, d: string, shiftId = SM) => [{ employeeId: e, date: d, shiftId }];
+  // FX1 — a slot taken in ANY branch is not empty (owner with unitId:A · branch-A writer for whom branch B is hidden) · generic EXISTS bytes · later shift/leave ⇒ stale
+  {
+    await entry(E.A1, FD(20), UB, true);
+    await entry(E.A1, FD(21), UA, true);
+    const p0 = await nProps();
+    const own = parse(await rt("owner", T5, { from: FD(20), to: FD(20), unitId: UA, entries: one(E.A1, FD(20)) }));
+    const hid = parse(await rt("payA", T5, { from: FD(20), to: FD(20), entries: one(E.A1, FD(20)) }));
+    const vis = parse(await rt("payA", T5, { from: FD(21), to: FD(21), entries: one(E.A1, FD(21)) }));
+    const gen = (o: Any, d: string) => canon(((o?.skipped ?? []) as Any[]).map((x) => ({ ...x, date: x.date === d ? "D" : x.date })));
+    const p1 = await nProps();
+    const idE = pid(await rt("owner", T5, { from: FD(22), to: FD(22), entries: one(E.A1, FD(22)) }));
+    await entry(E.A1, FD(22), UB, false);
+    const xE = await exec("owner", idE);
+    const rE = await aiRows(E.A1, FD(22));
+    const idL = pid(await rt("owner", T5, { from: FD(23), to: FD(23), entries: one(E.A1, FD(23)) }));
+    await P.hrLeave.create({ data: { tenantId: T, systemId: HRS, employeeId: E.A1, type: "PERSONAL", fromDate: dbDate(FD(23)), toDate: dbDate(FD(23)), status: "APPROVED", days: 1 } });
+    const xL = await exec("owner", idL);
+    ck("FX1", {
+      ownerUnitA: own.result === "NOTHING_TO_DRAFT" && canon(own.skipped) === canon([{ employeeId: E.A1, date: FD(20), code: "EXISTS" }]),
+      hiddenB: hid.result === "NOTHING_TO_DRAFT" && canon(hid.skipped) === canon(own.skipped) && !JSON.stringify(hid).includes(UB),
+      sameBytes: gen(hid, FD(20)) === gen(vis, FD(21)) && vis.result === "NOTHING_TO_DRAFT",
+      noRow: p1 === p0 && (await aiRows(E.A1, FD(20))).length === 1 && (await aiRows(E.A1, FD(21))).length === 1,
+      laterShift: !!idE && xE?.ok === false && xE?.note === TXT.stale && (await propRow(idE))?.status === "FAILED" && rE.length === 1 && rE[0].source === "MANUAL",
+      laterLeave: !!idL && xL?.ok === false && xL?.note === TXT.stale && (await aiRows(E.A1, FD(23))).length === 0,
+    }, "any-branch slot ⇒ EXISTS (generic) · later change ⇒ stale", `own=${short(own, 90)} hid=${short(hid?.skipped, 60)} xE=${short(xE, 50)}`);
+  }
+  // FX2 — data change (shift closed after propose) ⇒ FAILED stale once, no Q3 refusal
+  {
+    const SX = (await P.hrShift.create({ data: { tenantId: T, systemId: HRS, name: `ชั่วคราว ${tag}`, startMin: 420, endMin: 900, breakMin: 60, crossesMidnight: false } })).id as string;
+    const id = pid(await rt("owner", T5, { from: FD(25), to: FD(25), entries: one(E.A2, FD(25), SX) }));
+    await P.hrShift.updateMany({ where: { id: SX }, data: { active: false } });
+    const x1 = await exec("owner", id);
+    const st1 = (await propRow(id))?.status;
+    const x2 = await exec("owner", id);
+    const refused = await P.auditLog.count({ where: { tenantId: T, action: "hr.ai.proposal.refused", targetId: id || "∅" } });
+    ck("FX2", { proposed: !!id, stale: x1?.ok === false && x1?.note === TXT.stale && st1 === "FAILED", terminal: x2?.ok === false && (await propRow(id))?.status === "FAILED", noRefusal: refused === 0, none: (await aiRows(E.A2, FD(25))).length === 0 }, "data change ⇒ stale FAILED", `x1=${short(x1, 60)} st=${st1} refused=${refused}`);
+  }
+  // FX4 — one pattern note per (employee, month): second proposal / other caller ⇒ same fixed bytes · copy of a pending proposal confirmed ⇒ no 2nd note
+  {
+    const pt = await fx.mkEmp(T, HRS, `QC H43 Pt ${tag}`, { unitId: UA, startDate: "2026-01-01" });
+    for (const d of ["2026-09-01", "2026-09-02", "2026-09-03"]) await work(pt, d, 440);
+    const notes = () => P.hrReviewNote.count({ where: { tenantId: T, employeeId: pt } });
+    const a = { employeeId: pt, month: MONTH };
+    const s1 = await rt("owner", T6, a);
+    const id1 = pid(s1);
+    const p0 = await nProps();
+    const s2 = await rt("owner", T6, a);
+    const s3 = await rt("lifeMgr", T6, a);
+    const pNo = (await nProps()) === p0;
+    const x1 = await exec("owner", id1);
+    const s4 = await rt("owner", T6, a);
+    const row = await propRow(id1);
+    const copy = row ? (await P.aiProposal.create({ data: { tenantId: T, conversationId: row.conversationId, kind: row.kind, summary: row.summary, payload: row.payload, risk: row.risk, expiresAt: new Date(Date.now() + 3_600_000) } })).id : "";
+    const x2 = await exec("owner", copy);
+    const fixed = canon({ error: TXT.alreadyNoted });
+    ck("FX4", {
+      first: !!id1 && x1?.ok === true && (await notes()) === 1,
+      dupProposal: typeof TXT.alreadyNoted === "string" && canon(parse(s2)) === fixed && s2 === s3 && s3 === s4 && pNo,
+      dupConfirm: !!copy && x2?.ok === false && (await notes()) === 1,
+    }, "pattern note idempotent per employee+month", `s2=${short(s2, 60)} x2=${short(x2, 60)} notes=${await notes()}`);
+  }
+  // FX5 — fence strips zero-width · proposal summary = plain text (no markdown/HTML characters)
+  {
+    const R = M.rules ?? {};
+    const f = (s: string) => (typeof R.fenceUntrusted === "function" ? R.fenceUntrusted(s) : "∅");
+    const sum = typeof R.draftSummary === "function" ? String(R.draftSummary([{ name: "[ok](https://evil.example/a) <img src=x onerror=1> `c` **b**​", date: FD(26), shift: "<script>s</script>⁠" }])) : "∅";
+    ck("FX5", { zw: f("a​b‌c‍d⁠e﻿f") === "abcdef", plain: !/[<>[\]`*​⁠]/.test(sum) && sum.includes("ok") && sum.includes(FD(26)) }, "zero-width + plain summary", short(sum, 100));
+  }
+  // FX6 — T1 cuts alerts at 20 ⇒ truncated:true (rows not capped)
+  {
+    const TK = await fx.newTenant("-alerts", "QC HR H4.3 alerts");
+    const UK = await fx.newUnit(TK, "QC H43 สาขาเค", "uk");
+    const HK = (await sysSvc.createSystem(TK, "HR", `HRK ${tag}`)).id as string;
+    await sysSvc.linkUnit(TK, HK, UK);
+    const ok = await fx.mkUser(TK, "ownerk", `QC H43 ownerk ${tag}`, "OWNER", [], {});
+    const sk = (await P.hrShift.create({ data: { tenantId: TK, systemId: HK, name: "ก", startMin: 420, endMin: 900, breakMin: 60, crossesMidnight: false } })).id as string;
+    for (let i = 0; i < 21; i++) {
+      const e = await fx.mkEmp(TK, HK, `K${i}`, { unitId: UK, startDate: "2026-01-01" });
+      const en = (await P.hrRosterEntry.create({ data: { tenantId: TK, systemId: HK, employeeId: e, date: dbDate(D0), shiftId: sk, unitId: UK, startMin: 420, endMin: 900, breakMin: 60, crossesMidnight: false, published: true, publishedAt: new Date() } })).id as string;
+      await P.hrAttendanceAlert.create({ data: { tenantId: TK, systemId: HK, employeeId: e, rosterEntryId: en, date: dbDate(D0), kind: "NOT_IN", firedAt: new Date("2026-09-07T01:00:00Z") } });
+    }
+    const o = parse(await call(M.tools, "runTool", { tenantId: TK, actor: M.actor.aiMemberActor(TK, ok.id, { role: "OWNER", unitAccess: [], permissions: {} }) }, TOOLS.T1, { day: D0 }));
+    const big = await call(M.judge, "loadAttendanceBoard", { tenantId: TK, systemId: HK }, { role: "OWNER", unitAccess: [], permissions: {}, userId: ok.id }, { day: D0 });
+    ck("FX6", { reader: (big?.alerts ?? []).length === 21, rows: (o.rows ?? []).length === 21, alerts: (o.alerts ?? []).length === 20, truncated: o.truncated === true }, "alerts cap ⇒ truncated", `rows=${(o.rows ?? []).length} alerts=${(o.alerts ?? []).length} tr=${o.truncated}`);
   }
 }
