@@ -622,3 +622,10 @@
 - HR-MONEY-2 ผู้สร้างเขียว head 8175c1a92 → ผู้ตรวจ a7ad96e45d112786e + นักล่า a76e64430d2d8040b (เลน 1) กำลังตรวจ
 - HR-PRIV-2 ผู้สร้าง head 338945d65 (+ commit แก้ fixture h3.9 ตามคำตัดสิน Q1) → ผู้ตรวจ ac6ed9437cd70b516 + นักล่า a9e849d961b43d3fc (เลน 2) · ค้าง: h4.3 S1.6/S1.7 แดงบนสาขา (รอ MONEY-2 เข้าก่อนแล้ว re-merge) · ข้อสอบ priv-2 S4 แช่แข็ง h4.3-lib ทั้งไฟล์ → ต้องให้ผู้เขียนข้อสอบ ad71c146e20e3130d แก้ให้ยอมรับ hunk ที่มีป้าย ORACLE-EDIT
 - ลำดับ merge: HF-SSO-fix1 → MONEY-2 → PRIV-2 (re-merge ก่อน)
+
+### 2026-11-14T11:08Z · ✅ H3.10 ปิด (เอกสารปิดเฟส H3) → **39/44 (89%)** · HF-SSO-2569 + fix1 merged (ไม่นับ) · H5.1 เครื่องมือเดินหน้าจอ merged
+- ด่าน QC4 รอบ 2 `ledger/wo-notes/hr-HF-SSO-postmerge.txt`: แดง 0 · 55 ชุด exit 0 · typecheck 0 error 440 วิ · drift เฉพาะ `DormUtilityRate` (รู้อยู่แล้ว ไม่ใช่ HR) · รอบ 1 เก็บที่ `-round1.txt`
+- 🔴 HF-SSO ยังห้ามขึ้น production จนเจ้าของ/นักบัญชียืนยันเพดาน 17,500
+- สคริปต์ด่าน `pm-full.sh` ลงแถวร่างกฎหมาย (`hr-seed-law-draft --apply`) ก่อน seed แล้ว
+- ค้าง: HR-MONEY-2 รอบแก้ (ผู้สร้าง a7878aeefb74368f3 · R6 ลาป่วยย้อนหลัง + F1–F4) → merge → บอกผู้สร้าง PRIV-2 (a6c6b1d2466bb6b68) ทำขั้นสอง (re-merge + h4.3-lib + R11 ตัวอ่าน stock 2 ตัว) · ผู้เขียนข้อสอบ PRIV-2 กำลังเพิ่ม R11 + รัด W6
+- หนี้ใหม่ที่ต้องลง HR-DEBTS ตอน H4.9: คืนเงินอัตโนมัติเมื่อลาป่วยย้อนหลังทับวันถูกหัก (รายการเจ้าของ) · สลับ paid ของนโยบายลาขณะมีใบลาในเดือนจ่ายแล้ว · กะแรกของวันกำหนดสาขา · fallback gross ของ labour · D-PRIV-name-error-text · linkStaffToHr ข้ามเงียบ · ช่องตำแหน่ง/สัญชาติใส่สูตรทำ export ล้ม · bank-files {names} · confirmBranchHours สำเนากฎ · decideAdjustmentAs อนุมัติแบบมองไม่เห็น · reader-trust · qc-hr-h0.5 เรียก qc4.sh จากเลน · qc-svc-b.16/d.10 แช่แข็ง booking/service.ts
