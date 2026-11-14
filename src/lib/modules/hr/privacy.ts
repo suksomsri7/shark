@@ -176,7 +176,9 @@ export async function leaveItemsForViewer(
     ? new Map((await tenantDb({ tenantId: ctx.tenantId }).user.findMany({ where: { id: { in: filerIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
     : new Map<string, string | null>();
   const splits = await leaveSplitOf(ctx, history.filter((l) => String(l.status) === "APPROVED").map((l) => l.id)); // HR PREPROD-1 ▸ R3 ◂
-  const splitOf = (id: string) => { const x = splits[id]; return x && x.unpaidDays > 0 ? { paidDays: x.paidDays, unpaidDays: x.unpaidDays } : {}; }; // HR PREPROD-1 ◂
+  const payScope = hrScopeOf(v); // HR PREPROD-1 ▸ V2: ส่วนได้/ไม่ได้ค่าจ้าง = ข้อมูลค่าจ้าง — ผู้ดูเงินเดือนในขอบเขตค่าจ้างของสาขาประจำ (inPayScope) หรือตัวพนักงานเอง ◂
+  const paySees = (l: (typeof history)[number]) => (!!v.userId && l.employee.linkedUserId === v.userId) || (canViewPayroll(v) && inPayScope(payScope, l.employee.unitId)); // HR PREPROD-1 ◂
+  const splitOf = (l: (typeof history)[number]) => { const x = splits[l.id]; return x && x.unpaidDays > 0 && paySees(l) ? { paidDays: x.paidDays, unpaidDays: x.unpaidDays } : {}; }; // HR PREPROD-1 ◂
   const toItem = (l: (typeof history)[number]): LeaveItemSplitDto => ({
     id: l.id,
     employeeName: l.employee.name,
@@ -186,7 +188,7 @@ export async function leaveItemsForViewer(
     status: String(l.status),
     ...(canReadReason ? { reason: l.reason } : {}),
     ...(canReadReason && l.filedById ? { filedBy: `ยื่นโดย ${filers.get(l.filedById) || "ผู้ใช้ในร้าน"}` } : {}),
-    ...splitOf(l.id), // HR PREPROD-1 ◂
+    ...splitOf(l), // HR PREPROD-1 ◂
   });
   return { pending: pending.map(toItem), history: history.map(toItem), canReadReason };
 }
@@ -240,10 +242,18 @@ export function employeeProfileInputFromForm(form: FormData, v: HrViewer): Emplo
 
 // ข้อความปฏิเสธกลาง (ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน) — ใช้ร่วมกันเพื่อให้ทุกทางปฏิเสธได้ไบต์เดียวกัน
 const ADJUST_REFUSED_GENERIC = "ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้";
+const ADJUST_OUT_OF_PAY_SCOPE = "ผลการยื่นของพนักงานนอกขอบเขตค่าจ้างของคุณไม่แสดงที่นี่ — ผู้ดูแลเงินเดือนของสาขาประจำของพนักงานเป็นผู้ตรวจยอดและแจ้งผล"; // HR PREPROD-1 ▸ V7 ◂
 /**
  * คำตอบของการยื่นรายการเพิ่ม/หักเงิน — ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือนต้องไม่รู้ยอดที่ระบบคิดจากเงินเดือน (OT)
  * และไม่รู้ว่าพนักงานคนนั้นมีโปรไฟล์เงินเดือนหรือไม่ · ผู้ดูเงินเดือน = คำตอบเดิมทุกตัวอักษร
  */
+/** HR PREPROD-1 ▸ V7: ผู้ยื่นที่พนักงานอยู่นอกขอบเขตค่าจ้างของตน (ยืมตัว) — สำเร็จ หรือปฏิเสธด้วยเหตุที่ขึ้นกับเงินเดือน (มี/ไม่มีโปรไฟล์ · OT ตามชั่วโมง)
+ *  ⇒ คำตอบเดียวกันทุกไบต์ ไม่มียอด · เหตุจากข้อมูลที่ผู้ยื่นกรอกเอง (งวด/ยอด/ชนิด) แสดงตามเดิม ◂ */
+export function adjustmentReplyOutOfPayScope(res: { ok: boolean; reason?: string }, byHours: boolean): { status: "ok" | "error"; message: string } {
+  if (res.ok || byHours || /เงินเดือน/.test(res.reason ?? "")) return { status: "ok", message: ADJUST_OUT_OF_PAY_SCOPE };
+  return { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
+}
+// ◂ HR PREPROD-1
 export function adjustmentReplyForViewer(
   payrollViewer: boolean,
   res: { ok: boolean; reason?: string; amountSatang?: number },

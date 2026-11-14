@@ -1472,11 +1472,17 @@ async function refundsBehindOf(ctx: Ctx, runs: string[], take: number): Promise<
     where: { systemId: ctx.systemId, runId: null, kind: "REFUND", status: { in: ["PENDING", "APPROVED"] }, sourceRef: { startsWith: REFUND_OF_PREFIX }, periodKey: { notIn: runs } },
     select: { id: true, employeeId: true, periodKey: true, kind: true, status: true, amountSatang: true, note: true, crmCommissionId: true },
     orderBy: [{ periodKey: "asc" }, { id: "asc" }],
-    take,
+    take: 5_000, // (c) เพดานอ่านก่อนกรอง · `take` ของหน้าใช้หลังกรอง
   });
-  const last = new Map<string, string | null>();
-  for (const e of [...new Set(cand.map((r) => r.employeeId))]) last.set(e, (await giveBackWindowInTx(db as unknown as Prisma.TransactionClient, ctx, e)).lastCovered);
-  return cand.filter((r) => { const l = last.get(r.employeeId); return !!l && r.periodKey <= l; }).map((r) => ({ ...r, kind: String(r.kind), status: String(r.status), reason: "REFUND_BEHIND" as const }));
+  const emps = [...new Set(cand.map((r) => r.employeeId))];
+  if (!emps.length) return [];
+  // (c) คิวรีเดียวต่อหน้า (เงื่อนไขเดียวกับ giveBackWindowInTx.lastCovered) แทนการอ่านทีละคน
+  const last = new Map((await (db as unknown as Prisma.TransactionClient).$queryRaw<{ e: string; p: string | null }[]>`
+    SELECT i."employeeId" AS "e", MAX(r."periodKey") AS "p" FROM "HrPayrollRun" r JOIN "HrPayrollItem" i ON i."runId" = r."id" AND i."tenantId" = r."tenantId" AND i."systemId" = r."systemId"
+    WHERE r."tenantId" = ${ctx.tenantId} AND r."systemId" = ${ctx.systemId} AND i."employeeId" IN (${Prisma.join(emps)})
+      AND (r."status" IN ('APPROVED'::"PayrollRunStatus", 'PAID'::"PayrollRunStatus") OR COALESCE((r."stepsJson"->>'finalized')::boolean, false) = true) AND r."status" <> 'REVERSED'::"PayrollRunStatus"
+    GROUP BY i."employeeId"`).map((x) => [x.e, x.p]));
+  return cand.filter((r) => { const l = last.get(r.employeeId); return !!l && r.periodKey <= l; }).slice(0, take).map((r) => ({ ...r, kind: String(r.kind), status: String(r.status), reason: "REFUND_BEHIND" as const }));
 }
 /** HR PREPROD-1 ▸ R2: ปลายทางของเงินคืนที่ค้าง = งวดแรกที่ไม่มีรอบหลัง max(งวดเดิม, lastCovered) (แบบ giveBackPeriodOf) · หลังงวดที่พ้นสภาพ = ย้ายไม่ได้ (จ่ายนอกระบบเงินเดือน) ◂ */
 const REFUND_BEHIND_ENDED = "ย้ายเงินคืนรายการนี้ไม่ได้ เพราะพนักงานพ้นสภาพก่อนงวดที่ยังไม่มีรอบจ่าย — ให้คืนเงินนอกระบบเงินเดือน";
@@ -1507,13 +1513,21 @@ export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: Payrol
     const tx = t as unknown as Prisma.TransactionClient;
     await lockRunPeriod(tx, ctx, row.periodKey);
     const runs = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, ...liveRunWhere() }, select: { periodKey: true }, take: 2_000 })).map((r) => r.periodKey)); // HR H0.6 ▸ OQ-4 ◂
+    let intoDraft = false; // HR PREPROD-1 ▸ V9: ปลายทางมีรอบร่าง (คนที่ออก) ◂
     let behindTo: string | null = null; // HR PREPROD-1 ▸ R2: เงินคืนที่ค้างหลังรอบงวดหลัง — ปลายทาง = งวดแรกที่ไม่มีรอบหลัง max(งวดเดิม, lastCovered) · เกินงวดพ้นสภาพ = ปฏิเสธ (ไม่เขียนอะไร) ◂
     if (!runs.has(row.periodKey) && String(row.kind) === "REFUND" && String(row.sourceRef ?? "").startsWith(REFUND_OF_PREFIX)) { // HR PREPROD-1 ◂
       const win = await giveBackWindowInTx(tx, ctx, row.employeeId); // HR PREPROD-1 ◂
       if (win.lastCovered && row.periodKey <= win.lastCovered) { // HR PREPROD-1 ◂
         let p = nextPeriodOf(win.lastCovered > row.periodKey ? win.lastCovered : row.periodKey); // HR PREPROD-1 ◂
+        const first = p; // HR PREPROD-1 ▸ V9 ◂
         for (let i = 0; i < 240 && runs.has(p); i += 1) p = nextPeriodOf(p); // HR PREPROD-1 ◂
-        if (win.endPeriod && p > win.endPeriod) return { ok: false as const, reason: REFUND_BEHIND_ENDED }; // HR PREPROD-1 ◂
+        if (win.endPeriod && p > win.endPeriod) { // HR PREPROD-1 ▸ V9: คนที่ออก — งวดถัดไปที่ยังไม่เกินงวดพ้นสภาพและมีรอบร่าง ⇒ ย้ายเข้างวดนั้น (รอบร่างดึงเข้าเมื่อดึงข้อมูลใหม่ — จ่ายครั้งเดียว) · ไม่มี = ปฏิเสธ ◂
+          const drafts = new Set((await tx.hrPayrollRun.findMany({ where: { ...scope, status: "DRAFT", periodKey: { gte: first, lte: win.endPeriod } }, select: { periodKey: true }, take: 240 })).map((r) => r.periodKey)); // HR PREPROD-1 ◂
+          const d = [...drafts].sort()[0]; // HR PREPROD-1 ◂
+          if (!d) return { ok: false as const, reason: REFUND_BEHIND_ENDED }; // HR PREPROD-1 ◂
+          p = d; // HR PREPROD-1 ◂
+          intoDraft = true; // HR PREPROD-1 ◂
+        } // HR PREPROD-1 ◂
         behindTo = p; // HR PREPROD-1 ◂
       } // HR PREPROD-1 ◂
     } // HR PREPROD-1 ◂
@@ -1521,7 +1535,7 @@ export async function moveStrandedAdjustment(ctx: Ctx, id: string, actor: Payrol
     const to = behindTo ?? nextRunlessPeriod(row.periodKey, runs); // HR PREPROD-1 ◂
     if (!to) return { ok: false as const, reason: `หางวดถัดไปที่ยังไม่มีรอบจ่ายหลังงวด ${row.periodKey} ไม่พบ — ตรวจรอบจ่ายเงินเดือน` };
     await lockRunPeriod(tx, ctx, to);
-    if (await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to, ...liveRunWhere() }, select: { id: true } })) return { ok: false as const, reason: "รอบจ่ายเพิ่งเปลี่ยน — กรุณาลองอีกครั้ง" };
+    if (intoDraft ? !(await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to, status: "DRAFT" }, select: { id: true } })) : await tx.hrPayrollRun.findFirst({ where: { ...scope, periodKey: to, ...liveRunWhere() }, select: { id: true } })) return { ok: false as const, reason: "รอบจ่ายเพิ่งเปลี่ยน — กรุณาลองอีกครั้ง" }; // HR PREPROD-1 ▸ V9: ปลายทางรอบร่าง = ต้องยังเป็นร่าง ◂
     const n = await tx.hrPayAdjustment.updateMany({
       where: { ...scope, id, runId: null, crmCommissionId: null, periodKey: row.periodKey, status: { in: ["PENDING", "APPROVED"] } },
       data: { periodKey: to },
