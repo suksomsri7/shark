@@ -724,7 +724,7 @@ async function runDb(): Promise<void> {
     chk("F1.2", d.ok, "no HrLineLink/HrNotice drift", d.note);
   }
   try {
-    await runFixDb({ P, chk, ck, call, fake, TT, sA, cA, C, U, E, K, EXT, actor, V, issue, type, press, links, active, notices, notesOf, pushes, roster, plan, send, job, noticeOne, row, setPol, linkVia, consume, HL, LN, LL, STAFF, emp, contact, exq, MIN, SLUG, u1, mk, tag, raw }); // ORACLE-EDIT (H4.5 fix round · controller ruling r2): + raw
+    await runFixDb({ P, chk, ck, call, fake, TT, sA, cA, C, U, E, K, EXT, actor, V, issue, type, press, links, active, notices, notesOf, pushes, roster, plan, send, job, noticeOne, row, setPol, linkVia, consume, HL, LN, LL, STAFF, emp, contact, exq, MIN, SLUG, u1, mk, tag, raw, CONS }); // ORACLE-EDIT (H4.5 gate fix · controller ruling): + CONS // ORACLE-EDIT (H4.5 fix round · controller ruling r2): + raw
   } catch (e) {
     console.log(`💥 fix round: ${errText(e)}`);
   }

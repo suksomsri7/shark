@@ -23,6 +23,10 @@ F3.5|H|C|R|[db] claim lost before the push (lease re-taken) ⇒ sender pushes no
 F3.6|I|C|R|[db] planHrNotices failing ⇒ consumer throws (event retried) · retry ⇒ 1 notice + 1 in-app
 F3.8|r2 mi-1|C|R|[db] claim made by a run whose \`now\` is 10 min old still holds a fresh lease (wall clock) ⇒ not re-claimable now · an expired lease is re-claimable
 F3.9|r2 mi-2|C|R|[db] planHrNotices in bounded chunks (seam chunk=2): failure in chunk 2 keeps chunk 1 · retry ⇒ exactly one notice + one in-app per recipient
+F4.1|gate|C|R|[db] ORACLE-EDIT (H4.5 gate fix · controller ruling): paid ⇒ SLIP HELD (digest) · hr.payroll.reversed ⇒ SKIPPED/REVERSED · 0 slip pushes · digest counts only the roster notice ("1")
+F4.2|gate|C|R|[db] ORACLE-EDIT (H4.5 gate fix · controller ruling): paid ⇒ SLIP SENT · reversed ⇒ row unchanged · no extra push
+F4.3|gate|C|R|[db] ORACLE-EDIT (H4.5 gate fix · controller ruling): reversed replayed ⇒ ok · nothing changes · no push
+F4.4|gate|C|R|[db] ORACLE-EDIT (H4.5 gate fix · controller ruling): SLIP claimed but not yet pushed · reversed ⇒ sender pushes nothing · SKIPPED/REVERSED
 Z2|ruling 9|C|R|[db] a QC tenant deleted the way qc-hr-lib does (cleanupFx) leaves 0 HrNotice / HrLineLink rows (no Tenant FK · explicit cleanup) · RESIDUE sees them
 F3.7|J|C|R|[db] re-link · admin unlink · LINE unlink ⇒ +1 in-app "บัญชี LINE ที่เชื่อมไว้ถูกเปลี่ยน/ยกเลิก" each · no LINE name in bodies
 `;
@@ -267,6 +271,70 @@ export async function runFixDb(h: Any): Promise<void> {
     const per = await h.raw(`SELECT "employeeId", count(*)::int AS n FROM "HrNotice" WHERE "tenantId" = $1 AND "refId" = $2 GROUP BY 1`, TT, ev.payload.publishId);
     const notes = await Promise.all(five.map((n) => notesOf(n)));
     ck("F3.9", { failed: !first.ok, kept: mid === 2, retried: second.ok, one: per.length === 5 && per.every((r: Any) => Number(r.n) === 1), inapp: notes.every((x: number) => x === 1) }, "chunk 1 kept · retry ⇒ 1 each", `first=${short(first.text, 40)} mid=${mid} per=${per.map((r: Any) => r.n).join(",")} inapp=${notes.join(",")}`);
+  }
+  // ── ORACLE-EDIT (H4.5 gate fix · controller ruling): hr.payroll.reversed withdraws unsent payslip notices ──
+  {
+    const CONS = h.CONS as Record<string, (e: Any) => Promise<void>>;
+    const mkRun = async (pk: string, emps: string[]) => {
+      const r = await P.hrPayrollRun.create({ data: { tenantId: TT, systemId: sA, periodKey: pk, payDate: new Date(`${pk}-25T00:00:00Z`), status: "PAID", engineVersion: 1, totalGrossSatang: 1_000_000 * emps.length, totalNetSatang: 1_000_000 * emps.length } });
+      for (const e of emps) await P.hrPayrollItem.create({ data: { tenantId: TT, systemId: sA, runId: r.id, employeeId: E[e], grossSatang: 1_000_000, ssoBaseSatang: 0, ssoEmployeeSatang: 0, ssoEmployerSatang: 0, whtSatang: 0, netSatang: 1_000_000 } });
+      return r.id as string;
+    };
+    const paidEv = (runId: string, pk: string) => ({ id: `qc45g-${runId}`, tenantId: TT, systemId: sA, unitId: null, type: "hr.payroll.paid", payload: { systemId: sA, runId, periodKey: pk }, idempotencyKey: `hr.payroll.paid#${runId}`, status: "PENDING", attempts: 0, createdAt: new Date() });
+    const revEv = (runId: string, pk: string) => ({ id: `qc45r-${runId}`, tenantId: TT, systemId: sA, unitId: null, type: "hr.payroll.reversed", payload: { systemId: sA, runId, periodKey: pk, adjustmentIds: [] }, idempotencyKey: `hr.payroll.reversed#${runId}`, status: "PENDING", attempts: 0, createdAt: new Date() });
+    const reverse = async (runId: string, pk: string) => {
+      await exq(`UPDATE "HrPayrollRun" SET "status" = 'REVERSED', "reversedAt" = now() WHERE "id" = $1`, runId);
+      return consume(revEv(runId, pk));
+    };
+    const cons = async (e: Any) => CONS[e.type]!(e).then(() => "ok", (x: unknown) => `THROW ${errText(x)}`);
+    void cons;
+    for (const n of ["48", "49", "50"]) await emp(n, h.u1);
+    for (const k of ["48", "49", "50"]) await contact(k, "c1");
+    for (const n of ["48", "49", "50"]) await linkVia(n, n);
+    // F4.1 digest: roster + slip HELD · reversed ⇒ slip SKIPPED/REVERSED · digest "1"
+    await setPol({ mode: "DIGEST" });
+    const r1 = await mkRun("2034-01", ["48"]);
+    await plan(roster(["48"]));
+    await consume(paidEv(r1, "2034-01"));
+    const held = (await notices("48")).map((n: Any) => `${n.kind}:${n.line}`).sort().join(",");
+    const rv1 = await reverse(r1, "2034-01");
+    const slipAfter = (await notices("48", r1))[0];
+    const wall = new Date();
+    const bkk = new Date(wall.getTime() + 7 * 3_600_000);
+    const day = bkk.toISOString().slice(0, 10);
+    let at = new Date(`${day}T10:31:00Z`);
+    if (at.getTime() <= wall.getTime()) at = new Date(at.getTime() + 24 * 3_600_000);
+    const from = fake.reqs.length;
+    await job(at);
+    const ps = pushes("48", from);
+    const alt = String(ps[0]?.messages?.[0]?.altText ?? "");
+    await setPol();
+    ck("F4.1", { held: held === "ROSTER:HELD,SLIP:HELD", rev: rv1 === "ok" && slipAfter?.line === "SKIPPED" && slipAfter?.skipCode === "REVERSED", one: ps.length === 1 && alt === "คุณมีแจ้งเตือนใหม่ 1 รายการ", notDigested: !slipAfter?.digestOf || (await row(slipAfter.id))?.line === "SKIPPED" }, "SKIPPED/REVERSED · digest \"1\"", `held=${held} rev=${short(rv1, 40)} slip=${slipAfter?.line}/${slipAfter?.skipCode ?? "-"} pushes=${ps.length} alt=${alt}`);
+    // F4.2 sent ⇒ unchanged
+    const r2 = await mkRun("2034-02", ["49"]);
+    const f2 = fake.reqs.length;
+    await consume(paidEv(r2, "2034-02"));
+    const sent = (await notices("49", r2))[0];
+    const f2b = fake.reqs.length;
+    const rv2 = await reverse(r2, "2034-02");
+    const after2 = (await notices("49", r2))[0];
+    ck("F4.2", { sent: sent?.line === "SENT" && pushes("49", f2).length === 1, same: rv2 === "ok" && after2?.line === "SENT" && after2?.skipCode == null, none: pushes("49", f2b).length === 0 }, "SENT stays · no extra push", `${sent?.line} → ${after2?.line} extra=${pushes("49", f2b).length}`);
+    // F4.3 replay
+    const f3 = fake.reqs.length;
+    const again = await consume(revEv(r1, "2034-01"));
+    const again2 = await consume(revEv(r2, "2034-02"));
+    const s1 = (await notices("48", r1))[0], s2 = (await notices("49", r2))[0];
+    ck("F4.3", { ok: again === "ok" && again2 === "ok", same: s1?.line === "SKIPPED" && s1?.skipCode === "REVERSED" && s2?.line === "SENT", none: fake.reqs.length === f3 }, "idempotent", `${again}/${again2} ${s1?.line}/${s2?.line} reqs+${fake.reqs.length - f3}`);
+    // F4.4 claimed but not pushed
+    const r3 = await mkRun("2034-03", ["50"]);
+    const p3 = await plan(paidEv(r3, "2034-03"));
+    const now = new Date();
+    const rows = await LN.claimLineNotices({ tenantId: TT, ids: p3.value?.ids ?? [], now });
+    const rv3 = await reverse(r3, "2034-03");
+    const f4 = fake.reqs.length;
+    await HL.sendClaimedLineNotices(rows, { now });
+    const s3 = (await notices("50", r3))[0];
+    ck("F4.4", { claimed: rows.length === 1, rev: rv3 === "ok", none: pushes("50", f4).length === 0, skipped: s3?.line === "SKIPPED" && s3?.skipCode === "REVERSED" }, "0 pushes · SKIPPED/REVERSED", `claimed=${rows.length} pushes=${pushes("50", f4).length} ${s3?.line}/${s3?.skipCode ?? "-"}`);
   }
   void C; void K; void sA; void failedKeys; void chk;
 }
