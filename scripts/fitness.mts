@@ -492,6 +492,13 @@ const ALLOWED_EDGES = new Set([
   "inventory→pos",
   "account→pos",
   // ◂ POS P1.1b
+  // CAL1.2 ▸ ปฏิทินส่วนตัวของเลขา (docs/modules/32-secretary-calendar.md §4.5 · R-CAL-23): `calendar/links.ts` ตรวจว่าผู้ใช้ "อ่าน"
+  //   สิ่งที่เตือนผูกไว้ได้ ด้วยตัวกรองสิทธิ์เดิมของแหล่งนั้น (ไม่เขียนกฎซ้ำ) — อ่านอย่างเดียว · dynamic import ตอนใช้ ·
+  //   crm ผ่าน facade `crm/index` (contactWhere/dealWhere) · member ผ่าน `member/index` (toMemberActor) · kanban ไม่มี facade ⇒ `kanban/access`
+  //   (visibleBoardsWhere · ตัวเดียวกับเส้น kanban→calendar เดิมที่อ่าน calendar/service — คนละไฟล์ ไม่มีวงโหลด) ◂
+  "calendar→crm",
+  "calendar→member",
+  "calendar→kanban",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

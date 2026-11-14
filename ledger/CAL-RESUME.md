@@ -12,6 +12,7 @@
 | CAL0.2 สัญญา | ✅ 14 พ.ย. a89ce9df3 | docs/modules/32-secretary-calendar.md (R-CAL-25…37 · Q8 เวลาเดินทาง · Q9 ชื่อลูกค้าใน Google) · seed รัน 2 รอบบน wo-sec-qc: รอบ 2 เขียน 0 ✅ · ฐาน QC เลขา migrate 4 ไฟล์ค้างแล้ว (svc_h/chat_hide/attachments/bizprofile) |
 | CAL0.3 ภาพมืด | ✅ เจ้าของผ่าน 14 พ.ย. | cal-dark-{1,2,3}.png |
 | CAL1.1 migration calendar_a (เลน a) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | prisma/schema/calendar.prisma ตรงสัญญา §2 · migration 20261228000300_calendar_a ลงฐาน QC เลขาแล้ว · scope 4 แถว · R-CAL-33 export ยกเว้น CalItem/CalPref · deleteUserTraces 3 ตาราง · seed รอบ 2 เขียน 0 · qc-cal-1.1 15/15 ×2 · typecheck ✅ |
+| CAL1.2 items + nextFire (เลน a) | ✅ 14 พ.ย. (รอผู้ตรวจอิสระ 🎯) | modules/calendar/{next-fire,items,links,push-msg}.ts · removeStaff ลบของส่วนตัว · qc-cal-1.2 103/103 ×2 (P บริสุทธิ์ next-fire.ts บรรทัด 100% · กิ่ง 99.4% — กิ่งเดียวที่เหลือเป็นเงาของ tsx ที่บรรทัดหัวฟังก์ชัน) · ส่วนต่าง D-A1…A8 ในสัญญา §15 |
 
 ## จุดต่อ
 - ถ้า session ตาย: อ่านไฟล์นี้ → ดูใบที่ ▶️ → ดู ledger/cal-briefs/ ว่ามีผลค้างไหม
