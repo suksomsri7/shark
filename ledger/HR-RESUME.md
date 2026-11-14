@@ -731,3 +731,9 @@
 - VIS-5b: ผู้สร้าง a538b5242fe7df3d0 แก้ F1–F4 + เพิ่มชุดถ่าย `01-hub-rostered`
 - ทรีผู้คุมยังอยู่ `tmp/walk-vis5b` · serve :3226 เปิด (unit hr-walk-vis5ab2)
 - รอเจ้าของ 2 เรื่อง: (1) แก้ค่าตรึง h3.8 (2) hotfix ปุ่มตั้งเงินเดือนข้ามร้านขึ้น production แยกก่อนหรือไม่ (tg ส่งแล้ว msg 6021)
+
+### 2026-11-15T08:10Z · PRIV-3 ขยาย (R6–R10) + migration
+- ข้อสอบ: `qc-hr-priv-3` 28 + `qc-hr-priv-3b` 13 (เลน 5 `wip/hr-priv-3` 990a15634) · ทดสอบ 51 ปุ่มใน 8 ไฟล์ปุ่มเงินเดือนแบบเจ้าของร้านอื่นเรียก: 48 แน่น · รั่ว: setSalaryProfile · createPayrollRun (ใหม่) · markPaid/reverseRun/reverseRunV2 (audit) · X4/X6 พิสูจน์การจองกุญแจกันร้านเจ้าของ
+- R10: migration 1 ตัว (ดัชนีอย่างเดียว ไม่ลบข้อมูล) — HrSalaryProfile unique → (tenantId, systemId, employeeId) · HrPayrollRun_systemId_periodKey_live_key → (tenantId, systemId, periodKey) WHERE status<>'REVERSED' · ไม่มี call site ใช้ compound unique → เข้ารายการ GO ทีละ migration ตอน H5.3 (+ ถ้า hotfix แยก ต้องไปด้วย)
+- ⚠ ห้าม migrate ฐานเลน 5 (ร่วมเลน 2) จนกว่า LEAVE-3 ขั้นสองจบ — h0.6 S2.4 / h1.3 S1.10 ตรึงดัชนีเดิม → ผู้สร้าง PRIV-3 a47766f0e3ed7927e ทำ R6/R7 + เขียน migration ก่อน แล้วรอข้อความจากผู้คุม · หลัง PRIV-3 เข้า session/hr ทุกเลน + QC4 ต้อง migrate deploy
+- R8 จอลงเวลา: ไม่ต้องแก้ (บอกชื่อเฉพาะคนที่หน้าจอลงเวลาแสดงอยู่แล้ว)
