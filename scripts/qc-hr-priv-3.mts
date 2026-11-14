@@ -92,13 +92,16 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
  chk("S3", all(r), "all", fails(r));
 }
 {
- const SRC_OK = [F.priv, F.nav, F.ui, F.acts, F.emp, F.leave, F.pay];
+ // r2 (controller): R6 = the 8 payroll action files + payroll.ts (ownership guard only · payroll-rules.ts stays byte-identical below) · R7 = refusal texts in service/ot/swap + their action files
+ const R6_FILES = ["payroll-actions", "payroll-opening-actions", "work-entries-actions", "stock-charge-actions", "attendance-pay-actions", "payslip-actions", "bank-files/actions", "filings/actions", "payroll"].map((x) => `${H}${x}.ts`);
+ const R7_FILES = ["service", "ot", "swap", "ot-actions", "swap-actions", "self-actions"].map((x) => `${H}${x}.ts`);
+ const SRC_OK = [F.priv, F.nav, F.ui, F.acts, F.emp, F.leave, F.pay, ...R6_FILES, ...R7_FILES];
  const ORACLE_OWN = ["scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-priv-3b.mts"];
  const CTL = ["scripts/fitness-hr.mts", "scripts/qc-hr-h2.10.mts"], DATA = [F.inv, "scripts/walk-hr-matrix.json"]; // DATA = controller-authorised JSON rows (no comment syntax for a marker)
  const marked = (f: string, m: string) => { const hs = hunksOf(f); return hs.length > 0 && hs.every((x) => x.added.some((l) => l.includes(m))); };
  const ch = changed(), outside: string[] = [], bad: string[] = [];
  const uiB = fileAtBase(F.ui) ?? "", acB = fileAtBase(F.acts) ?? "";
- const RANGES: Record<string, [number, number][]> = { [F.ui]: [[1, importEnd(uiB) + 1], fnRange(uiB, "HrLeaveSection"), fnRange(uiB, "HrHub")], [F.acts]: [[1, importEnd(acB) + 1], [fnRange(acB, "requestLeaveAction")[0], fnRange(acB, "requestLeaveAction")[0] + 16]] };
+ const RANGES: Record<string, [number, number][]> = { [F.ui]: [[1, importEnd(uiB) + 1], fnRange(uiB, "HrLeaveSection"), fnRange(uiB, "HrHub")], [F.acts]: [[1, importEnd(acB) + 1], [fnRange(acB, "requestLeaveAction")[0], fnRange(acB, "requestLeaveAction")[0] + 16], fnRange(acB, "cancelLeaveAction")] }; // r2 R7: cancelLeaveAction
  for (const f of ch) {
   if (ORACLE_OWN.includes(f) || /^ledger\/wo-notes\/hr-PRIV-3[^/]*\.md$/.test(f) || f === "ledger/hr-briefs/hr-brief-PRIV-3.md") continue; // brief: controller rulings r2 appended
   if (SRC_OK.includes(f)) {

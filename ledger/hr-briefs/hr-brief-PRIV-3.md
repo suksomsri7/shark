@@ -112,3 +112,34 @@ Unverified: transitive import-cycle freedom of R1 (builder proves it); whether `
   - Add viewers holding exactly one key to the page matrix: `hr.payadjust.request` only (leave ✓ · payroll ✓ via stock charge · register ✗) and `hr.payadjust.approve` only (leave ✓ · payroll ✗ · register ✗).
   - G1 pins the truth table that `qc-hr-h2.10` S7.1 now follows.
   - A staff member of ANOTHER HR system in the same shop opening this system's `/hr/leave` gets a render with no data today. This is debt, not fixed here; the current outcome is pinned as a GREEN control.
+- **r2 allowed files** (added to the list above; `payroll-rules.ts` stays byte-identical, and there is no migration):
+  - R6:
+    - `src/lib/modules/hr/payroll-actions.ts`
+    - `src/lib/modules/hr/payroll-opening-actions.ts`
+    - `src/lib/modules/hr/work-entries-actions.ts`
+    - `src/lib/modules/hr/stock-charge-actions.ts`
+    - `src/lib/modules/hr/attendance-pay-actions.ts`
+    - `src/lib/modules/hr/payslip-actions.ts`
+    - `src/lib/modules/hr/bank-files/actions.ts`
+    - `src/lib/modules/hr/filings/actions.ts`
+    - `src/lib/modules/hr/payroll.ts` (only for the ownership guard inside the functions those actions call)
+  - R7:
+    - `src/lib/modules/hr/service.ts`
+    - `src/lib/modules/hr/ot.ts`
+    - `src/lib/modules/hr/swap.ts`
+    - `src/lib/modules/hr/ot-actions.ts`
+    - `src/lib/modules/hr/swap-actions.ts`
+    - `src/lib/modules/hr/self-actions.ts`
+    - `src/lib/modules/hr/actions.ts` (`cancelLeaveAction`)
+  - Every hunk is marked `HR PRIV-3`.
+- **R6 rule for the builder:**
+  - ONE shared resolver: first the HR system of the caller's tenant, then the employee/run/adjustment inside that system, via `tenantDb(ctx)`.
+  - It is called first in every payroll action.
+  - Missing or foreign ⇒ the same fixed refusal the action gives for an unknown system. Nothing is written in any tenant.
+  - `createPayrollRunAction` must no longer answer `{ok:true}` for an unknown system; that becomes the same refusal (asserted in 3b X3).
+- **R6 squat leftovers (3b X6, RED):**
+  - The rightful shop must be able to create a profile or run even when a foreign-tenant row already holds the same `(systemId, employeeId)` / `(systemId, periodKey)`.
+  - Both unique indexes are cross-tenant today:
+    - `HrSalaryProfile @@unique([systemId, employeeId])`
+    - `HrPayrollRun_systemId_periodKey_live_key ("systemId","periodKey") WHERE status <> 'REVERSED'`
+  - So X6 cannot turn green without a migration or a data-cleanup decision from the controller. The builder must not design one.

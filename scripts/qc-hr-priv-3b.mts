@@ -17,6 +17,7 @@ const CHECKS: Def[] = [
  D("Y2", "R7", "mG", "[control] the filer still cancels own leave"),
  D("K1", "R8", "mG", "kiosk wrong PIN for employees NOT on the kiosk's list (unknown · inactive · other HR system · other tenant · other branch for a branch kiosk) + wrong PIN of a PIN holder ⇒ exactly \"PIN ไม่ถูกต้อง\", no name"),
  D("K2", "R8", "mG", "[control] on-list employee without PIN: reply names them, and the kiosk page already lists that name to the kiosk account (ruling exception)"),
+ D("X6", "R6 r2", "MR", "rightful shop creates the profile / the run although a FOREIGN-tenant row holds the same (systemId, employeeId) / (systemId, periodKey) — the fix must not rely on cross-tenant uniqueness (unique indexes are cross-tenant today ⇒ migration decision)"),
  D("Z1", "-", "CG", "residue none in both tenants · rate buckets removed"),
 ];
 const R = makeRegistry(SUITE, "", CHECKS);
@@ -129,7 +130,14 @@ try {
  console.log(`  · payroll action files: ${listed.length} actions enumerated${missing.length ? ` · not loaded: ${missing.join(",")}` : ""}`);
  chk("X1", !x1.length, "same refusal · 0 rows", L(x1));
  chk("X2", !x2.length, "same refusal · 0 rows", L(x2));
- chk("X3", !x3.length && !missing.length, `${listed.length} actions`, L([...missing, ...x3], 12));
+ {
+  const before = await dig(), u = unk();
+  const r = await call("XO", `/app/sys/${u}/hr/payroll`, () => M["payroll-actions"].createPayrollRunAction(null, fd({ systemId: u, periodKey: MONTH, payDate: `${MONTH}-28` })));
+  const w = diff(before, await dig());
+  console.log(`  · createPayrollRunAction as foreign owner on a fresh unknown system: ${r.slice(0, 60)}${w.length ? ` · wrote ${w.join(",")}` : ""}`);
+  if (!/"ok":false/.test(r) || w.length) x3.push(`createPayrollRunAction(unknown system): ${r.slice(0, 50)}${w.length ? ` wrote ${w.join(",")}` : ""}`);
+ }
+ chk("X3", !x3.length && !missing.length, `${listed.length} actions · unknown system refused`, L([...missing, ...x3], 12));
  {
   const r = await call("O", `/app/sys/${HRS}/hr/payroll`, () => M["payroll-actions"].setSalaryProfileAction(fd({ systemId: HRS, employeeId: E.eA.id, baseSalaryBaht: "25000" })));
   const ours = await P.hrSalaryProfile.findFirst({ where: { tenantId: X.T, systemId: HRS, employeeId: E.eA.id } }), squat = await P.hrSalaryProfile.count({ where: { systemId: HRS, NOT: { tenantId: X.T } } });
@@ -151,6 +159,18 @@ try {
   chk("X5", !bad.length, "controls work", L(bad));
  }
 
+ // ── X6 (r2): a foreign-tenant row on (our system, employee) / (our system, period) must not block the rightful shop ──
+ {
+  const bad: string[] = [], pa = M["payroll-actions"], pth = `/app/sys/${HRS}/hr/payroll`, per = prevMonth(MONTH, 4);
+  const eC = await fx.mkEmp(X.T, HRS, `QCP3b eC ${tag}`, { code: "BC", startDate: "2024-02-01", unitId: X.U1 });
+  await P.hrSalaryProfile.create({ data: { tenantId: X.T2, systemId: HRS, employeeId: eC, payType: "MONTHLY", baseSalarySatang: 1, ssoEligible: true } }).catch((e: unknown) => bad.push(`seed profile ${errText(e).slice(0, 40)}`));
+  await P.hrPayrollRun.create({ data: { tenantId: X.T2, systemId: HRS, periodKey: per, payDate: new Date(`${per}-28T12:00:00+07:00`), status: "DRAFT", engineVersion: 1, totalGrossSatang: 0, totalSsoEmployeeSatang: 0, totalSsoEmployerSatang: 0, totalWhtSatang: 0, totalNetSatang: 0, totalAddSatang: 0 } }).catch((e: unknown) => bad.push(`seed run ${errText(e).slice(0, 40)}`));
+  const r1 = await call("O", pth, () => pa.setSalaryProfileAction(fd({ systemId: HRS, employeeId: eC, baseSalaryBaht: "26000" })));
+  if ((await P.hrSalaryProfile.findFirst({ where: { tenantId: X.T, systemId: HRS, employeeId: eC } }))?.baseSalarySatang !== 2_600_000) bad.push(`profile: ${r1.slice(0, 70)}`);
+  const r2 = await call("O", pth, () => pa.createPayrollRunAction(null, fd({ systemId: HRS, periodKey: per, payDate: `${per}-28` })));
+  if (!(await P.hrPayrollRun.count({ where: { tenantId: X.T, systemId: HRS, periodKey: per } }))) bad.push(`run: ${r2.slice(0, 70)}`);
+  chk("X6", !bad.length, "both created in our tenant", L(bad));
+ }
  // ── R7 cancel/respond parity ──
  {
   const bad: string[] = [], p = `/app/sys/${HRS}/hr/leave`;

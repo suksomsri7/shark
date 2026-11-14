@@ -135,3 +135,17 @@ The 3b suite uses its own tenants `qc-hr-priv3b-*`: our shop plus a foreign shop
   - `qc-hr-h3.4`, `qc-hr-h3.7`/`h3.5` statics over `payroll-actions.ts` bodies;
   - `qc-hr-h0.6` (reverse audit path, `QC_H06_BASE`).
 - For R7: `qc-hr-h0.7`, `qc-hr-h2.9`, `qc-hr-h2.3`/swap oracles that pin the exact refusal texts.
+
+### r2b (controller follow-up)
+- **S4 (qc-hr-priv-3):** the allowed files now include the R6 and R7 files listed in the brief.
+  - R6: the 8 payroll action files plus `payroll.ts`.
+  - R7: `service.ts`, `ot.ts`, `swap.ts`, `ot-actions.ts`, `swap-actions.ts`, `self-actions.ts`, and the `cancelLeaveAction` range of `actions.ts`.
+  - Hunks must still be marked `HR PRIV-3`. The `payroll-rules.ts` sha stays pinned.
+  - Result: 27/27 as registered.
+- **X3** also asserts that `createPayrollRunAction` refuses an unknown system and writes nothing.
+  - On a fresh unknown system it refuses today with "ยังไม่มีโปรไฟล์เงินเดือน…".
+  - The `{ok:true}` happens only once a foreign salary-profile row exists on that system id (the R6 setSalary hole). The X3 loop shows exactly that: unkSystem gives `{ok:true}` and writes `HrPayrollRun`/`HrPayrollItem` in the foreign tenant.
+- **X6 (new, RED):** a foreign-tenant row seeded on (our system, our employee) and on (our system, a period) blocks our owner. `setSalaryProfileAction` throws a Prisma unique error, and so does `createPayrollRunAction` (`tx.hrPayrollRun.create`).
+  - The unique indexes are cross-tenant: `HrSalaryProfile @@unique([systemId, employeeId])` (prisma/schema/payroll.prisma:93) and `CREATE UNIQUE INDEX "HrPayrollRun_systemId_periodKey_live_key" ON "HrPayrollRun"("systemId", "periodKey") WHERE "status" <> 'REVERSED'` (migration 20261202000000_hr_payroll_run_live_unique; schema keeps only `@@index([systemId, periodKey])`).
+  - X6 needs a migration or data-cleanup decision from the controller.
+- 3b at 44a75f37a: 11/11 as registered (RED 6: X1 X2 X3 X4 X6 Y1 · GREEN 5), passed 5/11, residue none in both tenants. tsc 0 errors.
