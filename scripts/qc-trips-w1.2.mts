@@ -18,10 +18,12 @@
 // ผลที่ถูกต้องก่อนมีงาน W1.2a: PC เขียว · ที่เหลือแดง "ยังไม่มี…"
 // 🔴 รอบ r1 (มติผู้คุมหลังตรวจรอบ 1 W1–W7 · ผู้เขียนข้อสอบแยก): ทุกจุดที่แก้มีคอมเมนต์ ORACLE-EDIT · ข้อเพิ่มกลุ่ม WR · C-12 คงไว้ = แดงที่รู้จัก (มติ W3)
 //    nonce ของข้อสอบผูกโดเมน ถือ/ยืนยัน + ร้าน (ตรงของจริงหลัง 1dd97156b) · ค่าคาดหวังคิดจากฟิกซ์เจอร์/มติ ไม่ลอกจากโค้ด
+// 🔴 รอบ r2 (มติผู้คุมหลังตรวจรอบ 2 Y1–Y7 · ผู้เขียนข้อสอบแยกรอบ 2): จุดที่แก้มีคอมเมนต์ ORACLE-EDIT · ข้อเพิ่มกลุ่ม YR · ทุกการถือ (POST) ส่ง `t` ของรอบที่ตั้งใจถือ
+//    อ่านจากผลของ quoteBookSelection (summary.slotToken / options.slot.token) หรือ openBookProduct (selected.slots[].token) ของวันนั้น — ข้อสอบไม่ปั้นตัวอ้างรอบเอง (Y2)
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, createHmac, randomBytes } from "node:crypto";
 import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
@@ -115,7 +117,8 @@ const OWN = [BCORE, BSVC, PUBMOD, ACTIONS, PAGE_CHECKOUT, PAGE_RES];
 const BCORE_NAMES = ["BOOK_MAX_SEATS", "BOOK_ERROR_CODES", "BOOK_RES_STATES", "BOOK_TODO_KEYS", "BOOK_PAX_CODE_RE", "BOOK_REF_RE", "BOOK_BASKET_TOKEN_RE", "BOOK_FORM_MIN_SEC", "BOOK_FORM_MAX_SEC",
   "BOOK_PAY_MARGIN_SEC", "BOOK_SLOT_HOLD_PER_HOUR", "BOOK_CONFIRM_PER_HOUR", "BOOK_TERMS_VERSION",
   "parseBookSelection", "selectionSeatsOk", "cancelDeadlinesOf", "reservationStateOf", "bookTodoOf"];
-const BSVC_FNS = ["issueBookFormNonce", "quoteBookSelection", "startBookHold", "loadBookCheckout", "confirmBookHold", "openBookReservation", "bookVoucherQrPayload", "verifyBookVoucherQr"];
+// ORACLE-EDIT S-2 (มติ W2 · ผู้ตรวจรอบ 2): releaseBookHold (ปุ่ม "ถือใหม่" ปล่อยที่ถือเดิม) เป็นฟังก์ชันบริการของใบ — อยู่ในรายการ
+const BSVC_FNS = ["issueBookFormNonce", "quoteBookSelection", "startBookHold", "loadBookCheckout", "confirmBookHold", "releaseBookHold", "openBookReservation", "bookVoucherQrPayload", "verifyBookVoucherQr"];
 const ERROR_CODES = ["NOT_FOUND", "RATE_LIMITED", "INVALID", "PRICE_CHANGED", "SOLD_OUT", "CUTOFF_PASSED", "SLOT_CLOSED", "HOLD_LIMIT", "HOLD_EXPIRED", "STALE_FORM", "TOO_FAST", "ACCEPT_REQUIRED", "DONE", "BUSY", "UNAVAILABLE"];
 const RES_STATES = ["PAY", "VOUCHER", "EXPIRED", "CANCELLED", "ENDED"]; // R8: AWAIT_SHOP ย้ายไป W1.2b
 const K_ON = "trips.public.bookingEnabled"; // R7 คีย์ใหม่ (ค่าเริ่ม false ทุกแม่แบบ) — ใบสั่ง §3.3
@@ -289,7 +292,7 @@ try {
   const uA = rid("uA"), uB = rid("uB"), uC = rid("uC"), uD = rid("uD");
   const SA = `${SLUG}${STAMP}-a`, SB = `${SLUG}${STAMP}-b`, SC = `${SLUG}${STAMP}-c`, SD = `${SLUG}${STAMP}-d`;
   const NAME = { a: "ทดสอบ W1.2 a", b: "ทดสอบ W1.2 b", c: "ทดสอบ W1.2 c", d: "ทดสอบ W1.2 d" };
-  let setupErr = "", onErr = "", contactErr = "";
+  let setupErr = "", onErr = "", contactErr = "", y1Err = "";
   type Prod = { id: string; slug: string; opt: string; unit: string; tenant: string; pt: Record<string, string>; cam: string; park: string; dive: string };
   const PRD: Record<string, Prod> = {};
   const DEP: Record<string, string> = {};
@@ -338,7 +341,7 @@ try {
     ZONE[tag] = id; allIds.push(id);
   };
   const SHARED = `w12qc-racha-${STAMP}`;
-  const OPT2 = { id: "" };
+  const OPT2 = { id: "", y3: "" };
   try {
     for (const t of ["TripProduct", "TripOption", "TripPaxType", "TripExtra", "TripDeparture", "TripPrice", "TripPickupZone", "SellBasket", "TripHold", "TripBooking", "PaymentProfile", "ChatRateBucket"]) await needTable(t);
     for (const [id, slug, tag] of [[tA, SA, "a"], [tB, SB, "b"], [tC, SC, "c"], [tD, SD, "d"]] as const) { await insertRow("Tenant", { id, name: NAME[tag], slug, status: "ACTIVE", updatedAt: new Date() }); tenantIds.push(id); }
@@ -378,6 +381,16 @@ try {
     allIds.push(opt2); OPT2.id = opt2;
     await mkDep("w5a", "W5", "2027-03-10", { hm: "08:00" }); await mkDep("w5b", "W5", "2027-03-10", { hm: "08:00", opt: opt2 }); await mkDep("w5c", "W5", "2027-03-11", { hm: "08:00" });
     for (let i = 1; i <= 6; i++) await mkDep(`rl${i}`, "A", `2027-04-0${i}`);
+    // ORACLE-EDIT ฟิกซ์เจอร์รอบ r2 (มติ Y1–Y7): วันของสินค้า A ที่ไม่ชนข้ออื่น (20 มี.ค. = วันไม่มีรอบของ Q-5 — ห้ามใช้)
+    //   y2 (Y2 ไม่มี t) · y4 (Y4 ราคาเปลี่ยนไม่กินโควตา) · y5 (Y5 ถังต่อรอบเต็ม) · y7 (Y7 ฟอร์มถือเดิมหลังปล่อย) · rel/relx (ปล่อยซ้ำ/พร้อมกัน · ปล่อยหลังหมดเวลา)
+    await mkDep("y2", "A", "2027-04-10"); await mkDep("y4", "A", "2027-03-18", { capacity: 30 }); await mkDep("y5", "A", "2027-03-31", { capacity: 30 });
+    await mkDep("y7", "A", "2027-04-07"); await mkDep("rel", "A", "2027-04-08", { capacity: 30 }); await mkDep("relx", "A", "2027-04-09");
+    //   Y1: สินค้าเวลาถือ WEB 5 / 9 / 10 นาที (ค่าตั้งระดับสินค้า · ตั้งหลังจากนี้) · Y3: สินค้าสองตัวเลือก — 11 มี.ค. 08:00 คนละตัวเลือก · 12 มี.ค. 08:00 ตัวเลือกเดียวกันสองรอบ (+ 13:00 ตัวควบคุม)
+    for (const k of ["Y1A", "Y1B", "Y1C"]) { await mkProd(k, tA, uA); await mkDep(k.toLowerCase(), k, "2027-03-10"); }
+    await mkProd("Y3", tA, uA);
+    const y3opt2 = await insertRow("TripOption", { id: rid("oY3b"), tenantId: tA, unitId: uA, productId: PRD.Y3?.id, name: JSON.stringify({ th: "เรือเร็วส่วนตัว", en: "Private speedboat" }), durationMin: 510, sortOrder: 2, active: true, updatedAt: new Date() });
+    allIds.push(y3opt2); OPT2.y3 = y3opt2;
+    await mkDep("y3o1", "Y3", "2027-03-11", { hm: "08:00" }); await mkDep("y3o2", "Y3", "2027-03-11", { hm: "08:00", opt: y3opt2 }); await mkDep("y3pm", "Y3", "2027-03-12", { hm: "13:00" });
     await mkDep("dep", "DEP", "2027-03-10"); await mkDep("sc", "SC", "2027-03-10"); await mkDep("vat", "C", "2027-03-10"); await mkDep("d", "D", "2027-03-10");
     // ค่าตั้งที่มีอยู่แล้ว (ต้องผ่านตั้งแต่ก่อนมีงาน — ตัวควบคุมใช้)
     const cutoff1005 = (daysBefore: number) => ({ daysBefore, atMin: 10 * 60 + 5 });
@@ -390,6 +403,8 @@ try {
   if (!setupErr) {
     try { for (const [t, u] of [[tA, uA], [tB, uB], [tC, uC]] as const) await setV(t, [{ key: K_ON, scope: "UNIT", scopeId: u, value: true }]); } catch (e) { onErr = errMsg(e); }
     try { await setV(tA, [{ key: K_CONTACT, scope: "UNIT", scopeId: uA, value: SHOP_CONTACT }]); } catch (e) { contactErr = errMsg(e); }
+    // ORACLE-EDIT ฟิกซ์เจอร์ (มติ Y1): เวลาถือ WEB ของสินค้า Y1A = 5 · Y1B = 9 · Y1C = 10 นาที (ค่าตั้ง trips.sell.holdMinutes ระดับสินค้า · เส้นเดียวกับที่บริการใช้ถือ)
+    try { await setV(tA, ([["Y1A", 5], ["Y1B", 9], ["Y1C", 10]] as const).map(([k, v]) => ({ key: "trips.sell.holdMinutes", scope: "PRODUCT", scopeId: PRD[k]?.id, value: v }))); } catch (e) { y1Err = errMsg(e); }
   }
   const needFx = () => { ok(!setupErr && PRD.A && PRD.B, `ไม่มีร้าน/สินค้าทดสอบ (${setupErr || "ยังไม่ตั้ง"})`); };
   const needDb = () => {
@@ -430,26 +445,67 @@ try {
     if (pk.zone) s.z = refOf(o, "zone", pk.zone === "in" ? /ในโซน|Hotel pickup/ : pk.zone === "out" ? /นอกโซน|Outside/ : /มาเอง|pier/i);
     return s;
   };
-  const summaryOf = async (date: string, pk: Pick, clientKey: string, o?: Rec): Promise<Rec> => {
-    const opts = o ?? (await optsOf(SA, A().slug, date, clientKey));
-    const r = await call("quoteBookSelection", { shop: SA, productSlug: A().slug, query: { d: date, ...selQuery(opts, pk) }, acceptLanguage: "th", clientKey }, N0);
+  // ORACLE-EDIT ตัวช่วยถือ (มติ Y2 · ปิด W7): ฟอร์มถือ (POST) ต้องมี `t` ของรอบที่ตั้งใจถือ — ข้อสอบอ่านตัวอ้างรอบจากผลของระบบของวันนั้น ไม่ปั้นเอง
+  //   (1) สรุปยอดของ quoteBookSelection ของวัน/การเลือกนั้น ⇒ summary.slotToken (= รอบที่ราคาถูกคิด) · (2) ไม่มีสรุป ⇒ quoteBookSelection ของวันนั้น options.slot.token
+  //   (3) quote ใช้ไม่ได้ (รอบเต็ม/ปิดรับ) ⇒ openBookProduct ของวันนั้น selected.slots[] (รอบแรกที่เลือกได้ · ไม่งั้นรอบแรกที่มีตัวอ้าง) · ไม่มีรอบเลย ⇒ null (ผู้เรียกตัดสินเอง)
+  //   summaryOf/hold เดิมใช้ร้าน A ตายตัวแม้ผู้เรียกส่ง shop/slug อื่น — ORACLE-EDIT: ใช้ร้าน/สินค้าที่ผู้เรียกส่ง
+  const summaryOf = async (date: string, pk: Pick, clientKey: string, o?: Rec, shop: string = SA, slug: string = A().slug, t?: string): Promise<Rec> => {
+    const opts = o ?? (await optsOf(shop, slug, date, clientKey));
+    const r = await call("quoteBookSelection", { shop, productSlug: slug, query: { d: date, ...(t ? { t } : {}), ...selQuery(opts, pk) }, acceptLanguage: "th", clientKey }, N0);
     ok(r.ok === true && asRec(r.summary), `quoteBookSelection ${fmt(pk)}: ${fmt(r)}`);
     return asRec(r.summary) ?? {};
   };
-  type Held = { basketToken: string; sel: string; expiresAt: string; clientKey: string; total: number; shopSlug?: string };
-  const hold = async (date: string, pk: Pick, o: { clientKey?: string; nonce?: string; opts?: Rec; seen?: number; when?: { now: Date }; shop?: string; slug?: string } = {}): Promise<Rec> => {
-    const clientKey = o.clientKey ?? ck();
-    const opts = o.opts ?? (await optsOf(SA, A().slug, date, clientKey));
-    const seen = o.seen ?? Number((await summaryOf(date, pk, clientKey, opts)).totalSatang);
-    return call("startBookHold", { shop: o.shop ?? SA, productSlug: o.slug ?? A().slug, form: { d: date, ...selQuery(opts, pk), nonce: o.nonce ?? nonceAt(-60_000, "hold", tenantOf(o.shop ?? SA)), seen: String(seen) }, acceptLanguage: "th", clientKey }, o.when ?? N0);
+  /** ตัวอ้างรอบจากหน้าสินค้าของวันนั้น (openBookProduct · เครื่องใหม่ ไม่กินถังอ่านของผู้เรียก) — `pick` เลือกแถวเอง */
+  const productSlots = async (shop: string, slug: string, date: string): Promise<Rec[]> => {
+    const f = PUBI.mod?.openBookProduct;
+    if (typeof f !== "function") return [];
+    const r = asRec(await (f as AnyFn)({ shop, productSlug: slug, query: { d: date, m: date.slice(0, 7) }, acceptLanguage: "th", clientKey: ck() }, N0)) ?? {};
+    const sel = asRec(asRec(r.vm)?.selected);
+    return sel && sel.date === date ? asArr(sel.slots) : [];
   };
-  const holdOk = async (date: string, pk: Pick, o: Parameters<typeof hold>[2] = {}): Promise<Held> => {
+  const slotTokenOf = async (shop: string, slug: string, date: string): Promise<string | null> => {
+    const q0 = await call("quoteBookSelection", { shop, productSlug: slug, query: { d: date }, acceptLanguage: "th", clientKey: ck() }, N0);
+    const qt = asRec(asRec(q0.options)?.slot)?.token;
+    if (q0.ok === true && typeof qt === "string" && qt) return qt;
+    const slots = await productSlots(shop, slug, date);
+    const s = slots.find((x) => x.selectable === true && typeof x.token === "string" && x.token) ?? slots.find((x) => typeof x.token === "string" && x.token);
+    return s ? String(s.token) : null;
+  };
+  type Held = { basketToken: string; sel: string; expiresAt: string; clientKey: string; total: number; shopSlug?: string };
+  type HoldOpts = { clientKey?: string; nonce?: string; opts?: Rec; seen?: number; when?: { now: Date }; shop?: string; slug?: string; t?: string };
+  const hold = async (date: string, pk: Pick, o: HoldOpts = {}): Promise<Rec> => {
+    const shop = o.shop ?? SA, slug = o.slug ?? A().slug;
     const clientKey = o.clientKey ?? ck();
-    const opts = o.opts ?? (await optsOf(o.shop ?? SA, o.slug ?? A().slug, date, clientKey));
-    const seen = o.seen ?? Number((await summaryOf(date, pk, clientKey, opts)).totalSatang);
-    const r = await hold(date, pk, { ...o, clientKey, opts, seen });
+    const opts = o.opts ?? (await optsOf(shop, slug, date, clientKey));
+    let seen = o.seen, t = o.t;
+    if (seen === undefined) {
+      const s = await summaryOf(date, pk, clientKey, opts, shop, slug, t);
+      seen = Number(s.totalSatang);
+      if (t === undefined && typeof s.slotToken === "string" && s.slotToken) t = s.slotToken;
+    }
+    if (t === undefined) t = (await slotTokenOf(shop, slug, date)) ?? undefined;
+    ok(typeof t === "string" && t, `ตัวช่วยถือ: หาตัวอ้างรอบของ ${date} จากผลของระบบไม่ได้ (Y2: ฟอร์มถือต้องมี t)`);
+    return call("startBookHold", { shop, productSlug: slug, form: { d: date, t, ...selQuery(opts, pk), nonce: o.nonce ?? nonceAt(-60_000, "hold", tenantOf(shop)), seen: String(seen) }, acceptLanguage: "th", clientKey }, o.when ?? N0);
+  };
+  const holdOk = async (date: string, pk: Pick, o: HoldOpts = {}): Promise<Held> => {
+    const shop = o.shop ?? SA, slug = o.slug ?? A().slug;
+    const clientKey = o.clientKey ?? ck();
+    const opts = o.opts ?? (await optsOf(shop, slug, date, clientKey));
+    let seen = o.seen, t = o.t;
+    if (seen === undefined) {
+      const s = await summaryOf(date, pk, clientKey, opts, shop, slug, t);
+      seen = Number(s.totalSatang);
+      if (t === undefined && typeof s.slotToken === "string" && s.slotToken) t = s.slotToken;
+    }
+    const r = await hold(date, pk, { ...o, clientKey, opts, seen, ...(t ? { t } : {}) });
     ok(r.ok === true && typeof r.basketToken === "string" && typeof r.sel === "string", `startBookHold: ${fmt(r)}`);
     return { basketToken: String(r.basketToken), sel: String(r.sel), expiresAt: String(r.expiresAt), clientKey, total: seen, shopSlug: String(r.shopSlug) };
+  };
+  /** ฟอร์มถือแบบยิงตรง (ข้อที่ต้องคุมทุกช่องเอง) — `t` ต้องมาจากผลของระบบ (tOf) */
+  const tOf = async (date: string, shop: string = SA, slug: string = A().slug): Promise<string> => {
+    const t = await slotTokenOf(shop, slug, date);
+    ok(t, `หาตัวอ้างรอบของ ${shop}/${slug} ${date} จากผลของระบบไม่ได้`);
+    return String(t);
   };
   const checkout = (h: Held, when = N0, shop = SA) => call("loadBookCheckout", { shop, basketToken: h.basketToken, sel: h.sel, lang: "th", acceptLanguage: "th", clientKey: h.clientKey }, when);
   const BOOKER = { name: `ภัทรา ทดสอบ ${STAMP}`, phone: `08${String(10_000_000 + (parseInt(STAMP.slice(-4), 36) % 89_999_999)).padStart(8, "0")}`, email: `pattra.${STAMP}@example.com` };
@@ -482,6 +538,14 @@ try {
   const bookingOfToken = async (token: string) => (await q<{ id: string; status: string; code: string; channel: string; payMethod: string; bookerPartyId: string | null; tenantId: string; departureId: string; grossSatang: number; paidSatang: number }>(
     `SELECT id, status, code, channel, "payMethod", "bookerPartyId", "tenantId", "departureId", "grossSatang", "paidSatang" FROM "TripBooking" WHERE "publicTokenHash" = $1`, [sha256hex(token)]))[0] ?? null;
   const depRow = async (id: string) => (await q<{ sold: number; held: number; capacity: number }>(`SELECT sold, held, capacity FROM "TripDeparture" WHERE id = $1`, [id]))[0] ?? { sold: -1, held: -1, capacity: -1 };
+  /** ORACLE-EDIT (ผู้ตรวจรอบ 2): ผลรวมที่ถือ ACTIVE จริงของรอบ (ตัวเทียบของตัวนับ held) */
+  const activeHeldOf = async (dep: string) => Number((await q<{ n: number }>(`SELECT COALESCE(sum("qtyPublic"), 0)::int AS n FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE'`, [dep]))[0]?.n ?? -1);
+  /** ถังถือ/ถังต่อรอบของเครื่อง (ทุกรอบ) ของร้าน A — ค่า count รวม (ไม่มีแถว = 0) */
+  const holdBuckets = async (clientKey: string, tenantId: string = tA) => {
+    const rows = await q<{ key: string; count: number }>(`SELECT key, "count" FROM "ChatRateBucket" WHERE key = $1 OR (key LIKE $2 AND key LIKE $3)`, [`trips:hold:${tenantId}:${clientKey}`, `trips:slot:${tenantId}:%`, `%:${clientKey}`]);
+    return { hold: rows.filter((r) => r.key.startsWith("trips:hold:")).reduce((a, r) => a + Number(r.count), 0), slot: rows.filter((r) => r.key.startsWith("trips:slot:")).reduce((a, r) => a + Number(r.count), 0) };
+  };
+  const basketsOf = async (tenantId: string = tA) => Number((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "SellBasket" WHERE "tenantId" = $1`, [tenantId]))[0]?.n ?? -1);
   const staffCtx = (when = N0) => ({ tenantId: tA, unitId: uA, channel: "COUNTER", actor: { kind: "STAFF", userId: staffA }, now: when.now });
 
   // ═══════════════ PC. ตัวควบคุม ═══════════════
@@ -944,7 +1008,9 @@ try {
     const f = PUBI.mod?.openBookProduct; ok(typeof f === "function", "ไม่มี openBookProduct");
     const op = asRec(await (f as AnyFn)({ shop: SA, productSlug: P.slug, query: { d: "2027-03-10", m: "2027-03" }, acceptLanguage: "th", clientKey: c }, N0)) ?? {};
     const qv = await call("quoteBookSelection", { shop: SA, productSlug: P.slug, query: { d: "2027-03-10", "n.ADULT": "1" }, acceptLanguage: "th", clientKey: c }, N0);
-    const hv = await call("startBookHold", { shop: SA, productSlug: P.slug, form: { d: "2027-03-10", "n.ADULT": "1", nonce: nonceAt(), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: c }, N0);
+    // ORACLE-EDIT Q-8 (มติ Y2): ฟอร์มถือส่ง t ของรอบจากหน้าสินค้า (ถ้าหน้ามีตัวอ้าง) — ด่านเปิดปุ่มตัดสินก่อนฟอร์มอยู่แล้ว
+    const tSc = await slotTokenOf(SA, P.slug, "2027-03-10");
+    const hv = await call("startBookHold", { shop: SA, productSlug: P.slug, form: { d: "2027-03-10", ...(tSc ? { t: tSc } : {}), "n.ADULT": "1", nonce: nonceAt(), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: c }, N0);
     eq([op.ok, asRec(asRec(op.vm)?.cta)?.enabled, qv.ok, qv.code, qv.reason, hv.ok, hv.code, hv.reason], [true, false, false, "UNAVAILABLE", "SHOP_CONFIRMS", false, "UNAVAILABLE", "SHOP_CONFIRMS"], "ผล");
     eq([(await depRow(DEP.sc)).held, await bookingsOn(DEP.sc)], [0, 0], "ที่ถือ/การจอง");
   });
@@ -959,7 +1025,9 @@ try {
     let sum = 0; for (const l of lines) sum += Number(l.amountSatang);
     const total = AD + PA + CAM + 28_000;
     eq([s.totalSatang, sum, lines.filter((l) => l.kind === "VAT").map((l) => [l.amountSatang, l.passThrough])], [total, total, [[28_000, false]]], "สรุป");
-    const hb = await call("startBookHold", { shop: SC, productSlug: P.slug, form: { ...query, nonce: nonceAt(-60_000, "hold", tC), seen: String(total) }, acceptLanguage: "th", clientKey: c }, N0);
+    // ORACLE-EDIT Q-9 (มติ Y2): t = รอบที่สรุปยอดนี้คิดราคา (summary.slotToken)
+    ok(typeof s.slotToken === "string" && s.slotToken, `สรุปยอดไม่มีตัวอ้างรอบ: ${fmt(s.slotToken)}`);
+    const hb = await call("startBookHold", { shop: SC, productSlug: P.slug, form: { ...query, t: s.slotToken, nonce: nonceAt(-60_000, "hold", tC), seen: String(total) }, acceptLanguage: "th", clientKey: c }, N0);
     ok(hb.ok === true, `startBookHold ร้าน C: ${fmt(hb)}`);
     const cv = asRec((await call("loadBookCheckout", { shop: SC, basketToken: hb.basketToken, sel: hb.sel, lang: "th", acceptLanguage: "th", clientKey: c }, N0)).vm) ?? {};
     eq(asRec(cv.summary)?.totalSatang, total, "หน้ายืนยัน");
@@ -972,7 +1040,8 @@ try {
     const q2 = await call("quoteBookSelection", { shop: SA, productSlug: A().slug, query: { ...base, a: "AGENT01" }, acceptLanguage: "th", clientKey: c }, N0);
     ok(q1.ok === true && q2.ok === true, `quote: ${fmt(q2)}`);
     eq(q2.summary, q1.summary, "summary เมื่อมี a");
-    const h = await call("startBookHold", { shop: SA, productSlug: A().slug, form: { ...base, a: "AGENT01", nonce: nonceAt(), seen: String(asRec(q1.summary)?.totalSatang) }, acceptLanguage: "th", clientKey: ck() }, N0);
+    // ORACLE-EDIT Q-10 (มติ Y2): t = summary.slotToken ของสรุปยอดเดียวกัน
+    const h = await call("startBookHold", { shop: SA, productSlug: A().slug, form: { ...base, t: asRec(q1.summary)?.slotToken, a: "AGENT01", nonce: nonceAt(), seen: String(asRec(q1.summary)?.totalSatang) }, acceptLanguage: "th", clientKey: ck() }, N0);
     ok(h.ok === true, `startBookHold: ${fmt(h)}`);
     eq((await q<{ channel: string }>(`SELECT channel FROM "SellBasket" WHERE "publicTokenHash" = $1`, [sha256hex(String(h.basketToken))])).map((x) => x.channel), ["WEB"], "ช่องทางตะกร้า");
     eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripLinkStat" WHERE "tenantId" = $1 AND "linkId" IS NOT NULL`, [tA]))[0]?.n, 0, "สถิติลิงก์");
@@ -1012,9 +1081,11 @@ try {
     const n0 = await baskets();
     const c = ck();
     const opts = await optsOf(SA, A().slug, "2027-03-10", c);
+    // ORACLE-EDIT H-3 (มติ Y2): t ของรอบเต็ม/ปิดรับจากผลของระบบของวันนั้น · วันที่รอบถูกยกเลิก (หน้าสินค้าไม่มีรอบ) ⇒ ฟอร์มค้างที่ถือ t ของรอบที่ไม่ใช่ของวันนั้น (ตัวอ้างจริงของ 10 มี.ค.) ⇒ SLOT_CLOSED
+    const t14 = (await slotTokenOf(SA, A().slug, "2027-03-14")) ?? (await tOf("2027-03-10"));
     const r1 = await hold("2027-03-13", { adults: 1 }, { clientKey: c, opts, seen: AD + PA });
     const r2 = await hold("2027-03-01", { adults: 1 }, { clientKey: c, opts, seen: AD + PA });
-    const r3 = await hold("2027-03-14", { adults: 1 }, { clientKey: c, opts, seen: AD + PA });
+    const r3 = await hold("2027-03-14", { adults: 1 }, { clientKey: c, opts, seen: AD + PA, t: t14 });
     eq([r1.code, r2.code], ["SOLD_OUT", "CUTOFF_PASSED"], "เต็ม/ปิดรับ");
     ok(r3.ok === false && (r3.code === "SLOT_CLOSED" || (r3.code === "INVALID" && isDeepStrictEqual(r3.fields, ["d"]))), `ยกเลิก: ${fmt(r3)}`);
     eq(await baskets(), n0, "ตะกร้าใหม่");
@@ -1023,11 +1094,13 @@ try {
     needDb();
     const before = await depRow(DEP.rl);
     const c = ck(); const o = await optsOf(SA, A().slug, "2027-03-12", c);
-    const base = { d: "2027-03-12", ...selQuery(o, { adults: 1 }), seen: String(AD + PA) };
+    // ORACLE-EDIT H-4 (มติ Y2): ฟอร์มมี t ของรอบจริง — ข้อนี้ตรึงด่าน nonce/seen ไม่ใช่ด่าน t
+    const t12 = await tOf("2027-03-12");
+    const base = { d: "2027-03-12", t: t12, ...selQuery(o, { adults: 1 }), seen: String(AD + PA) };
     const go = (form: Rec) => call("startBookHold", { shop: SA, productSlug: A().slug, form, acceptLanguage: "th", clientKey: c }, N0);
     const r1 = await go({ ...base }), r2 = await go({ ...base, nonce: "x.y.z" }), r3 = await go({ ...base, nonce: nonceAt(0) });
     const r4 = await go({ ...base, nonce: nonceAt(-(Number(coreV("BOOK_FORM_MAX_SEC")) + 60) * 1000) });
-    const r5 = await go({ d: "2027-03-12", ...selQuery(o, { adults: 1 }), nonce: nonceAt() });
+    const r5 = await go({ d: "2027-03-12", t: t12, ...selQuery(o, { adults: 1 }), nonce: nonceAt() });
     eq([r1.code, r1.fields, r2.code, r2.fields, r3.code, r4.code, r5.code, r5.fields], ["INVALID", ["nonce"], "INVALID", ["nonce"], "TOO_FAST", "STALE_FORM", "INVALID", ["seen"]], "ผล");
     eq((await depRow(DEP.rl)).held, before.held, "ที่ถือ");
   });
@@ -1035,8 +1108,9 @@ try {
     needDb();
     const c = ck(); const o = await optsOf(SA, A().slug, "2027-03-10", c);
     const out: Rec[] = [];
+    const t10 = await tOf("2027-03-10"); // ORACLE-EDIT H-5 (มติ Y2): ฟอร์มครบรูป (มี t) — ไม่พบต้องตัดสินก่อนฟอร์ม
     for (const [shop, slug] of [[SA, PRD.LB?.slug], [SA, PRD.DRAFT?.slug], [SA, "w12qc-b-only"], ["no-such-shop-w12", A().slug]] as const)
-      out.push(await call("startBookHold", { shop, productSlug: slug, form: { d: "2027-03-10", ...selQuery(o, { adults: 1 }), nonce: nonceAt(), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: c }, N0));
+      out.push(await call("startBookHold", { shop, productSlug: slug, form: { d: "2027-03-10", t: t10, ...selQuery(o, { adults: 1 }), nonce: nonceAt(), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: c }, N0));
     eq(out, out.map(() => ({ ok: false, code: "NOT_FOUND" })), "ไม่พบ");
   });
   groupLine("H");
@@ -1328,7 +1402,8 @@ try {
     const cB = ck();
     const ob = await optsOf(SB, PRD.B?.slug ?? "", "2027-03-10", cB);
     const sumB = await call("quoteBookSelection", { shop: SB, productSlug: PRD.B?.slug, query: { d: "2027-03-10", ...selQuery(ob, { adults: 1 }) }, acceptLanguage: "th", clientKey: cB }, N0);
-    const hb = await call("startBookHold", { shop: SB, productSlug: PRD.B?.slug, form: { d: "2027-03-10", ...selQuery(ob, { adults: 1 }), nonce: nonceAt(-60_000, "hold", tB), seen: String(asRec(sumB.summary)?.totalSatang) }, acceptLanguage: "th", clientKey: cB }, N0);
+    // ORACLE-EDIT R-7 (มติ Y2): t = summary.slotToken ของสรุปยอดร้าน B
+    const hb = await call("startBookHold", { shop: SB, productSlug: PRD.B?.slug, form: { d: "2027-03-10", t: asRec(sumB.summary)?.slotToken, ...selQuery(ob, { adults: 1 }), nonce: nonceAt(-60_000, "hold", tB), seen: String(asRec(sumB.summary)?.totalSatang) }, acceptLanguage: "th", clientKey: cB }, N0);
     ok(hb.ok === true, `hold B: ${fmt(hb)}`);
     const h: Held = { basketToken: String(hb.basketToken), sel: String(hb.sel), expiresAt: String(hb.expiresAt), clientKey: cB, total: Number(asRec(sumB.summary)?.totalSatang) };
     const cr = await confirm(h, { shop: SB });
@@ -1354,7 +1429,8 @@ try {
     const query = { d: "2027-03-10", ...selQuery(o, { adults: 1 }) };
     const sq = await call("quoteBookSelection", { shop: SA, productSlug: P.slug, query, acceptLanguage: "th", clientKey: c }, N0);
     ok(sq.ok === true, `quote มัดจำ: ${fmt(sq)}`);
-    const hb = await call("startBookHold", { shop: SA, productSlug: P.slug, form: { ...query, nonce: nonceAt(), seen: String(asRec(sq.summary)?.totalSatang) }, acceptLanguage: "th", clientKey: c }, N0);
+    // ORACLE-EDIT R-11 (มติ Y2): t = summary.slotToken
+    const hb = await call("startBookHold", { shop: SA, productSlug: P.slug, form: { ...query, t: asRec(sq.summary)?.slotToken, nonce: nonceAt(), seen: String(asRec(sq.summary)?.totalSatang) }, acceptLanguage: "th", clientKey: c }, N0);
     ok(hb.ok === true, `hold มัดจำ: ${fmt(hb)}`);
     const tok = await confirmNew({ basketToken: String(hb.basketToken), sel: String(hb.sel), expiresAt: String(hb.expiresAt), clientKey: c, total: Number(asRec(sq.summary)?.totalSatang) });
     const vm = asRec((await reservation(tok, ck())).vm) ?? {};
@@ -1390,25 +1466,30 @@ try {
     let calls = 0;
     const down = (when = N0) => ({ now: when.now, deps: { query: async () => { calls++; throw new Error("db down"); } } });
     const form = { name: BOOKER.name, phone: freshPhone(), accept: "on", nonce, seen: String(h.total) };
+    // ORACLE-EDIT RL-2 (มติ Y2 · ผู้ตรวจรอบ 2): ฟอร์มถือมี t · releaseBookHold อยู่ในด่านเดียวกัน (ด่านล่ม ⇒ LIMITER_DOWN ไม่ปล่อย · ไม่มีกุญแจเครื่อง ⇒ NO_CLIENT)
+    const t12 = await tOf("2027-03-12");
+    const pcActive0 = await activeHeldOf(DEP.pc);
     const rs = [
       await call("quoteBookSelection", { shop: SA, productSlug: A().slug, query: { d: "2027-03-12" }, acceptLanguage: "th", clientKey: c }, down()),
-      await call("startBookHold", { shop: SA, productSlug: A().slug, form: { d: "2027-03-12", ...selQuery(o, { adults: 1 }), nonce: nonceAt(), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: c }, down()),
+      await call("startBookHold", { shop: SA, productSlug: A().slug, form: { d: "2027-03-12", t: t12, ...selQuery(o, { adults: 1 }), nonce: nonceAt(), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: c }, down()),
       await call("loadBookCheckout", { shop: SA, basketToken: h.basketToken, sel: h.sel, lang: "th", acceptLanguage: "th", clientKey: h.clientKey }, down()),
       await call("confirmBookHold", { shop: SA, basketToken: h.basketToken, sel: h.sel, form, clientKey: h.clientKey }, down(at(10_000))),
       await call("openBookReservation", { shop: SA, token: T1 || randomBytes(32).toString("base64url"), lang: "th", acceptLanguage: "th", clientKey: c }, down(AFTER)),
+      await call("releaseBookHold", { shop: SA, basketToken: h.basketToken, sel: h.sel, lang: "th", clientKey: h.clientKey }, down()),
     ];
-    eq(rs.map((r) => [r.ok, r.code, r.reason]), rs.map(() => [false, "RATE_LIMITED", "LIMITER_DOWN"]), "ด่านล่ม");
-    eq([calls >= 5, (await depRow(DEP.rl)).held - n0, await bookingsOn(DEP.pc) - b0, await partiesOf(tA) - p0], [true, 0, 0, 0], "ไม่มีงานเขียน");
+    eq(rs.map((r) => [r.ok, r.code, r.reason, r.holdLimited ?? null]), rs.map(() => [false, "RATE_LIMITED", "LIMITER_DOWN", null]), "ด่านล่ม (Y5: ไม่มี holdLimited)");
+    eq([calls >= 6, (await depRow(DEP.rl)).held - n0, await bookingsOn(DEP.pc) - b0, await partiesOf(tA) - p0, await activeHeldOf(DEP.pc) - pcActive0], [true, 0, 0, 0, 0], "ไม่มีงานเขียน (ปล่อยตอนด่านล่ม ⇒ ที่ถือยังอยู่)");
     const nc: Rec[] = [];
     for (const k of [null, "", "pc_short", "10.0.0.1"]) {
       nc.push(await call("quoteBookSelection", { shop: SA, productSlug: A().slug, query: { d: "2027-03-12" }, acceptLanguage: "th", clientKey: k }, N0));
-      nc.push(await call("startBookHold", { shop: SA, productSlug: A().slug, form: { d: "2027-03-12", nonce: nonceAt(), seen: "1" }, acceptLanguage: "th", clientKey: k }, N0));
+      nc.push(await call("startBookHold", { shop: SA, productSlug: A().slug, form: { d: "2027-03-12", t: t12, nonce: nonceAt(), seen: "1" }, acceptLanguage: "th", clientKey: k }, N0));
       nc.push(await call("loadBookCheckout", { shop: SA, basketToken: h.basketToken, sel: h.sel, lang: "th", acceptLanguage: "th", clientKey: k }, N0));
       nc.push(await call("confirmBookHold", { shop: SA, basketToken: h.basketToken, sel: h.sel, form, clientKey: k }, at(10_000)));
       nc.push(await call("openBookReservation", { shop: SA, token: T1 || "x", lang: "th", clientKey: k }, AFTER));
+      nc.push(await call("releaseBookHold", { shop: SA, basketToken: h.basketToken, sel: h.sel, lang: "th", clientKey: k }, N0));
     }
     ok(nc.every((x) => x.ok === false && x.code === "RATE_LIMITED" && x.reason === "NO_CLIENT"), `ไม่มีกุญแจเครื่อง: ${fmt(nc.find((x) => x.reason !== "NO_CLIENT"))}`);
-    eq(await bookingsOn(DEP.pc) - b0, 0, "การจองหลัง NO_CLIENT");
+    eq([await bookingsOn(DEP.pc) - b0, await activeHeldOf(DEP.pc) - pcActive0], [0, 0], "การจอง/ที่ถือหลัง NO_CLIENT (ไม่ปล่อย)");
   });
   await st("RL-3", `เดา token: เครื่องเดียวเปิด token สุ่ม ${X8.tokenMissPerHour} ครั้ง ⇒ NOT_FOUND ทุกครั้ง · ครั้งถัดไป (แม้ token จริง) ⇒ RATE_LIMITED · เครื่องอื่นเปิด token จริงได้ · ถังไม่มี token ดิบ`, async () => {
     needDb(); ok(T1, "C-3 ไม่ผ่าน");
@@ -1438,7 +1519,8 @@ try {
     eq([again.map((r) => [r.ok, r.basketToken]), await counts(), (await depRow(DEP.slot)).held - before.held], [again.map(() => [true, r1.basketToken]), c1, 1], "ส่งซ้ำ nonce เดิม 5 ครั้ง: ผลเดิม · ถังไม่ขยับ · ที่ถือไม่เพิ่ม");
     const rs: Rec[] = [];
     for (let i = 0; i < 3; i++) rs.push(await hold("2027-03-19", { adults: 1 }, { clientKey: c, opts: o, seen: AD + PA }));
-    eq([rs.map((r) => r.ok), rs[2]?.code, rs[2]?.reason, (await depRow(DEP.slot)).held - before.held], [[true, true, false], "RATE_LIMITED", "LIMIT", 3], "ถังต่อรอบ (3 ตะกร้าใหม่ แล้วถูกจำกัด)");
+    // ORACLE-EDIT RL-4 (มติ Y5): ถังต่อรอบเต็มจริง ⇒ ผลมี holdLimited (action พาไป e=HOLD_LIMITED)
+    eq([rs.map((r) => r.ok), rs[2]?.code, rs[2]?.reason, rs[2]?.holdLimited, (await depRow(DEP.slot)).held - before.held], [[true, true, false], "RATE_LIMITED", "LIMIT", true, 3], "ถังต่อรอบ (3 ตะกร้าใหม่ แล้วถูกจำกัด)");
     eq((await hold("2027-03-21", { adults: 1 }, { clientKey: c, seen: AD + PA })).ok, true, "รอบอื่น เครื่องเดิม");
     const keys = (await q<{ key: string }>(`SELECT key FROM "ChatRateBucket" WHERE key LIKE $1`, [`trips:slot:${tA}:%`])).map((r) => r.key);
     ok(keys.some((k) => k === kSlot), `ถังต่อรอบ: ${fmt(keys.slice(0, 2))}`);
@@ -1465,7 +1547,8 @@ try {
     const f = PUBI.mod?.openBookProduct; ok(typeof f === "function", "ไม่มี openBookProduct");
     const op = asRec(await (f as AnyFn)({ shop: SD, productSlug: P.slug, query: { d: "2027-03-10", m: "2027-03" }, acceptLanguage: "th", clientKey: cd }, N0)) ?? {};
     const qv = await call("quoteBookSelection", { shop: SD, productSlug: P.slug, query: { d: "2027-03-10", "n.ADULT": "1" }, acceptLanguage: "th", clientKey: cd }, N0);
-    const hv = await call("startBookHold", { shop: SD, productSlug: P.slug, form: { d: "2027-03-10", "n.ADULT": "1", nonce: nonceAt(-60_000, "hold", tD), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: cd }, N0);
+    const tD10 = await slotTokenOf(SD, P.slug, "2027-03-10"); // ORACLE-EDIT RL-4 (มติ Y2): t จากหน้าสินค้าของร้าน D ถ้ามี (ด่านเปิดปุ่มตัดสินก่อนฟอร์ม)
+    const hv = await call("startBookHold", { shop: SD, productSlug: P.slug, form: { d: "2027-03-10", ...(tD10 ? { t: tD10 } : {}), "n.ADULT": "1", nonce: nonceAt(-60_000, "hold", tD), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: cd }, N0);
     eq([op.ok, asRec(asRec(op.vm)?.cta)?.enabled, qv.code, qv.reason, hv.code, hv.reason, (await depRow(DEP.d)).held], [true, false, "UNAVAILABLE", "BOOKING_OFF", "UNAVAILABLE", "BOOKING_OFF", 0], "ร้าน D");
   });
   groupLine("RL");
@@ -1486,7 +1569,9 @@ try {
     const nonces = Array.from({ length: 50 }, () => nonceAt());
     const keys = Array.from({ length: 50 }, () => ck());
     const sel = selQuery(o, { adults: 1 });
-    const rs = await Promise.all(keys.map((k, i) => call("startBookHold", { shop: SA, productSlug: A().slug, form: { d: "2027-03-11", ...sel, nonce: nonces[i], seen: String(AD + PA) }, acceptLanguage: "th", clientKey: k }, N0)));
+    const t11 = String(asRec(o.slot)?.token ?? ""); // ORACLE-EDIT X-2 (มติ Y2): t = options.slot.token ของวันนั้น
+    ok(t11, `options ไม่มีตัวอ้างรอบ: ${fmt(o.slot)}`);
+    const rs = await Promise.all(keys.map((k, i) => call("startBookHold", { shop: SA, productSlug: A().slug, form: { d: "2027-03-11", t: t11, ...sel, nonce: nonces[i], seen: String(AD + PA) }, acceptLanguage: "th", clientKey: k }, N0)));
     const okN = rs.filter((r) => r.ok === true).length, sold = rs.filter((r) => r.ok === false && r.code === "SOLD_OUT").length;
     eq([okN, sold], [12, 38], `ผล (อื่น: ${fmt(rs.filter((r) => r.ok !== true && r.code !== "SOLD_OUT").slice(0, 2))})`);
     const d = await depRow(DEP.race);
@@ -1497,7 +1582,7 @@ try {
     const c = ck(); const o = await optsOf(SA, A().slug, "2027-03-16", c);
     const n = nonceAt();
     const before = await depRow(DEP.snap);
-    const form = { d: "2027-03-16", ...selQuery(o, { adults: 2 }), nonce: n, seen: String(2 * AD + 2 * PA) };
+    const form = { d: "2027-03-16", t: String(asRec(o.slot)?.token ?? ""), ...selQuery(o, { adults: 2 }), nonce: n, seen: String(2 * AD + 2 * PA) }; // ORACLE-EDIT X-3 (มติ Y2): t ของวันนั้น
     const rs = await Promise.all(Array.from({ length: 10 }, () => call("startBookHold", { shop: SA, productSlug: A().slug, form, acceptLanguage: "th", clientKey: c }, N0)));
     const oks = rs.filter((r) => r.ok === true);
     const other = rs.filter((r) => r.ok !== true && !(r.code === "RATE_LIMITED" && r.reason === "LIMIT"));
@@ -1543,7 +1628,7 @@ try {
     const junk: unknown[] = [`${marker}${"x".repeat(10_000)}`, `${marker}\u0000‮`, [marker], { $ne: marker }, `'; DROP TABLE "TripBooking"; --${marker}`, `%00${marker}`, 1e308, -1, null];
     const outs: Rec[] = [];
     for (const j of junk) {
-      outs.push(await call("startBookHold", { shop: SA, productSlug: A().slug, form: { d: j, "n.ADULT": j, z: j, nonce: j, seen: j }, acceptLanguage: j, clientKey: c }, N0));
+      outs.push(await call("startBookHold", { shop: SA, productSlug: A().slug, form: { d: j, t: j, "n.ADULT": j, z: j, nonce: j, seen: j }, acceptLanguage: j, clientKey: c }, N0)); // ORACLE-EDIT X-6 (มติ Y2): t เป็นขยะด้วย
       outs.push(await call("confirmBookHold", { shop: SA, basketToken: j, sel: j, form: { name: j, phone: j, email: j, accept: j, nonce: j, seen: j }, clientKey: c }, N0));
       outs.push(await call("openBookReservation", { shop: j, token: j, lang: j, acceptLanguage: j, clientKey: c }, N0));
     }
@@ -1584,6 +1669,52 @@ try {
   const holdDeps = async (bt: string) => (await q<{ d: string }>(`SELECT h."departureId" AS d FROM "TripHold" h JOIN "SellBasket" b ON b.id = h."basketId" WHERE b."publicTokenHash" = $1`, [sha256hex(bt)])).map((r) => r.d);
   const msgs = () => ({ th: flat(JSON.parse(read(MSG_TH) || "{}")), en: flat(JSON.parse(read(MSG_EN) || "{}")) });
   /** คีย์ข้อความที่จอใช้หลังเงื่อนไข `<cond>` (ภายใน 400 ตัวอักษร) */
+  // ORACLE-EDIT WR-10 (มติ Y7): ตัวตรวจซอร์สของบรรทัด redirect — ช่องที่ตัวทำลิงก์ใช้ (ร้าน/ตะกร้า/sel/token) ต้องเป็นค่าเดียวกับที่ส่งให้ bookRedirectOk
+  const splitTop = (s: string): string[] => {
+    const out: string[] = []; let d = 0, cur = ""; let qch: string | null = null;
+    for (const ch of s) {
+      if (qch) { cur += ch; if (ch === qch) qch = null; continue; }
+      if (ch === '"' || ch === "'" || ch === "`") { qch = ch; cur += ch; continue; }
+      if ("([{".includes(ch)) d++;
+      if (")]}".includes(ch)) d--;
+      if (ch === "," && d === 0) { out.push(cur.trim()); cur = ""; continue; }
+      cur += ch;
+    }
+    if (cur.trim()) out.push(cur.trim());
+    return out;
+  };
+  const callArgs = (s: string, from: number): { name: string; args: string[] } | null => {
+    const m = /^([A-Za-z_$][\w$]*)\(/.exec(s.slice(from));
+    if (!m || !m[1]) return null;
+    let d = 0, i = from + m[1].length; const start = i + 1; let qch: string | null = null;
+    for (; i < s.length; i++) {
+      const ch = s[i] ?? "";
+      if (qch) { if (ch === qch) qch = null; continue; }
+      if (ch === '"' || ch === "'" || ch === "`") { qch = ch; continue; }
+      if (ch === "(") d++;
+      else if (ch === ")") { d--; if (d === 0) break; }
+    }
+    return { name: m[1], args: splitTop(s.slice(start, i)) };
+  };
+  const normArg = (a: string) => a.replace(/\s+/g, "").replace(/\?\?""$/, "").replace(/^String\((.*)\)$/, "$1");
+  const HREF_FIELDS: Record<string, string[]> = { bookReservationHref: ["shopSlug", "token"], bookCheckoutHref: ["shopSlug", "basketToken", "sel"], bookSelectHref: ["shopSlug"] };
+  const redirectLineIssues = (line: string): string[] => {
+    const okAt = line.indexOf("bookRedirectOk(");
+    if (okAt < 0) return [`ไม่ผ่าน bookRedirectOk: ${line.trim().slice(0, 100)}`];
+    const obj = callArgs(line, okAt)?.args[0] ?? "";
+    if (!/^\{[\s\S]*\}$/.test(obj)) return ["bookRedirectOk ไม่ได้รับ object literal"];
+    const checked = new Map<string, string>();
+    for (const p of splitTop(obj.slice(1, -1))) { const i = p.indexOf(":"); checked.set((i < 0 ? p : p.slice(0, i)).trim(), normArg(i < 0 ? p : p.slice(i + 1))); }
+    const issues: string[] = [];
+    const rAt = line.search(/\bredirect\(/);
+    if (rAt < okAt) issues.push("redirect อยู่ก่อนตัวตรวจ");
+    const inner = callArgs(line, rAt)?.args[0] ?? "";
+    const hc = callArgs(inner, 0);
+    const fields = hc ? HREF_FIELDS[hc.name] : undefined;
+    if (!hc || !fields) return [...issues, `redirect ไม่ได้ใช้ตัวทำลิงก์ของ core: ${inner.slice(0, 60)}`];
+    fields.forEach((k, i) => { const a = normArg(hc.args[i] ?? ""); const c = checked.get(k); if (c === undefined) issues.push(`${hc.name}: ช่อง ${k} ไม่ถูกตรวจ`); else if (c !== a) issues.push(`${hc.name}: ตรวจ ${k}=${c} แต่ redirect ด้วย ${a}`); });
+    return issues;
+  };
   const keyAfter = (src: string, cond: RegExp): string | null => { const m = cond.exec(src); if (!m) return null; return /\bt\(\s*["']([\w.]+)["']/.exec(src.slice(m.index, m.index + 400))?.[1] ?? /bookT\([^)]*\)\(\s*["']([\w.]+)["']/.exec(src.slice(m.index, m.index + 400))?.[1] ?? null; };
 
   await st("WR-1", `มติ W1 (ไม่สร้างการจองที่จ่ายไม่ทัน): ถือ 10:00 หมด 10:15 · เปิดหน้ายืนยัน/ยืนยันตอนเหลือ ${USABLE_SEC - 1} วิ (< ${PAY_MARGIN_SEC} + 120) ⇒ HOLD_EXPIRED + ทางถือใหม่ (rehold) ทั้งสองทาง · ไม่มี TripBooking ไม่มี Party ใหม่ · เหลือ ${USABLE_SEC + 1} วิ ⇒ หน้ายืนยันเปิดได้ ยืนยันได้ และหน้า my/ (นาฬิกาเดียวกัน) เป็น PAY มี QR (ไม่ใช่ TOO_LATE ตั้งแต่ต้น)`, async () => {
@@ -1637,14 +1768,15 @@ try {
     const P = PRD.TC as Prod;
     const c = ck();
     const o = await optsOf(SA, P.slug, "2027-03-10", c);
-    const r0 = await holdRaw(SA, P.slug, { d: "2027-03-10", ...selQuery(o, { adults: 1 }), nonce: nonceAt(), seen: String(AD + PA) }, c);
+    const r0 = await holdRaw(SA, P.slug, { d: "2027-03-10", t: String(asRec(o.slot)?.token ?? ""), ...selQuery(o, { adults: 1 }), nonce: nonceAt(), seen: String(AD + PA) }, c); // ORACLE-EDIT WR-3 (มติ Y2): t ของวันนั้น
     ok(r0.ok === true, `ถือ: ${fmt(r0)}`);
     const h: Held = { basketToken: String(r0.basketToken), sel: String(r0.sel), expiresAt: String(r0.expiresAt), clientKey: c, total: AD + PA };
     await setV(tA, [{ key: "trips.cancel.ladder", scope: "PRODUCT", scopeId: P.id, value: [{ fromDaysBefore: 7, refundPct: 100 }, { fromDaysBefore: 0, refundPct: 0 }] }]);
     const cv = await checkout(h);
     const cr = await confirm(h, { form: { phone: freshPhone(), email: "" } });
     eq([cv.ok, cv.code, cv.heldTotalSatang, cv.totalSatang], [false, "PRICE_CHANGED", AD + PA, AD + PA], "หน้ายืนยัน (ยอดเท่าเดิม · เงื่อนไขเปลี่ยน)");
-    eq([cr.ok, cr.code, cr.heldTotalSatang ?? AD + PA, cr.totalSatang ?? AD + PA, await bookingsOn(DEP.tc ?? "")], [false, "PRICE_CHANGED", AD + PA, AD + PA, 0], "ยืนยัน");
+    // ORACLE-EDIT WR-3 (ผู้ตรวจรอบ 2 · ห้ามค่าสำรอง): ผลยืนยันต้องมี heldTotalSatang และ totalSatang จริง (ตารางสัญญา §3.2) และเท่ากัน — ไม่มีช่อง = แดง
+    eq([cr.ok, cr.code, "heldTotalSatang" in cr, "totalSatang" in cr, cr.heldTotalSatang, cr.totalSatang, await bookingsOn(DEP.tc ?? "")], [false, "PRICE_CHANGED", true, true, AD + PA, AD + PA, 0], "ยืนยัน");
     const { th, en } = msgs();
     const termKeys = Object.keys(th).filter((k) => k.startsWith("priceChanged.") && /เงื่อนไข/.test(String(th[k])) && /terms|conditions/i.test(String(en[k] ?? "")));
     ok(termKeys.length >= 1, `ไม่มีข้อความ priceChanged.* แบบ "เงื่อนไขการจองเปลี่ยน" (ไทย/อังกฤษ)`);
@@ -1697,7 +1829,8 @@ try {
     await pool.query(`UPDATE "TripBooking" SET "collectMode" = 'AGENT' WHERE "publicTokenHash" = $1`, [sha256hex(tok)]);
     const vm = asRec((await reservation(tok, ck())).vm) ?? {};
     const pay = asRec(vm.pay) ?? {};
-    eq([vm.state, "qrSvgDataUrl" in pay, typeof pay.unavailable === "string" && !["NO_RECEIVER", "TOO_LATE"].includes(String(pay.unavailable))], ["PAY", false, true], `pay: ${fmt(vm.pay)}`);
+    // ORACLE-EDIT WR-6 (มติ Y7): collectMode AGENT ⇒ เหตุ AGENT_COLLECTS (ตรึงค่าเดียว)
+    eq([vm.state, "qrSvgDataUrl" in pay, pay.unavailable], ["PAY", false, "AGENT_COLLECTS"], `pay: ${fmt(vm.pay)}`);
     const { th, en } = msgs();
     const k = keyAfter(stripComments(read(`${COMP}/BookReservation.tsx`)), new RegExp(`unavailable\\s*===\\s*["']${String(pay.unavailable)}["']`));
     ok(k && String(th[k] ?? "").trim() && String(en[k] ?? "").trim() && th[k] !== th["res.pay.unavailable"] && th[k] !== th["err.UNAVAILABLE"], `ข้อความของเหตุ ${String(pay.unavailable)}: คีย์ ${k}`);
@@ -1712,9 +1845,16 @@ try {
     const tok = await confirmNew(h);
     await pool.query(`UPDATE "TripBooking" SET status = 'PENDING' WHERE "publicTokenHash" = $1`, [sha256hex(tok)]);
     const rp = await reservation(tok, ck());
-    const reason = String(rp.reason ?? (asRec(rp.vm)?.state ?? ""));
-    ok((rp.ok === false && rp.code === "UNAVAILABLE" && typeof rp.reason === "string" && !["BOOKING_OFF", "SHOP_CONFIRMS"].includes(rp.reason)) || (rp.ok === true && !["PAY", "VOUCHER"].includes(String(asRec(rp.vm)?.state))), `PENDING: ${fmt(rp)}`);
-    const kp = keyAfter(stripComments(read(PAGE_RES)) + stripComments(read(`${COMP}/BookReservation.tsx`)), new RegExp(`["']${reason}["']`));
+    // ORACLE-EDIT WR-7 (ผู้ตรวจรอบ 2 · มติ W5 Y6): PENDING ตรึงผลเดียว — { ok:false, code:UNAVAILABLE, reason:"PENDING", pending:{ bookingCode = รหัสการจอง, shop = ผู้ขายจากค่าตั้งร้าน (R13) } }
+    //   (มติ W5: เหตุของตัวเอง ไม่ใช่ BOOKING_OFF/SHOP_CONFIRMS · มติ Y6: หน้าแสดงรหัสการจอง + ทางติดต่อร้าน) · ไม่มีข้อมูลผู้จอง/id ภายใน/token
+    const bp = await bookingOfToken(tok);
+    const pend = asRec(rp.pending) ?? {};
+    eq([rp.ok, rp.code, rp.reason, pend.bookingCode, pend.shop], [false, "UNAVAILABLE", "PENDING", bp?.code, { name: NAME.a, contact: { phone: SHOP_CONTACT.phone, line: SHOP_CONTACT.line }, address: SHOP_CONTACT.address }], `PENDING: ${fmt(rp)}`);
+    ok(Object.keys(rp).every((k) => ["ok", "code", "reason", "pending", "shopSlug", "lang"].includes(k)) && Object.keys(pend).every((k) => ["bookingCode", "shop"].includes(k)), `คีย์ของผล PENDING: ${fmt(Object.keys(rp))} · ${fmt(Object.keys(pend))}`);
+    noInternal({ ...rp, pending: { bookingCode: pend.bookingCode } }, allIds, "ผล PENDING", [tok, BOOKER.phone, BOOKER.email, BOOKER.name, bp?.id ?? "zz-none"]);
+    const reason = "PENDING";
+    // ข้อความ (ไม่นับบรรทัดรหัสการจอง res.code ที่มติ Y6 ให้แสดงคู่กัน)
+    const kp = keyAfter((stripComments(read(PAGE_RES)) + stripComments(read(`${COMP}/BookReservation.tsx`))).replace(/\bt\(\s*["']res\.code["']/g, "x("), new RegExp(`["']${reason}["']`));
     ok(distinct(kp), `ข้อความของการจอง PENDING (${reason}): คีย์ ${kp}`);
     // NOTHING_DUE: การจอง HOLD ปกติ แล้วงวดทุกงวดถูกยก (WAIVED) ⇒ บริการไม่มียอดต้องโอน (การจองยอด 0 ได้ VOUCHER ทันที — ปลูกแบบนั้นไม่ได้)
     const h0 = await holdOk("2027-03-28", { adults: 1 });
@@ -1723,7 +1863,8 @@ try {
     ok((waived.rowCount ?? 0) >= 1, "ปลูก NOTHING_DUE ไม่ได้: การจองไม่มีแถวงวด (TripPaymentDue)");
     const vm = asRec((await reservation(t0, ck())).vm) ?? {};
     const pay = asRec(vm.pay) ?? {};
-    eq([vm.state, "qrSvgDataUrl" in pay, typeof pay.unavailable === "string" && !["NO_RECEIVER", "TOO_LATE"].includes(String(pay.unavailable))], ["PAY", false, true], `ไม่มียอดต้องโอน: ${fmt(vm.pay)}`);
+    // ORACLE-EDIT WR-7 (ผู้ตรวจรอบ 2): ไม่มียอดต้องโอน ⇒ เหตุ NOTHING_DUE (ตรึงค่าเดียว)
+    eq([vm.state, "qrSvgDataUrl" in pay, pay.unavailable], ["PAY", false, "NOTHING_DUE"], `ไม่มียอดต้องโอน: ${fmt(vm.pay)}`);
     const kn = keyAfter(stripComments(read(`${COMP}/BookReservation.tsx`)), new RegExp(`unavailable\\s*===\\s*["']${String(pay.unavailable)}["']`));
     ok(distinct(kn), `ข้อความของเหตุ ${String(pay.unavailable)}: คีย์ ${kn}`);
   });
@@ -1731,7 +1872,7 @@ try {
   await st("WR-8", "มติ W5 ภาษาข้าม redirect: ฟอร์มถือ/ยืนยันส่ง lang=en ⇒ ผลมี lang \"en\" (ทั้ง ok และไม่ ok) · lang ผิดรูป ⇒ null (ไม่สะท้อน) · actions.ts ส่ง lang ของผล platform เข้าตัวทำลิงก์ (ไม่ใช่จาก FormData)", async () => {
     needDb();
     const c = ck(); const o = await optsOf(SA, A().slug, "2027-03-28", c);
-    const form = { d: "2027-03-28", ...selQuery(o, { adults: 1 }), seen: String(AD + PA) };
+    const form = { d: "2027-03-28", t: String(asRec(o.slot)?.token ?? ""), ...selQuery(o, { adults: 1 }), seen: String(AD + PA) }; // ORACLE-EDIT (มติ Y2): t ของวันนั้น
     const ok1 = await holdRaw(SA, A().slug, { ...form, lang: "en", nonce: nonceAt() }, c);
     const bad1 = await holdRaw(SA, A().slug, { ...form, lang: "en", nonce: nonceAt(0) }, c); // TOO_FAST
     const junk = await holdRaw(SA, A().slug, { ...form, lang: "xx<script>", nonce: nonceAt() }, ck());
@@ -1749,7 +1890,7 @@ try {
     needDb();
     const c = ck(); const o = await optsOf(SA, A().slug, "2027-03-28", c);
     const n = nonceAt(0);
-    const form = { d: "2027-03-28", ...selQuery(o, { adults: 1 }), nonce: n, seen: String(AD + PA) };
+    const form = { d: "2027-03-28", t: String(asRec(o.slot)?.token ?? ""), ...selQuery(o, { adults: 1 }), nonce: n, seen: String(AD + PA) }; // ORACLE-EDIT WR-9 (มติ Y2): t ของวันนั้น
     const before = await activeHeld(DEP.w5 ?? "");
     const f1 = await holdRaw(SA, A().slug, form, c, at(999));
     const mid = await activeHeld(DEP.w5 ?? "");
@@ -1762,7 +1903,7 @@ try {
     eq([g1.code, g2.code], ["TOO_FAST", "ACCEPT_REQUIRED"], "ยืนยัน");
   });
 
-  await st("WR-10", "มติ W5 redirect ตรวจรูปก่อนใส่ Location: ตัวตรวจ (bookRedirectOk) รับ slug/token ตะกร้า 43 ตัว/sel v1 ≤ 1,024/token การจอง 43 ตัว · ปฏิเสธ slug มี / . ตัวใหญ่ ว่าง · token 42/44 ตัว หรือมี ?/%/ขึ้นบรรทัด · sel ยาว 1,025+ หรือผิดรูป · ทุก redirect( ใน actions.ts ผ่านตัวตรวจในบรรทัดเดียวกัน", () => {
+  await st("WR-10", "มติ W5 redirect ตรวจรูปก่อนใส่ Location: ตัวตรวจ (bookRedirectOk) รับ slug/token ตะกร้า 43 ตัว/sel v1 ≤ 1,024/token การจอง 43 ตัว · ปฏิเสธ slug มี / . ตัวใหญ่ ว่าง · token 42/44 ตัว หรือมี ?/%/ขึ้นบรรทัด · sel ยาว 1,025+ หรือผิดรูป · ทุก redirect( ใน actions.ts และหน้า c/ (Y7) ผ่านตัวตรวจในบรรทัดเดียวกัน และค่าที่ตรวจ = ค่าที่ redirect", () => {
     const f = BCI.mod?.bookRedirectOk;
     ok(typeof f === "function", "ไม่มีตัวตรวจ redirect (bookRedirectOk) ใน trips-book-core (มติ W5)");
     const g = f as AnyFn;
@@ -1773,6 +1914,25 @@ try {
     eq(bad.map((x) => g(x)), bad.map(() => false), "รูปผิด");
     const lines = read(ACTIONS).split("\n").filter((l) => /\bredirect\(/.test(l) && !/^\s*(import|\/\/|\*)/.test(l));
     ok(lines.length >= 3 && lines.every((l) => /bookRedirectOk\(/.test(l)), `redirect ที่ไม่ผ่านตัวตรวจ: ${lines.filter((l) => !/bookRedirectOk\(/.test(l)).slice(0, 2).join(" | ")}`);
+    // ORACLE-EDIT WR-10 (มติ Y7 · ผู้ตรวจรอบ 2): ครอบหน้า c/ ด้วย · และ "ค่าที่ถูกตรวจ = ค่าที่ถูก redirect" (ตรวจจากซอร์ส: อาร์กิวเมนต์ของตัวทำลิงก์ตรงกับช่องที่ส่งให้ bookRedirectOk)
+    const issues: string[] = [];
+    for (const f of [ACTIONS, PAGE_CHECKOUT]) {
+      const ls = stripComments(read(f)).split("\n").filter((l) => /\bredirect\(/.test(l) && !/^\s*import\b/.test(l));
+      if (f === PAGE_CHECKOUT && ls.length < 1) issues.push(`${basename(dirname(f))}: ไม่พบ redirect( (DONE ⇒ หน้าการจอง)`);
+      for (const l of ls) issues.push(...redirectLineIssues(l).map((x) => `${f === ACTIONS ? "actions" : "c/"}: ${x}`));
+    }
+    ok(issues.length === 0, `redirect ที่ค่าไม่ตรงกับค่าที่ตรวจ: ${issues.slice(0, 3).join(" | ")}`);
+    // positive control ของตัวตรวจซอร์ส: บรรทัดที่ตรวจค่าหนึ่งแต่ redirect อีกค่า ต้องถูกจับ · บรรทัดที่ตรงกันต้องผ่าน
+    const ctlBad = [
+      `if (bookRedirectOk({ shopSlug: r.shopSlug, token: r.token })) redirect(bookReservationHref(slugFromForm, r.token));`,
+      `if (bookRedirectOk({ shopSlug: r.shopSlug, token: r.token })) redirect(bookReservationHref(r.shopSlug ?? "", other ?? ""));`,
+      `if (bookRedirectOk({ shopSlug: r.shopSlug })) redirect(bookCheckoutHref(r.shopSlug, basketToken, sel));`,
+      `if (ok) redirect(bookSelectHref(r.shopSlug, r.back));`,
+      `if (bookRedirectOk({ shopSlug: r.shopSlug })) redirect(\`/book/\${shop}\`);`,
+    ];
+    const ctlGood = [`if (r.code === "DONE" && bookRedirectOk({ shopSlug: r.shopSlug, token: r.token })) redirect(bookReservationHref(r.shopSlug ?? "", r.token ?? "", lang));`,
+      `if (bookRedirectOk({ shopSlug: r.shopSlug, basketToken, sel })) redirect(bookCheckoutHref(r.shopSlug ?? "", String(basketToken), String(sel), { e: r.code }, r.lang));`];
+    eq([ctlBad.map((l) => redirectLineIssues(l).length > 0), ctlGood.map((l) => redirectLineIssues(l).length)], [ctlBad.map(() => true), ctlGood.map(() => 0)], "positive control ของตัวตรวจ redirect");
   });
 
   await st("WR-11", "มติ W7: เปิดหน้า (GET) ได้ตัวอ้างรอบ 08:00 · ร้านลบรอบ 08:00 ⇒ ถือ (POST) ด้วย t นั้น SLOT_CLOSED ไม่ถือรอบ 13:00 แทน · t รูปเดิม HHMM (\"0800\") ⇒ SLOT_CLOSED · ร้านปิดรอบ (CLOSED) หลังเปิดหน้า ⇒ SLOT_CLOSED · ไม่มีตะกร้า/ที่ถือใหม่ · เปิดหน้า (GET) ด้วย t ที่ไม่พบ ⇒ ok เลือกรอบแรกที่ขายได้ (13:00)", async () => {
@@ -1796,19 +1956,29 @@ try {
     eq([g.ok, asRec(asRec(g.options)?.slot)?.token, g2.ok, asRec(asRec(g2.options)?.slot)?.token], [true, t13, true, t13], "GET ด้วย t ที่ไม่พบ ⇒ รอบแรกที่ขายได้");
   });
 
-  await st("WR-12", "มติ W5 + ผู้คุม 1dd97156b — nonce ผูกโดเมน ถือ/ยืนยัน + ร้าน: nonce ของฟอร์มถือใช้ยืนยันไม่ได้ · nonce ของฟอร์มยืนยันใช้ถือไม่ได้ · nonce ของร้าน A ใช้ถือที่ร้าน B ไม่ได้ · nonce รูปเก่าไม่ผูก (issueBookFormNonce ไม่มี scope) ⇒ INVALID(nonce) ทั้งถือและยืนยัน · ทุกกรณีไม่มีตะกร้า/ที่ถือ/การจองใหม่", async () => {
+  await st("WR-12", "มติ W5 + ผู้คุม 1dd97156b — nonce ผูกโดเมน ถือ/ยืนยัน + ร้าน: nonce ของฟอร์มถือใช้ยืนยันไม่ได้ · nonce ของฟอร์มยืนยันใช้ถือไม่ได้ · nonce ของร้าน A ใช้ถือที่ร้าน B ไม่ได้ · issueBookFormNonce ไม่มี scope/scope ผิดรูป ⇒ null (Y7) · nonce รูปเก่าไม่ผูก (ข้อสอบปั้นด้วย HMAC สูตรรุ่น 1 + ตัวควบคุมสูตรเดียวกันที่ผูกโดเมน) ⇒ INVALID(nonce) ทั้งถือและยืนยัน · ทุกกรณีไม่มีตะกร้า/ที่ถือ/การจองใหม่", async () => {
     needDb();
     const c = ck(); const o = await optsOf(SA, A().slug, "2027-03-28", c);
-    const form = { d: "2027-03-28", ...selQuery(o, { adults: 1 }), seen: String(AD + PA) };
-    const unbound = sfn("issueBookFormNonce")({ now: new Date(NOW0.getTime() - 60_000) });
-    ok(typeof unbound === "string", `issueBookFormNonce (ไม่มี scope): ${fmt(unbound)}`);
+    const form = { d: "2027-03-28", t: String(asRec(o.slot)?.token ?? ""), ...selQuery(o, { adults: 1 }), seen: String(AD + PA) }; // ORACLE-EDIT (มติ Y2): t ของวันนั้น
+    // ORACLE-EDIT WR-12 (มติ Y7): ทางออก nonce ไม่มี scope ถูกลบ ⇒ issueBookFormNonce ไม่มี scope / scope ผิดรูป ⇒ null
+    //   nonce รูปเก่า (รุ่น 1 ไม่ผูกร้าน/ฟอร์ม) ข้อสอบปั้นเองด้วย HMAC สูตรรุ่นก่อน (`trips.public.nonce.v1:<สุ่ม>.<วินาที>` · กุญแจ SESSION_SECRET ของ .env.qc-trips) ⇒ ด่านถือ/ยืนยันต้องปฏิเสธ INVALID(nonce)
+    const iss = sfn("issueBookFormNonce");
+    const at60 = new Date(NOW0.getTime() - 60_000);
+    eq([iss({ now: at60 }), iss({ now: at60, scope: { tenantId: "", purpose: "hold" } }), iss({ now: at60, scope: { tenantId: tA, purpose: "other" } }), iss({ now: at60, scope: null }), iss()], [null, null, null, null, null], "ไม่มี scope / scope ผิดรูป ⇒ null");
+    const secret = process.env.SESSION_SECRET ?? "";
+    const craft = (msg: (rand: string, sec: string) => string): string => { const rand = randomBytes(16).toString("base64url"), sec = String(Math.floor(at60.getTime() / 1000)); return `${rand}.${sec}.${createHmac("sha256", secret).update(msg(rand, sec)).digest("base64url").slice(0, 22)}`; };
+    const unbound = craft((r, s) => `trips.public.nonce.v1:${r}.${s}`);
     const held0 = await activeHeld(DEP.w5 ?? ""), heldB0 = await activeHeld(DEP.b ?? "");
+    const b0 = await basketsOf(tA);
     const hs = [await holdRaw(SA, A().slug, { ...form, nonce: nonceAt(-60_000, "confirm") }, c), await holdRaw(SA, A().slug, { ...form, nonce: unbound }, c),
-      await holdRaw(SB, PRD.B?.slug ?? "", { d: "2027-03-10", "n.ADULT": "1", seen: String(AD + PA), nonce: nonceAt(-60_000, "hold", tA) }, ck())];
+      await holdRaw(SB, PRD.B?.slug ?? "", { d: "2027-03-10", t: await tOf("2027-03-10", SB, PRD.B?.slug ?? ""), "n.ADULT": "1", seen: String(AD + PA), nonce: nonceAt(-60_000, "hold", tA) }, ck())];
     eq(hs.map((r) => [r.code, r.fields]), hs.map(() => ["INVALID", ["nonce"]]), "ถือ: nonce ของยืนยัน / ไม่ผูก / ร้านอื่น");
-    eq([await activeHeld(DEP.w5 ?? "") - held0, await activeHeld(DEP.b ?? "") - heldB0], [0, 0], "ไม่มีที่ถือใหม่");
+    eq([await activeHeld(DEP.w5 ?? "") - held0, await activeHeld(DEP.b ?? "") - heldB0, await basketsOf(tA) - b0], [0, 0, 0], "ไม่มีที่ถือ/ตะกร้าใหม่");
+    // positive control ของตัวปั้น: สูตรเดียวกันแต่ผูกโดเมนถือของร้าน A (รูปที่ระบบออกให้หน้าสินค้า) ⇒ ผ่านด่าน nonce — ยืนยันว่าการปฏิเสธรุ่น 1 ไม่ได้มาจากตัวปั้นผิด
+    const ctl = await holdRaw(SA, A().slug, { ...form, nonce: craft((r, s) => `trips.public.nonce.v2:hold:${tA}:${r}.${s}`) }, ck());
+    ok(ctl.ok === true || (ctl.code !== "INVALID" && ctl.code !== "TOO_FAST" && ctl.code !== "STALE_FORM"), `ตัวควบคุมของตัวปั้น nonce (ผูกโดเมนถือร้าน A) ต้องผ่านด่าน nonce: ${fmt(ctl)} — ถ้าแดงที่นี่ = ตัวปั้นไม่ตรงสูตร ไม่ใช่หลักฐานว่าโค้ดผิด`);
     const h = await holdOk("2027-03-28", { adults: 1 });
-    const cs = [await confirm(h, { nonce: nonceAt(-60_000, "hold"), form: { phone: freshPhone(), email: "" } }), await confirm(h, { nonce: String(unbound), form: { phone: freshPhone(), email: "" } }),
+    const cs = [await confirm(h, { nonce: nonceAt(-60_000, "hold"), form: { phone: freshPhone(), email: "" } }), await confirm(h, { nonce: craft((r, s) => `trips.public.nonce.v1:${r}.${s}`), form: { phone: freshPhone(), email: "" } }),
       await confirm(h, { nonce: nonceAt(-60_000, "confirm", tB), form: { phone: freshPhone(), email: "" } })];
     eq(cs.map((r) => [r.code, r.fields]), cs.map(() => ["INVALID", ["nonce"]]), "ยืนยัน: nonce ของถือ / ไม่ผูก / ร้านอื่น");
     eq((await q(`SELECT id FROM "TripBooking" WHERE "basketId" IN (SELECT id FROM "SellBasket" WHERE "publicTokenHash" = $1)`, [sha256hex(h.basketToken)])).length, 0, "ไม่มีการจอง");
@@ -1816,6 +1986,241 @@ try {
     ok(okc.ok === true, `ตัวควบคุม: nonce ของหน้ายืนยันร้านนี้ยืนยันได้: ${fmt(okc)}`);
   });
   groupLine("WR");
+
+  // ═══════════════ YR. มติผู้คุมหลังตรวจรอบ 2 (Y1–Y7) + จุดหลวมที่ผู้ตรวจรอบ 2 ชี้ — ข้อเพิ่มของผู้เขียนข้อสอบแยกรอบ 2 (ORACLE-EDIT r2) ═══════════════
+  console.log("\n── YR: มติ Y1–Y7 · releaseBookHold (ข้อเพิ่มรอบ r2) ──");
+  const bkkHm = (ms: number) => new Date(ms + 7 * HOUR).toISOString().slice(11, 16); // เวลาร้าน (กรุงเทพ ไม่มีเวลาออมแสง) — คิดเองจากนาฬิกาของข้อสอบ
+  type Pick2 = { basketToken: string; sel: string; clientKey: string };
+  const rel = (h: Pick2, when = N0, shop = SA) => call("releaseBookHold", { shop, basketToken: h.basketToken, sel: h.sel, lang: "th", clientKey: h.clientKey }, when);
+
+  await st("YR-1", "มติ Y2 (ปิด W7): ฟอร์มถือ (POST) ไม่มี `t` / `t` ว่าง ⇒ INVALID fields [\"t\"] + กลับหน้าสินค้า (back · shopSlug) · ไม่มีที่ถือ · ไม่มีตะกร้า · ถังถือ/ถังต่อรอบของเครื่องไม่ขยับ · ตัวควบคุม: ฟอร์มเดียวกันที่มี t ของรอบ (จาก options.slot.token) ⇒ ถือได้", async () => {
+    needDb();
+    const c = ck(); const o = await optsOf(SA, A().slug, "2027-04-10", c);
+    const tok = String(asRec(o.slot)?.token ?? "");
+    ok(REF_T.test(tok), `options.slot.token ของวันนั้น: ${fmt(o.slot)}`);
+    const base = { d: "2027-04-10", ...selQuery(o, { adults: 1 }), seen: String(AD + PA) };
+    const b0 = await basketsOf(), h0 = await activeHeldOf(DEP.y2 ?? ""), k0 = await holdBuckets(c);
+    const r1 = await holdRaw(SA, A().slug, { ...base, nonce: nonceAt() }, c);
+    const r2 = await holdRaw(SA, A().slug, { ...base, t: "", nonce: nonceAt() }, c);
+    eq([r1.ok, r1.code, r1.fields, r2.ok, r2.code, r2.fields], [false, "INVALID", ["t"], false, "INVALID", ["t"]], "ไม่มี t / t ว่าง");
+    eq([asRec(r1.back)?.productSlug, r1.shopSlug, asRec(r2.back)?.productSlug], [A().slug, SA, A().slug], "กลับหน้าสินค้า (ไม่ถอยไปถือรอบแรกที่ขายได้)");
+    eq([await basketsOf() - b0, await activeHeldOf(DEP.y2 ?? "") - h0, await holdBuckets(c)], [0, 0, k0], "ไม่มีตะกร้า/ที่ถือ · ถังถือ/ถังต่อรอบไม่ขยับ");
+    const r3 = await holdRaw(SA, A().slug, { ...base, t: tok, nonce: nonceAt() }, c);
+    ok(r3.ok === true, `ตัวควบคุม (มี t): ${fmt(r3)}`);
+    eq([await activeHeldOf(DEP.y2 ?? "") - h0, await holdDeps(String(r3.basketToken))], [1, [DEP.y2]], "ตัวควบคุม: ถือรอบของ t");
+  });
+
+  await st("YR-2", "มติ Y1 (ร้านเวลาถือสั้น): เวลาถือ WEB 5 / 9 นาที ⇒ quoteBookSelection ปิดจองเหตุ HOLD_TOO_SHORT ไม่ออก nonce · startBookHold (ฟอร์มครบ) ⇒ UNAVAILABLE เหตุ HOLD_TOO_SHORT ก่อนถัง (ถังไม่ขยับ) ไม่มีตะกร้า/ที่ถือ · 10 นาทีพอดี ⇒ ถือได้ (หมด 10:10) · หน้ายืนยัน confirmByLocal = หมดถือ − (180+120) วิ = 10:05 (สินค้า 15 นาที ⇒ 10:10) · fillMinutes = นาทีที่กรอกได้จริง (10 ⇒ 5 · 15 ⇒ 10) · หน้าสินค้าใช้ fillMinutes ในข้อความถือที่ · หน้าสินค้าจัดการ HOLD_TOO_SHORT", async () => {
+    needDb();
+    ok(!y1Err, `ตั้งเวลาถือของสินค้าทดสอบไม่ได้: ${y1Err.slice(0, 160)}`);
+    const USABLE_MS = (PAY_MARGIN_SEC + 120) * 1000; // มติ W1/Y1
+    for (const [k, min] of [["Y1A", 5], ["Y1B", 9]] as const) {
+      const P = PRD[k] as Prod; const dep = DEP[k.toLowerCase()] ?? "";
+      const c = ck();
+      const qv = await call("quoteBookSelection", { shop: SA, productSlug: P.slug, query: { d: "2027-03-10", "n.ADULT": "1" }, acceptLanguage: "th", clientKey: c }, N0);
+      eq([qv.ok, qv.code, qv.reason, qv.nonce ?? null], [false, "UNAVAILABLE", "HOLD_TOO_SHORT", null], `${min} นาที: quote`);
+      const t = await slotTokenOf(SA, P.slug, "2027-03-10");
+      const k0 = await holdBuckets(c), b0 = await basketsOf();
+      const hv = await call("startBookHold", { shop: SA, productSlug: P.slug, form: { d: "2027-03-10", ...(t ? { t } : {}), "n.ADULT": "1", nonce: nonceAt(), seen: String(AD + PA) }, acceptLanguage: "th", clientKey: c }, N0);
+      eq([hv.ok, hv.code, hv.reason], [false, "UNAVAILABLE", "HOLD_TOO_SHORT"], `${min} นาที: ถือ (t=${t ? "มี" : "ไม่มีตัวอ้างจากหน้าสินค้า"})`);
+      eq([await holdBuckets(c), await basketsOf() - b0, await activeHeldOf(dep), (await q(`SELECT id FROM "TripHold" WHERE "departureId" = $1`, [dep])).length], [k0, 0, 0, 0], `${min} นาที: ถังไม่ขยับ · ไม่มีตะกร้า/ที่ถือ`);
+    }
+    const P = PRD.Y1C as Prod; const c = ck();
+    const o = await optsOf(SA, P.slug, "2027-03-10", c);
+    const qv = await call("quoteBookSelection", { shop: SA, productSlug: P.slug, query: { d: "2027-03-10", ...selQuery(o, { adults: 1 }) }, acceptLanguage: "th", clientKey: c }, N0);
+    const s10 = asRec(qv.summary) ?? {};
+    eq([qv.ok, typeof qv.nonce === "string" && !!qv.nonce, s10.holdMinutes, s10.fillMinutes], [true, true, 10, 10 - USABLE_MS / MIN], "10 นาที: quote เปิด · nonce · fillMinutes");
+    const h = await holdOk("2027-03-10", { adults: 1 }, { slug: P.slug, clientKey: c, opts: o });
+    const exp10 = NOW0.getTime() + 10 * MIN;
+    eq(h.expiresAt, new Date(exp10).toISOString(), "10 นาที: หมดถือ");
+    const cv = asRec((await checkout(h)).vm) ?? {};
+    eq([cv.holdUntilLocal, cv.confirmByLocal], [bkkHm(exp10), bkkHm(exp10 - USABLE_MS)], "10 นาที: หน้ายืนยัน ถือถึง/กรอกและยืนยันภายใน");
+    eq(bkkHm(exp10 - USABLE_MS), "10:05", "ค่าคาด (คิดเอง)");
+    const s15 = await summaryOf("2027-03-31", { adults: 1 }, ck());
+    eq([s15.holdMinutes, s15.fillMinutes], [HOLD_MIN, HOLD_MIN - USABLE_MS / MIN], "15 นาที: fillMinutes");
+    const h15 = await holdOk("2027-03-31", { adults: 1 });
+    const exp15 = NOW0.getTime() + HOLD_MIN * MIN;
+    eq(asRec((await checkout(h15)).vm)?.confirmByLocal, bkkHm(exp15 - USABLE_MS), "15 นาที: กรอกและยืนยันภายใน 10:10");
+    const selSrc = stripComments(read(`${COMP}/BookSelect.tsx`));
+    ok(/["']summary\.holdNote["'][^)]{0,120}fillMinutes/.test(selSrc) && !/["']summary\.holdNote["'][^)]{0,120}holdMinutes/.test(selSrc), "ข้อความ \"ระบบจะถือที่ให้ N นาที\" ต้องใช้ fillMinutes (เวลาที่กรอกได้จริง) ไม่ใช่ holdMinutes");
+    const ckSrc = stripComments(read(`${COMP}/BookCheckout.tsx`));
+    ok(/confirmByLocal/.test(ckSrc), "หน้ายืนยันต้องแสดง confirmByLocal (เวลาที่ยืนยันได้จริง)");
+    ok(/HOLD_TOO_SHORT/.test(stripComments(read(PAGE_PRODUCT))), "หน้าสินค้าต้องจัดการ HOLD_TOO_SHORT (แบบปิดจอง)");
+  });
+
+  await st("YR-3", "มติ Y3 (ตัวอ้างรอบ): สองรอบ 08:00 วันเดียวกันคนละตัวเลือก ⇒ ตัวอ้างต่างกัน รูป a-z2-7 12 ตัว · ชื่อตัวเลือกของแถวที่แสดง = ตัวเลือกของรอบที่ถือได้จริงด้วยตัวอ้างนั้น · สองรอบ 08:00 ตัวเลือกเดียวกัน (ฐานกัน unique ⇒ พิสูจน์ด้วยการพยายามสร้าง แล้วใช้คู่ตัวเลือกคนละแถวชื่อเดียวกันแทน) ⇒ ตัวอ้างเป็น null ทั้งคู่ เลือกด้วยลิงก์ไม่ได้ · quote (GET ไม่มี t) ไม่คืนตัวอ้างของคู่ที่แยกไม่ได้ (ต้องเป็นตัวที่หน้าแสดง หรือ null) · รอบ 13:00 วันเดียวกันยังมีตัวอ้าง (ตัวควบคุม)", async () => {
+    needDb();
+    const P = PRD.Y3 as Prod;
+    const s11 = await productSlots(SA, P.slug, "2027-03-11");
+    const tk = s11.map((x) => String(x.token));
+    eq([s11.length, tk.every((t) => REF_T.test(t)), new Set(tk).size], [2, true, 2], `สองตัวเลือก 08:00: ${fmt(s11.map((x) => [x.timeText, asRec(x.optionName)?.text, x.token]))}`);
+    const optNameOfDep = async (dep: string) => String(asRec(JSON.parse(String((await q<{ name: string }>(`SELECT o.name::text AS name FROM "TripDeparture" d JOIN "TripOption" o ON o.id = d."optionId" WHERE d.id = $1`, [dep]))[0]?.name ?? "{}")))?.th ?? "");
+    const heldDeps: string[] = [];
+    for (const row of s11) {
+      const r = await holdRaw(SA, P.slug, { d: "2027-03-11", t: String(row.token), "n.ADULT": "1", nonce: nonceAt(), seen: String(AD + PA) }, ck());
+      ok(r.ok === true, `ถือด้วย t ของแถว ${fmt(asRec(row.optionName)?.text)}: ${fmt(r)}`);
+      const deps = await holdDeps(String(r.basketToken));
+      eq(deps.length, 1, "ที่ถือ 1 รอบ");
+      heldDeps.push(deps[0] ?? "");
+      eq(String(asRec(row.optionName)?.text ?? ""), await optNameOfDep(deps[0] ?? ""), "ชื่อตัวเลือกของแถว = ตัวเลือกของรอบที่ถือได้");
+    }
+    eq([...heldDeps].sort(), [DEP.y3o1, DEP.y3o2].sort(), "สองแถวถือคนละรอบ ครบทั้งสอง");
+    // ตัวเลือกเดียวกัน เวลาเดียวกัน
+    const d1 = rid("d"), d2 = rid("d");
+    const dupRow = (id: string) => insertRow("TripDeparture", { id, tenantId: tA, unitId: uA, productId: P.id, optionId: P.opt, scheduleId: null, localDate: "2027-03-12", startsAt: BKK("2027-03-12", "08:00"), endsAt: BKK("2027-03-12", "16:30"), status: "OPEN", capacity: 24, sold: 0, held: 0, reserved: 0, minPax: null, cutoffAt: BKK("2027-03-12", "08:00"), version: 0, updatedAt: new Date() });
+    await dupRow(d1); allIds.push(d1);
+    let dupErr = "";
+    try { await dupRow(d2); allIds.push(d2); } catch (e) { dupErr = errMsg(e); }
+    const s12 = await productSlots(SA, P.slug, "2027-03-12");
+    const pm = s12.find((x) => String(x.timeText).startsWith("13:00"));
+    ok(pm && REF_T.test(String(pm.token)), `ตัวควบคุม: รอบ 13:00 ต้องมีตัวอ้าง: ${fmt(s12.map((x) => [x.timeText, x.token]))}`);
+    let s12b = s12;
+    if (dupErr) {
+      ok(/unique|duplicate/i.test(dupErr), `สร้างรอบซ้ำไม่ได้ด้วยเหตุอื่น (ไม่ใช่ข้อจำกัดเฉพาะ): ${dupErr}`);
+      console.log(`     ℹ️ YR-3: ฐานไม่ยอมให้มีรอบเวลาเดียวกันตัวเลือกเดียวกัน (${dupErr.slice(0, 120)}) ⇒ คู่ id ตัวเลือกเดียวกันเกิดไม่ได้ · ทดสอบคู่ที่ลูกค้าแยกไม่ได้จริงแทน: ตัวเลือกคนละ id ชื่อเดียวกัน เวลาเดียวกัน`);
+      // คู่ที่แยกไม่ได้บนหน้า: ตัวเลือกคนละแถวแต่ชื่อเดียวกัน (ร้านสร้างตัวเลือกชื่อซ้ำได้) — เวลาออก · ช่วงเวลา · ชื่อตัวเลือก ตรงกันทุกอย่าง
+      const opt3 = await insertRow("TripOption", { id: rid("oY3c"), tenantId: tA, unitId: uA, productId: P.id, name: JSON.stringify({ th: "ร่วมกลุ่ม", en: "Join-in" }), durationMin: 510, sortOrder: 3, active: true, updatedAt: new Date() });
+      allIds.push(opt3);
+      await insertRow("TripDeparture", { id: d2, tenantId: tA, unitId: uA, productId: P.id, optionId: opt3, scheduleId: null, localDate: "2027-03-12", startsAt: BKK("2027-03-12", "08:00"), endsAt: BKK("2027-03-12", "16:30"), status: "OPEN", capacity: 24, sold: 0, held: 0, reserved: 0, minPax: null, cutoffAt: BKK("2027-03-12", "08:00"), version: 0, updatedAt: new Date() });
+      allIds.push(d2);
+      s12b = await productSlots(SA, P.slug, "2027-03-12");
+    }
+    const am = s12b.filter((x) => String(x.timeText).startsWith("08:00"));
+    eq([am.length, am.map((x) => x.token ?? null), am.some((x) => x.selectable === true)], [2, [null, null], false], `คู่ 08:00 ที่แยกไม่ได้ (ตัวเลือกเดียวกัน/ชื่อเดียวกัน): ${fmt(am.map((x) => [x.timeText, x.token, x.selectable]))}`);
+    const visible: unknown[] = s12b.map((x) => x.token).filter((t) => typeof t === "string");
+    const g = await call("quoteBookSelection", { shop: SA, productSlug: P.slug, query: { d: "2027-03-12" }, acceptLanguage: "th", clientKey: ck() }, N0);
+    const gt = asRec(asRec(g.options)?.slot)?.token ?? null;
+    ok(g.ok !== true || gt === null || visible.includes(gt), `quote (GET ไม่มี t) คืนตัวอ้างที่หน้าสินค้าไม่แสดง (ตัวอ้างของคู่ซ้ำต้องเป็น null · Y3): ${fmt(gt)} · หน้าแสดง ${fmt(visible)}`);
+    const g13 = await call("quoteBookSelection", { shop: SA, productSlug: P.slug, query: { d: "2027-03-12", t: String(pm?.token) }, acceptLanguage: "th", clientKey: ck() }, N0);
+    eq(asRec(asRec(g13.options)?.slot)?.token, pm?.token, "เลือก 13:00 ด้วยลิงก์ได้");
+  });
+
+  await st("YR-4", "มติ Y4: ยอดที่เห็นไม่ตรง quote ⇒ PRICE_CHANGED (totalSatang = ยอดจริง ฿4,100) ×5 ครั้ง เครื่องเดียว รอบเดียว ⇒ ถังถือ/ถังต่อรอบไม่ขยับ ไม่มีที่ถือ · หลังจากนั้นยังถือได้ครบโควตา 3 (ครั้งที่ 4 ⇒ RATE_LIMITED LIMIT + holdLimited)", async () => {
+    needDb();
+    const c = ck(); const o = await optsOf(SA, A().slug, "2027-03-18", c);
+    const t = String(asRec(o.slot)?.token ?? "");
+    const k0 = await holdBuckets(c), h0 = await activeHeldOf(DEP.y4 ?? "");
+    const pcs: Rec[] = [];
+    for (let i = 0; i < 5; i++) pcs.push(await hold("2027-03-18", { adults: 1 }, { clientKey: c, opts: o, seen: AD + PA - 100, t }));
+    eq(pcs.map((r) => [r.ok, r.code, r.totalSatang]), pcs.map(() => [false, "PRICE_CHANGED", AD + PA]), "ราคาเปลี่ยน ×5");
+    eq([await holdBuckets(c), await activeHeldOf(DEP.y4 ?? "") - h0], [k0, 0], "ถังไม่ขยับ · ไม่มีที่ถือ");
+    const rs: Rec[] = [];
+    for (let i = 0; i < 4; i++) rs.push(await hold("2027-03-18", { adults: 1 }, { clientKey: c, opts: o, seen: AD + PA, t }));
+    eq([rs.map((r) => r.ok), rs[3]?.code, rs[3]?.reason, rs[3]?.holdLimited, await activeHeldOf(DEP.y4 ?? "") - h0], [[true, true, true, false], "RATE_LIMITED", "LIMIT", true, 3], "ถือครบโควตา 3 แล้วถูกจำกัด");
+  });
+
+  await st("YR-5", "มติ Y5: ถังต่อรอบเต็ม ⇒ holdLimited ⇒ ลิงก์กลับหน้าสินค้า e=HOLD_LIMITED (ตัวทำลิงก์ของ core) · ค่า e นอกรายการถูกทิ้ง · bookErrorParam(HOLD_LIMITED) = RATE_LIMITED + holdLimited · actions.ts เลือก e จาก holdLimited ของผล · ถังอ่านเต็ม ⇒ RATE_LIMITED LIMIT ไม่มี holdLimited (ถังถือไม่ขยับ) · ข้อความ select.holdLimited ≠ select.holdUnavailable ทั้งสองภาษา ทั้งคู่มีทางติดต่อร้าน {contact} ไม่มี \"รอสักครู่\" · จอเลือกข้อความตาม holdLimited", async () => {
+    needDb();
+    const hl = coreV("BOOK_HOLD_LIMITED");
+    eq(hl, "HOLD_LIMITED", "BOOK_HOLD_LIMITED");
+    const href = P("bookSelectHref"), ep = P("bookErrorParam");
+    const back = { productSlug: A().slug, query: { d: "2027-03-31", t: "abcdefghijk2" } };
+    const hLim = String(href(SA, back, hl)), hRate = String(href(SA, back, "RATE_LIMITED")), hBad = String(href(SA, back, "EVIL<x>"));
+    eq([/[?&]e=HOLD_LIMITED(&|$)/.test(hLim), /[?&]e=RATE_LIMITED(&|$)/.test(hRate), /[?&]e=/.test(hBad), hBad.includes("EVIL")], [true, true, false, false], `ลิงก์: ${fmt([hLim, hRate, hBad])}`);
+    eq([ep({ e: "HOLD_LIMITED" }), asRec(ep({ e: "RATE_LIMITED" }))?.holdLimited ?? null, ep({ e: "HOLD_LIMITEDX" }), ep({ e: "<script>" })], [{ code: "RATE_LIMITED", fields: [], holdLimited: true }, null, null, null], "bookErrorParam");
+    const ac = stripComments(read(ACTIONS));
+    ok(/bookSelectHref\([^;]*holdLimited\s*\?\s*BOOK_HOLD_LIMITED\s*:\s*r\.code/.test(ac), "actions.ts: ถือไม่สำเร็จต้องส่ง e=HOLD_LIMITED เมื่อผลมี holdLimited (ไม่ใช่ค่าจากคำขอ)");
+    // ถังอ่านเต็ม (ปลูกแถวถังด้วย SQL ณ นาฬิกาข้อสอบ) ⇒ RATE_LIMITED แบบไม่มี holdLimited · ถังถือไม่ขยับ
+    const c = ck();
+    const t = await tOf("2027-03-31");
+    await pool.query(`INSERT INTO "ChatRateBucket" ("id", "key", "count", "windowStart", "createdAt", "updatedAt") VALUES (gen_random_uuid()::text, $1, 100000, $2, NOW(), NOW())`, [`trips:book:${tA}:${c}`, NOW0]);
+    const k0 = await holdBuckets(c);
+    const r = await holdRaw(SA, A().slug, { d: "2027-03-31", t, "n.ADULT": "1", nonce: nonceAt(), seen: String(AD + PA) }, c);
+    eq([r.ok, r.code, r.reason, r.holdLimited ?? null, await holdBuckets(c)], [false, "RATE_LIMITED", "LIMIT", null, k0], "ถังอ่านเต็ม");
+    // ข้อความ
+    const { th, en } = msgs();
+    const keys = ["select.holdLimited", "select.holdUnavailable"];
+    for (const [lang, m] of [["th", th], ["en", en]] as const) {
+      const [a, b] = keys.map((k) => String(m[k] ?? ""));
+      ok(a.trim() && b.trim() && a !== b, `${lang}: ${keys.join(" / ")} ต้องมีทั้งคู่และต่างกัน: ${fmt([a, b])}`);
+      ok([a, b].every((v) => v.includes("{contact}")), `${lang}: ทั้งคู่ต้องมีทางติดต่อร้าน {contact}: ${fmt([a, b])}`);
+      ok([a, b].every((v) => (lang === "th" ? /ติดต่อร้าน/.test(v) && !/รอสักครู่/.test(v) : /contact the shop/i.test(v) && !/(wait a moment|a moment)/i.test(v))), `${lang}: ข้อความต้องบอกติดต่อร้าน ไม่ใช่ "รอสักครู่": ${fmt([a, b])}`);
+    }
+    ok(/holdLimited\s*\?\s*["']select\.holdLimited["']\s*:\s*["']select\.holdUnavailable["']/.test(stripComments(read(`${COMP}/BookSelect.tsx`))), "BookSelect: ถือถี่เกิน (holdLimited) ⇒ select.holdLimited · อื่น ⇒ select.holdUnavailable");
+  });
+
+  await st("YR-6", "มติ Y6 ⚖️: res.pending / res.pay.nothingDue มี {contact} {code} ไม่สัญญาว่าร้านจะติดต่อ · priceChanged.termsBody ไม่ระบุว่าร้านเป็นผู้เปลี่ยน · หน้า PENDING แสดงรหัสการจอง (book-res-code) + ข้อความ res.pending · BOOK_TERMS_VERSION ขยับจากรอบก่อน (020fa639a)", () => {
+    const { th, en } = msgs();
+    for (const k of ["res.pending", "res.pay.nothingDue"]) {
+      const a = String(th[k] ?? ""), b = String(en[k] ?? "");
+      ok(a.includes("{contact}") && a.includes("{code}") && b.includes("{contact}") && b.includes("{code}"), `${k}: ต้องมี {contact} และ {code} ทั้งสองภาษา: ${fmt([a, b])}`);
+      ok(!/ร้านจะ\s*(ติดต่อ|โทร|แจ้ง|ส่ง)/.test(a) && !/\b(shop|we|they)\s*(will|'ll)\s*(contact|call|get in touch|reach|message)/i.test(b), `${k}: ห้ามสัญญาว่าร้านจะติดต่อ: ${fmt([a, b])}`);
+    }
+    const tb = [String(th["priceChanged.termsBody"] ?? ""), String(en["priceChanged.termsBody"] ?? "")];
+    ok(tb[0] && tb[1] && !/ร้าน\s*(ได้)?\s*(ปรับ|เปลี่ยน|แก้)/.test(tb[0]) && !/\bshop\s*(has\s*)?(changed|updated|adjusted|modified|revised)/i.test(tb[1]), `priceChanged.termsBody ไม่ระบุว่าร้านเป็นผู้เปลี่ยน: ${fmt(tb)}`);
+    const pr = stripComments(read(PAGE_RES));
+    ok(/["']PENDING["'][\s\S]{0,700}book-res-code[\s\S]{0,500}["']res\.pending["']/.test(pr), "หน้า my/ ของการจอง PENDING ต้องแสดง book-res-code แล้วข้อความ res.pending");
+    const prev = /BOOK_TERMS_VERSION\s*=\s*["']([^"']+)["']/.exec(git(["show", "020fa639a:src/lib/platform/trips-book-core.ts"]))?.[1] ?? "";
+    ok(prev, "อ่าน BOOK_TERMS_VERSION ของรอบก่อน (020fa639a) ไม่ได้");
+    ok(coreV("BOOK_TERMS_VERSION") !== prev, `ข้อความเงื่อนไขเปลี่ยน (Y6) ⇒ BOOK_TERMS_VERSION ต้องขยับ: ยังเป็น ${prev}`);
+  });
+
+  await st("YR-7", "มติ Y7: collectMode อื่นที่ไม่ใช่ SHOP/AGENT ⇒ ไม่มี QR + เหตุกลาง NOT_SHOP (ฐานกันด้วย CHECK ⇒ พิสูจน์ด้วยการพยายามปลูก แล้วตรวจลำดับในซอร์ส) + ข้อความกลางมีทางติดต่อร้าน · ฟอร์มถือเดิม (nonce เดิม) ส่งซ้ำหลังตะกร้าถูกปล่อย (releaseBookHold) ⇒ STALE_FORM กลับหน้าสินค้า ไม่มีที่ถือ/ตะกร้าใหม่", async () => {
+    needDb();
+    // (ก) collectMode ค่าอื่น
+    const h = await holdOk("2027-03-28", { adults: 1 });
+    const tok = await confirmNew(h);
+    let plantErr = "";
+    try { await pool.query(`UPDATE "TripBooking" SET "collectMode" = 'XYZ' WHERE "publicTokenHash" = $1`, [sha256hex(tok)]); } catch (e) { plantErr = errMsg(e); }
+    if (!plantErr) {
+      try {
+        const vm = asRec((await reservation(tok, ck())).vm) ?? {};
+        const pay = asRec(vm.pay) ?? {};
+        eq([vm.state, "qrSvgDataUrl" in pay, pay.unavailable], ["PAY", false, "NOT_SHOP"], `collectMode XYZ: ${fmt(vm.pay)}`);
+      } finally { await pool.query(`UPDATE "TripBooking" SET "collectMode" = 'SHOP' WHERE "publicTokenHash" = $1`, [sha256hex(tok)]); }
+    } else {
+      ok(/check|constraint|violat/i.test(plantErr), `ปลูก collectMode XYZ ไม่ได้ด้วยเหตุอื่น: ${plantErr}`);
+      console.log(`     ℹ️ YR-7: ฐานกัน collectMode นอก SHOP/AGENT (${plantErr.slice(0, 100)}) ⇒ ตรวจลำดับในซอร์สแทน`);
+      const s = stripComments(read(BSVC));
+      const fn = s.slice(s.indexOf("export async function openBookReservation"));
+      const iAgent = fn.search(/collectMode\s*===\s*["']AGENT["'][\s\S]{0,80}AGENT_COLLECTS/), iOther = fn.search(/collectMode\s*!==\s*["']SHOP["'][\s\S]{0,80}NOT_SHOP/), iIntent = fn.search(/tripPaymentIntent\(/);
+      ok(iAgent >= 0 && iOther > iAgent && iIntent > iOther, `openBookReservation: AGENT ⇒ AGENT_COLLECTS · ไม่ใช่ SHOP ⇒ NOT_SHOP ก่อนเรียก tripPaymentIntent (ลำดับ ${fmt([iAgent, iOther, iIntent])})`);
+    }
+    const { th, en } = msgs();
+    const rs = stripComments(read(`${COMP}/BookReservation.tsx`));
+    const kN = keyAfter(rs, /unavailable\s*===\s*["']NOT_SHOP["']/), kA = keyAfter(rs, /unavailable\s*===\s*["']AGENT_COLLECTS["']/);
+    ok(kN && String(th[kN] ?? "").includes("{contact}") && String(en[kN] ?? "").includes("{contact}") && th[kN] !== th[kA ?? ""] && th[kN] !== th["res.pay.unavailable"], `ข้อความกลางของ NOT_SHOP (คีย์ ${kN}) ต้องมีทางติดต่อร้าน และไม่ใช่ข้อความเอเจนซี่/ไม่มีผู้รับเงิน`);
+    // (ข) ฟอร์มถือเดิมหลังปล่อย
+    const c = ck(); const o = await optsOf(SA, A().slug, "2027-04-07", c);
+    const t = String(asRec(o.slot)?.token ?? ""); const n = nonceAt();
+    const r1 = await hold("2027-04-07", { adults: 1 }, { clientKey: c, opts: o, seen: AD + PA, t, nonce: n });
+    ok(r1.ok === true, `ถือครั้งแรก: ${fmt(r1)}`);
+    const rr = await rel({ basketToken: String(r1.basketToken), sel: String(r1.sel), clientKey: c });
+    ok(rr.ok === true, `releaseBookHold: ${fmt(rr)}`);
+    const h0 = await activeHeldOf(DEP.y7 ?? ""), b0 = await basketsOf();
+    const r2 = await hold("2027-04-07", { adults: 1 }, { clientKey: c, opts: o, seen: AD + PA, t, nonce: n });
+    eq([r2.ok, r2.code, asRec(r2.back)?.productSlug, r2.shopSlug], [false, "STALE_FORM", A().slug, SA], "ส่งฟอร์มถือเดิมซ้ำหลังปล่อย");
+    eq([h0, await activeHeldOf(DEP.y7 ?? ""), await basketsOf() - b0, (await depRow(DEP.y7 ?? "")).held], [0, 0, 0, 0], "ไม่มีที่ถือ/ตะกร้าใหม่");
+  });
+
+  await st("YR-8", "releaseBookHold (ผู้ตรวจรอบ 2): ปล่อยพร้อมกัน 10 ทาง + ปล่อยซ้ำ ⇒ ตัวนับ held ของรอบ = ผลรวมที่ถือ ACTIVE จริง (เหลือเฉพาะที่ถือของลูกค้าอื่น) ไม่ติดลบ · ผลมีแค่ ok หรือ BUSY · ปล่อยซ้ำทีหลัง ⇒ ok · คีย์ของผลไม่มี id ภายใน/token · ปล่อยตะกร้าที่ที่ถือหมดเวลาแล้ว (now + 16 นาที · ตัวกวาดยังไม่วิ่ง) ⇒ ok ไม่ผิดพลาด · ตัวนับ = ผลรวม ACTIVE", async () => {
+    needDb();
+    const d = DEP.rel ?? "";
+    const other = await holdOk("2027-04-08", { adults: 1 });
+    const h = await holdOk("2027-04-08", { adults: 2 });
+    eq([(await depRow(d)).held, await activeHeldOf(d)], [3, 3], "ก่อนปล่อย");
+    const rs = await Promise.all(Array.from({ length: 10 }, () => rel(h)));
+    const bad = rs.filter((r) => r.ok !== true && !(r.ok === false && r.code === "BUSY"));
+    ok(rs.some((r) => r.ok === true) && bad.length === 0, `ผลปล่อยพร้อมกัน: ${fmt(bad.slice(0, 2))}`);
+    const again = await rel(h);
+    ok(again.ok === true, `ปล่อยซ้ำ: ${fmt(again)}`);
+    const dr = await depRow(d);
+    eq([dr.held, await activeHeldOf(d), dr.held >= 0], [1, 1, true], "held = ผลรวม ACTIVE (เหลือของลูกค้าอื่น 1) · ไม่ติดลบ");
+    eq((await q<{ status: string }>(`SELECT h.status FROM "TripHold" h JOIN "SellBasket" b ON b.id = h."basketId" WHERE b."publicTokenHash" = $1`, [sha256hex(other.basketToken)])).map((x) => x.status), ["ACTIVE"], "ที่ถือของลูกค้าอื่นไม่ถูกแตะ");
+    const okR = rs.find((r) => r.ok === true) ?? again;
+    ok(Object.keys(okR).every((k) => ["ok", "shopSlug", "back", "lang"].includes(k)), `คีย์ของผลปล่อย: ${fmt(Object.keys(okR))}`);
+    noInternal(okR, allIds, "ผลปล่อย", [h.basketToken, sha256hex(h.basketToken), h.sel]);
+    // ที่ถือหมดเวลาแล้ว
+    const dx = DEP.relx ?? "";
+    const hx = await holdOk("2027-04-09", { adults: 1 });
+    const late = at(16 * MIN);
+    const rx = await rel(hx, late);
+    ok(rx.ok === true, `ปล่อยตะกร้าที่ที่ถือหมดเวลาแล้ว: ${fmt(rx)}`);
+    const rx2 = await rel(hx, late);
+    const drx = await depRow(dx);
+    eq([rx2.ok, drx.held, drx.held >= 0], [true, await activeHeldOf(dx), true], "ปล่อยซ้ำหลังหมดเวลา · held = ผลรวม ACTIVE");
+  });
+  groupLine("YR");
 
   exitCode = cks.some((c) => c.res !== "PASS") ? 1 : 0;
 } catch (e) {

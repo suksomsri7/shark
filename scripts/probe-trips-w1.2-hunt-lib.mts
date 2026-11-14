@@ -2,6 +2,7 @@
 // Temp shops: slug/email prefix `trips-w12h-` · everything removed in cleanup() (tenant rows · users · buckets of every probe IP)
 // HTTP target: the controller's QC server (read-only use) at 127.0.0.1:3241 — every request carries an IP header unless the scenario is "no header"
 // PROBE-EDIT (มติ W1–W7 · r1): server = build ใหม่ของผู้คุม (หลัง 1dd97156b) · รอฟอร์ม FORM_WAIT (TOO_FAST = 1 วิ · W5) · ตัวอ้างรอบ `t` = ref ชนิด slot (W5) · เพดานถือต่อรอบ 3 (W2)
+// PROBE-EDIT (มติ Y1–Y7 · r2): ทุก POST ถือส่ง `t` (ช่องซ่อนของฟอร์มหน้าสินค้า — ตรวจใน submitHold) · ถือถี่เกิน ⇒ e=HOLD_LIMITED · ชื่อช่อง bind หาจากค่า (boundKey) · ข้อความตรวจนอก <script> (visibleText)
 import { createHash, createHmac, randomBytes } from "node:crypto";
 import http from "node:http";
 import pg from "pg";
@@ -191,6 +192,19 @@ export function postForm(html: string, id?: string): Form | null {
   return null;
 }
 export const fieldOf = (f: Form, name: string) => f.fields.find(([k]) => k === name)?.[1] ?? null;
+/**
+ * PROBE-EDIT (r2 · บทเรียนรอบก่อน): ชื่อช่อง bind ของ server action (`$ACTION_<n>:<m>`) เปลี่ยนตามหน้า/ลำดับ ⇒ หาจากค่า ไม่ใช้ชื่อตายตัว
+ * ช่องที่ชื่อขึ้นต้น `$ACTION_` และค่าเป็น JSON array ที่ `match` รับ (เช่น ตัวแรก = slug ร้าน) ⇒ ชื่อช่อง · ไม่พบ ⇒ ""
+ */
+export function boundKey(f: Form, match: (args: unknown[]) => boolean): string {
+  for (const [k, v] of f.fields) {
+    if (!k.startsWith("$ACTION_")) continue;
+    try { const j = JSON.parse(v) as unknown; if (Array.isArray(j) && match(j)) return k; } catch { /* ไม่ใช่ JSON */ }
+  }
+  return "";
+}
+/** ข้อความที่ลูกค้าเห็น: ตัด <script> (RSC payload มีคลังข้อความทั้งระบบ) และแท็กออก (บทเรียนรอบก่อน: ตรวจข้อความเฉพาะนอก <script>) */
+export const visibleText = (html: string): string => html.replace(/<script\b[\s\S]*?<\/script>/g, " ").replace(/<[^>]*>/g, " ").replace(/&amp;/g, "&").replace(/\s+/g, " ");
 export function multipart(fields: [string, string][]): { body: Buffer; type: string } {
   const b = `----w12h${hex(8)}`;
   const parts = fields.map(([k, v]) => `--${b}\r\nContent-Disposition: form-data; name="${k.replace(/"/g, "%22")}"\r\n\r\n${v}\r\n`);
@@ -235,6 +249,8 @@ export async function openSelect(s: Shop, p: { slug: string }, k: Pick, ip: stri
 export async function holdHttp(s: Shop, p: { slug: string }, k: Pick, ip: string, o: { wait?: boolean; mutate?: (f: [string, string][]) => [string, string][]; origin?: string | null } = {}): Promise<{ sel: Resp; post: Resp | null; location: string; form: Form | null }> {
   const g = await openSelect(s, p, k, ip);
   if (!g.form) return { sel: g.r, post: null, location: "", form: null };
+  // PROBE-EDIT (มติ Y2): ฟอร์มถือของหน้าสินค้าต้องพก `t` ของรอบที่เลือก — ไม่มี ⇒ POST จะได้ INVALID(t) (บันทึกไว้ให้เห็นต้นเหตุ)
+  if (!fieldOf(g.form, "t")) console.log(`INFO  [hold-form] ${g.path}: ฟอร์มถือไม่มีช่อง t (มติ Y2 ⇒ INVALID)`);
   if (o.wait !== false) await sleep(FORM_WAIT);
   const fields = o.mutate ? o.mutate(g.form.fields) : g.form.fields;
   const post = await submit(g.path, fields, ip, { origin: o.origin });

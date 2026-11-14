@@ -1,4 +1,5 @@
 // probe-trips-w1.2-hunt-3 — HTTP: races (target 9) · same-time slots / stale slot ref (10) · dangerous booker input (11) · rate gates (13)
+// PROBE-EDIT (r2 · มติ Y1 Y5): ถือหมดเวลาด้วยการเลื่อนเวลาในฐาน (สินค้าถือ 1 นาทีถือไม่ได้แล้ว) · ถือถี่เกิน ⇒ e=HOLD_LIMITED + ข้อความแยกจากข้อความกลาง
 // PROBE-EDIT (r1 · มติ W2 W5 W7): ตัวอ้างรอบ `t` = ref ของ id รอบ (W5) แทน "0800-2" · ลบรอบหลังเปิดหน้า ⇒ คาด SLOT_CLOSED (W7) · เพดานถือต่อรอบ 3 + ส่งซ้ำไม่นับ (W2) ·
 //   R9c-back เป็น KNOWN (เซิร์ฟเวอร์ QC ไม่รันงานรายนาที trips.expireHolds — หนี้ที่รับในมติ)
 import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
@@ -11,8 +12,8 @@ try {
   const today = L.ymdBkk(new Date());
   const A = await L.mkShop("a", { contact: { phone: "076-333-777", line: "@w12h3", address: null } }); // PROBE-EDIT: ข้อความถือถี่เกินต้องมีทางติดต่อร้าน (W2)
   const PA = await L.mkProd(A, "A");
-  const PX = await L.mkProd(A, "X"); // 1-minute hold product
-  await L.setV(A.tenant, [{ key: "trips.sell.holdMinutes", scope: "PRODUCT", scopeId: PX.id, value: 1 }]);
+  // PROBE-EDIT (r2 · มติ Y1): สินค้าถือ 1 นาทีถือไม่ได้แล้ว (HOLD_TOO_SHORT) ⇒ ใช้เวลาถือปกติ แล้วเลื่อนเวลาหมดถือในฐานด้วยนาฬิกาเครื่อง (= นาฬิกาเซิร์ฟเวอร์ QC บนเครื่องเดียวกัน)
+  const PX = await L.mkProd(A, "X");
   const PO = await L.mkProd(A, "O", { opts: 3 });
   const dRaceC = await L.mkDep(PA, L.addDays(today, 20), { capacity: 40 });
   const dRace12 = await L.mkDep(PA, L.addDays(today, 21), { capacity: 12 });
@@ -72,9 +73,9 @@ try {
     const ipN = freshIp();
     const full = await L.holdHttp(A, PX, { d: L.addDays(today, 20), n: { ADULT: 1 } }, ipN);
     info("expire", `3/3 holds ok=${okN} · 4th: ${full.post ? kindOf(full.post) : kindOf(full.sel)} (expect SOLD_OUT)`);
-    await sleep(70_000);
+    for (const h of hs) { const bt = decodeURIComponent(h.location.split("/c/")[1]?.split("?")[0] ?? ""); if (bt) await L.q(`UPDATE "TripHold" SET "expiresAt" = $2 WHERE "basketId" IN (SELECT id FROM "SellBasket" WHERE "publicTokenHash" = $1) AND status = 'ACTIVE'`, [L.sha256hex(bt), new Date(Date.now() - 60_000)]); }
     const c = await req(hs[0]?.location ?? "/", { ip: ips[0] });
-    info("expire", `c/ after 70s: ${kindOf(c)} code=${L.errCode(c.body)}`);
+    info("expire", `c/ after hold time moved 1 min into the past: ${kindOf(c)} code=${L.errCode(c.body)}`);
     line("R9c-c", "c/ of expired hold ⇒ HOLD_EXPIRED", `code=${L.errCode(c.body)}`, L.errCode(c.body) === "HOLD_EXPIRED");
     const again = await L.holdHttp(A, PX, { d: L.addDays(today, 20), n: { ADULT: 3 } }, freshIp());
     const d = await L.depRow(dExp);
@@ -140,12 +141,20 @@ try {
       codes.push(lastLoc.includes("/c/") ? "OK" : /e=([A-Z_]+)/.exec(lastLoc)?.[1] ?? `${r.status}`);
     }
     const d2 = await L.depRow(dSlot);
-    line("SB-cap", "after the resends: 3 new holds ⇒ OK,OK,RATE_LIMITED (held 3) — 4th new basket on the same run/device limited", `${codes.join(",")} held=${d2?.held}`, codes.join(",") === "OK,OK,RATE_LIMITED" && d2?.held === 3);
+    // PROBE-EDIT (r2 · มติ Y5): ถังต่อรอบเต็มจริง ⇒ e=HOLD_LIMITED (แยกจาก RATE_LIMITED ของถังอ่าน/ด่านล่ม)
+    line("SB-cap", "after the resends: 3 new holds ⇒ OK,OK,HOLD_LIMITED (held 3) — 4th new basket on the same run/device limited", `${codes.join(",")} held=${d2?.held}`, codes.join(",") === "OK,OK,HOLD_LIMITED" && d2?.held === 3);
     if (lastLoc && !lastLoc.includes("/c/")) {
       const p = await req(lastLoc, { ip });
       // PROBE-EDIT (คัดแยก): "รอสักครู่" ที่เจอมาจากคลังข้อความของระบบอื่น (POS/จอลูกค้า/บัญชี) ใน <script> RSC payload ไม่ใช่ข้อความที่ลูกค้าเห็น ⇒ ตรวจเฉพาะข้อความนอก <script>
-      const txt = p.body.replace(/<script\b[\s\S]*?<\/script>/g, " ").replace(/<[^>]*>/g, " ");
-      line("SB-msg", "rate-limited hold page: 'try again later' + shop contact, not 'wait a moment'", `${kindOf(p)} contact=${txt.includes("076-333-777") || txt.includes("@w12h3")} later=${/ภายหลัง|later/i.test(txt)} wait=${/รอสักครู่/.test(txt)}`, (txt.includes("076-333-777") || txt.includes("@w12h3")) && /ภายหลัง|later/i.test(txt) && !/รอสักครู่/.test(txt));
+      const txt = L.visibleText(p.body);
+      const hlAttr = /data-hold-limited="true"/.test(p.body);
+      line("SB-msg", "e=HOLD_LIMITED page: the 'held too often' message (data-hold-limited) + shop contact, not 'wait a moment'", `${kindOf(p)} holdLimited=${hlAttr} contact=${txt.includes("076-333-777") || txt.includes("@w12h3")} later=${/ภายหลัง|later/i.test(txt)} wait=${/รอสักครู่/.test(txt)}`, hlAttr && (txt.includes("076-333-777") || txt.includes("@w12h3")) && /ภายหลัง|later/i.test(txt) && !/รอสักครู่/.test(txt));
+      // มติ Y5: e=RATE_LIMITED (ถังอ่าน/ด่านล่ม) บนหน้าเดียวกัน ⇒ ข้อความกลาง (ไม่ใช่ข้อความถือถี่เกิน) · ค่า e นอกรายการถูกทิ้ง
+      const pr = await req(lastLoc.replace("e=HOLD_LIMITED", "e=RATE_LIMITED"), { ip: freshIp() });
+      const tr = L.visibleText(pr.body);
+      line("SB-msg-neutral", "e=RATE_LIMITED ⇒ neutral 'cannot hold right now' message (data-hold-limited=false) + shop contact · different text from HOLD_LIMITED", `holdLimited=${/data-hold-limited="(\w+)"/.exec(pr.body)?.[1]} contact=${tr.includes("076-333-777") || tr.includes("@w12h3")} same=${tr === txt}`, /data-hold-limited="false"/.test(pr.body) && (tr.includes("076-333-777") || tr.includes("@w12h3")) && !/รอสักครู่/.test(tr) && tr !== txt);
+      const pj = await req(lastLoc.replace("e=HOLD_LIMITED", "e=HOLD_LIMITED%3Cx%3E"), { ip: freshIp() });
+      line("SB-msg-junk", "e outside the allow-list ⇒ no error box, value not reflected", `error=${testid(pj.body, "book-error")} reflect=${L.visibleText(pj.body).includes("<x>")}`, !testid(pj.body, "book-error") && !L.visibleText(pj.body).includes("<x>"));
     }
     const other = await L.holdHttp(A, PA, { d: L.addDays(today, 35), n: { ADULT: 1 } }, ip);
     line("SB-otherrun", "same device still holds another run", other.post ? kindOf(other.post) : kindOf(other.sel), other.location.includes("/c/"));
@@ -249,7 +258,7 @@ try {
     const rs = [];
     for (const p of pages) rs.push(p.form ? await submit(p.path, p.form.fields, ip) : null);
     const codes = rs.map((r) => (r ? (loc(r).includes("/c/") ? "OK" : /e=([A-Z_]+)/.exec(loc(r))?.[1] ?? `${r.status}`) : "noform"));
-    line("RL-hold-X8", "same device, 11 holds over 6 runs (≤2 per run) ⇒ 10 OK then RATE_LIMITED", codes.join(","), codes.filter((c) => c === "OK").length === 10 && codes[10] === "RATE_LIMITED");
+    line("RL-hold-X8", "same device, 11 holds over 6 runs (≤2 per run) ⇒ 10 OK then HOLD_LIMITED (ถังถือต่อเครื่องเต็มจริง · มติ Y5)", codes.join(","), codes.filter((c) => c === "OK").length === 10 && codes[10] === "HOLD_LIMITED");
     const other = await L.holdHttp(A, PA, { d: L.addDays(today, 35), n: { ADULT: 1 } }, freshIp());
     line("RL-hold-other", "another device still holds", other.post ? kindOf(other.post) : kindOf(other.sel), other.location.includes("/c/"));
   });

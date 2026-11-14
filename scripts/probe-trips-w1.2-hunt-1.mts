@@ -1,5 +1,6 @@
 // probe-trips-w1.2-hunt-1 — HTTP: flow smoke · Origin (target 1) · 404 shape (2) · headers (3) · sel tampering (4) · reservation token (5)
 // all requests over HTTP to the QC server (controller's new build) · rows under temp shops `trips-w12h-*` · removed in finally
+// PROBE-EDIT (r2 · มติ Y2): ช่อง bind ของฟอร์มถือหาจากค่า (boundKey) · ฟอร์มหน้าสินค้าพก t เอง
 // PROBE-EDIT (r1): ผลบวกปลอมของรอบก่อน — (1) Next สะท้อน slug/token ใน URL ลงหน้า 404 (RSC payload) ⇒ ไม่นับ slug เป็นการรั่ว · เทียบรูปหลังตัดค่าที่สะท้อนจาก URL ต่อชนิดเส้นทาง
 //   (2) S-control ใช้ตะกร้าที่ยืนยันแล้ว ⇒ DONE (307 → my/) เป็นผลที่ถูก · ตัวควบคุมใช้ตะกร้าที่ยังไม่ยืนยัน
 import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
@@ -41,7 +42,7 @@ try {
     line("flow-1", "HTTP no-JS: select → hold 303 → c/ 200 → confirm 303 → my/", `res=${resPath.slice(0, 50)}`, !!resPath);
     if (r.checkout) {
       const f = L.postForm(r.checkout.body);
-      info("flow", `c/ form fields: ${(f?.fields ?? []).map(([k, v]) => `${k}${k.startsWith("$ACTION_0:") ? `=${v.slice(0, 160)}` : ""}`).join(" | ")}`);
+      info("flow", `c/ form fields: ${(f?.fields ?? []).map(([k, v]) => `${k}${k.startsWith("$ACTION_") ? `=${v.slice(0, 160)}` : ""}`).join(" | ")}`);
     }
   });
 
@@ -133,14 +134,16 @@ try {
     const g = await L.openSelect(A, PA, pick, ip2);
     if (g.form) {
       await sleep(L.FORM_WAIT);
-      const bound = L.fieldOf(g.form, "$ACTION_0:1");
-      info("404", `hold form bound args (plain text in HTML): ${bound}`);
-      const fields = g.form.fields.map(([k, v]): [string, string] => (k === "$ACTION_0:1" ? [k, JSON.stringify([`${L.SLUG}nope-${L.STAMP}`, PA.slug])] : [k, v]));
+      // PROBE-EDIT (r2): ชื่อช่อง bind หาจากค่า ([slug ร้าน, slug สินค้า]) ไม่ใช่ "$ACTION_0:1" ตายตัว
+      const bk = L.boundKey(g.form, (a) => a[0] === A.slug && a[1] === PA.slug);
+      const bound = bk ? L.fieldOf(g.form, bk) : null;
+      info("404", `hold form bound args (plain text in HTML): ${bk || "ไม่พบช่อง bind"}=${bound}`);
+      const fields = g.form.fields.map(([k, v]): [string, string] => (k === bk ? [k, JSON.stringify([`${L.SLUG}nope-${L.STAMP}`, PA.slug])] : [k, v]));
       const r = await submit(g.path, fields, ip2);
-      line("NF-action", "hold action with unknown bound shop ⇒ HTTP 404 (notFound in action), no leak", `${kindOf(r)} len=${r.body.length}`, r.status === 404 && !r.body.includes(A.name));
-      const fields2 = g.form.fields.map(([k, v]): [string, string] => (k === "$ACTION_0:1" ? [k, JSON.stringify([B.slug, PA.slug])] : [k, v]));
+      line("NF-action", "hold action with unknown bound shop ⇒ HTTP 404 (notFound in action), no leak", `${kindOf(r)} len=${r.body.length} bound=${bk || "none"}`, !!bk && r.status === 404 && !r.body.includes(A.name));
+      const fields2 = g.form.fields.map(([k, v]): [string, string] => (k === bk ? [k, JSON.stringify([B.slug, PA.slug])] : [k, v]));
       const r2 = await submit(g.path, fields2, ip2);
-      line("NF-action-xshop", "hold action bound to shop B with A's product ⇒ 404, no hold in B", `${kindOf(r2)}`, r2.status === 404);
+      line("NF-action-xshop", "hold action bound to shop B with A's product ⇒ 404, no hold in B", `${kindOf(r2)}`, !!bk && r2.status === 404);
     }
   });
 

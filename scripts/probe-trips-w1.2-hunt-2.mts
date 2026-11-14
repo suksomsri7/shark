@@ -1,5 +1,6 @@
 // probe-trips-w1.2-hunt-2 — HTTP: money to the satang (target 7) · X29 off / SHOP_CONFIRMS (6) · slot closed / stop-sell / cutoff between hold and confirm (8) · staff booking on my/ (12)
 // QR byte check + staff booking call @/lib/modules/trips directly (src at run time — noted in the report)
+// PROBE-EDIT (r2 · มติ Y2 Y6 Y7): ช่อง bind หาจากค่า · ฟอร์มถือพก t · PENDING แสดงรหัสการจอง + ทางติดต่อร้าน (Y6)
 // PROBE-EDIT (r1 · มติ W2 W5): + ถือใหม่จากหน้าราคาเปลี่ยนปล่อยที่ถือเดิม (W2) · PRICE_CHANGED ยอดเท่าเดิม = "เงื่อนไขเปลี่ยน" (W5) · QR เฉพาะร้านเก็บเงิน (W5) · PENDING มีข้อความของตัวเอง (W5)
 import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
 const { line, known, info, guard, req, submit, kindOf, loc, testid, freshIp, sleep } = L;
@@ -152,12 +153,12 @@ try {
     const g = await L.openSelect(A, PA, { d: D20, n: { ADULT: 1 } }, ip2);
     if (!g.form) return;
     await sleep(L.FORM_WAIT);
-    const key = g.form.fields.find(([k]) => /^\$ACTION_\d+:1$/.test(k))?.[0] ?? "";
+    const key = L.boundKey(g.form, (a) => a[0] === A.slug && a[1] === PA.slug); // PROBE-EDIT (r2): ช่อง bind หาจากค่า
     const fields = g.form.fields.map(([k, v]): [string, string] => (k === key ? [k, JSON.stringify([A.slug, PSC.slug])] : [k, v]));
     const before = (await L.holdsOf(dSc)).length;
     const r = await submit(`/book/${A.slug}/t/${PSC.slug}?d=${D20}&n.ADULT=1`, fields, ip2);
     const after = (await L.holdsOf(dSc)).length;
-    line("SC-post", "direct POST hold on SHOP_CONFIRMS product ⇒ refused (e=UNAVAILABLE), no hold", `${kindOf(r)} holds +${after - before}`, after === before && !loc(r).includes("/c/"));
+    line("SC-post", "direct POST hold on SHOP_CONFIRMS product ⇒ refused (e=UNAVAILABLE), no hold", `${kindOf(r)} holds +${after - before} bound=${key || "none"}`, !!key && after === before && !loc(r).includes("/c/"));
   });
 
   // ═══ 8. slot closed · stop-sell WEB · cutoff passed between hold and confirm ═══
@@ -217,7 +218,7 @@ try {
       const cx = hx.location.includes("/c/") ? await req(hx.location, { ip: ipX }) : null;
       const fx = cx ? L.postForm(cx.body) : null;
       if (fx && again.location) {
-        const key = fx.fields.find(([k]) => /^\$ACTION_\d+:1$/.test(k))?.[0] ?? "";
+        const key = L.boundKey(fx, (a) => a.length === 3 && a[0] === A.slug); // PROBE-EDIT (r2): ช่อง bind หาจากค่า [ร้าน, ตะกร้า, sel]
         const bound = JSON.parse(L.fieldOf(fx, key) ?? "[]") as string[];
         const otherBasket = decodeURIComponent(again.location.split("/c/")[1]?.split("?")[0] ?? "");
         const d3 = await L.depRow(dRh);
@@ -252,6 +253,11 @@ try {
     await L.q(`UPDATE "TripBooking" SET status = 'PENDING', "collectMode" = 'SHOP' WHERE "publicTokenHash" = $1`, [L.sha256hex(tok)]);
     const pp = await req(r.resPath, { ip });
     line("PD-page", "PENDING booking ⇒ its own notice (book-res-pending), not 'online booking unavailable'", `${kindOf(pp)} pending=${testid(pp.body, "book-res-pending")} unavailable=${testid(pp.body, "book-res-unavailable")}`, testid(pp.body, "book-res-pending") && !testid(pp.body, "book-res-unavailable") && !testid(pp.body, "book-pay-qr"));
+    // PROBE-EDIT (r2 · มติ Y6): หน้า PENDING แสดงรหัสการจอง + ทางติดต่อร้าน (ชื่อร้าน) · ไม่สัญญาว่าร้านจะติดต่อ (ข้อความนอก <script>)
+    const code = (await L.bookingsOf(A.tenant)).find((b) => b.publicTokenHash === L.sha256hex(tok))?.code ?? "?";
+    const vt = L.visibleText(pp.body);
+    line("PD-code", "PENDING page shows the booking code (book-res-code) + shop contact · no promise that the shop will contact you", `code=${code} codeShown=${vt.includes(code)} resCode=${testid(pp.body, "book-res-code")} shop=${vt.includes(A.name)} promise=${/ร้านจะ\s*(ติดต่อ|โทร|แจ้ง)|shop will (contact|call)/i.test(vt)}`,
+      testid(pp.body, "book-res-code") && vt.includes(code) && vt.includes(A.name) && !/ร้านจะ\s*(ติดต่อ|โทร|แจ้ง)|shop will (contact|call)/i.test(vt));
   });
 
   // ═══ 12. staff booking opened on my/ ═══

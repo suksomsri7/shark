@@ -1666,10 +1666,44 @@ try {
     // — ยกเว้นเฉพาะการอ่านช่อง (`<ตัวแปร>.amountSatang` · `"amountSatang" in <ตัวแปร>`) ในไฟล์ของ W1.2 · ยังห้ามคิดเลขกับช่องเงินในจอ · vatSatang/payableSatang ห้ามทั้งจอ
     const W12_COMP = new Set(["BookSelect.tsx", "BookCheckout.tsx", "BookReservation.tsx", "BookFlowParts.tsx"]);
     const uiRest = [...compFiles.filter((f) => !W12_COMP.has(basename(f))), ...appFiles].map((f) => stripComments(read(f))).join("\n");
-    const uiW12 = compFiles.filter((f) => W12_COMP.has(basename(f))).map((f) => stripComments(read(f))).join("\n");
-    const w12Left = uiW12.replace(/\b\w+\??\.amountSatang\b/g, "VMFIELD").replace(/["']amountSatang["']\s+in\s+\w+/g, "VMFIELD");
-    ok(!/vatSatang|amountSatang|payableSatang/.test(uiRest) && !/vatSatang|amountSatang|payableSatang/.test(w12Left) && !/vatSatang|amountSatang|payableSatang/.test(stripComments(read(SVC))), "จอ/platform ต้องไม่แตะยอดภาษีของใบเสนอ (อยู่ในตัวโหลดของโมดูลที่เดียว)");
-    ok(!/VMFIELD\s*[-+*/%]\s*[\w(]|[\w)]\s*[-+*/%]\s*VMFIELD/.test(w12Left), "จอของ W1.2 คิดเลขกับช่องเงินของ VM (ห้าม · ยอดมาจาก platform)");
+    ok(!/vatSatang|amountSatang|payableSatang/.test(uiRest) && !/vatSatang|payableSatang/.test(compFiles.map((f) => stripComments(read(f))).join("\n")) && !/vatSatang|amountSatang|payableSatang/.test(stripComments(read(SVC))), "จอ/platform ต้องไม่แตะยอดภาษีของใบเสนอ (อยู่ในตัวโหลดของโมดูลที่เดียว)");
+    // ORACLE-EDIT XR-15 (มติผู้คุมหลังตรวจรอบ 2 W1.2 · ผู้เขียนข้อสอบแยกรอบ 2): คำแทนช่องเงิน (`…Satang`) ในคอมโพเนนต์ src/components/book/** ปรากฏได้เฉพาะ
+    //   (ก) อาร์กิวเมนต์ตัวเดียวของตัวจัดรูปเงิน `bookMoney(t, <ช่อง>[ ?? 0])` / `formatBaht(<ช่อง>)` (ข) เทียบกับ 0 / null (ค) ตรวจการมีช่อง `"…Satang" in x`
+    //   + รูปที่มติอื่นบังคับและไม่ใช่การคิดเลข: ประกาศชนิด (`x: number`) · รับ/ส่งค่าเดิมทั้งก้อน (destructure/shorthand) · `seen: String(<ช่อง>)` (R6 ยอดที่จอแสดงกลับไปในฟอร์ม)
+    //   · `<ช่อง> !== <ช่อง>` เทียบสองยอดว่าเท่ากัน (W5 แยกกรณียอดเท่าเดิม) — นอกนั้นทั้งหมด = ห้าม (ครอบ + - * / % += -= ลบหน้า Math.* .reduce( Number(...) ตามด้วยตัวดำเนินการ ฟังก์ชันอื่น)
+    const moneyIssues = (src: string): string[] => {
+      const out: string[] = [];
+      const TOK = /(?<![\w$.])(?:[A-Za-z_$][\w$]*\??\.)*[A-Za-z_$][\w$]*Satang\b/g;
+      const toks = [...src.matchAll(TOK)].map((m) => ({ i: m.index ?? 0, s: m[0] }));
+      const okPair = new Set<number>();
+      for (let k = 0; k + 1 < toks.length; k++) {
+        const a = toks[k], b = toks[k + 1];
+        if (!a || !b) continue;
+        const mid = src.slice(a.i + a.s.length, b.i), before = src.slice(Math.max(0, a.i - 30), a.i), after = src.slice(b.i + b.s.length, b.i + b.s.length + 20);
+        if (/^\s*(===|!==)\s*$/.test(mid) && /(^|[{(?:!,]|&&|\|\||[^=!<>+\-*/%]=)\s*$/.test(before) && /^\s*([?)&|}:,;]|$)/.test(after)) { okPair.add(a.i); okPair.add(b.i); }
+      }
+      for (const { i, s } of toks) {
+        if (okPair.has(i)) continue;
+        const before = src.slice(Math.max(0, i - 40), i), after = src.slice(i + s.length, i + s.length + 40);
+        const fmtArg = (/bookMoney\(\s*t\s*,\s*$/.test(before) || /formatBaht\(\s*$/.test(before)) && /^\s*(\?\?\s*0\s*)?[,)]/.test(after);
+        const cmp0 = /(^|[{(?:!,]|&&|\|\||[^=!<>+\-*/%]=)\s*$/.test(before) && /^\s*(===|!==|==|!=|>=|<=|>|<)\s*(0|null)\b\s*(?![-+*/%.])/.test(after);
+        const cmp0rev = /\b(0|null)\s*(===|!==|==|!=|>=|<=|>|<)\s*$/.test(before) && !/[-+*/%]\s*(0|null)\s*(===|!==|==|!=|>=|<=|>|<)\s*$/.test(before) && /^\s*([?)&|}:,;]|$)/.test(after);
+        const has = /["']$/.test(before) && /^["']\s+in\s/.test(after);
+        const decl = /(^|[{;,\n(])\s*$/.test(before) && /^\??\s*:\s*(number|null)(\s*\|\s*(number|null))?\s*[;,}\n)]/.test(after);
+        const shorthand = /(^|[{,\n])\s*$/.test(before) && /^\s*[,}\n]/.test(after) && !s.includes(".");
+        const seen = /\bseen\s*:\s*String\(\s*$/.test(before) && /^\s*\)/.test(after);
+        if (!(fmtArg || cmp0 || cmp0rev || has || decl || shorthand || seen)) out.push(`${s} ← «${before.slice(-20).replace(/\s+/g, " ")}|${after.slice(0, 20).replace(/\s+/g, " ")}»`);
+      }
+      return out;
+    };
+    // positive control: ตัวอย่างหลุดของผู้ตรวจ + รูปคิดเลขอื่น ต้องถูกจับทุกตัว · รูปที่อนุญาตต้องผ่าน
+    const leaks = ["sum += l.amountSatang;", "const s2 = s + (l.amountSatang);", "<span>{-(l.amountSatang)}</span>", "{Math.max(l.amountSatang, 0)}", "{bookMoney(t, a.totalSatang - b.paidSatang)}", "{bookMoney(t, s.totalSatang * 2)}",
+      "{Number(vm.totalSatang) / 100}", "{lines.reduce((a, l) => a + l.amountSatang, 0)}", "{l.amountSatang % 100 === 0 ? 1 : 2}", "x -= vm.paidSatang;", "{fmt(vm.totalSatang)}", "{vm.totalSatang + vm.paidSatang === 0 ? 1 : 2}"];
+    const allowed = ["{bookMoney(t, vm.totalSatang)}", "{bookMoney(t, p.unitSatang, true)}", "{l.amountSatang === 0 ? a : b}", "{s.passThroughSatang > 0 ? a : null}", "{pay && \"amountSatang\" in pay ? a : b}",
+      "{priced && heldTotalSatang !== totalSatang ? a : b}", "bookMoney(t, heldTotalSatang ?? 0)", "  heldTotalSatang: number | null;", "q={{ nonce, seen: String(s.totalSatang) }}", "function F({\n  heldTotalSatang,\n  totalSatang,\n}) {}"];
+    eq([leaks.map((x) => moneyIssues(x).length > 0), allowed.map((x) => moneyIssues(x))], [leaks.map(() => true), allowed.map(() => [])], "positive control ของตัวตรวจช่องเงิน");
+    const compIssues = compFiles.flatMap((f) => moneyIssues(stripComments(read(f))).map((x) => `${basename(f)}: ${x}`));
+    ok(compIssues.length === 0, `จอ (components/book) ใช้ช่องเงินนอกรูปที่อนุญาต (ห้ามคิดเลข · ยอดมาจาก platform): ${compIssues.slice(0, 4).join(" · ")}`);
   });
   await st("XR-16", "มติ X1 (ระดับฟังก์ชัน): ผลของ open* เมื่อไม่พบ/ถูกจำกัด ไม่มีชื่อร้าน · ชื่อสินค้า · slug · ตราสินค้า ใด ๆ (ชื่อหน้าและเนื้อหาจึงไม่มีทางได้ข้อมูลร้าน) · ผล ok มีชื่อร้าน/สินค้า (ตัวควบคุม) · ?a ของเครื่องที่ถูกจำกัด/คำขอไม่พบ ไม่ถูกส่งถึงตัวแก้ลิงก์", async () => {
     needX();
