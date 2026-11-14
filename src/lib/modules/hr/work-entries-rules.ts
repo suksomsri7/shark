@@ -232,6 +232,15 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
     if (use > 0) capped.set(id, use);
     f += Math.max(0, use);
   }
+  // HR LEAVE-3 ▸ R1 (F1): ใบลาครึ่งเช้า + ครึ่งบ่ายที่อนุมัติทั้งคู่ (ใบลาไม่ใช่ชั่วโมงของวันมีแค่คู่นี้) และช่องบันทึกส่วนวันลาของคู่นี้ครบ 1 วัน ⇒
+  //   ใบละครึ่งวัน (5 ส่วนสิบ) · ค่าจ้างตามใบของตัวเอง (paid/legacy ข้างล่าง) · วันอื่นที่มีหลายใบ = เหมือนเดิม ◂
+  const pairIds = dayLeaves.length === 2 && dayLeaves.some((l) => l.halfDay === "AM") && dayLeaves.some((l) => l.halfDay === "PM") ? dayLeaves.map((l) => l.id) : null;
+  if (pairIds && pairIds.reduce((a, id) => a + (fracBy.get(id) ?? 0), 0) >= 10) {
+    capped.clear();
+    for (const id of pairIds) capped.set(id, 5);
+    f = 10;
+  }
+  // ◂ HR LEAVE-3
   if (shiftSlots.length && !pending) {
     const expected = Math.min(10, dayLeaves.reduce((a, l) => a + fullOf(l), 0));
     if (expected !== f) review.add("LEAVE_MISMATCH");
