@@ -2178,12 +2178,11 @@ const PAGES: Record<string, PageSpec[]> = {
       note: "หน้าภาษีหัก ณ ที่จ่าย (เราหักผู้ขาย) — ตรง g11: subtabs การเงิน · h1+tile เครดิตปีนี้+ปุ่ม · StatusTabs · filter · ตาราง 9 คอลัมน์ · ผลรวมท้าย",
       expect: [
         "ภาษีหัก ณ ที่จ่ายที่หักไว้ (จ่ายผู้ขาย)",
-        "เครดิตภาษีถูกหักสะสมปีนี้",
+        // ORACLE-EDIT ACCOUNT-FIX B5/A5: ไทล์เครดิตถูกหักอยู่ฝั่ง "ถูกหัก" เท่านั้น · ปุ่ม ภ.ง.ด. ชี้หน้าแบบของงวด (นำส่ง/CSV) · แท็บ "e-WHT (เร็ว ๆ นี้)" เอาออก
         "พิมพ์รายงาน",
-        "ส่งออกรายการ ภ.ง.ด.3/53 (CSV ช่วยกรอกแบบ)", // ORACLE-EDIT ACC T2.10: ป้ายปุ่มตรงความจริง (ไฟล์ CSV ช่วยกรอก ไม่ใช่ไฟล์ยื่น) — ตัด ⬇
+        "นำส่ง / CSV",
         "ทั้งหมด",
         "ปกติ",
-        "e-WHT (เร็ว ๆ นี้)",
         "ยกเลิก",
         "วันที่ชำระ",
         "เอกสารลำดับที่",
@@ -2267,7 +2266,8 @@ const PAGES: Record<string, PageSpec[]> = {
       note: 'หน้าใบแจ้งหนี้ + โมดัล "ลิงก์ชำระเงิน / QR พร้อมเพย์" เปิดอยู่ (มีคำขอ QR นิ่งค้างอยู่ ⇒ เห็น QR ทันที)',
       expect: ["ลิงก์ชำระเงิน / QR พร้อมเพย์", "ยอดที่ต้องชำระ", "ลิงก์สำหรับส่งให้ลูกค้า", "คัดลอก", "เงินเข้าที่", "ใช้ได้ถึง"],
       onlyDevice: "desktop",
-      click: ['[data-testid="btn-pay-link"]'],
+      // ORACLE-EDIT ACCOUNT-FIX B1: ลิงก์ชำระเงินย้ายเข้าเมนู "ส่ง ▾" ⇒ เปิดเมนูก่อน
+      click: ['[data-testid="doc-send-menu-btn"]', '[data-testid="btn-pay-link"]'],
       waitAfterClick: 900,
       expectBeforeShot: [{ sel: '[data-testid="pay-link-status"]', kind: "text", equals: "รอชำระ" }],
       expandModalForShot: '[data-testid="pay-link-modal"]',
@@ -2829,8 +2829,8 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
     },
     "settings-connections": {
       // ชิปสถานะของการ์ด POS/HR — พิสูจน์ว่าหน้าอ่าน AccountSystemLink จริง ไม่ใช่ข้อความตายตัว
-      "conn-toggle-POS-autoPost": "on",
-      "conn-toggle-MEMBER-autoPost": "off",
+      // ORACLE-EDIT ACCOUNT-FIX A6: สวิตช์ "ลงบัญชีอัตโนมัติ" ไม่มีผล (การลงบัญชีขึ้นกับเชื่อม/ตัดเท่านั้น) ⇒ ไม่แสดงบนจอแล้ว
+      "conn-toggle-CHAT-inboxFromChat": "on",
     },
   },
   // WO 8.2 — ค่าบนหน้านโยบายต้องเป็นค่าที่ seed ตั้งไว้จริง (เฉลย policy)
@@ -3055,7 +3055,7 @@ const ASSERT_MAP: Record<string, Record<string, Record<string, number | string>>
   },
   // WO 5.4 — เครดิตภาษีปีนี้ + ไทล์เช็ค ต้องตรงเฉลย seed เป๊ะ (คีย์ whtV2/chequeV2 — SQL อิสระใน qc-acc-v2-wht-cheque.mts)
   "5.4": {
-    "wht-deducted": { "wht-credit-year-amount": bahtStr(E.whtV2?.creditWhtTotalSatang ?? 0) },
+    // ORACLE-EDIT ACCOUNT-FIX B5: ไทล์นี้อยู่ฝั่ง "ถูกหัก" เท่านั้น (wht-received)
     "wht-received": { "wht-credit-year-amount": bahtStr(E.whtV2?.creditWhtTotalSatang ?? 0) },
     "cheque-received": { "cheque-tile-pending": bahtStr(850_000), "cheque-tile-duesoon": "1" },
     "cheque-paid-menu": { "cheque-tile-pending": bahtStr(950_000) },
