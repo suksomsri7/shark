@@ -17,9 +17,9 @@
 | CAL2.4 แท็บเตือนฉัน | ✅ เลน c c63f1c8b7 | วันนี้/ต่อไป/เสร็จแล้ว · ปัดซ้ายลบ/ปัดขวาเสร็จ (SwipeRow + onDone) · ไม่มีภาพแบบ → render-remind[-dark] อย่างเดียว |
 | CAL2.5 การ์ดวันนี้ | ✅ เลน c 6979c0511 | TodayCard ใต้ช่องค้นหา · pair-home[-dark] |
 | CAL2.6 ปุ่ม + / AddCalSheet | ✅ เลน c f5c0e1ec7 | + โซนเลขา = แผ่นเลือก (สั่งงาน/เพิ่มเตือน) · โซนปฏิทิน = แผ่นเพิ่มตรง · pair-add[-dark] · ผูกกับ: จริง = ดีล CRM ของฉันเท่านั้น (ใบแจ้งหนี้/การ์ด ยังไม่มีเส้นค้นในแอป) |
-| CAL2.7 การ์ดเตือนในห้อง | ✅ เลน c (ดู git log) | ReminderCard + DRAFT ใช่ ตั้งเลย/แก้เวลา · RoomDetail.reminders · pair-room[-dark] |
-| CAL2.9 ตั้งค่าปฏิทิน | ✅ เลน c (ดู git log) | จอ 8 + จอ 9 (ดู/สลับ/ยกเลิกเชื่อม · ไม่มีปุ่มเชื่อม = CAL2.10) · pair-settings / pair-google |
-| CAL2.12 นัดชน | ✅ เลน c (ดู git log) | ConflictCard + cal-conflicts.ts (สำเนา §11 ฝั่งแอป · ต้องเทียบกับ CAL1.9) · render-tomorrow-full |
+| CAL2.7 การ์ดเตือนในห้อง | ✅ เลน c f4b107470 | ReminderCard + DRAFT ใช่ ตั้งเลย/แก้เวลา · RoomDetail.reminders · pair-room[-dark] |
+| CAL2.9 ตั้งค่าปฏิทิน | ✅ เลน c 144a48cbb | จอ 8 + จอ 9 (ดู/สลับ/ยกเลิกเชื่อม · ไม่มีปุ่มเชื่อม = CAL2.10) · pair-settings / pair-google |
+| CAL2.12 นัดชน | ✅ เลน c a08981278 | ConflictCard + cal-conflicts.ts (สำเนา §11 ฝั่งแอป · ต้องเทียบกับ CAL1.9) · render-tomorrow-full |
 
 ## จุดต่อ
 - เลน c (14 พ.ย.): จอทั้งหมดใช้ fixture ในตัวจนเส้น CAL1.6 ขึ้น · ถ่ายภาพคู่: `QC_PREPARE=1 bash scripts/iso.sh env QC_PREPARE=1 QC_NODE_MODULES=/root/qc-cal-nm/node_modules node apps/mobile/qc/shoot-cal.mjs --both` (นาฬิกาปัก 16 พ.ย. 2569 08:05 · ผล /root/qc/cal/ · /root/qc-cal-nm = node_modules ของ shark-in-th + expo-document-picker)
