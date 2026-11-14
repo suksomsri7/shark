@@ -12043,6 +12043,705 @@
    "note": "ป้าย untestedRd (ยังไม่ทดสอบกับ e-Filing จริง) — fix r1 F1"
   },
   {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "การ์ดสลิป 07c ทั้งใบ (หน้าสลิปของฉัน + หน้าสลิปฝั่งผู้ดูเงินเดือน)"
+  },
+  {
+   "page": "/app/sys/[id]/payroll/[runId]/slip/[employeeId]",
+   "testid": "hr-slip-state",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "รอบไม่ใช่ ISSUED หรือข้อมูลเสีย",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ป้ายสถานะ DRAFT/NOT_FINAL/WITHDRAWN (ผู้ดูเงินเดือน) หรือข้อมูลสลิปเสีย (SLIP_DATA)"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-status",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ชิปสถานะรอบ (อนุมัติแล้ว/จ่ายแล้ว)"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-net",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "การ์ดดำ รับสุทธิ ฿"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-bank",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "พนักงานมีเลขบัญชี ≥ 4 หลัก",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "บัญชีที่บันทึกไว้ •••4 ตัวท้าย · วันที่จ่าย (M3)"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-earnings",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "กลุ่มรายได้ (ค่าตามที่เก็บ)"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-deductions",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "กลุ่มรายการหัก (แดง มี −) รวมประกันสังคม + ภาษี"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-line-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "บรรทัดต่อรหัส — * = e|d-<รหัส> · จำนวนที่เก็บไว้เท่านั้น (วัน/ชม./รายการ)"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-earnings-total",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "รวมรับ (รายได้ก่อนรายการหัก — M4)"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-deductions-total",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "รวมหัก"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-pdf",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "สลิป ISSUED",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/me/hr/pay/<runId>/pdf"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ดาวน์โหลด PDF (<a download> → GET route)"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-cert",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/me/hr/pay#hr-salarycert-mine"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ไปการ์ดหนังสือรับรองเงินเดือน"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-history",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "มีสลิปรอบอื่น",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ย้อนหลัง (สลิปที่ออกแล้วรอบอื่นของฉัน)"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-hist-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "มีสลิปรอบอื่น",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/me/hr/pay/<runId>"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "แถวย้อนหลัง — * = runId"
+  },
+  {
+   "page": "/app/me/hr/pay/[runId]",
+   "testid": "hr-slip-note",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "หมายเหตุถ้อยคำกลาง (โปรดตรวจกับนักบัญชีของร้าน)"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-slip-years",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "สลิปแยกตามปีภาษี (ของฉัน)"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-slip-year-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "มีสลิปในปีนั้น",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ยอดรวมปีภาษี — * = ปี ค.ศ. (จำนวน · รับสุทธิ · เงินได้/ภาษี/ประกันสังคม)"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-salarycert-mine",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "การ์ดหนังสือรับรองเงินเดือนของฉัน"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-salarycert-purpose",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "ยังทำงานอยู่ · ไม่มีคำขอที่รอ",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "วัตถุประสงค์ (รายการคงที่ 5 ค่า)"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-salarycert-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "ยังทำงานอยู่ · ไม่มีคำขอที่รอ",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "requestSalaryCertAction"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ส่งคำขอหนังสือรับรอง"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-salarycert-mine-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "มีคำขอ/ใบ",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "แถวคำขอ/ใบของฉัน — * = certId"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-salarycert-dl-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "ใบ ISSUED ที่ยังไม่ยกเลิก",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/me/hr/salary-cert/<certId>"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ดาวน์โหลดหนังสือรับรองของฉัน (<a download>) — * = certId"
+  },
+  {
+   "page": "/app/me/hr/pay",
+   "testid": "hr-salarycert-cancel-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "คำขอ REQUESTED",
+   "roles": [
+    "staff",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "cancelSalaryCertRequestAction"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ยกเลิกคำขอที่รอ — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salarycert",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "ผู้ผ่านด่านหนังสือรับรอง (OWNER หรือ hr.payroll.read + hr.payroll.pay ทุกสาขา)",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ส่วนหนังสือรับรองเงินเดือนบนหน้าเงินเดือน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salarycert-req-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "มีคำขอ REQUESTED",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "แถวคำขอที่รอ — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salarycert-issue-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "มีคำขอ REQUESTED",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "issueSalaryCertAction"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ออกหนังสือรับรองจากคำขอ — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salarycert-reject-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "มีคำขอ REQUESTED",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "rejectSalaryCertAction"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ไม่อนุมัติคำขอ — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salarycert-new",
+   "kind": "form",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "issueSalaryCertAction"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ออกใหม่: เลือกพนักงาน + วัตถุประสงค์"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salarycert-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "มีใบ",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "แถวใบที่ออก/ไม่อนุมัติ — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salarycert-gdl-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "ใบ ISSUED ที่ยังไม่ยกเลิก",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/<id>/hr/payroll/salary-cert/<certId>"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ดาวน์โหลดหนังสือรับรอง (<a download>) — * = certId"
+  },
+  {
+   "page": "/app/sys/[id]/hr/payroll",
+   "testid": "hr-salarycert-void-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/payslip-ui.tsx",
+   "conditional": "เจ้าของร้าน · ใบ ISSUED ที่ยังไม่ยกเลิก",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "voidSalaryCertAction"
+   },
+   "wo": "H3.8",
+   "oracle": "qc-hr-h3.8",
+   "note": "ยกเลิกใบ (เหตุผล 1–200) — * = certId"
+  },
+  {
    "page": "/app/sys/[id]/hr/reports",
    "testid": "hr-report-picker",
    "kind": "display",

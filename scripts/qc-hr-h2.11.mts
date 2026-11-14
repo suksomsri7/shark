@@ -51,14 +51,16 @@ const DETAIL_KEYS: Record<string, string> = {
   ADJUSTMENT: "amountSatang,consent,kind,note,periodKey,source",
 };
 const IMPACT_KEYS: Record<string, string> = { LEAVE: "balance,duty,othersOff", OT: "measuredMin,weekWarn", CORRECTION: "deltaMin,monthClosed", ADJUSTMENT: "targetPeriod" };
-const COUNT_KEYS = "ADJUSTMENT,CORRECTION,LEAVE,OT,SWAP,decidable,total";
+const COUNT_KEYS = "ADJUSTMENT,CERT,CORRECTION,LEAVE,OT,SWAP,decidable,total"; // ORACLE-EDIT (H3.8): + CERT
 // ORACLE-EDIT (r2 items 3/4): + inboxPayrollPeriods (payroll.ts marked addition — one read for month-closed + stock target periods) ◂
 // ORACLE-EDIT (builder H2.11 · S1.2): + inboxSubjects (leave.ts, marked addition) — DTO ของ OT/แก้เวลา/สลับกะ ไม่มีสาขา/ผู้ยื่น/ของตัวเอง/สายอนุมัติ
 //   (ot.ts · swap.ts · service.ts · scope.ts แช่แข็ง) แต่ R4/R5 ต้องใช้ (unitId · own · FILED_BY_YOU · CHAIN) ⇒ ตัวอ่านข้อเท็จจริงแบบชุด 1 ตัว (คืนเฉพาะค่าเทียบผู้ดู)
+// ORACLE-EDIT (H3.8 · controller Q3 ruling — inbox type CERT, extend only): + "payslip" type module with its 4 names (certGateOf · listSalaryCertificates ·
+//   issueSalaryCertificate · rejectSalaryCertRequest) · COUNT_KEYS + CERT · item vocabulary + CERT ◂
 const ALLOWED_FROM_TYPES = new Set(
-  "inboxSubjects inboxPayrollPeriods pendingLeaves leaveListScopeOf decideLeaveAs leaveDetailsMany teamLeaveBalances otRequestList decideOtRequest listSwapsForManager decideSwap listCorrections decideCorrection listAdjustments decideAdjustmentAs stockConsentByAdjustment stockChargeTargetPeriod listRuns leaveDutyHintsMany loadAttendanceBoard attendanceNeedsRecompute otDaySpans lifecycleDue rosterLeaveOverlay hrScopeOf unitsForScope hrAccessOf".split(" "),
+  "certGateOf listSalaryCertificates issueSalaryCertificate rejectSalaryCertRequest inboxSubjects inboxPayrollPeriods pendingLeaves leaveListScopeOf decideLeaveAs leaveDetailsMany teamLeaveBalances otRequestList decideOtRequest listSwapsForManager decideSwap listCorrections decideCorrection listAdjustments decideAdjustmentAs stockConsentByAdjustment stockChargeTargetPeriod listRuns leaveDutyHintsMany loadAttendanceBoard attendanceNeedsRecompute otDaySpans lifecycleDue rosterLeaveOverlay hrScopeOf unitsForScope hrAccessOf".split(" "),
 );
-const TYPE_MODULES = new Set(["service", "leave", "ot", "swap", "correction", "payroll", "stock-charge", "availability", "judge", "lifecycle", "roster-board", "scope", "privacy"]);
+const TYPE_MODULES = new Set(["service", "leave", "ot", "swap", "correction", "payroll", "stock-charge", "availability", "judge", "lifecycle", "roster-board", "scope", "privacy", "payslip"]); // ORACLE-EDIT (H3.8): + payslip
 const UI_IDS = ["hr-overview", "hr-overview-today", "hr-overview-inbox", "hr-overview-recompute", "hr-overview-due", "hr-inbox", "hr-inbox-filter-type", "hr-inbox-filter-unit", "hr-inbox-filter-age", "hr-inbox-batch", "hr-inbox-batch-approve", "hr-inbox-batch-reject", "hr-inbox-reject-reason", "hr-inbox-result", "hr-inbox-more", "hr-inbox-quota"];
 const UI_DYN = ["count", "item", "check", "approve", "reject", "impact"].map((s) => `hr-inbox-${s}-*`);
 const FROZEN = [`${H}ot.ts`, `${H}swap.ts`, `${H}service.ts`, `${H}actions.ts`, `${H}payroll-actions.ts`, `${H}stock-charge.ts`, `${H}availability.ts`, `${H}judge.ts`, `${H}lifecycle.ts`, `${H}privacy.ts`, `${H}privacy-shared.ts`, `${H}scope.ts`, "src/lib/approval-effects.ts", "src/lib/outbox-consumers.ts"];
@@ -526,7 +528,7 @@ async function runDb(): Promise<void> {
   const all = Object.entries(lists).flatMap(([n, v]) => ((v?.items ?? []) as Any[]).map((i) => ({ n, i })));
   {
     const badKeys = all.filter(({ i }) => srt(Object.keys(i ?? {})) !== ITEM_KEYS).map(({ n, i }) => `${n}:${labelOf.get(i?.id)}`);
-    const badVocab = all.filter(({ i }) => !["LEAVE", "OT", "SWAP", "CORRECTION", "ADJUSTMENT"].includes(i?.type) || ![null, "CHAIN", "FILED_BY_YOU", "NO_RIGHT"].includes(i?.blocker) || (i?.canDecide === true) !== (i?.blocker === null));
+    const badVocab = all.filter(({ i }) => !["LEAVE", "OT", "SWAP", "CORRECTION", "ADJUSTMENT", "CERT"].includes(i?.type) /* ORACLE-EDIT (H3.8): + CERT */ || ![null, "CHAIN", "FILED_BY_YOU", "NO_RIGHT"].includes(i?.blocker) || (i?.canDecide === true) !== (i?.blocker === null));
     chk("S3.1", all.length > 0 && badKeys.length === 0 && badVocab.length === 0, ITEM_KEYS, all.length ? `bad=${badKeys.slice(0, 6).join(",") || "-"} vocab=${badVocab.length}` : "no items");
   }
   const itemOf = (n: string, k: string): Any => ((lists[n]?.items ?? []) as Any[]).find((i) => i?.id === ref(k).id);
@@ -585,7 +587,7 @@ async function runDb(): Promise<void> {
       const c = v?.counts;
       const its = (v?.items ?? []) as Any[];
       const by = (t: string) => its.filter((i) => i.type === t).length;
-      const okc = !!c && srt(Object.keys(c)) === COUNT_KEYS && c.total === its.length && ["LEAVE", "OT", "SWAP", "CORRECTION", "ADJUSTMENT"].every((t) => c[t] === by(t)) && c.decidable === its.filter((i) => i.canDecide).length;
+      const okc = !!c && srt(Object.keys(c)) === COUNT_KEYS && c.total === its.length && ["LEAVE", "OT", "SWAP", "CORRECTION", "ADJUSTMENT", "CERT"].every((t) => c[t] === by(t)) /* ORACLE-EDIT (H3.8): + CERT */ && c.decidable === its.filter((i) => i.canDecide).length;
       const ic = await call("inboxCounts", cA, vOf((W as Any)[n]));
       if (!okc || canon(ic.v) !== canon(c)) bad.push(n);
     }

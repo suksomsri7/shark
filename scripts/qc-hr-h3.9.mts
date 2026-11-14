@@ -255,6 +255,29 @@ function runStatic(): void {
   ck("S1.1", Object.fromEntries([F.rules, F.svc, F.ui, F.rh, F.page, F.route, F.mig].map((p) => [p.split("/").slice(-2).join("/"), existsSync(join(ROOT, p))])), "7 files");
   // S1.2
   {
+    // ORACLE-EDIT (H3.8 fix round 2 · controller ruling I · S1.2): line hunks of a model block vs its base block (LCS) · a hunk passes when one ADDED line carries a later mark ◂
+    const blockLaterMark = (l: string) =>
+      /HR-SET-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9");
+    const blockHunks = (a: string[], b: string[]) => {
+      const L = Array.from({ length: a.length + 1 }, () => new Array<number>(b.length + 1).fill(0));
+      for (let i = a.length - 1; i >= 0; i--) for (let j = b.length - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+      const hs: { added: string[]; removed: string[] }[] = [];
+      let i = 0, j = 0, open = false;
+      const cur = () => (open ? hs[hs.length - 1] : (hs.push({ added: [], removed: [] }), (open = true), hs[hs.length - 1]));
+      while (i < a.length || j < b.length) {
+        if (i < a.length && j < b.length && a[i] === b[j]) { i++; j++; open = false; }
+        else if (j < b.length && (i >= a.length || L[i][j + 1] >= L[i + 1][j])) cur().added.push(b[j++]);
+        else cur().removed.push(a[i++]);
+      }
+      return hs;
+    };
+    const blockSame = (cur: string, base: string | null, name: string) => {
+      const x = modelBlock(cur, name), y = modelBlock(base, name);
+      if (x === y) return true;
+      if (!IN_BASE || !x || !y) return false;
+      const hs = blockHunks(y.split("\n"), x.split("\n"));
+      return hs.length > 0 && hs.every((h) => h.added.some(blockLaterMark));
+    };
     const mig = rd(F.mig);
     const hrCur = rd(F.hrSchema);
     const hrBase = fileAt(BASE, F.hrSchema);
@@ -269,9 +292,11 @@ function runStatic(): void {
       chkBen: /CHECK[^;]*"otherBenefits"[^;]*500/.test(mig),
       additive: !/ALTER TABLE\s+"(HrEmployee|HrSalaryProfile|HrPayrollRun|HrPayrollItem)"|DROP |ALTER TYPE/.test(mig),
       model: !!blk && /nationality\s+String\?/.test(blk) && /otherBenefits\s+String\?/.test(blk) && /employeeId\s+String\s+@unique/.test(blk),
+      // ORACLE-EDIT (H3.8 fix round 2 · controller ruling I · S1.2): marker-aware (replaces the H3.8 merge-round IN_BASE guard) — once H3.9 is in the base, a frozen
+      //   block may differ from the base only by hunks whose ADDED lines carry a later ticket's mark ("HR H<n>.<n>" ≠ H3.9 · "HR-SET-<n>" · "ORACLE-EDIT … H<n>.<n>"); unmarked hunks fail ◂
       frozenBlocks:
-        !!hrBase && !!payBase && modelBlock(hrCur, "HrEmployee") === modelBlock(hrBase, "HrEmployee") && modelBlock(payCur, "HrSalaryProfile") === modelBlock(payBase, "HrSalaryProfile") &&
-        modelBlock(payCur, "HrPayrollRun") === modelBlock(payBase, "HrPayrollRun") && modelBlock(payCur, "HrPayrollItem") === modelBlock(payBase, "HrPayrollItem"),
+        !!hrBase && !!payBase && blockSame(hrCur, hrBase, "HrEmployee") && blockSame(payCur, payBase, "HrSalaryProfile") &&
+        blockSame(payCur, payBase, "HrPayrollRun") && blockSame(payCur, payBase, "HrPayrollItem"),
       scope: /\bHrEmployeeRegister:\s*sys\(\)/.test(rd(F.coreScope)),
       env: /model:\s*"HrEmployeeRegister"/.test(rd(F.env)),
     };

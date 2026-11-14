@@ -13,6 +13,7 @@ import { hasPin } from "./pin"; // HR H0.5 ▸ ◂
 import type { EmployeeBorrowingDto, EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
 // HR H1.1 ▸ ขอบเขตสาขา = ตัวกรองเพิ่มบนด่านเดิม (ไม่เคยขยายสิทธิ์ · ไม่ให้สิทธิ์เงินเดือน) ◂
 import { employeeInScope, hrScopeOf, unitNamesOf } from "./scope";
+import { finalizedOf, slipState } from "./payslip-rules"; // HR H3.8 ▸ สถานะสลิป (pure) ◂
 
 export type HrViewer = MembershipCtx & { userId: string };
 
@@ -141,6 +142,8 @@ export async function loadPayslipForViewer(ctx: Ctx, v: HrViewer, runId: string,
   const { run, item, employee } = await payslipData(ctx, runId, employeeId);
   if (!run || !item || !employee) return null;
   if (!payrollViewer && run.status !== "APPROVED" && run.status !== "PAID") return null;
+  // HR H3.8 ▸ R5: ตัวเองเห็นเฉพาะสลิปที่ออกแล้ว (รุ่น 2 ต้องปิดงาน stepsJson.finalized — ตัวเลือกเดียวกับ H3.6) · ลายเซ็น/คืน null เดิม ◂
+  if (!payrollViewer && slipState({ status: run.status, engineVersion: run.engineVersion, finalized: finalizedOf(run.stepsJson) }) !== "ISSUED") return null;
   return { run, item, employee };
 }
 

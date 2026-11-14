@@ -578,3 +578,35 @@ model HrTaxCertificate {
   @@index([employeeId])
   @@index([tenantId])
 }
+
+// HR H3.8 ▸ หนังสือรับรองเงินเดือน (migration 20270110000000_hr_payslip_salary_cert) — คำขอ → ออก (เลขที่ + เนื้อหาแช่แข็ง + sha) · ยกเลิก = voidedAt ·
+//   status ∈ REQUESTED/ISSUED/REJECTED/CANCELLED · purpose ∈ GENERAL/BANK/VISA/RENTAL/OTHER (CHECK ใน migration.sql) ·
+//   🔴 partial unique "HrSalaryCertificate_open_request_key" ("systemId","employeeId") WHERE "status" = 'REQUESTED' ประกาศเฉพาะใน migration.sql ◂
+model HrSalaryCertificate {
+  id            String     @id @default(cuid())
+  tenantId      String
+  systemId      String
+  employeeId    String
+  employee      HrEmployee @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  status        String
+  purpose       String
+  requestedById String?
+  requestedAt   DateTime?
+  decidedById   String?
+  decidedAt     DateTime?
+  docSeq        Int?
+  docNo         String?
+  contentJson   Json?
+  contentSha256 String?
+  issuedAt      DateTime?
+  issuedById    String?
+  voidedAt      DateTime?
+  voidedById    String?
+  voidReason    String?
+  downloads     Int        @default(0)
+  createdAt     DateTime   @default(now())
+
+  @@unique([systemId, docNo])
+  @@index([systemId, employeeId, status])
+  @@index([tenantId])
+}

@@ -142,6 +142,13 @@ const SPECS: Record<string, readonly PageSpec[]> = {
     { key: "inbox-batch-result", path: (i) => `/app/sys/${i.hr}/hr/requests?type=SWAP`, click: '[data-testid^="hr-inbox-approve-"]', users: ["owner"], why: "ผลการตัดสิน (hr-inbox-result) ต่อรายการ — ⚠ กดจริง: ถ่ายหลังภาพอื่น แล้ว seed ใหม่ (H2.11)" },
     { key: "inbox-refused", path: (i) => `/app/sys/${i.hr}/hr/requests`, users: ["staff", "member", "kiosk"], expect: { staff: 404, member: 404, kiosk: 404 }, why: "ไม่เห็นคำขอชนิดใดเลย = 404 (H2.11)" },
   ],
+  // HR H3.8 ▸ สลิป 07c (ของฉัน) · สลิปแยกปีภาษี + หนังสือรับรองของฉัน · สลิปฝั่งผู้ดูเงินเดือน · ส่วนหนังสือรับรองบนหน้าเงินเดือน — ภาพ 07c ที่ 390 = ภาพรับงาน (ผู้ควบคุมถ่าย · seed ไม่เปลี่ยน) ◂
+  "3.8": [
+    { key: "slip-self", path: (i) => `/app/me/hr/pay/${i.paidRun}`, users: ["staff", "member"], expect: { staff: 200, member: 404 }, why: "สลิปของฉัน 07c: รับสุทธิ · บัญชีที่บันทึกไว้ •••4 ตัวท้าย · รายได้/รายการหัก · PDF · หนังสือรับรอง · ย้อนหลัง (H3.8)" },
+    { key: "pay-history", path: () => "/app/me/hr/pay", users: ["staff"], expect: { staff: 200 }, why: "เงินเดือนของฉัน: สลิปแยกตามปีภาษี + การ์ดขอหนังสือรับรองเงินเดือน (H3.8)" },
+    { key: "slip-gate", path: (i) => `/app/sys/${i.hr}/payroll/${i.paidRun}/slip/${i.namfon}`, users: ["owner", "payroll", "manager"], expect: { owner: 200, payroll: 200, manager: 404 }, why: "สลิปฝั่งผู้ดูเงินเดือน: การ์ด 07c + ป้ายสถานะ + PDF + ประวัติรายปี (ผู้จัดการ = 404) (H3.8)" },
+    { key: "salarycert-gate", path: (i) => `/app/sys/${i.hr}/hr/payroll#hr-salarycert`, users: ["owner"], why: "ส่วนหนังสือรับรองเงินเดือน: คำขอ (ออก/ไม่อนุมัติ) · ออกใหม่ · ใบที่ออก (H3.8)" },
+  ],
   // HR H4.6 ▸ brief §5 (ไม่มี mockup — ตามฟอร์มรายการเพิ่ม/หักของหน้าเงินเดือน): ส่วน "หักค่าของ" #hr-stock · ฟอร์ม (ผู้ถือคีย์ยื่น) · รายการ/ยอด/หนังสือยินยอม/ธงเพดาน
   //   (ผู้ดูเงินเดือน) · seed ไม่มีรายการ ⇒ ว่าง เว้นแต่ผู้ควบคุมยื่นก่อนถ่าย · staff/member ไม่มีส่วนนี้ ◂
   "4.6": [
