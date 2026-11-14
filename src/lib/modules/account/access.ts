@@ -324,3 +324,16 @@ export async function listAuditActions(tenantId: string): Promise<{ action: stri
   });
   return rows.map((r) => ({ action: r.action, label: auditActionLabelTh(r.action) }));
 }
+
+/**
+ * ACC T4.4 (G7) ▸ log เข้า/ออกระบบ (AuditLog `auth.*` ระดับผู้ใช้ · tenantId null) ของผู้ใช้ชุดหนึ่ง —
+ *   ผู้เรียกส่งเฉพาะ userId ที่เป็นสมาชิกร้านแล้วเท่านั้น (รายงานการแก้ไขของบัญชี) ◂
+ */
+export async function listSignInLogs(userIds: readonly string[], createdAt: { gte: Date; lte: Date }) {
+  if (userIds.length === 0) return [];
+  return prisma.auditLog.findMany({
+    where: { action: likeStartsWith("auth."), actorId: { in: [...userIds] }, createdAt },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 5000,
+  });
+}

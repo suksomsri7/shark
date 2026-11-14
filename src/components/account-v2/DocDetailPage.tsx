@@ -400,7 +400,7 @@ function dangerMenuItemFor(data: DocDetailData, systemId: string, side: "revenue
     return {
       action: voidAction,
       fields: { systemId, docType: dt, id: data.id },
-      reasonField: { name: "reason", label: "เหตุผลการยกเลิก" },
+      reasonField: { name: "reason", label: "เหตุผลการยกเลิก", required: true }, // ACC T4.4 (G2) ◂
       triggerLabel: "ยกเลิกเอกสาร",
       title: "ยกเลิกเอกสารนี้?",
       detail: "เอกสารจะถูกยกเลิก แก้ไขไม่ได้ และต้องออกใหม่เท่านั้น",

@@ -237,7 +237,7 @@ export function GroupPaymentPanel({
   const confirmVoid = (batchKey: string) =>
     startTransition(async () => {
       setError("");
-      const res = await voidGroupPaymentAction(systemId, docId, batchKey, voidReason.trim() || "ยกเลิกการชำระ");
+      const res = await voidGroupPaymentAction(systemId, docId, batchKey, voidReason.trim()) /* ACC T4.4 ◂ */;
       if (!res.ok) {
         setError(res.reason);
         return;

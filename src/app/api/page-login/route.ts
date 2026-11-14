@@ -25,7 +25,7 @@ export async function POST(req: Request): Promise<Response> {
   // ทุกกรณีผิดตอบ err=pin เหมือนกัน (ไม่บอกว่า id มี/ไม่มี — กัน enumerate) ยกเว้นยังไม่ตั้ง PIN
   if (!res.ok) redirect(`${back}?err=${res.reason === "no_pin" ? "nopin" : "pin"}`);
 
-  await createSession(res.userId, { ip, userAgent: req.headers.get("user-agent") ?? undefined });
+  await createSession(res.userId, { ip, userAgent: req.headers.get("user-agent") ?? undefined, method: "page-pin" }); // ACC T4.4 ◂
   await setActiveTenant(res.tenantId);
   redirect(back);
 }

@@ -2,6 +2,7 @@ import type { User } from "@prisma/client";
 import { prisma } from "./db";
 import { sha256, randomToken, otpCode, safeEqualHex } from "./hash";
 import { sendEmail } from "./email";
+import { writeSignInLog } from "./signin-log"; // ACC T4.4 ◂
 import { env, previewOtp, reviewLogin } from "@/lib/env";
 
 const TTL_MS = 1000 * 60 * 10; // 10 นาที
@@ -77,16 +78,26 @@ export async function verifyOtp(rawEmail: string, code: string): Promise<VerifyR
   });
   if (!tok) return { ok: false, reason: "not_found" };
   if (tok.expiresAt < new Date()) return { ok: false, reason: "expired" };
-  if (tok.attempts >= MAX_ATTEMPTS) return { ok: false, reason: "locked" };
+  if (tok.attempts >= MAX_ATTEMPTS) {
+    await signInFailed(email, "locked"); // ACC T4.4 ◂
+    return { ok: false, reason: "locked" };
+  }
   if (!safeEqualHex(tok.tokenHash, sha256(`${email}:${code}`))) {
     await prisma.authToken.update({
       where: { id: tok.id },
       data: { attempts: { increment: 1 } },
     });
+    await signInFailed(email, "invalid"); // ACC T4.4 ◂
     return { ok: false, reason: "invalid" };
   }
   await prisma.authToken.update({ where: { id: tok.id }, data: { consumedAt: new Date() } });
   return { ok: true, user: await upsertUser(email) };
+}
+
+/** ACC T4.4 (G7) ▸ log เข้าระบบไม่สำเร็จ — ไม่เก็บอีเมลดิบ (targetId = sha256(อีเมล)) · ผู้ใช้ที่มีอยู่แล้ว = actorId ◂ */
+async function signInFailed(email: string, reason: string): Promise<void> {
+  const u = await prisma.user.findUnique({ where: { email }, select: { id: true } }).catch(() => null);
+  await writeSignInLog({ action: "auth.signin.failed", userId: u?.id ?? null, method: "otp", targetId: sha256(email), reason });
 }
 
 // ── consume magic link (เรียกจาก interstitial POST เท่านั้น) ───

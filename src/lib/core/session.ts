@@ -4,6 +4,7 @@ import type { User } from "@prisma/client";
 import { prisma } from "./db";
 import { sha256, randomToken } from "./hash";
 import { secureCookies } from "@/lib/env";
+import { writeSignInLog } from "./signin-log"; // ACC T4.4 ◂
 
 // dev (http://localhost) ใช้ชื่อธรรมดา; preview/prod (HTTPS) ใช้ __Host- (Secure+Path=/+no Domain)
 const COOKIE = secureCookies ? "__Host-shark_session" : "shark_session";
@@ -13,10 +14,11 @@ const ABS_MS = 1000 * 60 * 60 * 24 * 90; // 90 วัน absolute
 
 export async function createSession(
   userId: string,
-  meta: { ip?: string; userAgent?: string } = {},
+  meta: { ip?: string; userAgent?: string; method?: string } = {},
 ): Promise<void> {
   const token = randomToken();
   const now = Date.now();
+  await writeSignInLog({ action: "auth.signin", userId, method: meta.method ?? "unknown", ip: meta.ip, userAgent: meta.userAgent }); // ACC T4.4 ◂
   await prisma.session.create({
     data: {
       userId,
@@ -62,6 +64,9 @@ export async function destroySession(): Promise<void> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (token) {
+    // ACC T4.4 ▸ log ออกจากระบบ (ผู้ใช้ของ session นี้) ◂
+    const s = await prisma.session.findUnique({ where: { tokenHash: sha256(token) }, select: { userId: true, revokedAt: true } }).catch(() => null);
+    if (s && !s.revokedAt) await writeSignInLog({ action: "auth.signout", userId: s.userId });
     await prisma.session.updateMany({
       where: { tokenHash: sha256(token) },
       data: { revokedAt: new Date() },

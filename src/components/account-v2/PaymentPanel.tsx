@@ -142,7 +142,7 @@ export function PaymentPanel({
   const confirmVoid = (paymentId: string) =>
     startTransition(async () => {
       setError("");
-      const res = await voidPaymentV2Action(systemId, docId, paymentId, voidReason.trim() || "ยกเลิกการชำระ", ackCodes);
+      const res = await voidPaymentV2Action(systemId, docId, paymentId, voidReason.trim(), ackCodes) /* ACC T4.4 ▸ เหตุผลว่าง = service ตอบให้ระบุ (ไม่เติมเอง) ◂ */;
       if (!res.ok) {
         if (res.legal) {
           setLegal(res.legal.warnings);

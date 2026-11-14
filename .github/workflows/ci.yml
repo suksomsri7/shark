@@ -124,6 +124,11 @@ jobs:
         if: steps.guard.outputs.ready == 'true'
         run: pnpm exec prisma migrate deploy
 
+      # ACC T4.4: ฐาน CI = ฐานทดสอบ ⇒ ด่านสมุดรายวัน/AuditLog โหมด qc (ชุดทดสอบล้างฟิกซ์เจอร์ของตัวเองได้ · production คงโหมด strict ของ migration)
+      - name: ด่านสมุดรายวันโหมด qc (ฐานทดสอบเท่านั้น)
+        if: steps.guard.outputs.ready == 'true'
+        run: pnpm exec tsx scripts/acc-ledger-guard-mode.mts qc
+
       - name: drift check (DB ต้องตรงกับ schema)
         if: steps.guard.outputs.ready == 'true'
         run: pnpm drift

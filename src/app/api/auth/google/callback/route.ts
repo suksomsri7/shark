@@ -57,6 +57,6 @@ export async function GET(req: Request): Promise<Response> {
 
   let user = await prisma.user.findUnique({ where: { email } });
   if (!user) user = await prisma.user.create({ data: { email, name } });
-  await createSession(user.id, { userAgent: req.headers.get("user-agent") ?? "google-web" });
+  await createSession(user.id, { userAgent: req.headers.get("user-agent") ?? "google-web", method: "google" }); // ACC T4.4 ◂
   redirect("/app"); // ไม่มีกิจการ → requireTenant พาไป /onboarding เอง
 }

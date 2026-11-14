@@ -64,6 +64,6 @@ export async function GET(req: Request): Promise<Response> {
     const oneTime = await issueLoginCode(user.id);
     redirect(`sharkai://auth?code=${oneTime}`);
   }
-  await createSession(user.id, { userAgent: req.headers.get("user-agent") ?? "line-web" });
+  await createSession(user.id, { userAgent: req.headers.get("user-agent") ?? "line-web", method: "line" }); // ACC T4.4 ◂
   redirect("/app");
 }

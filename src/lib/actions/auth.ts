@@ -59,7 +59,7 @@ export async function verifyOtpAction(
     return { status: "error", message: map[res.reason] };
   }
   const meta = await clientMeta();
-  await createSession(res.user.id, meta);
+  await createSession(res.user.id, { ...meta, method: "otp" }); // ACC T4.4 ◂
   redirect(await landingPath(res.user.id));
 }
 
@@ -69,7 +69,7 @@ export async function confirmMagicLinkAction(formData: FormData): Promise<void> 
   const user = await consumeMagicLink(token);
   if (!user) redirect("/login?e=link");
   const meta = await clientMeta();
-  await createSession(user.id, meta);
+  await createSession(user.id, { ...meta, method: "magic-link" }); // ACC T4.4 ◂
   redirect(await landingPath(user.id));
 }
 

@@ -12,7 +12,7 @@ export async function GET(req: Request): Promise<Response> {
   const result = code ? await consumeWebviewCode(code) : null;
   if (!result) return NextResponse.redirect(new URL("/login?err=code", url.origin));
   // ออก cookie session เดิม (httpOnly) + ตั้งกิจการ active ให้ตรงกับตอนขอ code
-  await createSession(result.userId, { userAgent: req.headers.get("user-agent") ?? "webview" });
+  await createSession(result.userId, { userAgent: req.headers.get("user-agent") ?? "webview", method: "app-webview" }); // ACC T4.4 ◂
   await setActiveTenant(result.tenantId);
   return NextResponse.redirect(new URL("/app", url.origin));
 }

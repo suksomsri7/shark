@@ -27,6 +27,7 @@ import {
   type PaymentRequestView,
 } from "./payment-request";
 import { listFinanceAccounts } from "./finance";
+import { CANCEL_REASON_REQUIRED_TH } from "./cancel-reason"; // ACC T4.4 ◂
 
 // ─────────────────────────────────────────────────────────────
 // payment-actions.ts — server actions ของส่วน D (เงินมัดจำ) และ F (รับชำระ/บันทึกจ่าย) · WO 1.4
@@ -194,7 +195,8 @@ export async function voidPaymentV2Action(
   assertAccountCan(auth, "account.payment.void");
   const id = trim(docId, 40);
   const pid = trim(paymentId, 40);
-  const why = trim(reason, 200) || "ยกเลิกการชำระ";
+  const why = trim(reason, 200);
+  if (!why) return { ok: false, reason: CANCEL_REASON_REQUIRED_TH }; // ACC T4.4 (G2) ▸ เหตุผลต้องมี (เดิมเติม "ยกเลิกการชำระ" ให้เอง) ◂
   const res = await withScreenLegal(screenAck(ackCodes, userId), () => voidPaymentAny(tenantId, sys, id, pid, why));
   await writeAudit({
     tenantId,

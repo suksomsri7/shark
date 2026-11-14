@@ -35,4 +35,9 @@ const args =
     ? ["exec", "prisma", "migrate", "diff", "--from-config-datasource", "--to-schema", "prisma/schema", "--exit-code"]
     : ["exec", "prisma", "migrate", cmd];
 const r = spawnSync("pnpm", args, { stdio: "inherit", env: process.env });
+// ACC T4.4 ▸ ฐานทดสอบของเลนนี้: หลัง deploy สลับด่านสมุดรายวันเป็นโหมด qc (ชุดทดสอบล้างฟิกซ์เจอร์ได้) — production ไม่ผ่านสคริปต์นี้ ◂
+if (cmd === "deploy" && r.status === 0) {
+  const g = spawnSync("pnpm", ["exec", "tsx", "scripts/acc-ledger-guard-mode.mts", "qc"], { stdio: "inherit", env: process.env });
+  process.exit(g.status ?? 1);
+}
 process.exit(r.status ?? 1);

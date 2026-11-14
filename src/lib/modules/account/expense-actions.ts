@@ -36,6 +36,7 @@ import {
   type ExpLineInput,
   type VatPurchaseMode,
 } from "./expense";
+import { CANCEL_REASON_REQUIRED_TH } from "./cancel-reason"; // ACC T4.4 ◂
 
 // ─────────────────── helpers ───────────────────
 
@@ -223,14 +224,17 @@ export async function voidVendorPaymentAction(formData: FormData) {
   const paymentId = str(formData, "paymentId");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.void");
-  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => voidVendorPayment(tenantId, systemId, id, paymentId, str(formData, "reason")));
+  // ACC T4.4 (G2) ▸ เหตุผลการยกเลิกต้องมี · เก็บใน AuditLog ◂
+  const reason = str(formData, "reason").trim();
+  if (!reason) redirect(`${pathFor(systemId, docType)}/${id}?err=${encodeURIComponent(CANCEL_REASON_REQUIRED_TH)}`);
+  const res = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => voidVendorPayment(tenantId, systemId, id, paymentId, reason));
   await writeAudit({
     tenantId,
     actorId: userId,
     action: "account.payment.void",
     targetType: "AccountDocumentPayment",
     targetId: paymentId,
-    after: res.ok ? { ok: true } : { error: res.reason },
+    after: res.ok ? { ok: true, reason } : { error: res.reason, reason },
   });
   const path = `${pathFor(systemId, docType)}/${id}`;
   revalidatePath(path);
@@ -243,14 +247,17 @@ export async function voidExpenseDocAction(formData: FormData) {
   const id = str(formData, "id");
   const { auth, tenantId, userId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.doc.void");
-  const res = await voidExpenseDoc(tenantId, systemId, id, str(formData, "reason"));
+  // ACC T4.4 (G2) ▸ เหตุผลการยกเลิกต้องมี · เก็บใน AuditLog ◂
+  const reason = str(formData, "reason").trim();
+  if (!reason) redirect(`${pathFor(systemId, docType)}/${id}?err=${encodeURIComponent(CANCEL_REASON_REQUIRED_TH)}`);
+  const res = await voidExpenseDoc(tenantId, systemId, id, reason);
   await writeAudit({
     tenantId,
     actorId: userId,
     action: "account.doc.void",
     targetType: "AccountDocument",
     targetId: id,
-    after: res.ok ? { ok: true } : { error: res.reason },
+    after: res.ok ? { ok: true, reason } : { error: res.reason, reason },
   });
   const path = `${pathFor(systemId, docType)}/${id}`;
   revalidatePath(path);

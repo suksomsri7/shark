@@ -21,6 +21,7 @@ import {
 import { DOC_LABEL } from "./service";
 import { EXP_DOC_LABEL } from "./expense";
 import { chequeDraftProblem } from "./cheque";
+import { CANCEL_REASON_REQUIRED_TH } from "./cancel-reason"; // ACC T4.4 ◂
 
 // ─────────────────────────────────────────────────────────────
 // group-actions.ts — server actions ของ §5.2 K (ใบวางบิลรวม BN / ใบรวมจ่าย CP) · WO 1.7
@@ -216,7 +217,8 @@ export async function voidGroupPaymentAction(
   const { auth, tenantId, userId } = await loadAccountSystem(sys);
   assertAccountCan(auth, "account.payment.void");
   const id = trim(docId, 40);
-  const why = trim(reason, 200) || "ยกเลิกการชำระ";
+  const why = trim(reason, 200);
+  if (!why) return { ok: false, reason: CANCEL_REASON_REQUIRED_TH }; // ACC T4.4 (G2) ◂
   const res = await voidGroupPayment(tenantId, sys, id, trim(batchKey, 160), why);
   await writeAudit({
     tenantId,
