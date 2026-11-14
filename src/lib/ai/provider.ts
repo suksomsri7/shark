@@ -16,7 +16,10 @@ export type AiChatMessage = {
   toolCalls?: AiToolCall[];
   /** รูปแนบ (data URL หรือ http) — ส่งเข้าโมเดล vision inline ต่อข้อความนี้ (ไม่ persist ใน DB) */
   imageUrls?: string[];
+  /** 14 พ.ย. ▸ PDF แนบ (base64 ไม่มีขึ้นบรรทัด) — ใช้เฉพาะ user message · Anthropic = document block · OpenRouter = file part ◂ */
+  documents?: AiDocument[];
 };
+export type AiDocument = { name: string; mediaType: "application/pdf"; data: string };
 export type AiReply = {
   text: string;
   toolCalls?: AiToolCall[];
@@ -127,10 +130,12 @@ export class OpenRouterProvider implements AiProvider {
     const oaMessages = messages.map((m) => {
       // vision: มีรูปแนบ → content เป็น array [{type:"text"},{type:"image_url",image_url:{url}}]
       // (รูปแบบ OpenAI/OpenRouter · โมเดล anthropic รองรับ vision) — ใช้เฉพาะ user message
-      if (m.imageUrls && m.imageUrls.length > 0) {
+      // 14 พ.ย. ▸ PDF แนบ → part `file` (รูปแบบ OpenRouter: file_data เป็น data URL) ◂
+      if ((m.imageUrls && m.imageUrls.length > 0) || (m.documents && m.documents.length > 0)) {
         const parts: unknown[] = [];
         if (m.content) parts.push({ type: "text", text: m.content });
-        for (const url of m.imageUrls) parts.push({ type: "image_url", image_url: { url } });
+        for (const url of m.imageUrls ?? []) parts.push({ type: "image_url", image_url: { url } });
+        for (const d of m.documents ?? []) parts.push({ type: "file", file: { filename: d.name, file_data: `data:${d.mediaType};base64,${d.data}` } });
         return { role: m.role, content: parts };
       }
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
@@ -246,7 +251,7 @@ function anthropicImageBlock(url: string): AnthropicBlock {
 /**
  * ประกอบ request body ของ Messages API (pure · ทดสอบได้)
  * - system ทุกข้อความต่อกันด้วย "\n\n" → system block เดียวพร้อม cache_control ephemeral (ไม่มี = ไม่ใส่คีย์)
- * - user มีรูป ⇒ blocks [text?, image…] · assistant มี toolCalls ⇒ blocks [text? (ไม่ว่าง), tool_use…]
+ * - user มีรูป/PDF ⇒ blocks [document…, text?, image…] · assistant มี toolCalls ⇒ blocks [text? (ไม่ว่าง), tool_use…]
  * - role tool ⇒ tool_result ใน user message · ผลที่ติดกันรวมเป็น user message เดียว (กติกา API)
  * - tools ⇒ input_schema + cache_control บนตัวสุดท้าย (cache ทั้งชุด) · ไม่มี tools = ไม่ใส่คีย์
  * - ไม่ส่งพารามิเตอร์สุ่ม/thinking/tool_choice (API รุ่นปัจจุบันปฏิเสธ/ใช้ค่าปริยาย)
@@ -308,10 +313,12 @@ export function buildAnthropicRequestBody(
       continue;
     }
     // user
-    if (m.imageUrls && m.imageUrls.length > 0) {
+    if ((m.imageUrls && m.imageUrls.length > 0) || (m.documents && m.documents.length > 0)) {
+      // 14 พ.ย. ▸ PDF = document block (base64) วางก่อนข้อความ (แนวทางของ Messages API) · รูปคงลำดับเดิม (ข้อความ → รูป) ◂
       const blocks: AnthropicBlock[] = [];
+      for (const d of m.documents ?? []) blocks.push({ type: "document", source: { type: "base64", media_type: d.mediaType, data: d.data }, title: d.name });
       if (m.content) blocks.push({ type: "text", text: m.content });
-      for (const url of m.imageUrls) blocks.push(anthropicImageBlock(url));
+      for (const url of m.imageUrls ?? []) blocks.push(anthropicImageBlock(url));
       pushUser(blocks);
     } else {
       pushUser(m.content);

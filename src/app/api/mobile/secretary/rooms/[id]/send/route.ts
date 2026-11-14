@@ -2,10 +2,12 @@
 //   `sendRoomMessage` (ข้อความ USER + job ใน tx เดียว) → worker ของงานนี้ใน `after()` (R-K8 · S3a.1-S1 R-Z5: `jobIds:[jobId]` + deadline)
 //   ส่งซ้ำ clientMessageId เดิม (กุญแจต่อผู้ใช้ · id ห้ามมี ":" — R-Z11) = 200 `{duplicate:true, messageId, jobId}` ไม่สร้างซ้ำ ·
 //   ครั้งแรกยังไม่จบ = 409 `pending` (แอปรอแล้วลองใหม่ · เหมือน POST rooms)
+// 14 พ.ย. ▸ `attachments:[{id,name}]` (≤ 5 · แบบเดียวกับ POST rooms) — ไม่ผ่าน = 400 `attachment` · มีไฟล์แนบ ⇒ ไม่ใช้ R-Z32 (กันซ้ำด้วย clientMessageId) ◂
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import { runRoomJobs, sendRoomMessage } from "@/lib/ai/secretary/worker";
 import { recentDuplicateMessage } from "@/lib/ai/secretary/rooms";
+import { resolveAttachmentRefs, SEC_ATTACH_MAX_FILES } from "@/lib/ai/secretary/attachments";
 import { claimClientMessageId, claimFailed, fail, rememberFailed, gate, ID_MAX, idParam, notFound, ok, readBody, runAfter, thrown, withRateLimit, type RouteCtx, withErrors } from "../../../_shared";
 
 /** SEC S3a.1-S1 R-Z5: route นี้รัน worker (โมเดล) ใน `after()` — เพดานของแพลตฟอร์ม · worker หยุดหยิบงานที่ 240 วิ */
@@ -16,6 +18,7 @@ const Body = z
   .object({
     text: z.string().max(4000),
     clientMessageId: z.string().trim().min(1).max(ID_MAX).refine((v) => !v.includes(":"), "clientMessageId ห้ามมี :").optional(),
+    attachments: z.array(z.object({ id: z.string().trim().min(1).max(ID_MAX), name: z.string().max(200).optional() }).strict()).max(SEC_ATTACH_MAX_FILES).optional(),
   })
   .strict();
 
@@ -29,6 +32,8 @@ async function POST_(req: Request, ctx: RouteCtx) {
   if (!id) return notFound("ไม่พบห้องงานนี้");
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;
+  const atts = await resolveAttachmentRefs(a.c.tenantId, b.v.attachments);
+  if (!atts.ok) return fail(400, "attachment", atts.message);
   let claim: Awaited<ReturnType<typeof claimClientMessageId>> | null;
   try {
     claim = b.v.clientMessageId ? await claimClientMessageId(a.c.tenantId, id, a.c.userId, b.v.clientMessageId) : null;
@@ -47,7 +52,7 @@ async function POST_(req: Request, ctx: RouteCtx) {
     }
   }
   // SEC S3a.1-S2 ▸ R-Z32: ข้อความ USER เดียวกันในห้องนี้ภายใน 10 นาที (กุญแจถูกคืนหลังข้อความเกิด) = duplicate ของครั้งแรก ◂
-  if (claim?.first) {
+  if (claim?.first && atts.items.length === 0) {
     try {
       const dup = await recentDuplicateMessage(a.c.tenantId, id, a.c.userId, b.v.text);
       if (dup) {
@@ -61,7 +66,7 @@ async function POST_(req: Request, ctx: RouteCtx) {
   }
   let created = false;
   try {
-    const r = await sendRoomMessage(a.c.conv, id, { text: b.v.text });
+    const r = await sendRoomMessage(a.c.conv, id, { text: b.v.text, ...(atts.items.length ? { attachments: atts.items } : {}) });
     if (!r.ok) {
       try {
         await claim?.release();

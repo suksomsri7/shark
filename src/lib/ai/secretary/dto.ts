@@ -3,6 +3,7 @@
 // 🔴 X10 (COMMON §C.6 · docs/api/SECRETARY-API.md กติกาข้อ 5): ไม่มี token/คีย์/codeHash/เบอร์เต็มของคนอื่น/ต้นทุน/micro-dollar · ไม่มี payload ดิบของข้อเสนอ
 //    (ยกเว้น `input` ของ kind ที่แก้ก่อนอนุมัติได้ — ข้อมูลที่ผู้อนุมัติต้องเห็นเพื่อแก้) · เวลาเป็น ISO (Response.json แปลง Date เอง) · เงินเป็นสตางค์
 // route (`src/app/api/mobile/secretary/**`) และ server actions (`./server-actions.ts`) ใช้ตัวเดียวกัน — รูปเดียวทั้งแอปและเว็บ
+import { attachmentsOf } from "./attachments-shared";
 import type { AiActionLog, AiLesson, AiMessage, AiPlan, AiProposal, AiScheduledTask } from "@prisma/client";
 import { classOfKind } from "./kind-class";
 import { FREE_PACK } from "./pack";
@@ -83,6 +84,22 @@ export function roomDto(
 /** ข้อความในห้อง — ไม่มีจำนวน token (ต้นทุน) · ข้อความระบบ (`authorUserId = "system"`) ติดธง `system` */
 export function messageDto(m: Pick<AiMessage, "id" | "role" | "content" | "authorUserId" | "createdAt">) {
   return { id: m.id, role: m.role, content: m.content, authorUserId: m.authorUserId ?? null, system: m.authorUserId === "system", createdAt: m.createdAt };
+}
+
+/**
+ * 14 พ.ย. ▸ ข้อความของห้องเลขาสำหรับแอป = `messageDto` + `attachments` (ชื่อ · ชนิด · ขนาด · `url` = เส้นแอปที่ตรวจสิทธิ์ห้อง —
+ *   ไม่มี URL CDN เพราะไฟล์เป็นแบบส่วนตัว · แอปแนบ Bearer + x-tenant-id ตอนโหลดรูป) ◂
+ */
+export function roomMessageDto(m: Pick<AiMessage, "id" | "role" | "content" | "authorUserId" | "createdAt" | "attachments">, roomId: string) {
+  const atts = attachmentsOf(m.attachments).map((a) => ({
+    id: a.fileId,
+    name: a.name,
+    mimeType: a.mimeType,
+    size: a.size,
+    kind: a.kind,
+    url: `/api/mobile/secretary/rooms/${encodeURIComponent(roomId)}/files/${encodeURIComponent(a.fileId)}`,
+  }));
+  return { ...messageDto(m), ...(atts.length ? { attachments: atts } : {}) };
 }
 
 /** ข้อเสนอรออนุมัติ — ไม่มี payload ดิบ · `input` เฉพาะ kind ของทะเบียน op (แก้ก่อนอนุมัติได้ · Q9) · ชั้นความเสี่ยงจาก `classOfKind` */
