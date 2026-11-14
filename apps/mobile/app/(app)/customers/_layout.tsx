@@ -15,7 +15,7 @@ export default function CustomersLayout() {
   const { c } = useTheme();
   useSecretaryZone(); // R-S2.1b/e: secretary/me ต่อ user.id + badge ของโซน (focus/foreground)
   return (
-    <BusinessSwitcherHost root="/customers">
+    <BusinessSwitcherHost>
       <ThemedStatusBar />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg.base }, animation: "slide_from_right" }} />
     </BusinessSwitcherHost>

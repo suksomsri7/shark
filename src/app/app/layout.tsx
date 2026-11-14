@@ -1,6 +1,7 @@
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
-import { systemDef, SYSTEM_DEFS, FIXED_PAGE_SYSTEMS, isFixedPageSystem } from "@/lib/systems";
+import { SYSTEM_DEFS } from "@/lib/systems";
+import { navSystems } from "@/lib/core/nav-systems";
 import { AppShell } from "@/components/app-shell/AppShell";
 import { AppMain } from "@/components/app-shell/AppMain";
 import { NavProgress } from "@/components/app-shell/NavProgress";
@@ -16,10 +17,10 @@ import { toActor } from "@/lib/modules/kanban/access";
 // M1.3: เมนู 9 หมวดของระบบสมาชิก v2 (§2.2) มาจากทะเบียนเดียวกับแถบแท็บในโมดูล — ห้ามพิมพ์ลิสต์ซ้ำที่นี่
 import { memberNavChildren } from "@/lib/modules/member/nav";
 import { toMemberActor } from "@/lib/modules/member/access";
-// เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
-import { evaluate } from "@/lib/core/rbac";
 // CRM uiVersion gate ▸ ตัวอ่าน settings.crm แบบบริสุทธิ์ (แปลงค่าจาก JSON · ค่าเริ่มต้น uiVersion 1) ◂
 import { crmCan, parseCrmSettings } from "@/lib/modules/crm";
+// เมนูของระบบแชทซ่อนตามสิทธิ์จริง — ใช้ทะเบียน/ตัวช่วยชุดเดียวกับด่านของโมดูล (ไม่พิมพ์คีย์ซ้ำ)
+import { evaluate } from "@/lib/core/rbac";
 import { membershipOf, CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
 // POS P1.3 B2.1 ▸ ตัวอ่านธงหน้าขายใหม่ (บริสุทธิ์ · ตัวเดียวกับ register/page.tsx) ◂
 import { posRegisterV2On } from "@/lib/modules/pos/register-shared";
@@ -333,48 +334,22 @@ export default async function AppLayout({ children }: { children: React.ReactNod
     }
   };
 
-  // ระบบทั้งหมด (business + feature) เป็นรายการเดียว
-  const items: NavItem[] = [
-    ...units.map((u) => {
-      const children = childrenFor(u.type, u.slug, "business");
-      return {
-        key: `u-${u.id}`,
-        href: `/app/u/${u.slug}`,
-        icon: systemDef(u.type)?.icon ?? "•",
-        label: u.name,
-        ...(children ? { children } : {}),
-      };
-    }),
-    ...appSystems.map((s) => {
-      const children = childrenFor(s.type, s.id, "feature");
-      // ระบบแชท: คนไม่มีสิทธิ์อ่านแชท → ลิงก์ระบบพาไปหน้าเชื่อมช่องทางแทนกล่องแชท (ด่านจริง requireChatRead())
-      const chatHref = s.type === "CHAT" && !evaluate(membershipOf(auth), { module: "chat", action: CHAT_READ_ACTION })
-        ? `/app/sys/${s.id}/chat/channels`
-        : `/app/sys/${s.id}`;
-      return {
-        key: `s-${s.id}`,
-        href: chatHref,
-        icon: systemDef(s.type)?.icon ?? "•",
-        label: s.name,
-        ...(children ? { children } : {}),
-      };
-    }),
-    // ระบบ "หน้า fixed ระดับ tenant" ที่เปิดใช้แล้ว (เช่น คลังความรู้ /app/kb) — เข้าถึงตรงจากเมนู
-    // แตกฟังก์ชันย่อยเป็น accordion เหมือนระบบอื่น (ไม่ใช่ item แบนอีกต่อไป)
-    // ⚠️ ทุก href ต้องมี page.tsx จริง (KB: /app/kb, /app/kb/new — ตรวจโดย qc-nav-functions.mts)
-    ...SYSTEM_DEFS.filter(
-      (s) => s.status === "available" && isFixedPageSystem(s.code),
-    ).map((s) => {
-      const children = fixedPageChildrenFor(s.code);
-      return {
-        key: `fp-${s.code}`,
-        href: FIXED_PAGE_SYSTEMS[s.code],
-        icon: s.icon,
-        label: s.label,
-        ...(children ? { children } : {}),
-      };
-    }),
-  ];
+  // ระบบทั้งหมด (business + feature + หน้า fixed) เป็นรายการเดียว — ทะเบียนกลาง `navSystems` (ใช้ร่วมกับแอปมือถือ
+  //   GET /api/mobile/secretary/systems ⇒ ตาราง "เปิดระบบ" ในแอปเห็นชุด/ลำดับ/ป้ายเดียวกับเมนูนี้) · ที่นี่ต่อ children เอง
+  // ระบบแชท: คนไม่มีสิทธิ์อ่านแชท → ลิงก์ระบบพาไปหน้าเชื่อมช่องทางแทนกล่องแชท (ตัดสินใน navSystems · ด่านจริง requireChatRead())
+  // ระบบ "หน้า fixed ระดับ tenant" (เช่น คลังความรู้ /app/kb) แตกฟังก์ชันย่อยเป็น accordion เหมือนระบบอื่น
+  // ⚠️ ทุก href ต้องมี page.tsx จริง (KB: /app/kb, /app/kb/new — ตรวจโดย qc-nav-functions.mts)
+  const items: NavItem[] = navSystems(units, appSystems, {
+    chatRead: evaluate(membershipOf(auth), { module: "chat", action: CHAT_READ_ACTION }),
+  }).map((n) => {
+    const children =
+      n.kind === "unit"
+        ? childrenFor(n.code, n.ref, "business")
+        : n.kind === "system"
+          ? childrenFor(n.code, n.ref, "feature")
+          : fixedPageChildrenFor(n.code);
+    return { key: n.key, href: n.href, icon: n.icon, label: n.label, ...(children ? { children } : {}) };
+  });
   const soon: SoonItem[] = SYSTEM_DEFS.filter((s) => s.status === "coming_soon").map((s) => ({
     code: s.code,
     icon: s.icon,

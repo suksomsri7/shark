@@ -61,7 +61,7 @@
    "testID": "sec-switch-tenant-<tenantId>",
    "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
    "screen": "ชีตสลับกิจการ",
-   "action": "switchTenant (auth-context 1.0) แล้วปิดชีต",
+   "action": "switchTenant (auth-context 1.0) → ปิดชีต → dismissAll → /secretary",
    "wo": "S2.1"
   },
   {
@@ -72,11 +72,39 @@
    "wo": "S2.1"
   },
   {
-   "testID": "sec-switch-my-secretary",
+   "testID": "sec-sheet-settings",
    "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
-   "screen": "ชีตสลับกิจการ",
-   "action": "router.push /secretary/settings/secretary",
-   "wo": "S2.1"
+   "screen": "ชีตกิจการ (bizsheet4) เปิดระบบ",
+   "action": "router.push /business/<tenantId>/settings (OWNER/MANAGER)",
+   "wo": "14 พ.ย."
+  },
+  {
+   "testID": "sec-sheet-switch",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตกิจการ (bizsheet4) เปิดระบบ",
+   "action": "สลับมุมมองเป็น เปลี่ยนกิจการ",
+   "wo": "14 พ.ย."
+  },
+  {
+   "testID": "sec-sheet-sys-<key>",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตกิจการ (bizsheet4) เปิดระบบ",
+   "action": "ปิดชีต → router.navigate / ?open=<href>&t=<nonce> (WebView หน้าระบบ) · key home = /app",
+   "wo": "14 พ.ย."
+  },
+  {
+   "testID": "sec-sheet-retry",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตกิจการ (bizsheet4) เปิดระบบ",
+   "action": "โหลด secretary/systems ใหม่",
+   "wo": "14 พ.ย."
+  },
+  {
+   "testID": "sec-sheet-back",
+   "file": "apps/mobile/src/components/secretary/BusinessSwitcherSheet.tsx",
+   "screen": "ชีตกิจการ (bizsheet4) เปลี่ยนกิจการ",
+   "action": "กลับมุมมอง เปิดระบบ",
+   "wo": "14 พ.ย."
   },
   {
    "testID": "sec-suggest-s1|s2|s3",

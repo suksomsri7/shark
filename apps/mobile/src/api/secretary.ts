@@ -63,6 +63,8 @@ const PATH = {
   // ส่วน "อันตราย" (14 พ.ย. · แบบ bizdelete) — OWNER เท่านั้น
   "secretary/business/deletion": "/api/mobile/secretary/business/deletion",
   "secretary/business/export": "/api/mobile/secretary/business/export",
+  // 14 พ.ย. (bizsheet4 ขั้น 2): ระบบของกิจการ active สำหรับตาราง "เปิดระบบ" ในชีตกิจการ — ทะเบียนเดียวกับเมนูเว็บ (navSystems)
+  "secretary/systems": "/api/mobile/secretary/systems",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -150,6 +152,9 @@ export type InboxCount = { total: number; canApprove: number };
 /** GET secretary/badges (S1.14c) — approvals = รออนุมัติของกิจการนี้ · customers = ห้องลูกค้าที่ยังไม่อ่าน · team = คำเชิญ + ขอให้ช่วย + เรื่องช่วยเหลือ */
 export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number }; total: number };
 
+/** GET secretary/systems — 1 แถว = 1 ระบบในเมนูเว็บ (ลำดับเดียวกัน) · href ขึ้นต้น /app (เปิดใน WebView หน้าระบบ) · badge = แชทลูกค้าที่ยังไม่อ่าน (ระบบแชท) */
+export type NavSystemRow = { key: string; kind: "unit" | "system" | "fixed"; code: string; href: string; label: string; badge: number };
+
 /** ชื่อเลขาปริยายก่อนโหลด/เมื่อโหลดไม่ได้ (ค่าเริ่มต้นของระบบ · C1) */
 export const DEFAULT_SECRETARY_NAME = "Shark";
 
@@ -182,6 +187,7 @@ type GetMap = {
   "secretary/notify": { prefs?: Partial<Record<string, string>>; kinds?: string[]; modes?: string[] };
   "secretary/account/delete/preview": DeletePreview;
   "secretary/business": BusinessProfileRes;
+  "secretary/systems": { items?: NavSystemRow[] };
 };
 type PostMap = {
   // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)

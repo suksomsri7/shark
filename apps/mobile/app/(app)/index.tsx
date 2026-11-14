@@ -1,7 +1,10 @@
 // หน้าแรกหลัง login = dashboard ของกิจการ (WebView /app) — เปิดด้วย one-time code (60 วิ ใช้ครั้งเดียว)
 // ⚠️ ห้ามใส่ Bearer/token ใน URL หรือ header ของ WebView เด็ดขาด — ส่งแค่ ?code=
 // 14 พ.ย. (เจ้าของสั่ง): แถบบน native แบบหน้าเลขา (SecTopBar zone="systems") อยู่เหนือ WebView · UA เพิ่ม "SharkTopBar/1" ⇒ เว็บไม่วาดแถบบนของตัวเอง
-//   ปุ่มระบบ (ทึบ) แตะซ้ำ = เปิดเมนูระบบของเว็บ (CustomEvent app:drawer-open) · ไม่มีปุ่มลอย "เลขา AI" แล้ว (เข้าเลขาจากแถบบน)
+//   ไม่มีปุ่มลอย "เลขา AI" แล้ว (เข้าเลขาจากแถบบน)
+// 14 พ.ย. รอบ 3 (bizsheet4): ไม่มีปุ่มระบบบนแถบบนแล้ว (zone="systems" = ไม่มีปุ่มโซนใดทึบ) · เว็บปิดท่าปัดขอบซ้ายเมื่อมี SharkTopBar
+//   เข้าระบบจากชีตกิจการ (แตะไอคอนกิจการ → ตาราง "เปิดระบบ") ⇒ navigate("/", { open: <href>, t }) → WebView ไปพาธนั้น (OPEN_PATH_RE รับ /app เปล่าด้วย = หน้าหลัก)
+//   สลับกิจการจากชีต ⇒ ไปหน้าเลขา /secretary (WebView ยัง reload ตาม activeTenantId เมื่อกลับมา)
 //   แอปเปิดครั้งแรกไปหน้าเลขา (/secretary) ไม่ใช่จอนี้ (app/_layout.tsx) · SafeAreaView กันชนติ่งจอ
 // UA ต่อท้าย "SharkApp/1" → ฝั่งเว็บซ่อน orb ของตัวเอง (กัน orb ซ้อน) · ปุ่ม orb AI ลอยมุมล่างขวา → /sessions
 // เปลี่ยนกิจการ (activeTenantId) → ขอ code ใหม่ reload อัตโนมัติ
@@ -21,7 +24,8 @@ import { refreshZoneBadges, useSecretaryZone } from "@/src/api/secretary";
 
 // M3.11 — จอ native อื่น (สรุปสมาชิก: ใช้สิทธิ์/ให้แต้ม/ออก voucher) ขอให้เปิดหน้าเว็บของร้านใน WebView นี้
 // ด้วย `?open=/app/...&t=<nonce>` · รับเฉพาะพาธใต้ /app ของโดเมนเดียวกัน (กันพาไปเว็บอื่นด้วยพารามิเตอร์)
-const OPEN_PATH_RE = /^\/app\/[A-Za-z0-9_\-/]*(\?[A-Za-z0-9_=&\-]*)?$/;
+// 14 พ.ย.: รับ "/app" เปล่า (ช่อง "หน้าหลัก" ของชีตกิจการ) + ตัว %XX (slug ที่ encodeURI แล้ว) · ยังห้าม "." (กัน ..) · ":" (กัน scheme) — เปิดได้แค่โดเมนเดียวกันเสมอ
+const OPEN_PATH_RE = /^\/app(\/[A-Za-z0-9_\-%/]*)?(\?[A-Za-z0-9_=&\-%]*)?$/;
 
 export default function DashboardScreen() {
   useSecretaryZone(); // secretary/me + badge ของแถบบน (focus/foreground)
@@ -144,15 +148,11 @@ export default function DashboardScreen() {
   );
 
   return (
-    <BusinessSwitcherHost root="/">
+    <BusinessSwitcherHost>
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       {hideOrb ? null : (
         <View style={styles.bar}>
-          <SecTopBar
-            zone="systems"
-            center="none"
-            onSystems={() => webRef.current?.injectJavaScript("window.dispatchEvent(new CustomEvent('app:drawer-open'));true;")}
-          />
+          <SecTopBar zone="systems" center="none" />
         </View>
       )}
       <View style={styles.flex}>
