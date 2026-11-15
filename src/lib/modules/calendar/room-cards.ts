@@ -5,12 +5,15 @@
 import { tenantDb } from "@/lib/core/db";
 import type { CalActor } from "./items";
 
-export type CalRoomCardDto = { id: string; kind: "AGENDA" | "LIST"; fromDay: string; toDay: string; createdAt: string };
+// Q8 ▸ "TRAVEL" = การ์ดเผื่อเวลาเดินทางของวันนั้น (สัญญา §16.5 · แอปวาดด้วย GET calendar/travel?day= ของผู้ดู) ◂
+export type CalRoomCardKind = "AGENDA" | "LIST" | "TRAVEL";
+export type CalRoomCardDto = { id: string; kind: CalRoomCardKind; fromDay: string; toDay: string; createdAt: string };
+const kindOf = (k: string): CalRoomCardKind => (k === "LIST" || k === "TRAVEL" ? k : "AGENDA");
 export const ROOM_CARD_MAX = 100;
 
-export async function addRoomCard(actor: CalActor, roomId: string, card: { kind: "AGENDA" | "LIST"; fromDay: string; toDay: string }): Promise<CalRoomCardDto> {
+export async function addRoomCard(actor: CalActor, roomId: string, card: { kind: CalRoomCardKind; fromDay: string; toDay: string }): Promise<CalRoomCardDto> {
   const r = await tenantDb({ tenantId: actor.tenantId }).calRoomCard.create({ data: { userId: actor.userId, tenantId: actor.tenantId, roomId, ...card } });
-  return { id: r.id, kind: r.kind === "LIST" ? "LIST" : "AGENDA", fromDay: r.fromDay, toDay: r.toDay, createdAt: r.createdAt.toISOString() };
+  return { id: r.id, kind: kindOf(r.kind), fromDay: r.fromDay, toDay: r.toDay, createdAt: r.createdAt.toISOString() };
 }
 
 /** การ์ดของผู้ดูในห้องนี้ (ผู้อื่นในห้องไม่ได้) */
@@ -20,5 +23,5 @@ export async function roomCards(actor: CalActor, roomId: string): Promise<CalRoo
     orderBy: [{ createdAt: "asc" }, { id: "asc" }],
     take: ROOM_CARD_MAX,
   });
-  return rows.map((r) => ({ id: r.id, kind: r.kind === "LIST" ? "LIST" : "AGENDA", fromDay: r.fromDay, toDay: r.toDay, createdAt: r.createdAt.toISOString() }));
+  return rows.map((r) => ({ id: r.id, kind: kindOf(r.kind), fromDay: r.fromDay, toDay: r.toDay, createdAt: r.createdAt.toISOString() }));
 }

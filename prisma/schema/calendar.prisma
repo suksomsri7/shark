@@ -169,3 +169,30 @@ model CalRoomCard {
   @@index([userId, roomId])
   @@index([tenantId])
 }
+
+// Q8 เผื่อเวลาเดินทาง (สัญญา §16 · migration calendar_q8) — ข้อมูลส่วนตัวต่อ (ผู้ใช้, ร้าน) · ไม่มี FK ไป User
+model CalTravelRule {
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String
+  typeKey   String // event | booking | crm | google:<calendarId> | device:<calendarId>
+  minutes   Int // 0..240 · 0 = ไม่ต้องเผื่อ
+  label     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, tenantId, typeKey])
+  @@index([tenantId])
+}
+
+model CalTravelDismissal {
+  id          String   @id @default(cuid())
+  userId      String
+  tenantId    String
+  pairKey     String
+  dismissedAt DateTime @default(now())
+
+  @@unique([userId, tenantId, pairKey])
+  @@index([tenantId])
+  @@index([dismissedAt])
+}

@@ -229,6 +229,9 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   CalRoomCard: tenant, // calendar_b ▸ การ์ด agenda ในห้องเลขา (ส่วนตัว · review b B1) ◂
   CalLink: g("ปฏิทิน Google ของ \"คน\" (1 แถว/user/provider) ใช้ข้ามทุกร้าน — ส่วนตัว M4"),
   CalExternalEvent: g("แคชอีเวนต์ Google ของคน — ผูก CalLink ไม่ผูกร้าน"),
+  // Q8 ▸ เผื่อเวลาเดินทาง (สัญญา 32 §16) — ส่วนตัวต่อ (ผู้ใช้, ร้าน) · export ร้านยกเว้น (PERSONAL_MODELS) ◂
+  CalTravelRule: tenant,
+  CalTravelDismissal: tenant,
   // Observability (WO-0041) — logger กลางเขียน · backoffice อ่าน (ข้ามร้านโดยเจตนา)
   OpsEvent: { axis: "platform", why: "ops log ข้ามร้าน — เขียนผ่าน core/ops.ts อ่านทาง backoffice" },
   OpsAlertState: { axis: "platform", why: "สถานะ throttle alert — ไม่ใช่ข้อมูลร้าน" },

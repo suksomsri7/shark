@@ -260,6 +260,26 @@ const SAY_SET = "ตอบสั้น ๆ ว่า \"ตั้งให้แ�
 const SAY_DRAFT = "ขอให้ผู้ใช้กด \"ใช่ ตั้งเลย\" บนการ์ดด้านล่างเพื่อยืนยันเตือนประจำ (หรือตอบว่าใช่ = calendar_update confirm=true) — ห้ามทวนรายละเอียด · ไม่ยืนยันใน 24 ชม. = ยกเลิกเอง";
 const SAY_UPDATED = "ตอบสั้น ๆ ว่า \"แก้ให้แล้ว\" — การ์ดในห้องอัปเดตเอง · ห้ามทวนรายละเอียด";
 
+// Q8 ▸ เผื่อเวลาเดินทาง (สัญญา §16.5): มีข้อเสนอในวันนั้น ⇒ การ์ด TRAVEL ในห้อง (วันอย่างเดียว · ไม่มีชื่อ/เวลาเข้าโมเดล)
+//   🔴 เครื่องมือ AI ไม่มีทางยืนยัน/ตั้งเตือนออกเดินทาง — ผู้ใช้กดบนการ์ดเท่านั้น
+export const SAY_TRAVEL = "บอกผู้ใช้สั้น ๆ ว่า \"นัดนี้ใกล้นัดอื่น ดูการ์ดด้านล่าง\" (ให้ผู้ใช้เลือกเองว่าจะเผื่อเวลาเดินทางไหม) — ห้ามตั้งเตือนออกเดินทางเองหรือตอบยืนยันแทนผู้ใช้ · ห้ามทวนชื่อ/เวลา";
+/** วันที่มีข้อเสนอ (นับเฉพาะคู่ที่มี itemId นี้ เมื่อส่ง) → การ์ด TRAVEL ต่อวัน · คืน { day, count }[] */
+export async function travelCards(actor: CalActorT, roomId: string | null, days: string[], onlyItemId?: string): Promise<{ day: string; count: number }[]> {
+  const { travelForDay } = await import("@/lib/modules/calendar/travel-svc");
+  const out: { day: string; count: number }[] = [];
+  for (const day of days) {
+    const r = await travelForDay(actor, day);
+    const n = r.suggestions.filter((s) => !onlyItemId || s.nextId.includes(onlyItemId) || s.prevId.includes(onlyItemId)).length;
+    if (!n) continue;
+    out.push({ day, count: n });
+    if (roomId) {
+      const { addRoomCard } = await import("@/lib/modules/calendar/room-cards");
+      await addRoomCard(actor, roomId, { kind: "TRAVEL", fromDay: day, toDay: day });
+    }
+  }
+  return out;
+}
+
 /** ผลสำเร็จที่ไม่มีข้อมูลส่วนตัว (ทดสอบได้) */
 export function opaqueItemResult(it: { id: string; status: string; kind: string }, next: string) {
   return { ok: true, [it.status === "DRAFT" ? "draftId" : "itemId"]: it.id, status: it.status, kind: it.kind === "EVENT" ? "EVENT" : "REMINDER", card: "reminder", next };
@@ -323,6 +343,15 @@ async function add(ctx: ToolCtx, args: unknown): Promise<string> {
       },
       { source: "CHAT", roomId: await roomIdOf(ctx), draft: repeat !== "NONE", now },
     );
+    if (it.kind === "EVENT" && it.status === "OPEN") {
+      let tc: { day: string; count: number }[] = [];
+      try {
+        tc = await travelCards(actor, await roomIdOf(ctx), [todayYmd(new Date(it.startAt))], it.id);
+      } catch {
+        tc = []; // ส่วนเสริม — ล้มไม่พาการตั้งนัดล้ม
+      }
+      if (tc.length) return JSON.stringify({ ...opaqueItemResult(it, SAY_SET), travel: { day: tc[0]!.day, count: tc[0]!.count, card: "travel" }, next: `${SAY_SET} · ${SAY_TRAVEL}` });
+    }
     return JSON.stringify(opaqueItemResult(it, it.status === "DRAFT" ? SAY_DRAFT : SAY_SET));
   } catch (e) {
     return calErr(e);
@@ -448,6 +477,14 @@ async function agenda(ctx: ToolCtx, args: unknown): Promise<string> {
     const { addRoomCard } = await import("@/lib/modules/calendar/room-cards");
     await addRoomCard(actor, roomId, { kind: "AGENDA", fromDay: dayNoToYmd(f), toDay: dayNoToYmd(t) });
   }
+  let travel: { day: string; count: number }[] = [];
+  try {
+    const days: string[] = [];
+    for (let d = f; d <= t; d++) days.push(dayNoToYmd(d));
+    travel = await travelCards(actor, roomId, days);
+  } catch {
+    travel = [];
+  }
   const { skippedSectionNote } = await import("./secretary/access-rules");
   const MOD: Record<string, string> = { booking: "booking", account: "account", kanban: "kanban", crm: "crm", hr: "hr", dorm: "dorm", ticket: "ticket" };
   return JSON.stringify({
@@ -458,7 +495,8 @@ async function agenda(ctx: ToolCtx, args: unknown): Promise<string> {
     clashes: r.conflicts.filter((c) => !/google:/.test(`${c.earlierId}|${c.laterId}`)).length,
     notes: r.notes.filter((n) => n.code === "SECTION_OFF").map((n) => skippedSectionNote(MOD[n.source] ?? n.source)),
     card: roomId ? "agenda" : null,
-    next: roomId ? "ตอบแค่จำนวน (เช่น \"มี N รายการ ดูในการ์ดด้านล่าง\") — ห้ามเดาหรือแต่งรายละเอียดของรายการ" : "ให้ผู้ใช้เปิดปฏิทินในแอปเพื่อดูรายละเอียด",
+    ...(travel.length ? { travel: { days: travel.length, count: travel.reduce((n, x) => n + x.count, 0), card: roomId ? "travel" : null } } : {}),
+    next: (roomId ? "ตอบแค่จำนวน (เช่น \"มี N รายการ ดูในการ์ดด้านล่าง\") — ห้ามเดาหรือแต่งรายละเอียดของรายการ" : "ให้ผู้ใช้เปิดปฏิทินในแอปเพื่อดูรายละเอียด") + (travel.length ? ` · ${SAY_TRAVEL}` : ""),
   });
 }
 

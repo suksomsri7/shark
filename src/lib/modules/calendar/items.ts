@@ -396,6 +396,8 @@ export async function purgeMemberCalendar(member: { userId: string; tenantId: st
   await db.calItem.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } });
   await db.calPref.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } });
   await db.calRoomCard.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } }); // calendar_b ◂
+  await db.calTravelRule.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } }); // Q8 ◂
+  await db.calTravelDismissal.deleteMany({ where: { userId: member.userId, tenantId: member.tenantId } });
 }
 
 /**

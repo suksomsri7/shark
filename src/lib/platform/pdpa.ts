@@ -34,7 +34,7 @@ const DAY_MS = 86_400_000;
 // ─────────────────────────────────────────────────────────────
 // CAL1.1 ▸ R-CAL-33 (M4): ข้อมูลส่วนตัวของพนักงานที่มี tenantId แต่ร้านห้ามเห็น — ไม่อยู่ใน export ของร้าน
 //   (purge ร้านยังลบตามปกติ · ลบบัญชี = deleteUserTraces) · CalLink/CalExternalEvent เป็นแกน global อยู่แล้ว (ไม่ถูกวน) ◂
-export const PERSONAL_MODELS: readonly string[] = ["CalItem", "CalPref", "CalRoomCard"];
+export const PERSONAL_MODELS: readonly string[] = ["CalItem", "CalPref", "CalRoomCard", "CalTravelRule", "CalTravelDismissal"];
 
 export async function exportTenantData(tenantId: string): Promise<string> {
   const data: Record<string, unknown[]> = {};
