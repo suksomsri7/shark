@@ -1,6 +1,6 @@
 // QC HR PRIV-3b — CONTROLLER RULINGS r2 (R6 payroll actions vs foreign ids · R7 cancel/respond parity · R8 kiosk PIN replies) · brief hr-brief-PRIV-3.md · notes hr-PRIV-3-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-priv-3b.mts
-//   registry base = 50b272695 (r3: complete forms · R11 approve/V2 · R12 employee create · R13 decided leave · R14 old index names) · own tenants qc-hr-priv3b-* (ours + a foreign shop) · residue checked in both
+//   registry base = b1374b242 (all GREEN · r3 build) · earlier: 50b272695 (r3: complete forms · R11 approve/V2 · R12 employee create · R13 decided leave · R14 old index names) · own tenants qc-hr-priv3b-* (ours + a foreign shop) · residue checked in both
 import { type Any, type Def, errText, canon, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, rd } from "./qc-hr-lib.mjs";
 import { installNetGuard, tenantTables, sweepTenants, sweepResidue } from "./qc-hr-h4.3-lib.mjs";
 import { v1Item } from "./qc-hr-h3.8-lib.mjs";
@@ -12,10 +12,10 @@ const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "
 const CHECKS: Def[] = [
  D("X1", "R6", "MG", "setSalaryProfileAction as a foreign OWNER / foreign hr.payroll.create holder: our system × {unknown emp, real emp without profile, real emp with profile, our runs} = unknown system · nothing written in either tenant"),
  D("X2", "R6", "MG", "markPaidAction · reverseRunAction · reverseRunV2Action as a foreign OWNER on our run ids: same refusal as unknown system · no audit/row in either tenant"),
- D("X3", "R6 R11", "MR", "[complete forms] every other action of the payroll action files (payroll · opening · work-entries · stock-charge · attendance-pay · payslip · bank-files · filings) as a foreign OWNER: same outcome as unknown system · nothing written"),
+ D("X3", "R6 R11", "MG", "[complete forms] every other action of the payroll action files (payroll · opening · work-entries · stock-charge · attendance-pay · payslip · bank-files · filings) as a foreign OWNER: same outcome as unknown system · nothing written"),
  D("X4", "R6", "MG", "squat: after the foreign attempts our owner still creates the profile of an employee that had none · no row on our system outside our tenant"),
  D("X5", "R6", "MG", "[control] same tenant: owner + payroll set a profile · owner marks paid · reverse reaches our run (code ≠ NOT_FOUND)"),
- D("Y1", "R7 R13", "mR", "cancel/respond (leave incl. PENDING leave with a decided chain · OT · swap, form + self paths) as K · N · unrelated staff: real-not-yours = unknown id · nothing written"),
+ D("Y1", "R7 R13", "mG", "cancel/respond (leave incl. PENDING leave with a decided chain · OT · swap, form + self paths) as K · N · unrelated staff: real-not-yours = unknown id · nothing written"),
  D("Y2", "R7", "mG", "[control] the filer still cancels own leave"),
  D("K1", "R8", "mG", "kiosk wrong PIN for employees NOT on the kiosk's list (unknown · inactive · other HR system · other tenant · other branch for a branch kiosk) + wrong PIN of a PIN holder ⇒ exactly \"PIN ไม่ถูกต้อง\", no name"),
  D("K2", "R8", "mG", "[control] on-list employee without PIN: reply names them, and the kiosk page already lists that name to the kiosk account (ruling exception)"),
@@ -23,10 +23,11 @@ const CHECKS: Def[] = [
  D("X7", "R10", "MG", "[control] uniqueness kept in the OWN tenant: a second profile for the same (system, employee) and a second live run for the same (system, period) are refused by the DB"),
  D("X8", "R10", "MG", "[control] the foreign tenant's squat rows are still there and unchanged after our owner's create (nothing deleted)"),
  D("X9", "R11", "MG", "[positive control] the complete-form driver reaches the write point: our owner's approve writes its audit · create run writes a run · set profile writes (same forms as the foreign matrix)"),
- D("X10", "R11", "MR", "[static] every action of the 8 payroll action files that takes a system/run/employee/adjustment id from the client calls hrTargetOwned before any other awaited work (after the permission checks)"),
- D("E1", "R12", "MR", "createEmployee/update/remove/restore as a foreign OWNER on our system = unknown system · nothing written in either tenant"),
+ D("X10", "R11", "MG", "[static] every action of the 8 payroll action files that takes a system/run/employee/adjustment id from the client calls hrTargetOwned before any other awaited work (after the permission checks)"),
+ D("X11", "R11 final", "MG", "[proof of the 2 X10 exemptions] request/cancelSalaryCert read no system/run/employee/adjustment id · linked staff act only on their own system+employee (foreign ids in the form ignored) · no linked employee ⇒ existing refusal, nothing written"),
+ D("E1", "R12", "MG", "createEmployee/update/remove/restore as a foreign OWNER on our system = unknown system · nothing written in either tenant"),
  D("E2", "R12", "MG", "[control] chain closed: with no fake employee, follow-ups (adjustment · OT · roster · schedule · lifecycle · LINE) as a foreign OWNER on our system write nothing"),
- D("E3", "R12", "MR", "[static] the employee create/update/remove/restore actions call hrTargetOwned before any other awaited work"),
+ D("E3", "R12", "MG", "[static] the employee create/update/remove/restore actions call hrTargetOwned before any other awaited work"),
  D("M1", "R14", "MG", "[db] lane DB: old unique index names gone · new tenant-scoped unique indexes present"),
  D("Z1", "-", "CG", "residue none in both tenants · rate buckets removed"),
 ];
@@ -51,6 +52,8 @@ const badImp = Object.entries(M).filter(([, m]) => m?.__err).map(([k, m]) => `${
 if (badImp.length) console.log(`import problems: ${badImp.join(" | ")}`);
 const listed = PAYFILES.flatMap((f) => [...rd(`src/lib/modules/hr/${f}.ts`).matchAll(/^export async function (\w+Action)\b/gm)].map((m) => [f, m[1]!] as const));
 // ── r3 statics: hrTargetOwned first (R11 · R12) ──
+/** r3 final ruling: the ONLY X10 exemptions — self-service, the system comes from the caller's own linked employee (proved by X11) */
+const SELF_EXEMPT = ["requestSalaryCertAction", "cancelSalaryCertRequestAction"];
 const guardFirst = (src0: string, name: string): string => {
  const src = src0.replace(/\/\/[^\n]*/g, ""), b = bodyOf(src, name);
  if (!b) return "no body";
@@ -197,11 +200,35 @@ try {
  }
  chk("X3", !x3.length && !missing.length, `${listed.length} actions · unknown system refused`, L([...missing, ...x3], 12));
  {
-  const bad = listed.map(([f, n]) => [f, n, guardFirst(srcOf(f), n)] as const).filter(([, , w]) => w).map(([f, n, w]) => `${f.split("/").pop()}:${n} ${w}`);
+  const bad = listed.filter(([, n]) => !SELF_EXEMPT.includes(n)).map(([f, n]) => [f, n, guardFirst(srcOf(f), n)] as const).filter(([, , w]) => w).map(([f, n, w]) => `${f.split("/").pop()}:${n} ${w}`);
   console.log(`  · X10 actions without hrTargetOwned first (${bad.length}/${listed.length}): ${bad.map((x) => x.split(" ")[0]!.split(":")[1]).join(", ") || "none"}`);
   chk("X10", !bad.length, "guard first", `${bad.length}: ${L(bad, 6)}`);
   const e3 = ["createEmployeeAction", "updateEmployeeAction", "removeEmployeeAction", "restoreEmployeeAction"].map((n) => [n, guardFirst(srcOf("actions"), n)] as const).filter(([, w]) => w).map(([n, w]) => `${n} ${w}`);
   chk("E3", !e3.length, "guard first", L(e3));
+ }
+ // ── X11: the two self-service exemptions are real ──
+ {
+  const bad: string[] = [], src = srcOf("payslip-actions").replace(/\/\/[^\n]*/g, ""), pth = "/app/me/hr/pay";
+  for (const n of SELF_EXEMPT) {
+   const b = bodyOf(src, n);
+   if (!b || /["'](systemId|runId|employeeId|adjustmentId)["']|\bsystemId\b/.test(b)) bad.push(`${n}: reads an id`);
+  }
+  const PS = M["payslip-actions"], foreignish = { systemId: X.HRX, employeeId: E.e2.id, runId: X.runPaid, adjustmentId: X.adj };
+  const before = await dig();
+  const rs = await call("S", pth, () => PS.requestSalaryCertAction(fd({ purpose: "BANK", ...foreignish })));
+  const mine = (await P.hrSalaryCertificate.findMany({ where: { requestedById: W.S.id } })) as Any[];
+  if (mine.length !== 1 || mine[0].tenantId !== X.T || mine[0].systemId !== HRS || mine[0].employeeId !== E.e1.id) bad.push(`request → ${mine.map((m) => `${m.tenantId === X.T ? "T" : "?"}/${m.systemId === HRS ? "HRS" : m.systemId}/${m.employeeId === E.e1.id ? "e1" : m.employeeId}`).join(",") || "none"} ${rs.slice(0, 40)}`);
+  const ru = await call("U", pth, () => PS.requestSalaryCertAction(fd({ purpose: "BANK" })));
+  const uc = (await P.hrSalaryCertificate.findFirst({ where: { requestedById: W.U.id } })) as Any;
+  if (uc) { const rc = await call("S", pth, () => PS.cancelSalaryCertRequestAction(fd({ certId: uc.id, ...foreignish }))); if ((await P.hrSalaryCertificate.findUnique({ where: { id: uc.id } }))?.status !== "REQUESTED") bad.push(`S cancelled U's request ${rc.slice(0, 40)}`); } else bad.push(`U request none ${ru.slice(0, 40)}`);
+  if (mine[0]) { await call("S", pth, () => PS.cancelSalaryCertRequestAction(fd({ certId: mine[0].id, ...foreignish }))); if ((await P.hrSalaryCertificate.findUnique({ where: { id: mine[0].id } }))?.status !== "CANCELLED") bad.push("own cancel"); }
+  const t2 = diff(before, await dig()).filter((k) => k.startsWith("T2:"));
+  if (t2.length) bad.push(`foreign wrote ${t2.join(",")}`);
+  const b2 = await dig();
+  const rn = await call("N", pth, () => PS.requestSalaryCertAction(fd({ purpose: "BANK", ...foreignish }))), cn = await call("N", pth, () => PS.cancelSalaryCertRequestAction(fd({ certId: uc?.id ?? unk(), ...foreignish })));
+  const wn = diff(b2, await dig());
+  if (wn.length || !/sc=/.test(rn) || !/sc=/.test(cn) || /requested|cancelled/.test(rn + cn)) bad.push(`unlinked: ${rn.slice(0, 50)} / ${cn.slice(0, 50)} ${wn.join(",")}`);
+  chk("X11", !bad.length, "self only · refusal", L(bad));
  }
  // ── R12 employee register actions (foreign owner) + chain ──
  {

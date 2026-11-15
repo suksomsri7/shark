@@ -1,6 +1,6 @@
 // QC HR PRIV-3 page role gates (employees / leave / payroll) · brief hr-brief-PRIV-3.md (+ CONTROLLER RULINGS) · notes hr-PRIV-3-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-priv-3.mts
-//   QC_PRIV3_MEASURE=1 prints the measured goldens (GOLD) — taken on base ea2b41ea1 (r2 cells on 44a75f37a) · registry base column re-based to 50b272695: RED = S6 (R14 order/IF EXISTS) · other r2/r3 RED items live in qc-hr-priv-3b.mts
+//   QC_PRIV3_MEASURE=1 prints the measured goldens (GOLD) — taken on base ea2b41ea1 (r2 cells on 44a75f37a) · registry base column re-based to b1374b242: all GREEN
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type Any, type Def, ROOT, rd, errText, canon, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, sha, srcFiles, stripComments, QUERY_COUNTER } from "./qc-hr-lib.mjs";
@@ -23,7 +23,7 @@ const CHECKS: Def[] = [
  D("S2", "R2 R7", "CG", "[static] 3 pages import requireHrPage + call it after the system check and before any data read · fitness pageGuard guarded · PAGE_GUARD_BASELINE −3 (kiosk kept)"),
  D("S3", "R3 R4 R5", "MG", "[static] nav gateOf + requestLeaveAction + HrLeaveSection + HrHub use the helper · hrTabs/HrOtSection bodies = base"),
  D("S4", "§files", "MG", "[static] allowed files only (incl. .mts) · ui/actions hunks in their ranges · every src hunk marked HR PRIV-3 · oracle edits marked · payroll-rules sha · prisma only = R10 schema + migration"),
- D("S6", "r2 R10 R14", "MR", "[static] exactly ONE new migration (after the latest HR migration): only DROP INDEX IF EXISTS / CREATE UNIQUE INDEX (new created BEFORE old dropped) on HrSalaryProfile + HrPayrollRun · keys (tenantId, systemId, employeeId) and (tenantId, systemId, periodKey) WHERE status <> 'REVERSED' · schema @@unique swapped, nothing else · no old compound-key call site"),
+ D("S6", "r2 R10 R14", "MG", "[static] exactly ONE new migration (after the latest HR migration): only DROP INDEX IF EXISTS / CREATE UNIQUE INDEX (new created BEFORE old dropped) on HrSalaryProfile + HrPayrollRun · keys (tenantId, systemId, employeeId) and (tenantId, systemId, periodKey) WHERE status <> 'REVERSED' · schema @@unique swapped, nothing else · no old compound-key call site"),
  D("S5", "R1", "mG", "[static] no new import cycle through privacy.ts"),
  D("G1", "R1", "CG", "hrPageAccessOf truth table (13 viewers incl. r2 PR/PA + API key) · requireHrPage = table · malformed viewer ⇒ all false — the table qc-hr-h2.10 S7.1 now follows (pinned here)"),
  D("P1", "R2 Q1", "CG", "/hr/employees K N S S0 SR PR PA ⇒ not-found identical to unknown system (digest + SQL count) · nothing rendered"),

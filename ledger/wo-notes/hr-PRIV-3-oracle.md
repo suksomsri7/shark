@@ -186,3 +186,14 @@ The 3b suite uses its own tenants `qc-hr-priv3b-*`: our shop plus a foreign shop
   - priv-3: 28/28 as registered (RED: S6).
   - priv-3b: 19/19 as registered (RED: X3 X10 E1 E3 Y1 · GREEN 14).
   - Residue none, in both tenants. tsc 0 errors. Sizes: priv-3 + lib 61.8 KB · 3b 36.5 KB.
+
+### final (b1374b242)
+- X10 now exempts exactly two actions by name (`SELF_EXEMPT`): `requestSalaryCertAction` and `cancelSalaryCertRequestAction`. Both are self-service: the system comes from the caller's linked employee.
+- X11 proves the exemption is true:
+  - Static: neither body reads systemId/runId/employeeId/adjustmentId.
+  - Behavioural, linked staff S: S sends a form carrying a foreign system id, another employee, our run and our adjustment. The request is still created only for S's own system and employee in S's tenant. S cannot cancel another staff member's request, and does cancel its own. Nothing is written in the foreign tenant.
+  - Behavioural, unlinked member N: N gets the existing refusal codes and nothing is written.
+- Registries re-based to b1374b242:
+  - priv-3: 28/28 GREEN (S6 now GREEN).
+  - priv-3b: 20/20 GREEN.
+  - Residue none, in both tenants. tsc 0 errors.
