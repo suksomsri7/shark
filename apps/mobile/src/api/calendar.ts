@@ -122,6 +122,8 @@ export type GoogleLinkDto = {
   exportCalendarName?: string | null;
   lastSyncAt?: string | null;
   lastError?: string | null;
+  /** calendar_c ▸ ร้านต้องเปิด "อนุญาตให้พนักงานส่งนัดลูกค้าเข้า Google ส่วนตัว" ก่อน — ไม่ส่ง (เซิร์ฟเวอร์เก่า) = ถือว่าไม่จำกัด ◂ */
+  bookingExport?: { allowed: boolean; currentShop: boolean | null; hint: string | null; shops?: { tenantId: string; name: string; allowed: boolean }[] };
 };
 
 // ───────── fixture mode ─────────
@@ -166,7 +168,7 @@ async function call<T>(method: Method, sub: string, opts: { q?: Q; body?: unknow
   // เคยได้ 404 ของเส้นที่ไม่มีแล้ว ⇒ ไปที่ fixture ตรง (ไม่ยิงซ้ำทุกครั้ง)
   if (fixtureOn) return fixtureCall<T>(method, sub, opts.q, opts.body);
   try {
-    return await api<T>(BASE + "/" + sub + qs(opts.q), { method, body: opts.body, tenant: !sub.startsWith("google"), ...(opts.tenantId && !sub.startsWith("google") ? { tenantId: opts.tenantId } : {}) });
+    return await api<T>(BASE + "/" + sub + qs(opts.q), { method, body: opts.body, tenant: !sub.startsWith("google") || (method === "GET" && sub === "google") /* calendar_c ▸ GET google ส่งร้านปัจจุบัน (bookingExport.currentShop) ◂ */, ...(opts.tenantId && !sub.startsWith("google") ? { tenantId: opts.tenantId } : {}) });
   } catch (e) {
     if (CAL_FIXTURE_ALLOWED && e instanceof ApiError && e.status === 404 && routeMissing(e)) {
       setFixtureOn(true);

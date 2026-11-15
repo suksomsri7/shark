@@ -1424,7 +1424,13 @@ export type BusinessProfile = {
 };
 export type BusinessDeletion = { requestedAt: string; purgeAt: string };
 /** can: สิทธิ์ของผู้เรียก (เซิร์ฟเวอร์ตรวจซ้ำตอน PATCH) · editTax = `account.settings.manage` แบบเว็บ · รุ่นเก่าไม่ส่ง = ถือว่าไม่ได้ */
-export type BusinessProfileRes = { profile: BusinessProfile; role: string; can?: { editName: boolean; editTax: boolean } };
+export type BusinessProfileRes = {
+  profile: BusinessProfile;
+  role: string;
+  can?: { editName: boolean; editTax: boolean; editCalendarPolicy?: boolean };
+  /** calendar_c ▸ นโยบายปฏิทินของร้าน (ค่าเริ่ม ปิด) — เซิร์ฟเวอร์เก่าไม่ส่ง ◂ */
+  calendar?: { allowBookingExport: boolean };
+};
 export type BusinessPatch = Partial<{
   name: string;
   businessType: string | null;
@@ -1434,6 +1440,7 @@ export type BusinessPatch = Partial<{
   branchCode: string | null;
   branchName: string | null;
   hours: { days: BusinessDay[]; tz?: string | null } | null;
+  calendar: { allowBookingExport: boolean };
 }>;
 /** บทบาทที่เห็น ⚙ / เปิดตั้งค่ากิจการได้ */
 export const BIZ_SETTING_ROLES: readonly string[] = ["OWNER", "MANAGER"];

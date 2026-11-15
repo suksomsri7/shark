@@ -105,6 +105,9 @@ export default function BusinessSettingsScreen() {
   const [branchCode, setBranchCode] = useState("");
   const [branchName, setBranchName] = useState("");
   const [days, setDays] = useState<Record<number, DayForm>>({});
+  // calendar_c ▸ นโยบายปฏิทินของร้าน: อนุญาตให้พนักงานส่งนัดลูกค้าเข้า Google ส่วนตัว (OWNER/MANAGER · ค่าเริ่ม ปิด) ◂
+  const [calPolicy, setCalPolicy] = useState<{ allow: boolean; can: boolean } | null>(null);
+  const [calBusy, setCalBusy] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -115,6 +118,7 @@ export default function BusinessSettingsScreen() {
           if (!live) return;
           setProfile(r.profile);
           setCanTax(!!r.can?.editTax);
+          setCalPolicy(r.calendar ? { allow: r.calendar.allowBookingExport, can: !!r.can?.editCalendarPolicy } : null);
           setState("ok");
         })
         .catch((e) => live && setState((cur) => (cur === "ok" ? cur : isDenied(e) ? "denied" : "error")));
@@ -214,6 +218,25 @@ export default function BusinessSettingsScreen() {
     } finally {
       busyRef.current = false;
       setBusy(false);
+    }
+  };
+
+  // calendar_c ▸ สวิตช์นโยบายปฏิทิน — PATCH ทันที (มองโลกแง่ดี · พลาด = คืนค่า + ข้อความ) ◂
+  const toggleCalPolicy = async (v: boolean) => {
+    if (!calPolicy?.can || calBusy) return;
+    const prev = calPolicy;
+    setCalPolicy({ ...prev, allow: v });
+    setCalBusy(true);
+    setNote(null);
+    try {
+      const r = await patchBusiness(tenantId, { calendar: { allowBookingExport: v } });
+      if (r.calendar) setCalPolicy({ allow: r.calendar.allowBookingExport, can: !!r.can?.editCalendarPolicy });
+      setNote({ text: t("bizset.saved"), warn: false });
+    } catch (e) {
+      setCalPolicy(prev);
+      setNote({ text: serverNote(e) ?? t("sec.set.saveFail"), warn: true });
+    } finally {
+      setCalBusy(false);
     }
   };
 
@@ -436,6 +459,11 @@ export default function BusinessSettingsScreen() {
             {secRows.map((r) => (
               <SettingRow key={r.key} testID={`biz-set-row-${r.key}`} icon={r.icon} title={t(r.title)} value={r.value} onPress={() => void goActive(r.path)} />
             ))}
+            {calPolicy ? (
+              <SettingRow testID="biz-set-row-cal-booking-export" icon="calendar" title={t("bizset.cal.bookingExport")} sub={t("bizset.cal.bookingExportSub")}>
+                <Toggle testID="biz-set-cal-booking-export-toggle" value={calPolicy.allow} disabled={!calPolicy.can || calBusy} label={t("bizset.cal.bookingExport")} onChange={(v) => void toggleCalPolicy(v)} />
+              </SettingRow>
+            ) : null}
 
             {owner ? (
               <>

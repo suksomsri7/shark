@@ -14,6 +14,7 @@ import { tenantDb } from "@/lib/core/db";
 import { errDetail, logOps } from "@/lib/core/ops";
 import { integrationSecretKeyConfigured, openIntegrationSecret, sealIntegrationSecret } from "@/lib/core/integrations/secret-box";
 import { schedule } from "./next-fire";
+import { BOOKING_EXPORT_OFF_HINT, bookingExportAllowed } from "./shop-policy";
 
 export const SCOPE_EVENTS = "https://www.googleapis.com/auth/calendar.events";
 export const SCOPE_LIST = "https://www.googleapis.com/auth/calendar.calendarlist.readonly";
@@ -55,6 +56,11 @@ export type GoogleLinkDto = {
   exportCalendarName: string | null;
   lastSyncAt: string | null;
   lastError: string | null;
+  /**
+   * calendar_c ▸ สถานะจริงของ "ส่งนัดลูกค้าที่ฉันรับ" (BOOKING): ร้านต้องเปิดสวิตช์ allowBookingExport ก่อน (มติเจ้าของ)
+   *   allowed = มีร้านของผู้ใช้อย่างน้อย 1 ร้านเปิด · currentShop = ร้านใน x-tenant-id (null = ไม่ระบุ) · hint = ข้อความเทาของจอ 9 ◂
+   */
+  bookingExport: { allowed: boolean; currentShop: boolean | null; hint: string | null; shops: { tenantId: string; name: string; allowed: boolean }[] };
 };
 
 /** ข้อผิดพลาดของ service → route `{ error: code, message }` */
@@ -106,7 +112,7 @@ function calsOf(link: Pick<CalLink, "calendars">): CalendarEntry[] {
 }
 
 function toDto(link: CalLink | null): GoogleLinkDto {
-  if (!link) return { status: "NONE", email: null, calendars: [], exportKinds: [], exportCalendarId: null, exportCalendarName: null, lastSyncAt: null, lastError: null };
+  if (!link) return { status: "NONE", email: null, calendars: [], exportKinds: [], exportCalendarId: null, exportCalendarName: null, lastSyncAt: null, lastError: null, bookingExport: NO_BOOKING_EXPORT };
   const cals = calsOf(link);
   const target = link.exportCalendarId ? cals.find((c) => c.id === link.exportCalendarId) : cals.find((c) => c.primary);
   return {
@@ -118,6 +124,7 @@ function toDto(link: CalLink | null): GoogleLinkDto {
     exportCalendarName: target?.name ?? null,
     lastSyncAt: link.lastSyncAt ? link.lastSyncAt.toISOString() : null,
     lastError: link.lastError,
+    bookingExport: NO_BOOKING_EXPORT,
   };
 }
 
@@ -125,9 +132,21 @@ async function linkOf(userId: string): Promise<CalLink | null> {
   return gdb().calLink.findFirst({ where: { userId, provider: "GOOGLE" } });
 }
 
-export async function googleStatus(userId: string): Promise<GoogleLinkDto | null> {
+const NO_BOOKING_EXPORT: GoogleLinkDto["bookingExport"] = { allowed: false, currentShop: null, hint: BOOKING_EXPORT_OFF_HINT, shops: [] };
+
+/** calendar_c ▸ เติมสถานะนโยบายร้าน (ร้านของผู้ใช้ที่รับคำเชิญแล้ว · ร้านปัจจุบันจาก x-tenant-id ถ้าเป็นสมาชิก) */
+async function withPolicy(userId: string, dto: GoogleLinkDto, currentTenantId?: string | null): Promise<GoogleLinkDto> {
+  const ms = await gdb().membership.findMany({ where: { userId, acceptedAt: { not: null } }, select: { tenantId: true, tenant: { select: { name: true } } } });
+  const allowed = await bookingExportAllowed(ms.map((m) => m.tenantId));
+  const shops = ms.map((m) => ({ tenantId: m.tenantId, name: m.tenant.name, allowed: allowed.has(m.tenantId) }));
+  const any = shops.some((x) => x.allowed);
+  const current = currentTenantId && shops.some((x) => x.tenantId === currentTenantId) ? allowed.has(currentTenantId) : null;
+  return { ...dto, bookingExport: { allowed: any, currentShop: current, hint: any && current !== false ? null : BOOKING_EXPORT_OFF_HINT, shops } };
+}
+
+export async function googleStatus(userId: string, opts: { tenantId?: string | null } = {}): Promise<GoogleLinkDto | null> {
   const l = await linkOf(userId);
-  return l ? toDto(l) : null;
+  return l ? withPolicy(userId, toDto(l), opts.tenantId) : null;
 }
 
 // ─────────────────────────── HTTP ───────────────────────────
@@ -308,7 +327,7 @@ export async function connectGoogle(userId: string, serverAuthCode: string, deps
     await logOps("WARN", "calendar", "google: ดึงรายการปฏิทินตอนเชื่อมไม่สำเร็จ", { detail: errDetail(e) }).catch(() => undefined);
   }
   await markDirty(userId, link.exportKinds);
-  return toDto(link);
+  return withPolicy(userId, toDto(link));
 }
 
 /**
@@ -345,7 +364,7 @@ export async function updateGoogle(
     data: { calendars: nextCals as unknown as Prisma.InputJsonValue, exportKinds: kinds, ...(patch.exportCalendarId !== undefined ? { exportCalendarId: patch.exportCalendarId } : {}) },
   });
   await markDirty(userId, targetChanged ? ["EVENT", "REMINDER"] : changedKinds);
-  return toDto(await linkOf(userId));
+  return withPolicy(userId, toDto(await linkOf(userId)));
 }
 
 // ─────────────────────────── CalItem ข้ามร้านของผู้ใช้ ───────────────────────────
@@ -453,7 +472,7 @@ async function exportItems(link: CalLink, run: Run): Promise<number> {
 }
 
 /**
- * นัดบัตรคิวที่ "ของฉัน" 60 วันข้างหน้า ทุกกิจการ (R-CAL-37 · ชื่อ = <บริการ> · <ชื่อลูกค้า> ไม่มีเบอร์)
+ * นัดบัตรคิวที่ "ของฉัน" 60 วันข้างหน้า ทุกกิจการ (R-CAL-37 · มติเจ้าของ Q9: ชื่อ = <บริการ> · <ชื่อลูกค้า> · ไม่มีเบอร์/อีเมล)
  * calendar_b ▸ review b m6: เฉพาะสาขาที่ผู้ใช้ยังเข้าถึงได้ (`canAccessUnit`) และร้านไม่ได้ปิดเลขาระบบบัตรคิว (OFF) ◂
  */
 async function myAppointments(userId: string, now: Date): Promise<Map<string, { title: string; startAt: Date; endAt: Date; updatedAt: Date }>> {
@@ -466,6 +485,8 @@ async function myAppointments(userId: string, now: Date): Promise<Map<string, { 
   for (const m of ms) {
     const tenantId = m.tenantId;
     if (moduleOff(await getAccess(tenantId).catch(() => undefined), "booking")) continue;
+    // calendar_c ▸ ร้านปิดสวิตช์ (ค่าเริ่ม) = ไม่ส่งนัดของร้านนี้ · สำเนาเดิมถูกลบในรอบนี้ (ไม่อยู่ในชุดที่ต้องการ) ◂
+    if (!(await bookingExportAllowed([tenantId])).has(tenantId)) continue;
     const emp = await employeeOfUser(tenantId, userId);
     if (!emp) continue;
     const mc = { role: m.role, unitAccess: Array.isArray(m.unitAccess) ? (m.unitAccess as unknown[]).filter((u): u is string => typeof u === "string") : [], permissions: (m.permissions ?? {}) as Record<string, unknown> };
@@ -485,6 +506,9 @@ async function myAppointments(userId: string, now: Date): Promise<Map<string, { 
   }
   return out;
 }
+
+/** คำอธิบายของสำเนานัดลูกค้าใน Google (Q9 · ไม่มีข้อมูลติดต่อลูกค้า) */
+export const BOOKING_COPY_NOTE = "นัดลูกค้าจาก SHARK (บัตรคิว) — ส่งมาเพราะร้านอนุญาตและคุณเปิด \"นัดลูกค้าที่ฉันรับ\" · ปิดได้ที่ ตั้งค่าปฏิทิน › Google Calendar · แก้ในนี้จะถูกเขียนทับด้วยข้อมูลของร้าน";
 
 async function exportBookings(link: CalLink, run: Run): Promise<number> {
   const db = gdb();
@@ -507,7 +531,8 @@ async function exportBookings(link: CalLink, run: Run): Promise<number> {
     const c = byRef.get(ref);
     // ฝั่งร้านเป็นต้นฉบับ: ไม่มีสำเนา / นัดถูกแก้หลังส่ง / สำเนาถูกแก้ใน Google (etag ถูกล้างตอนดึง) ⇒ เขียนทับ
     if (c && c.etag && +a.updatedAt <= +c.updatedAt && +c.startAt === +a.startAt) continue;
-    const body = { summary: a.title, start: { dateTime: dtOf(a.startAt), timeZone: "Asia/Bangkok" }, end: { dateTime: dtOf(a.endAt), timeZone: "Asia/Bangkok" }, reminders: { useDefault: false, overrides: [] }, extendedProperties: { private: { sharkRef: ref } } };
+    // มติเจ้าของ Q9 (15 พ.ย.): ชื่อ = <บริการ> · <ชื่อลูกค้า> (มีชื่อลูกค้า · ไม่มีเบอร์/อีเมล) · คำอธิบาย = ที่มา + เงื่อนไข (ร้านเปิดสวิตช์ + ผู้ใช้เลือกส่ง)
+    const body = { summary: a.title, description: BOOKING_COPY_NOTE, start: { dateTime: dtOf(a.startAt), timeZone: "Asia/Bangkok" }, end: { dateTime: dtOf(a.endAt), timeZone: "Asia/Bangkok" }, reminders: { useDefault: false, overrides: [] }, extendedProperties: { private: { sharkRef: ref } } };
     let res = c ? await api(link, run.deps, "PATCH", `${calPath(c.calendarId)}/${encodeURIComponent(c.externalId)}`, body) : null;
     if (!res || res.status === 404 || res.status === 410) res = await api(link, run.deps, "POST", calPath(target), body);
     if (res.status >= 400 || typeof res.json.id !== "string") throw new Error(`google export booking ${res.status}`);

@@ -11,7 +11,8 @@ async function GET_(req: Request) {
   const g = await gGate(req, "get", 60);
   if (!g.ok) return g.res;
   try {
-    return ok((await googleStatus(g.userId)) ?? { status: "NONE" });
+    // calendar_c ▸ x-tenant-id (ถ้ามี) = ร้านปัจจุบันของแอป ⇒ bookingExport.currentShop ◂
+    return ok((await googleStatus(g.userId, { tenantId: req.headers.get("x-tenant-id") })) ?? { status: "NONE" });
   } catch (e) {
     return gThrown(e, "calendar/google GET");
   }
