@@ -74,6 +74,8 @@ export const dark: Palette = {
   //   + remind/personal/google/device ตามภาพ cal-*.png · มืด = hue เดิมยกความสว่าง (dsys ของ gen.py)
   cal: { booking: "#6599e2", account: "#64cbe2", kanban: "#f9c74e", crm: "#d47290", hr: "#986dd9", dorm: "#7e66e1", ticket: "#d47290", trips: "#5cdaea", remind: "#ec9f5a", personal: "#6fd798", google: "#4d8ef9", device: "#ff5147" },
   calTagAlpha: "2b", // พื้นป้ายระบบบนมืด (แบบ 17%)
+  // help-cases (15 พ.ย.): สีขั้นของเคสบนมืด (hue เดิมยกความสว่าง แบบ cal)
+  helpStage: { RECEIVED: "#8a91ee", CHECKING: "#6599e2", FIXING: "#ec9f5a", NEED_INFO: "#d47290", AWAITING_CONFIRM: "#6fd798", CLOSED: "#8e8e9c", track: "rgba(255,255,255,0.14)", unread: "#ff5c61", onStage: "#16161c", haloAlpha: "40" },
   sysTag: { bg: "rgba(255,255,255,0.1)", fg: "#c2c2d0" },
   zone: {
     secretary: "#f2f2f7",

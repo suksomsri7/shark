@@ -44,6 +44,8 @@ const PATH = {
   // S2.15 ช่วยเหลือ H1/H2 (S1.14 · R-K12 · R-S1.14c) — เรื่องเป็นของกิจการ (ส่ง x-tenant-id)
   "secretary/support/cases": "/api/mobile/secretary/support/cases",
   "secretary/support/upload": "/api/mobile/secretary/support/upload",
+  // help-cases (15 พ.ย.) ไฟล์แนบเรื่องช่วยเหลือ (รูป · PDF · Excel · CSV · ส่วนตัว) — multipart `file` → {id,name,mimeType,size,kind}
+  "secretary/support/attachments": "/api/mobile/secretary/support/attachments",
   // 14 พ.ย. ไฟล์แนบของคำสั่ง (ปุ่ม + · รูปภาพ/ถ่ายรูป/ไฟล์) — multipart `file` → {id,name,mimeType,size,kind}
   "secretary/attachments": "/api/mobile/secretary/attachments",
   // S2.21/S2.22 กิจการ · เชิญพนักงาน · บัญชีของฉัน (ชื่อตาม S1.14 docs/api/SECRETARY-API.md)
@@ -194,7 +196,7 @@ type PostMap = {
   // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)
   "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string }; attachments?: AttachRef[] }; res: { roomId: string; conversationId?: string; status?: string } };
   "secretary/scheduled": { body: ScheduleBody; res: { id: string } };
-  "secretary/support/cases": { body: HelpOpenBody; res: { id: string; caseNo: number } };
+  "secretary/support/cases": { body: HelpOpenBody; res: { id: string; caseNo: number; caseNoText?: string } };
   "secretary/tenants/create": { body: { name: string; type: string; systems: string[] }; res: TenantCreateRes };
   "secretary/staff/invite": { body: InviteBody; res: InviteRes };
   "secretary/invites/accept": { body: { inviteId: string } | { code: string }; res: { ok: boolean; tenantId?: string } };
@@ -295,7 +297,7 @@ type PostIdMap = {
   "secretary/memories/[id]/confirm": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/rooms/[id]/members": { body: { userId: string; seeHistory: boolean }; res: { ok: boolean; member?: unknown } };
   "secretary/staff/invites/[id]/resend": { body: Record<string, never>; res: { ok: boolean; sms?: string; expiresAt?: string; link?: string | null } };
-  "secretary/support/cases/[id]/reply": { body: { body: string; attachments?: HelpAttachment[] }; res: { ok: boolean } };
+  "secretary/support/cases/[id]/reply": { body: { body: string; attachments?: HelpAttachment[]; files?: AttachRef[] }; res: { ok: boolean } };
   "secretary/support/cases/[id]/resolve": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/staff/[id]/suspend": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/staff/[id]/remove": { body: Record<string, never>; res: { ok: boolean } };
@@ -1159,51 +1161,109 @@ export type HelpCategory = "secretary_wrong" | "bug" | "question" | "billing" | 
 /** ไฟล์แนบของ cases/reply (AttachmentsSchema · ≤ 5 ชิ้น) */
 export type HelpAttachment = { name: string; url: string; kind: "image" | "file" };
 export const HELP_MAX_ATTACHMENTS = 5;
-export type HelpOpenBody = { subject: string; body: string; category?: HelpCategory; roomId?: string; attachments?: HelpAttachment[] };
+export type HelpOpenBody = { subject: string; body: string; category?: HelpCategory; roomId?: string; attachments?: HelpAttachment[]; files?: AttachRef[] };
 export type HelpStatus = "OPEN" | "PENDING" | "RESOLVED";
-export type HelpCaseRow = { id: string; caseNo: number; subject: string; status: HelpStatus; updatedAt: string; unread: number };
-export type HelpCase = { id: string; caseNo: number; subject: string; status: HelpStatus; category: string | null; roomId: string | null; createdAt: string; updatedAt: string };
+/** help-cases (15 พ.ย.) ขั้นของเคส — แถบ 5 ขั้น รับเรื่อง → ตรวจสอบ → แก้ไข → รอยืนยัน → ปิดเคส + "รอข้อมูลจากคุณ" (ชมพู) */
+export type HelpStage = "RECEIVED" | "CHECKING" | "FIXING" | "NEED_INFO" | "AWAITING_CONFIRM" | "CLOSED";
+export const HELP_STAGES: readonly HelpStage[] = ["RECEIVED", "CHECKING", "FIXING", "NEED_INFO", "AWAITING_CONFIRM", "CLOSED"];
+export type HelpCaseRow = { id: string; caseNo: number; subject: string; status: HelpStatus; stage: HelpStage; stageStep: number; updatedAt: string; unread: number };
+export type HelpCase = { id: string; caseNo: number; subject: string; status: HelpStatus; stage: HelpStage; stageStep: number; category: string | null; roomId: string | null; createdAt: string; updatedAt: string };
+/** ไฟล์แนบในเรื่อง — `private` = path ของเส้นแอป (โหลดด้วย Bearer) · ไม่ใช่ = URL/data URL เดิม (local ของ AttachList) */
+export type HelpMsgAttachment = { id: string; name: string; url: string; kind: AttachKind; mimeType: string; size: number; private: boolean };
 /** ข้อความในเรื่อง — ไม่มี id/ชื่อของทีมงานแพลตฟอร์ม (route ตัดออก) · `mine` = ผู้ใช้นี้พิมพ์เอง */
-export type HelpMsg = { id: string; side: "SHOP" | "PLATFORM"; mine: boolean; body: string; attachments: { name: string; url: string; kind: string }[]; at: string };
+export type HelpMsg = { id: string; side: "SHOP" | "PLATFORM"; mine: boolean; body: string; attachments: HelpMsgAttachment[]; at: string };
+/** ประวัติขั้น → บรรทัดระบบในห้อง ("15 พ.ย. 09:40 · สถานะ → กำลังแก้ไข") · from null = เปิดเคส */
+export type HelpStageEvent = { id: string; from: HelpStage | null; to: HelpStage; note: string | null; at: string };
 
 const helpStatusOf = (v: unknown): HelpStatus => (v === "PENDING" || v === "RESOLVED" ? v : "OPEN");
 const intOf = (v: unknown): number => Math.max(0, Math.floor(Number(v) || 0));
+/** ขั้นจากเซิร์ฟเวอร์ · เซิร์ฟเวอร์รุ่นก่อน (ไม่มี stage) = เดาจาก status */
+export function helpStageOf(v: unknown, status: HelpStatus = "OPEN"): HelpStage {
+  if (typeof v === "string" && (HELP_STAGES as readonly string[]).includes(v)) return v as HelpStage;
+  return status === "RESOLVED" ? "CLOSED" : status === "PENDING" ? "CHECKING" : "RECEIVED";
+}
+const STEP: Record<HelpStage, number> = { RECEIVED: 1, CHECKING: 2, FIXING: 3, NEED_INFO: 2, AWAITING_CONFIRM: 4, CLOSED: 5 };
+const stepOf = (v: unknown, stage: HelpStage) => {
+  const n = Math.floor(Number(v));
+  return n >= 1 && n <= 5 ? n : STEP[stage];
+};
 
 export function normalizeHelpCases(v: unknown): HelpCaseRow[] {
   return listOf(v)
     .map((x) => {
       const o = rec(x);
-      return { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status: helpStatusOf(o.status), updatedAt: isoOf(o.updatedAt), unread: intOf(o.unreadCount ?? o.unread) };
+      const status = helpStatusOf(o.status);
+      const stage = helpStageOf(o.stage, status);
+      return { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status, stage, stageStep: stepOf(o.stageStep, stage), updatedAt: isoOf(o.updatedAt), unread: intOf(o.unreadCount ?? o.unread) };
     })
     .filter((c) => c.id);
 }
 
-export function normalizeHelpDetail(v: unknown): { case: HelpCase | null; messages: HelpMsg[] } {
+function helpAttachmentsOf(v: unknown): HelpMsgAttachment[] {
+  return (Array.isArray(v) ? v : [])
+    .map((a) => rec(a))
+    .filter((a) => typeof a.url === "string" && a.url)
+    .map((a, i) => {
+      const k = a.kind === "image" || a.kind === "pdf" || a.kind === "sheet" ? (a.kind as AttachKind) : "pdf";
+      return { id: str(a.id) || `a${i}`, name: str(a.name) || "file", url: a.url as string, kind: k, mimeType: str(a.mimeType), size: Number(a.size) || 0, private: a.private === true };
+    });
+}
+
+export function normalizeHelpDetail(v: unknown): { case: HelpCase | null; messages: HelpMsg[]; stageEvents: HelpStageEvent[] } {
   const r = rec(v);
   const o = rec(r.case);
+  const status = helpStatusOf(o.status);
+  const stage = helpStageOf(o.stage, status);
   const kase: HelpCase | null = str(o.id)
-    ? { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status: helpStatusOf(o.status), category: str(o.category) || null, roomId: str(o.roomId) || null, createdAt: isoOf(o.createdAt), updatedAt: isoOf(o.updatedAt) }
+    ? { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status, stage, stageStep: stepOf(o.stageStep, stage), category: str(o.category) || null, roomId: str(o.roomId) || null, createdAt: isoOf(o.createdAt), updatedAt: isoOf(o.updatedAt) }
     : null;
   const messages = listOf(r.messages ?? [])
     .map((x): HelpMsg => {
       const m = rec(x);
-      const atts = (Array.isArray(m.attachments) ? m.attachments : []).map((a) => rec(a)).filter((a) => typeof a.url === "string" && a.url);
       return {
         id: str(m.id),
         side: m.side === "PLATFORM" ? "PLATFORM" : "SHOP",
         mine: m.mine === true,
         body: typeof m.body === "string" ? m.body : "",
-        attachments: atts.map((a) => ({ name: str(a.name), url: a.url as string, kind: a.kind === "image" ? "image" : "file" })),
+        attachments: helpAttachmentsOf(m.attachments),
         at: isoOf(m.createdAt),
       };
     })
     .filter((m) => m.id && (m.body.trim() || m.attachments.length > 0));
-  return { case: kase, messages };
+  const stageEvents = (Array.isArray(r.stageEvents) ? r.stageEvents : [])
+    .map((x): HelpStageEvent => {
+      const e = rec(x);
+      return { id: str(e.id), from: e.from ? helpStageOf(e.from) : null, to: helpStageOf(e.to), note: str(e.note) || null, at: isoOf(e.at) };
+    })
+    .filter((e) => e.id);
+  return { case: kase, messages, stageEvents };
 }
 
-/** เลขเรื่องที่ผู้ใช้เห็น (แบบ H1/H2: SHARK-00042) */
+/** ไฟล์แนบในเรื่อง → รูปแบบของ AttachList (SecAttach) — ส่วนตัวโหลดด้วย Bearer · เดิม (URL/data) = uri ตรง */
+export function helpMsgAttachments(list: HelpMsgAttachment[]): MsgAttachment[] {
+  return list.map((a) => ({ id: a.id, name: a.name, mimeType: a.mimeType, size: a.size, kind: a.kind, url: a.url, ...(a.private ? {} : { local: true }) }));
+}
+
+/** ตัวกรองรายการเคส (จอ 1): ทั้งหมด · กำลังดำเนินการ (ทีมทำอยู่) · รอคุณ (รอข้อมูล/รอยืนยัน) · ปิดแล้ว */
+export type HelpFilter = "all" | "active" | "you" | "closed";
+export function helpFilterOf(stage: HelpStage): Exclude<HelpFilter, "all"> {
+  if (stage === "CLOSED") return "closed";
+  if (stage === "NEED_INFO" || stage === "AWAITING_CONFIRM") return "you";
+  return "active";
+}
+/** ค้นหาเลขเคส ("124" · "SHARK-000124" · "#SHARK-000124") หรือคำในหัวเรื่อง */
+export function helpMatches(row: Pick<HelpCaseRow, "caseNo" | "subject">, q: string): boolean {
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  if (row.subject.toLowerCase().includes(s)) return true;
+  const digits = s.replace(/^#/, "").replace(/^shark-?/, "");
+  if (/^\d+$/.test(digits)) return String(row.caseNo) === String(Number(digits)) || caseNoText(row.caseNo).toLowerCase().includes(s.replace(/^#/, ""));
+  return caseNoText(row.caseNo).toLowerCase().includes(s.replace(/^#/, ""));
+}
+
+/** เลขเรื่องที่ผู้ใช้เห็น (help-cases: SHARK-000124 · 6 หลักตรงกับ backoffice) */
 export function caseNoText(n: number): string {
-  return `SHARK-${String(Math.max(0, Math.floor(n))).padStart(5, "0")}`;
+  return `SHARK-${String(Math.max(0, Math.floor(n))).padStart(6, "0")}`;
 }
 
 /** จุดสถานะ H1/H2: ส้ม = รอทีม (OPEN ไม่มีของใหม่) · เขียว = ทีมตอบแล้วรอคุณ (PENDING หรือมีข้อความทีมที่ยังไม่อ่าน) · เทา = ปิด (RESOLVED) */
@@ -1278,8 +1338,8 @@ export async function secAuthHeaders(): Promise<Record<string, string>> {
 
 /** POST secretary/support/upload · secretary/attachments (multipart `file`) — api() ของ client.ts ส่ง JSON เท่านั้น จึงแยกตัวเรียก */
 export async function secUpload(path: "secretary/support/upload", form: FormData): Promise<HelpUpload>;
-export async function secUpload(path: "secretary/attachments", form: FormData): Promise<SecAttachUpload>;
-export async function secUpload(path: "secretary/support/upload" | "secretary/attachments", form: FormData): Promise<HelpUpload | SecAttachUpload> {
+export async function secUpload(path: "secretary/attachments" | "secretary/support/attachments", form: FormData): Promise<SecAttachUpload>;
+export async function secUpload(path: "secretary/support/upload" | "secretary/attachments" | "secretary/support/attachments", form: FormData): Promise<HelpUpload | SecAttachUpload> {
   const headers = await secAuthHeaders();
   const res = await fetch(`${BASE_URL}${PATH[path]}`, { method: "POST", headers, body: form });
   if (!res.ok) {
