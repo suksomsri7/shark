@@ -52,6 +52,6 @@
 
 | CAL3.1 ถดถอยรวม | ✅ 15 พ.ย. บน a394eddd7 | typecheck server+mobile · qc-cal-1.1…1.9 · qc-ai-skills/tools/eval · qc-sec-s1.2/1.3b/1.5/1.6/1.10/s3a1-r2 · fitness — 21/21 EXIT 0 · log /root/qc/cal/regression-cal3.1.log |
 | CAL3.2 เครื่องจริง | ⏳ รอ build (เจ้าของสั่ง) + ตรวจ APNs th.in.shark.ai (R-CAL-14) + บัญชี Google ทดสอบ | |
-| CAL3.3 คำสั่งเจ้าของ | ⏳ build · push main · migrate prod 5 ไฟล์ · ยื่น Google | |
+| CAL3.3 คำสั่งเจ้าของ | ✅ 15 พ.ย. (ยกเว้นยื่น Google) | Neon restore wo-restore-pre-sec-cal-1115 · prod migrate 8 ไฟล์ · main e4a7ac985 · Vercel READY · VPS pull · EAS #26 (421bbf98) → TestFlight ✅ 04:33Z · ยื่น Google verification รอเจ้าของ |
 
 - 15 พ.ย. Q8 เผื่อเวลาเดินทาง (เลน a): สัญญา §16 · migration 20261228000500_calendar_q8 (ฐาน QC เลขาเท่านั้น) · travel.ts (บริสุทธิ์ 100%) · travel-svc.ts · route calendar/travel* · agenda.travel (TIGHT เดิมตัด) · การ์ดห้อง TRAVEL จาก calendar_add(EVENT)/calendar_agenda · qc-cal-1.10 36/36 ×2
