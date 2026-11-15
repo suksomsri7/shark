@@ -207,3 +207,25 @@ The form actions that pass `hideForeign`: `cancelLeaveAction`, `cancelOtAction`,
   - h0.6 55/55 · h1.3 63/63 · h3.3 51/51 · h3.4 85/85 · h3.7 68/68
   - qc-payroll 19/19 · payroll-reverse 14/14 · priv-2 47/47 · h4.3 45/45
   - fitness-hr 9/9 · fitness 54/54 (both modes)
+
+## Merge of local `session/hr` (HR-PREPROD-1 + HR-LEAVE-3) — merge commit `9fef78ee2`
+- Conflicts (3 files):
+  - `payroll-actions.ts` imports: both kept (`hrTargetOwned` + `inPayScope, PAY_SCOPE_NO_ACCESS_TEXT`).
+  - `qc-hr-priv-2.mts` S4/S5: all lists kept (P3_FILES/p3Ok + PP1_*/pp1Ok + LEAVE-3 mixRes/mixOk). `mixRes` also accepts "HR PRIV-3" for P3_FILES.
+  - `qc-hr-h4.3-lib.mts` S1.6: all lists kept (P3_ALLOW/p3Ok + PP1/pp1Marked + L3/l3Marked + mixMarked). `mixMarked` also accepts P3_ALLOW with "HR PRIV-3".
+- Auto-merged with no conflict: privacy.ts (`hrPageAccessOf`/`requireHrPage` and PREPROD-1 `adjustmentReplyOutOfPayScope` both present), actions.ts, service.ts (R7 `hideForeign` next to LEAVE-3), ot.ts, ui.tsx, qc-hr-h3.9.mts. The inventory and walk matrix merged cleanly (JSON valid).
+- `scripts/qc-hr-h3.8.mts` was not touched. After the merge it is 77/78 on S1.13 (privacy.ts sha `06e0ac17…`); the controller re-takes that pin.
+- Post-merge explicit acceptances, each hunk marked `ORACLE-EDIT (HR PRIV-3 · controller merge)`:
+  - `qc-hr-leave-3` ST2/ST3: P3_FILES (exact list) + P3_DATA (inventory and walk-matrix JSON, by name); frozen list filtered by `p3Ok`.
+  - `qc-hr-preprod-1` ST2: the same `p3Ok` on the frozen list (prisma, ot.ts, ot-actions.ts).
+  - `qc-hr-h3.9` S1.2: the HrSalaryProfile block may differ by the R10 `@@unique` swap hunk marked "HR PRIV-3".
+  - priv-2 `P3_FILES` and h4.3-lib `P3_ALLOW` now also list qc-hr-leave-3 and qc-hr-preprod-1.
+- Merged-tree runs:
+  - priv-3 28/28 ×4 (forced ×3 + unforced); priv-3b 13/13 ×4; residue none
+  - preprod-1 57/57 · preprod-1b 25/25 · preprod-1c 16/16 · leave-3 53/53 · leave-3b 11/11
+  - money-2 57/57 · priv-2 47/47 · hf-sso 41/41 · hf-hr-privacy 194/194
+  - h0.6 55/55 · h1.3 63/63 · h2.4 68/68 · h2.10 57/57 · h3.9 60/60 · h4.3 45/45
+  - **h3.8 77/78 (S1.13 only)**
+  - qc-approval 16/16 · qc-payroll 19/19 · payroll-reverse 14/14 · payadjust 27/27
+  - fitness-hr 9/9 · fitness 54/54 (both modes)
+  - clean typecheck exit 0 (tsconfig does not include `.mts`, so the later oracle edits do not affect it)

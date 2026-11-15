@@ -276,7 +276,7 @@ function runStatic(): void {
       if (x === y) return true;
       if (!IN_BASE || !x || !y) return false;
       const hs = blockHunks(y.split("\n"), x.split("\n"));
-      return hs.length > 0 && hs.every((h) => h.added.some(blockLaterMark));
+      return hs.length > 0 && hs.every((h) => h.added.some((l) => blockLaterMark(l) || (name === "HrSalaryProfile" && l.includes("HR PRIV-3")))); // ORACLE-EDIT (HR PRIV-3 · controller merge) S1.2: explicit — HrSalaryProfile block may differ by the R10 @@unique swap when the hunk adds "HR PRIV-3" ◂
     };
     const mig = rd(F.mig);
     const hrCur = rd(F.hrSchema);
