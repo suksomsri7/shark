@@ -167,7 +167,13 @@ export default function DashboardScreen() {
               // สัญญาจากเว็บ (AppShell): {ev:"chat-fullscreen", on:boolean} · (NavDrawer): {ev:"open-ai"}
               try {
                 const d = JSON.parse(ev.nativeEvent.data) as { ev?: string; on?: boolean };
-                if (d.ev === "chat-fullscreen") setHideOrb(d.on === true);
+                if (d.ev === "chat-fullscreen") {
+                  // 15 พ.ย. (เจ้าของสั่ง): เลิกใช้หน้าแชทลูกค้าแบบเว็บในแอป — เว็บเข้ากล่องแชทเต็มจอเมื่อไหร่ = ถอยหน้าเว็บ แล้วไปจอแชท native
+                  if (d.on === true) {
+                    webRef.current?.goBack();
+                    router.navigate("/customers");
+                  } else setHideOrb(false);
+                }
                 if (d.ev === "open-ai") void openAssistant(); // เมนูเว็บ "ผู้ช่วย AI" (แอปปิดเมนูสไลด์แล้ว 6 ก.ย.)
                 // M3.11 — จอสมาชิกของพนักงาน (ค้น/สแกน QR · ประทับ PIN) · ฝั่งเว็บส่ง {ev:"open-member"} เมื่อพร้อม (หนี้ใน wo-notes)
                 if (d.ev === "open-member") router.push("/member");

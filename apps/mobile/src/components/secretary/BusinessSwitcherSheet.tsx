@@ -130,8 +130,15 @@ export function BusinessSwitcherSheet({ visible, onClose, startView = "systems" 
   const role = roleKey ? t(roleKey) : (me?.role ?? "");
   const canSet = !!me && BIZ_SETTING_ROLES.includes(me.role);
 
-  /** เปิดระบบใน WebView หน้าระบบ ("/") — t = nonce ให้แตะช่องเดิมซ้ำแล้วยังเปิดอีก */
-  function openSystem(href: string) {
+  /** เปิดระบบใน WebView หน้าระบบ ("/") — t = nonce ให้แตะช่องเดิมซ้ำแล้วยังเปิดอีก
+   *  15 พ.ย. (เจ้าของสั่ง): ช่องแชทลูกค้า (CHAT · มีสิทธิ์อ่าน) = จอแชท native /customers — เลิกใช้หน้าแชทเว็บในแอป
+   *  (ไม่มีสิทธิ์อ่าน ⇒ href = หน้าตั้งค่าช่องทาง /chat/channels ของเว็บ ยังเปิดใน WebView ได้) */
+  function openSystem(href: string, code?: string) {
+    if (code === "CHAT" && !href.includes("/chat/channels")) {
+      onClose();
+      router.navigate("/customers");
+      return;
+    }
     onClose();
     router.navigate({ pathname: "/", params: { open: encodeURI(href), t: String(Date.now()) } });
   }
@@ -152,11 +159,11 @@ export function BusinessSwitcherSheet({ visible, onClose, startView = "systems" 
     router.navigate("/secretary");
   }
 
-  const tiles: { key: string; label: string; icon: IconName; color: string; badge: number; href: string }[] = [
+  const tiles: { key: string; label: string; icon: IconName; color: string; badge: number; href: string; code?: string }[] = [
     { key: "home", label: t("sec.sheet.home"), icon: "home", color: c.text, badge: 0, href: "/app" },
     ...(systems ?? []).map((s) => {
       const look = SYS_LOOK[s.code] ?? SYS_FALLBACK;
-      return { key: s.key, label: s.label, icon: look.icon, color: look.color, badge: s.badge, href: s.href };
+      return { key: s.key, label: s.label, icon: look.icon, color: look.color, badge: s.badge, href: s.href, code: s.code };
     }),
   ];
 
@@ -206,7 +213,7 @@ export function BusinessSwitcherSheet({ visible, onClose, startView = "systems" 
                   testID={`sec-sheet-sys-${x.key}`}
                   accessibilityRole="button"
                   accessibilityLabel={n ? `${x.label} · ${t("sec.sheet.unread", { n: x.badge })}` : x.label}
-                  onPress={() => openSystem(x.href)}
+                  onPress={() => openSystem(x.href, x.code)}
                   style={styles.tile}
                 >
                   <View style={[styles.tileIc, { backgroundColor: x.key === "home" ? c.chip.bg : `${x.color}1A` }]}>

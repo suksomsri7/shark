@@ -1,5 +1,6 @@
 // แถบบนของแอปเลขา 3 โซน (แบบ §10 "แถบบนทุกหน้า" · sec-k.jpg · มติ 14/16 · R1 R2) — ขยาย components/airy/TopBar
 // ซ้าย 3 ปุ่มโซน: เลขา (message-circle → /secretary) · ลูกค้า (inbox → /customers) · ทีม (users → /secretary/staff)
+// 15 พ.ย. (เจ้าของสั่ง): ตัดปุ่ม "ลูกค้า" ออกจากแถบบน — ซ้ำกับช่อง "แชทลูกค้า" ในแผ่นเปิดระบบ (แตะช่องนั้น = จอแชท native /customers ไม่ใช่เว็บ)
 //   ปุ่มของโซนปัจจุบัน = พื้นทึบสีโซน (accent / zone.customers / zone.team ใน src/theme) · badge ต่อปุ่ม (≤ 99 · มีจุดเมื่อ > 0)
 // ขวา: ? (help-circle → /secretary/help) + ปุ่ม + ตามโซน: เลขา → /secretary/new · ลูกค้า = ไม่มี + · ทีม → /secretary/staff/invite
 // กลาง: ชื่อกิจการ active (จาก /api/mobile/me) + ลูกศรเล็ก แตะ = ตัวสลับกิจการ (BusinessSwitcherSheet) · `center="none"` = ว่าง (จอ A1/C3 วางชื่อใหญ่เอง)
@@ -30,7 +31,6 @@ export type ZoneBadges = { secretary?: number; customers?: number; team?: number
 
 const ZONES: { zone: ZoneKey | "calendar"; icon: IconName; path: string; label: I18nKey }[] = [
   { zone: "secretary", icon: "user", path: "/secretary", label: "sec.zone.secretary" },
-  { zone: "customers", icon: "inbox", path: "/customers", label: "sec.zone.customers" },
   { zone: "team", icon: "users", path: "/secretary/staff", label: "sec.zone.team" },
   { zone: "calendar", icon: "calendar", path: "/secretary/calendar", label: "cal.zone" },
 ];
