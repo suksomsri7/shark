@@ -4,7 +4,7 @@
 //   ไฟล์ "use server" export ฟังก์ชันอย่างเดียว (ไม่มี type) ◂
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { tenantDb } from "@/lib/core/db";
+import { hrTargetOwned } from "./hr-target"; // HR PRIV-3 ▸ R11 ◂
 import { assertCan } from "@/lib/core/rbac";
 import { hrViewerOf } from "./privacy";
 import { buildWorkEntrySnapshot, finalizeWorkEntryDays, setNormalMinutesPerDay, WE_TEXT } from "./work-entries";
@@ -12,8 +12,7 @@ import { buildWorkEntrySnapshot, finalizeWorkEntryDays, setNormalMinutesPerDay, 
 async function systemOf(tenantId: string, formData: FormData): Promise<string | null> {
   const systemId = String(formData.get("systemId") ?? "").trim();
   if (!systemId) return null;
-  const sys = await tenantDb({ tenantId }).appSystem.findFirst({ where: { id: systemId, type: "HR" }, select: { id: true } });
-  return sys?.id ?? null;
+  return (await hrTargetOwned({ tenantId, systemId })) ? systemId : null; // HR PRIV-3 ▸ R11: resolver เดียว (ระบบ HR ของร้านผู้กด) แทนสำเนาในไฟล์ ◂
 }
 
 type Auth = Awaited<ReturnType<typeof requireTenant>>;

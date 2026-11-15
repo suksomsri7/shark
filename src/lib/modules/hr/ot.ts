@@ -294,7 +294,7 @@ export async function requestOt(
 }
 
 /** ยกเลิกคำขอที่ยังรออนุมัติ — ผู้ยื่นหรือตัวพนักงานเท่านั้น (คนอื่น = cancelNo · ไม่พบ = notFound) */
-export async function cancelOtRequest(ctx: Ctx, actor: OtViewer, id: string): Promise<{ ok: true } | Fail> {
+export async function cancelOtRequest(ctx: Ctx, actor: OtViewer, id: string, opts: { hideForeign?: boolean } = {}): Promise<{ ok: true } | Fail> { // HR PRIV-3 ▸ R7: hideForeign = ทางฟอร์ม — ผู้ไม่ใช่ผู้ยื่น/ตัวพนักงาน = notFound (ไบต์เดียวกับไม่พบ) ◂
   const uid = str(actor?.userId);
   const rid = str(id);
   const db = dbOf(ctx);
@@ -302,6 +302,7 @@ export async function cancelOtRequest(ctx: Ctx, actor: OtViewer, id: string): Pr
   if (!r) return refuse(T.notFound);
   const emp = await empOf(db, ctx, r.employeeId);
   const mine = !!uid && (r.requestedByUserId === uid || emp?.linkedUserId === uid);
+  if (!mine && opts.hideForeign === true) return refuse(T.notFound); // HR PRIV-3 ◂
   if (!mine || r.status !== "PENDING") return refuse(T.cancelNo);
   try {
     const n = await tenantDb(ctx).$transaction(async (t) => {

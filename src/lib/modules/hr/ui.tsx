@@ -29,6 +29,7 @@ import { hasPin } from "./pin"; // HR H0.5 ▸ ไม่อ่านคอลั
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import BulkLeaveApprovals from "./BulkLeaveApprovals";
 import { hrViewerOf, leaveItemsForViewer } from "./privacy"; // HF-HR-0 (D9) ▸ เหตุผลการลาเฉพาะ hr.leave.read ◂
+import { hrPageAccessOf } from "./privacy"; // HR PRIV-3 ▸ ตัวเลือกยื่นแทน (leaveOnBehalf) + การ์ด hub = ด่านเดียวกับหน้า ◂
 import PinField from "./PinField";
 import KioskClock from "./KioskClock";
 import { getTranslations } from "next-intl/server"; // HR H2.4 ▸ ข้อความจอ kiosk ◂
@@ -218,10 +219,14 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
 
   // HF-HR-0 (D9): เหตุผลการลา (ลาป่วย = ข้อมูลสุขภาพ) ไปถึงหน้าจอเฉพาะผู้มี hr.leave.read — ตัดสินที่ privacy.ts
+  // HR PRIV-3 ▸ R3: รายชื่อ "พนักงาน" (ชื่อคนอื่น) อ่านเฉพาะผู้ยื่นแทนได้ (leaveOnBehalf — ค่าเดียวกับ requestLeaveAction) ·
+  //   คนอื่น = ฟอร์มของตัวเองไม่มีช่องเลือก เมื่อบัญชีผูกกับพนักงานของระบบนี้ (action ยื่นให้แถวที่ผูกอยู่แล้ว) · ไม่ผูก = ไม่มีฟอร์ม ◂
+  const { leaveOnBehalf } = hrPageAccessOf(hrViewerOf(auth));
   const [employees, { pending, history: leaves }] = await Promise.all([
-    listEmployees(ctx, 200, hrScopeOf(hrViewerOf(auth))), // HR H1.1 ▸ ตัวเลือก "ยื่นแทน" = เฉพาะสาขาของผู้ดู ◂
+    leaveOnBehalf ? listEmployees(ctx, 200, hrScopeOf(hrViewerOf(auth))) : [], // HR H1.1 ▸ ตัวเลือก "ยื่นแทน" = เฉพาะสาขาของผู้ดู ◂ · HR PRIV-3 ◂
     leaveItemsForViewer(ctx, hrViewerOf(auth)),
   ]);
+  const showLeaveForm = leaveOnBehalf ? employees.length > 0 : (await employeeOfUser(auth.active.tenantId, auth.user.id))?.systemId === systemId; // HR PRIV-3 ◂
   // HR H2.7 ▸ Q16: ประเภทการลาที่เปิดอยู่ (ชื่อ/หมวด) · ยอดของตัวเอง (employeeOfUser) · ใบรอ: จำนวนวัน + คงเหลือ (ผ่านด่านผู้อ่านของ leave.ts — ไม่มีเหตุผลการลา)
   const viewer = hrViewerOf(auth);
   const today = thaiDateKey(new Date());
@@ -285,9 +290,10 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
           />
         )}
         {/* ยื่นใบลา */}
-        {employees.length > 0 && (
+        {showLeaveForm && ( // HR PRIV-3 ◂
           <form action={requestLeaveAction} className="mt-1 flex flex-wrap items-end gap-2">
             <input type="hidden" name="systemId" value={systemId} />
+            {leaveOnBehalf && ( // HR PRIV-3 ▸ ช่องเลือกพนักงานเฉพาะผู้ยื่นแทนได้ ◂
             <label className={`flex flex-col gap-1 text-xs ${muted}`}>
               พนักงาน
               <select name="employeeId" required className="input" defaultValue="">
@@ -301,6 +307,7 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
                 ))}
               </select>
             </label>
+            )}{/* HR PRIV-3 ◂ */}
             {/* HR H2.7 ▸ ประเภทการลา · ครึ่งวัน · ชั่วโมง (เฉพาะเมื่อมีประเภทที่เปิด — ร้านยังเปิดเองไม่ได้) ·
                 VIS-1 D3: ช่องประเภทเหลือช่องเดียว — มีประเภทการลาที่เปิด = เลือกประเภท (หมวดตามประเภท · requestLeaveAction) · ไม่มี = หมวดเดิม */}
             {policies.length > 0 ? (
@@ -360,7 +367,7 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
           </form>
         )}
         {/* HR H2.7 ▸ Q10: ธงเอกสารประกอบ (ยังไม่มีช่องอัปโหลด — D-H27-attach) ◂ */}
-        {employees.length > 0 && attachNote && (
+        {showLeaveForm && attachNote && ( // HR PRIV-3 ▸ ธงเอกสารอยู่คู่ฟอร์ม ◂
           <p role="note" className={`text-xs ${muted}`} data-testid="hr-leave-attach">
             {tl("attachNote")}
           </p>
@@ -727,12 +734,14 @@ export async function HrHub({ systemId }: { systemId: string }) {
       where: { tenantId: auth.active.tenantId, type: "CRM", active: true, settings: { path: ["crm", "uiVersion"], equals: 2 } },
     })) > 0;
 
+  // HR PRIV-3 ▸ R5: การ์ดใบลา/พนักงาน (+ จำนวนคน)/เงินเดือน เฉพาะผู้เปิดหน้านั้นได้ (hrPageAccessOf — ด่านเดียวกับหน้า · ไม่มีลิงก์ไป 404) ◂
+  const pageOk = hrPageAccessOf(hv);
   const cards = [
     { href: `/app/sys/${systemId}/hr/attendance`, label: "ลงเวลา", desc: "เข้า/ออกงาน + ประวัติ" },
-    { href: `/app/sys/${systemId}/hr/leave`, label: "ใบลา", value: `${pending.length} รออนุมัติ`, desc: "อนุมัติ/ยื่นใบลา" },
-    { href: `/app/sys/${systemId}/hr/employees`, label: "พนักงาน", value: `${employees.length} คน`, desc: "รายชื่อ + เพิ่มพนักงาน" },
-    { href: `/app/sys/${systemId}/hr/payroll`, label: "เงินเดือน", desc: "โปรไฟล์ + รอบจ่าย + สลิป" },
-  ];
+    { href: `/app/sys/${systemId}/hr/leave`, label: "ใบลา", value: `${pending.length} รออนุมัติ`, desc: "อนุมัติ/ยื่นใบลา", ok: pageOk.leave },
+    { href: `/app/sys/${systemId}/hr/employees`, label: "พนักงาน", value: `${employees.length} คน`, desc: "รายชื่อ + เพิ่มพนักงาน", ok: pageOk.register },
+    { href: `/app/sys/${systemId}/hr/payroll`, label: "เงินเดือน", desc: "โปรไฟล์ + รอบจ่าย + สลิป", ok: pageOk.payroll },
+  ].filter((c) => c.ok !== false); // HR PRIV-3 ◂
   // HR H1.2 ▸ R9 หน้าตั้งค่า (กะ · ประเภทการลา · วันหยุด) — OWNER หรือ hr.employee.create ◂
   const canSettings = canManageHrSettings(hv);
   // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) เหนือการ์ดเดิม เมื่อผู้ดูมีส่วนใดส่วนหนึ่ง · ตัวอย่างคำขอ 5 รายการแรก ◂

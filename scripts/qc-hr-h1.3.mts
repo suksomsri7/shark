@@ -120,7 +120,7 @@ const H06_S84_BLOCK_SHA = "28daf076c1287d1b384ec8c44638139b9d3ebc76b4409d6abe64d
 const CRM_BLOCK_SHA = "119baf15b3a29a75460343dbd42bbc8285bd84872e9ec0ff0706b5e4654b3221";
 /** pg_indexes.indexdef on QC4 at the base (S1.10 · byte-equal) */
 const FROZEN_IDX_CRM = `CREATE UNIQUE INDEX "HrPayAdjustment_crmCommissionId_key" ON public."HrPayAdjustment" USING btree ("crmCommissionId") WHERE ("crmCommissionId" IS NOT NULL)`;
-const FROZEN_IDX_LIVE = `CREATE UNIQUE INDEX "HrPayrollRun_systemId_periodKey_live_key" ON public."HrPayrollRun" USING btree ("systemId", "periodKey") WHERE (status <> 'REVERSED'::"PayrollRunStatus")`;
+const FROZEN_IDX_LIVE = `CREATE UNIQUE INDEX "HrPayrollRun_tenantId_systemId_periodKey_live_key" ON public."HrPayrollRun" USING btree ("tenantId", "systemId", "periodKey") WHERE (status <> 'REVERSED'::"PayrollRunStatus")`; // ORACLE-EDIT (HR PRIV-3 · controller) S1.10: R10 migration 20270112000000 — tenant-scoped partial unique (byte-equal pg_indexes.indexdef on the lane DB) ◂
 /** S1.11 — sha256 of "Table.col:type:nullable" for the 49 base columns on QC4 at the base */
 const FROZEN_BASE_COL_SIG = "554083b36386ce4ea2909fb2d078e9b397ecf4f4eae739d5a1e8194a7f93a4da";
 /** S2.5 — canonical digest of the 4 v1 rows (see ORACLE CONTRACT) · derived by this oracle from payroll-rules.ts on 13a0601b */
@@ -1292,7 +1292,7 @@ async function runDb(): Promise<void> {
     chk("S1.9", bad.length === 0, "4 tables + 11 columns + 6 enums exact", bad.slice(0, 14).join(" ") + (bad.length > 14 ? ` … +${bad.length - 14}` : ""));
     const idx = async (name: string) => String(((await P.$queryRawUnsafe(`SELECT indexdef FROM pg_indexes WHERE schemaname = current_schema() AND indexname = $1`, name)) as Any[])[0]?.indexdef ?? "∅");
     const iCrm = await idx("HrPayAdjustment_crmCommissionId_key");
-    const iLive = await idx("HrPayrollRun_systemId_periodKey_live_key");
+    const iLive = await idx("HrPayrollRun_tenantId_systemId_periodKey_live_key"); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
     console.log(`  ℹ indexdef crm = ${iCrm}`);
     console.log(`  ℹ indexdef live = ${iLive}`);
     chk("S1.10", iCrm === FROZEN_IDX_CRM && iLive === FROZEN_IDX_LIVE, "2 indexdefs = base", `crm=${iCrm === FROZEN_IDX_CRM ? "=" : short(iCrm, 90)} live=${iLive === FROZEN_IDX_LIVE ? "=" : short(iLive, 90)}`);

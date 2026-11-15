@@ -252,7 +252,7 @@ function runStatic(): void {
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;
     const bankChanged = changedVsBase(BASE, [bankDir]);
     const bankFiles = bankChanged.startsWith("changed: ") ? bankChanged.slice(9).split(",") : [];
-    const bankUnmarked = bankFiles.filter((f) => !(diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H3\.6/.test(l)) || laterMarked(h, /HR H\d+\.\d+/)));
+    const bankUnmarked = bankFiles.filter((f) => !(diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H3\.6/.test(l)) || laterMarked(h, /HR H\d+\.\d+/) || (f === `${H}bank-files/actions.ts` && laterMarked(h, /HR PRIV-3/)))); // ORACLE-EDIT (HR PRIV-3 · controller r3) S1.6: explicit — bank-files/actions.ts R11 hunks (systemOf → hrTargetOwned) marked "HR PRIV-3" ◂
     ck("S1.6", { shaOk, frozen: d === "unchanged", bank: bankChanged === "unchanged" || (bankChanged.startsWith("changed: ") && bankUnmarked.length === 0) }, "unchanged (bank-files: HR H3.6 hunks only)", `${d} · bank ${bankChanged}${bankUnmarked.length ? ` unmarked ${bankUnmarked.join(",")}` : ""}`);
   }
   {

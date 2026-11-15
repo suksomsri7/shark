@@ -748,6 +748,7 @@ async function runDb(): Promise<void> {
       ["pay", V("STAFF", ["*"], { "hr.payroll.read": true })], ["staff", V("STAFF", [], {})],
     ];
     const bad: string[] = [];
+    const PRIV3 = (await import("@/lib/modules/hr/privacy")) as Any; // ORACLE-EDIT (HR PRIV-3 · controller) ◂
     for (const [n, v] of viewers)
       for (const linked of [true, false]) {
         const want = items.filter((it) => {
@@ -756,6 +757,7 @@ async function runDb(): Promise<void> {
           if (p === "/hr/kiosk") return cset.canRunKiosk(v);
           if (p === "/hr/settings" || p === "/hr/settings/law") return settings.canManageHrSettings(v);
           if (p === "/hr/attendance") return rb.canReadRoster(v) || linked;
+          if (p === "/hr/employees" || p === "/hr/leave" || p === "/hr/payroll") return PRIV3.requireHrPage(v, p === "/hr/employees" ? "register" : p.slice(4)); // ORACLE-EDIT (HR PRIV-3 · controller) ▸ S7.1: แท็บพนักงาน/ใบลา/เงินเดือน = ด่านหน้าเดียวกัน (requireHrPage) แทน "แสดงเสมอ" ◂
           return true;
         }).map((x) => x.href);
         if (linked) want.push("/app/me/hr");

@@ -90,3 +90,109 @@ Unverified: transitive import-cycle freedom of R1 (builder proves it); whether `
 - One shared helper (`hrPageAccessOf` / `requireHrPage`) built only from existing checks; a not-entitled role gets the app's standard not-found response, byte-identical to an unknown system/page, on the page; every server action on these pages keeps refusing (pinned by GREEN controls).
 - Merge order: PRIV-3 → VIS-5a → VIS-5b → VIS-5c. The VIS tickets re-merge session/hr after PRIV-3 lands; their oracle authors update the checks that pin today's unguarded state (vis-5c S8, vis-5b `hrNavFilter` pin).
 - Controller ORACLE-EDITs authorised for the builder, marked `ORACLE-EDIT (HR PRIV-3 · controller)`: `fitness-hr` `PAGE_GUARD_BASELINE` minus the three pages; `qc-hr-h2.10` S7.1 (tabs shown per the helper, not always); inventory `roles`/`hiddenFor` rows; walk matrix. Anything else: explicit allowlist style, listed in notes.
+
+## CONTROLLER RULINGS r2 (review = MERGE WITH NOTES · privacy hunt `/tmp/hr-ctl/priv3-hunt/` A pages/routes · B actions · C other-tenant owner) — added to this ticket
+- **R6 (MAJOR):** `setSalaryProfileAction` (`payroll-actions.ts` ~70–93) never checks that `systemId` is an HR system of the caller's tenant. `payTarget` (~59–61) returns `{}` for an unknown employee, which skips the branch check, and `payroll.ts:94` then creates the row.
+  - A foreign OWNER (or any holder of `hr.payroll.create`) sends our system id with an unknown employee id. The result is an `HrSalaryProfile` row in their own tenant, pointing at our system.
+  - With a real employee id of ours, the unique key `(systemId, employeeId)` throws. This is an existence oracle across tenants. If that employee has no profile yet, the foreign row squats the key and blocks our shop from creating one.
+  - `markPaidAction`, `reverseRunAction` and `reverseRunV2Action` write audit rows in the caller's tenant for a foreign run id.
+  - **Required:** every server action in the payroll action files first resolves the HR system row (`id`, the caller's tenant, type HR). Where an employee, run or adjustment id is given, it then resolves that row inside that system, through `tenantDb(ctx)`.
+  - A missing or foreign row gets ONE fixed refusal, identical for unknown and foreign ids, and nothing is written in ANY tenant (row counts incl. audit, both tenants).
+  - Same-tenant behaviour is unchanged. Our owner can still create the profile after a foreign attempt.
+  - *Oracle (qc-hr-priv-3b X3):* `createPayrollRunAction` also writes for a foreign or unknown system id. A foreign OWNER gets `{ok:true}` and an `HrPayrollRun` plus `HrPayrollItem` rows in their own tenant pointing at our (or a non-existent) system. It is in scope of R6.
+- **R7 (MINOR):** cancel/respond actions answer differently for "exists but not yours" and "unknown id": leave (`service.ts:449/450`), OT (`ot.ts:302`), swap (`swap.ts:393/451`).
+  - **Required:** one fixed text for both cases, for any caller who is not a party or not entitled. Checks for K, N and an unrelated staff member.
+  - *Oracle:* the form paths `cancelLeaveAction`, `cancelOtAction`, `respondSwapAction` and `cancelSwapAction` differ. The self paths (`self*Action`) already answer the same.
+- **R8 (MINOR):** `kioskClockAction` with an arbitrary employee id and a wrong PIN returns the employee's name and "no PIN set" (`pin.ts:36,380`).
+  - **Required:** the same "PIN ไม่ถูกต้อง" for an unknown id, a no-PIN employee and a wrong PIN, with no name in the reply. The exception is employees on the kiosk's own selectable list, whose names the kiosk page already shows.
+  - *Oracle finding:* `kioskRoster` (the kiosk page) lists every active employee in the kiosk's scope, including no-PIN ones (the "ยังไม่มี PIN" section). The name reply happens only for those listed employees.
+  - Off-list ids already answer exactly "PIN ไม่ถูกต้อง": unknown, inactive, another HR system, another tenant, and another branch for a branch kiosk. So does a wrong PIN.
+  - Under this ruling R8 needs no code change; it is pinned GREEN (3b K1/K2).
+- **R9:** oracle gaps from the review.
+  - Add viewers holding exactly one key to the page matrix: `hr.payadjust.request` only (leave ✓ · payroll ✓ via stock charge · register ✗) and `hr.payadjust.approve` only (leave ✓ · payroll ✗ · register ✗).
+  - G1 pins the truth table that `qc-hr-h2.10` S7.1 now follows.
+  - A staff member of ANOTHER HR system in the same shop opening this system's `/hr/leave` gets a render with no data today. This is debt, not fixed here; the current outcome is pinned as a GREEN control.
+- **r2 allowed files** (added to the list above; `payroll-rules.ts` stays byte-identical, and there is no migration):
+  - R6:
+    - `src/lib/modules/hr/payroll-actions.ts`
+    - `src/lib/modules/hr/payroll-opening-actions.ts`
+    - `src/lib/modules/hr/work-entries-actions.ts`
+    - `src/lib/modules/hr/stock-charge-actions.ts`
+    - `src/lib/modules/hr/attendance-pay-actions.ts`
+    - `src/lib/modules/hr/payslip-actions.ts`
+    - `src/lib/modules/hr/bank-files/actions.ts`
+    - `src/lib/modules/hr/filings/actions.ts`
+    - `src/lib/modules/hr/payroll.ts` (only for the ownership guard inside the functions those actions call)
+  - R7:
+    - `src/lib/modules/hr/service.ts`
+    - `src/lib/modules/hr/ot.ts`
+    - `src/lib/modules/hr/swap.ts`
+    - `src/lib/modules/hr/ot-actions.ts`
+    - `src/lib/modules/hr/swap-actions.ts`
+    - `src/lib/modules/hr/self-actions.ts`
+    - `src/lib/modules/hr/actions.ts` (`cancelLeaveAction`)
+  - Every hunk is marked `HR PRIV-3`.
+- **R6 rule for the builder:**
+  - ONE shared resolver: first the HR system of the caller's tenant, then the employee/run/adjustment inside that system, via `tenantDb(ctx)`.
+  - It is called first in every payroll action.
+  - Missing or foreign ⇒ the same fixed refusal the action gives for an unknown system. Nothing is written in any tenant.
+  - `createPayrollRunAction` must no longer answer `{ok:true}` for an unknown system; that becomes the same refusal (asserted in 3b X3).
+- **R6 squat leftovers (3b X6, RED):**
+  - The rightful shop must be able to create a profile or run even when a foreign-tenant row already holds the same `(systemId, employeeId)` / `(systemId, periodKey)`.
+  - Both unique indexes are cross-tenant today:
+    - `HrSalaryProfile @@unique([systemId, employeeId])`
+    - `HrPayrollRun_systemId_periodKey_live_key ("systemId","periodKey") WHERE status <> 'REVERSED'`
+  - So X6 cannot turn green without a migration or a data-cleanup decision from the controller. The builder must not design one.
+
+## R10 (controller ruling on X6): tenant-scoped unique keys, no data deleted
+- **ONE migration:** a new folder, with a timestamp after the latest HR migration `20270111000000_hr_line_link`. Nothing else goes in it.
+  - (a) `HrSalaryProfile`: `@@unique([systemId, employeeId])` becomes `@@unique([tenantId, systemId, employeeId])`, in the schema (`prisma/schema/payroll.prisma`) and in the migration (DROP INDEX `"HrSalaryProfile_systemId_employeeId_key"` + CREATE UNIQUE INDEX on (tenantId, systemId, employeeId)).
+  - (b) `HrPayrollRun`: DROP INDEX `"HrPayrollRun_systemId_periodKey_live_key"`, then CREATE the same partial unique index on (`"tenantId"`, `"systemId"`, `"periodKey"`) `WHERE "status" <> 'REVERSED'`. This is raw SQL in the migration, like 20261202000000. The schema keeps its plain `@@index([systemId, periodKey])`.
+  - The migration holds only index statements: no column change, no data change. It must be safe in the usual Prisma sense. `pnpm drift` must show no diff for these tables afterwards; the builder runs it.
+  - Rows already squatting in another tenant stay untouched. They are in nobody's view and no longer block.
+- **Compound-unique call sites:** none.
+  - Grep of `src/` and `scripts/` for `systemId_employeeId`, `upsert`/`createMany` on these models, `ON CONFLICT` on these tables, and raw `INSERT INTO "HrSalaryProfile"/"HrPayrollRun"` found nothing.
+  - `setSalaryProfile` uses `findFirst` + `update`/`create`. Duplicate runs are detected by a `tenantDb` pre-query (`payroll.ts:765`, `dupRunText`).
+  - The `systemId_periodKey` hits in `account/gl.ts` on other branches are `AccountPeriod`, not HR.
+  - So no call site needs changing. If the builder finds one, it uses the new key with the tenant from the caller's ctx.
+- **Allowed files (R10):**
+  - `prisma/schema/payroll.prisma`: the `@@unique` line(s) plus `HR PRIV-3` comments only.
+  - `prisma/migrations/<new>/migration.sql`.
+  - The earlier "no migration" static is replaced by "exactly this one migration" (qc-hr-priv-3 S6).
+- **Lane DB:** the lane-5 QC branch is shared with lane 2. The builder runs `prisma migrate deploy` on it through the lane wrapper.
+  - Old code on other branches keeps working against the new DB.
+    - The Prisma client never enforces DB indexes.
+    - No code uses the compound key in `where`, `upsert`, `connect`, `createMany skipDuplicates`, or `ON CONFLICT` on these tables.
+    - Duplicate-run and existing-profile checks are tenant-scoped pre-queries.
+  - The lane-2 agent must still be warned before the builder migrates:
+    - `qc-hr-h0.6` S2.4 (expects `HrPayrollRun_systemId_periodKey_live_key` on (systemId, periodKey)) will fail on that DB.
+    - `qc-hr-h1.3` S1.10 (byte-equal `pg_indexes.indexdef` of that index) will fail on that DB.
+    - `pnpm drift` on a branch whose schema still has `@@unique([systemId, employeeId])` will show a diff.
+  - These are DB-state oracles, not code breakage.
+- **Oracle:**
+  - 3b X6 stays as written; it should turn green with R10.
+  - X7 (GREEN control): own-tenant uniqueness is kept.
+  - X8 (GREEN control): foreign squat rows are unchanged.
+  - qc-hr-priv-3 S6 (RED until built): exactly one index-only migration plus the schema swap.
+
+## CONTROLLER RULINGS r3 (delta review = FIX REQUIRED · oracle 3b hole found and closed)
+- **R11 (MAJOR):** `approvePayrollRunAction` (`payroll-actions.ts` ~181–200) has no ownership check. It writes an `hr.payroll.approve` audit row for a foreign or unknown system.
+  - 3b X3 missed this: its form lacked `expectNet`/`expectItems`, so the action returned before the audit.
+  - Oracle lesson: every action is now driven with a COMPLETE form. The driver collects every field name its file reads and fills each from our own shop's real run/employee/adjustment per case. 3b X9 is a positive control proving our owner's same-form calls reach the write.
+  - **Required:** `hrTargetOwned` comes FIRST (after the permission checks) in EVERY action of the 8 payroll action files that receives a system/run/employee/adjustment id from the client. This includes `createPayrollRunV2Action`, which today is refused for a foreign system only because the engine defaults to v1.
+  - A file-local `systemOf(...)` helper counts only if it calls `hrTargetOwned` (ONE shared resolver).
+  - 3b X10 checks this statically; delegation to a local helper is allowed when that helper calls `hrTargetOwned`.
+- **R12:** `createEmployeeAction` (`hr/actions.ts` ~97–122) checks no system. Any `systemId` creates an `HrEmployee` + `Party` in the caller's tenant. That fake employee then satisfies every "tenantDb finds the employee" gate for our system id.
+  - **Required:** the resolver goes into the employee create/update/remove/restore actions too. `hr/actions.ts` joins the allowed files for exactly those four functions (in addition to the earlier `requestLeaveAction`/`cancelLeaveAction` ranges).
+  - 3b checks: E1 (foreign owner on our system = unknown system, nothing written in either tenant), E2 (chain closed: no fake employee ⇒ follow-ups write nothing; GREEN today), E3 (static: resolver first).
+- **R13:** `cancelLeave` (`service.ts` ~822–830) returns CANCEL_DECIDED before the ownership check for a PENDING leave whose chain is already decided, so a non-party learns the leave exists.
+  - **Required:** with `hideForeign`, NOT_MINE comes first.
+  - Added to 3b Y1 as the `cancelLeaveDecided` case.
+- **R14:** migration hardening.
+  - The migration must create the new unique indexes BEFORE dropping the old ones, and use `DROP INDEX IF EXISTS` for the old ones. It still contains only index statements on the two tables (qc-hr-priv-3 S6).
+  - 3b M1 is a DB check: the old index names no longer exist on the lane DB, and the new tenant-scoped ones do.
+  - **Builder note:** `20270112000000_hr_tenant_scoped_unique_keys` is already applied on the lane-5 DB and on no other DB. Edit the file in place and do NOT rename the folder. The end state is identical, so no re-apply is needed: the lane DB already has the final indexes. Only the file changes.
+  - The checksum Prisma stored for the applied migration will differ from the edited file. Resolve that on the lane DB only, the usual way (e.g. `prisma migrate resolve`, or update the stored checksum to match), with no index re-run. State in the notes which way was used.
+- **R15:**
+  - `qc-hr-h3.9` S1.2 should accept exactly the `@@unique` swap line in the HrSalaryProfile block: removed `@@unique([systemId, employeeId])`, added `@@unique([tenantId, systemId, employeeId])`, plus comment lines. It should not accept any hunk that merely carries the mark. The builder applies this.
+  - The JSON files (inventory, walk matrix) accepted by name in the leave-3 / preprod-1 statics stay as they are (debt).

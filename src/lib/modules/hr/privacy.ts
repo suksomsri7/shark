@@ -15,6 +15,8 @@ import type { EmployeeBorrowingDto, EmployeeDocDto, EmployeeProfileDto, LeaveIte
 import { employeeInScope, hrScopeOf, inPayScope, isAllBranches, unitNamesOf } from "./scope"; // HR PRIV-2 ▸ + inPayScope (ข้อมูลอ่อนไหวด้านค่าจ้าง = สาขาประจำเท่านั้น) ◂
 import { leaveSplitOf } from "./leave"; // HR PREPROD-1 ▸ R3: ส่วนได้/ไม่ได้ค่าจ้างของใบลาป่วยเกินวันที่เหลือ ◂
 import { finalizedOf, slipState } from "./payslip-rules"; // HR H3.8 ▸ สถานะสลิป (pure) ◂
+import { canReadWorkEntries } from "./work-entries"; // HR PRIV-3 ▸ ด่านแผงชั่วโมงทำงานของหน้าเงินเดือน (เรียกใช้ ไม่เขียนซ้ำ) ◂
+import { canRequestStockCharge, canSeeStockCharges } from "./stock-charge"; // HR PRIV-3 ▸ ด่านส่วนหักค่าของของหน้าเงินเดือน ◂
 
 export type HrViewer = MembershipCtx & { userId: string };
 
@@ -41,6 +43,31 @@ export function hrAccessOf(v: HrViewer): { seeSensitive: boolean; readLeave: boo
     // ผู้แก้ทะเบียน · ผู้อ่านข้อมูล HR (คีย์เดียวกับลิงก์การ์ดพนักงานบนบอร์ดงาน) · ผู้ดูเงินเดือน
     openProfile: can("hr.employee.create") || can("hr.leave.read") || seeSensitive || (String(v.userId ?? "").startsWith("apikey:") && can("hr.employee.read")), // HR H4.8 ▸ + คีย์อ่านรายชื่อ เฉพาะผู้ดูสังเคราะห์ของคีย์ API (คนที่ถือคีย์นี้ไม่ได้อะไรเพิ่ม · ไม่ให้ seeSensitive) ◂
   };
+}
+
+// HR PRIV-3 ▸ ด่านหน้า /hr/employees · /hr/leave · /hr/payroll + เมนู/แท็บ/การ์ด hub — จุดตัดสินเดียว (หน้า · nav.ts · ui.tsx · requestLeaveAction เรียกที่นี่)
+//   ประกอบจากด่านที่มีอยู่แล้วเท่านั้น (ไม่มีกติกาใหม่): ทะเบียน = hrAccessOf.openProfile · ใบลา = คีย์ที่ส่วนต่าง ๆ ของหน้าใช้ (ฟอร์ม · รายการ · OT) ·
+//   เงินเดือน = ผลรวมด่านของทุกส่วนบนหน้า (canViewPayroll · canReadWorkEntries · canRequestStockCharge · canSeeStockCharges) ·
+//   ยื่นแทน = สองคีย์เดิมของ requestLeaveAction (ย้ายมาไว้ที่นี่) · ผู้ดูรูปร่างผิด = false ทุกช่อง (fail-closed) · ไม่อ่านฐานข้อมูล
+//   ไม่ผ่าน ⇒ หน้าเรียก notFound() ทันทีหลังตรวจระบบ (ก่อนอ่านข้อมูลใด ๆ — ไบต์เดียวกับรหัสระบบที่ไม่มีอยู่) ◂
+export type HrPage = "register" | "leave" | "payroll";
+export function hrPageAccessOf(v: HrViewer): { register: boolean; leave: boolean; payroll: boolean; leaveOnBehalf: boolean } {
+  const none = { register: false, leave: false, payroll: false, leaveOnBehalf: false };
+  if (!v || typeof v !== "object" || typeof v.role !== "string" || !v.permissions || typeof v.permissions !== "object") return none;
+  const m: HrViewer = { role: v.role, unitAccess: Array.isArray(v.unitAccess) ? v.unitAccess : [], permissions: v.permissions, userId: typeof v.userId === "string" ? v.userId : "" };
+  const can = (action: string) => evaluate(m, { module: "hr", action });
+  const leaveOnBehalf = can("hr.employee.create") || can("hr.leave.decide");
+  return {
+    register: hrAccessOf(m).openProfile,
+    leave: ["hr.leave.request", "hr.leave.read", "hr.leave.decide", "hr.employee.create", "hr.payadjust.request", "hr.payadjust.approve", "hr.payroll.read"].some(can),
+    payroll: canViewPayroll(m) || canReadWorkEntries(m) || canRequestStockCharge(m) || canSeeStockCharges(m),
+    leaveOnBehalf,
+  };
+}
+/** HR PRIV-3 ▸ หน้านี้เปิดได้ไหม (ค่าเดียวกับ hrPageAccessOf · หน้าอื่น/ค่าผิด = false) ◂ */
+export function requireHrPage(v: HrViewer, page: HrPage): boolean {
+  if (page !== "register" && page !== "leave" && page !== "payroll") return false;
+  return hrPageAccessOf(v)[page] === true;
 }
 
 /** โปรไฟล์พนักงาน 1 คนในรูป DTO — null = ไม่มีสิทธิ์/ไม่พบ/ข้ามร้าน */
