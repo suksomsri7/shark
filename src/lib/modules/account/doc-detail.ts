@@ -8,6 +8,7 @@ import { getExpenseDoc, EXP_DOC_LABEL } from "./expense";
 import { taxInvoiceBuyerOf, type TaxInvoiceBuyerCheck } from "./legal-gate"; // ACC T2.1 ◂
 import { readSellerSnapshot } from "./seller-snapshot"; // ACC T2.9 ◂
 import { depositSettlementView, type DepositSettlementView } from "./deposit-outcome"; // ACC T3 (A2) ◂
+import { badDebtStatusOf, type BadDebtStatusView } from "./bad-debt-shared"; // ACC T5c ◂
 import { DOC_LABEL, STATUS_LABEL, isOverdue, listDocPayments, getDocRef, type DocPaymentRow } from "./service";
 import { listJournalEntriesForDocument } from "./gl";
 import { originalPrinted } from "./print-log"; // ACC T2.7 ◂
@@ -248,6 +249,8 @@ export type DocDetailData = {
   status: AccountDocStatus;
   /** ACC T3 (A2) ▸ ใบรับ/จ่ายมัดจำที่คืน/ริบแล้ว (null = ไม่เกี่ยว) ◂ */
   depositSettlement: DepositSettlementView | null;
+  /** ACC T5c ▸ ใบที่ตัดหนี้สูญ (ทั้งใบ/บางส่วน) — ป้ายคำนวณ (null = ไม่เกี่ยว) ◂ */
+  badDebt: BadDebtStatusView | null;
   label: string;
   createdAt: Date;
   issueDate: Date;
@@ -382,6 +385,7 @@ export async function getDocDetailData(
     status: doc.status,
     // ACC T3 (A2) ▸ ใบมัดจำที่คืน/ริบแล้ว — ป้ายตามจริง (ฟิลด์ที่คำนวณ) ◂
     depositSettlement: depositSettlementView(doc),
+    badDebt: badDebtStatusOf(doc, payments),
     label: docLabelOf(doc.docType),
     createdAt: doc.createdAt,
     issueDate: doc.issueDate,
@@ -434,7 +438,8 @@ export async function getDocDetailData(
     remain: Math.max(0, doc.grandTotal - doc.paidTotal),
     payments,
     related,
-    timeline,
+    // ACC T5c ▸ ใบที่ตัดหนี้สูญทั้งใบ — ขั้นสุดท้ายไม่เรียกว่า "ชำระแล้ว" ◂
+    timeline: badDebtStatusOf(doc, payments)?.state === "FULL" ? timeline.map((t) => (t.code === "paid" ? { ...t, label: "ตัดหนี้สูญ" } : t)) : timeline,
     jv,
     attachments: attachmentRows.map((a) => ({
       id: a.id,

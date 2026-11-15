@@ -246,3 +246,162 @@ export function AllowanceForm({ systemId, current, today, save }: { systemId: st
     </form>
   );
 }
+
+// ═══ ACC T5c (เลน 2) ▸ หนี้สูญได้รับคืน · ยกเลิกรายการรับคืน · วันประชุมใหญ่อนุมัติงบ ═══
+const RECOVERY_CHANNEL_TH: Record<string, string> = { CASH: "เงินสด", TRANSFER: "โอนเงิน", PROMPTPAY: "พร้อมเพย์", CARD: "บัตร", E_WALLET: "e-Wallet", CHEQUE: "เช็ค", OTHER: "อื่น ๆ" };
+
+export function RecoveryForm({
+  systemId,
+  documentId,
+  docNo,
+  recoverable,
+  today,
+  save,
+}: {
+  systemId: string;
+  documentId: string;
+  docNo: string | null;
+  recoverable: number;
+  today: string;
+  save: (systemId: string, input: { documentId: string; amountSatang: number | null; date: string; channel: string; note: string }) => Promise<ActionRes>;
+}) {
+  const [open, setOpen] = useState(false);
+  const [amount, setAmount] = useState((recoverable / 100).toFixed(2));
+  const [date, setDate] = useState(today);
+  const [channel, setChannel] = useState("TRANSFER");
+  const [note, setNote] = useState("");
+  const [warnings, setWarnings] = useState<LegalWarning[]>([]);
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const tid = `recover-${documentId}`;
+  if (!open)
+    return (
+      <div className="flex flex-col gap-1">
+        <button type="button" className="btn btn-ghost btn-sm self-start" onClick={() => setOpen(true)} data-testid={`${tid}-open`}>
+          รับเงินคืน (หนี้สูญได้รับคืน)
+        </button>
+        <LegalWarnings warnings={warnings} testId={`${tid}-warnings`} />
+        <Msg err={null} ok={ok} testId={tid} />
+      </div>
+    );
+  return (
+    <form
+      className="flex flex-col gap-2 rounded-lg border p-3"
+      style={{ borderColor: "var(--color-line)" }}
+      data-testid={`${tid}-form`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        const a = toSatang(amount);
+        if (a === null || a <= 0) {
+          setErr("กรอกยอดที่ได้รับเป็นตัวเลขมากกว่า 0");
+          return;
+        }
+        start(async () => {
+          const r = await save(systemId, { documentId, amountSatang: a, date, channel, note });
+          setErr(r.ok ? null : r.reason);
+          setWarnings(r.warnings ?? []);
+          if (r.ok) {
+            setOk(`บันทึกรายได้หนี้สูญได้รับคืน ${bahtTxt(a)} บาทแล้ว`);
+            setOpen(false);
+            router.refresh();
+          }
+        });
+      }}
+    >
+      <p className="text-xs text-[color:var(--color-muted)]">{docNo ?? "-"} · ยังรับคืนได้อีก {bahtTxt(recoverable)} บาท · ลงเป็นรายได้ "หนี้สูญได้รับคืน" ไม่เปิดลูกหนี้ใบเดิมกลับมา</p>
+      <div className="flex flex-wrap items-end gap-2">
+        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+          ยอดที่ได้รับ (บาท)
+          <input className="input w-36 text-sm" inputMode="decimal" value={amount} onChange={(e) => setAmount(e.target.value)} data-testid={`${tid}-amount`} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+          วันที่ได้รับ
+          <input type="date" className="input text-sm" value={date} onChange={(e) => setDate(e.target.value)} data-testid={`${tid}-date`} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+          ช่องทาง
+          <select className="input text-sm" value={channel} onChange={(e) => setChannel(e.target.value)} data-testid={`${tid}-channel`}>
+            {Object.entries(RECOVERY_CHANNEL_TH).map(([k, v]) => (
+              <option key={k} value={k}>{v}</option>
+            ))}
+          </select>
+        </label>
+        <label className="flex min-w-[10rem] flex-1 flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+          หมายเหตุ
+          <input className="input text-sm" value={note} maxLength={300} onChange={(e) => setNote(e.target.value)} data-testid={`${tid}-note`} />
+        </label>
+        <button className="btn btn-primary btn-sm" disabled={pending} data-testid={`${tid}-save`}>{pending ? "กำลังบันทึก…" : "บันทึกรับคืน"}</button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => setOpen(false)} data-testid={`${tid}-cancel`}>ปิด</button>
+      </div>
+      <Msg err={err} ok={null} testId={tid} />
+    </form>
+  );
+}
+
+export function RecoveryVoidButton({ systemId, recoveryId, save }: { systemId: string; recoveryId: string; save: (systemId: string, recoveryId: string, reason: string) => Promise<ActionRes> }) {
+  const [reason, setReason] = useState("");
+  const [open, setOpen] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  const tid = `recovery-void-${recoveryId}`;
+  if (!open)
+    return (
+      <button type="button" className="text-xs underline print:hidden" onClick={() => setOpen(true)} data-testid={`${tid}-open`}>
+        ยกเลิก
+      </button>
+    );
+  return (
+    <span className="inline-flex flex-wrap items-center gap-1 print:hidden">
+      <input className="input w-44 text-xs" placeholder="เหตุผล (อย่างน้อย 5 ตัวอักษร)" value={reason} onChange={(e) => setReason(e.target.value)} data-testid={`${tid}-reason`} />
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm"
+        disabled={pending}
+        data-testid={`${tid}-confirm`}
+        onClick={() =>
+          start(async () => {
+            const r = await save(systemId, recoveryId, reason);
+            setErr(r.ok ? null : r.reason);
+            if (r.ok) router.refresh();
+          })
+        }
+      >
+        ยืนยันยกเลิก (กลับรายการ)
+      </button>
+      {err && <span className="text-xs text-[color:var(--color-danger)]" data-testid={`${tid}-error`}>{err}</span>}
+    </span>
+  );
+}
+
+export function StatementMeetingForm({ systemId, fyEnd, initial, save }: { systemId: string; fyEnd: string; initial: string | null; save: (systemId: string, fyEnd: string, meetingDate: string | null) => Promise<ActionRes> }) {
+  const [v, setV] = useState(initial ?? "");
+  const [err, setErr] = useState<string | null>(null);
+  const [ok, setOk] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  const router = useRouter();
+  return (
+    <form
+      className="flex flex-wrap items-end gap-2 print:hidden"
+      data-testid="meeting-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        start(async () => {
+          const r = await save(systemId, fyEnd, v || null);
+          setErr(r.ok ? null : r.reason);
+          setOk(r.ok ? (v ? "บันทึกแล้ว — ปฏิทินคำนวณวันยื่นงบให้" : "ล้างวันประชุมแล้ว") : null);
+          if (r.ok) router.refresh();
+        });
+      }}
+    >
+      <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+        วันประชุมใหญ่ที่อนุมัติงบรอบนี้
+        <input type="date" className="input text-sm" value={v} onChange={(e) => setV(e.target.value)} data-testid="meeting-date" />
+      </label>
+      <button className="btn btn-ghost btn-sm" disabled={pending} data-testid="meeting-save">{pending ? "กำลังบันทึก…" : "บันทึก"}</button>
+      <Msg err={err} ok={ok} testId="meeting" />
+    </form>
+  );
+}

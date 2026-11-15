@@ -7,7 +7,9 @@ import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 import { loadAccountSystem } from "./guard";
 import { assertAccountCan } from "./access";
 import { safeReason } from "./errors";
-import { setDoubtfulAllowance, writeOffBadDebt, writeOffWarnings } from "./bad-debt";
+import { RECOVERY_CHANNELS, recoverBadDebt, setDoubtfulAllowance, voidBadDebtRecovery, writeOffBadDebt, writeOffWarnings, type RecoveryChannel } from "./bad-debt";
+import { mc } from "./access";
+import { saveStatementMeeting } from "./tax-calendar";
 import { setTaxAddBack } from "./tax-add-back";
 import { setStampDutyRef } from "./tax-checks";
 
@@ -87,5 +89,48 @@ export async function setDoubtfulAllowanceAction(systemId: string, input: { targ
     return { ok: true, warnings: r.warnings };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ตั้งค่าเผื่อไม่สำเร็จ") };
+  }
+}
+
+// ═══ ACC T5c (เลน 2) ═══
+export async function recoverBadDebtAction(systemId: string, input: { documentId: string; amountSatang: number | null; date: string; channel: string; note: string }): Promise<Res> {
+  try {
+    const { auth, tenantId, userId } = await loadAccountSystem(sid(systemId));
+    assertAccountCan(auth, "account.payment.record");
+    const ch = (RECOVERY_CHANNELS as readonly string[]).includes(input.channel) ? (input.channel as RecoveryChannel) : "CASH";
+    const r = await recoverBadDebt({ tenantId, systemId: sid(systemId) }, { documentId: sid(input.documentId), amount: typeof input.amountSatang === "number" ? input.amountSatang : null, date: bkkNoon(input.date), channel: ch, note: String(input.note ?? "").slice(0, 300), createdById: userId });
+    if (!r.ok) return r;
+    revalidatePath(`/app/sys/${sid(systemId)}/account/aging/bad-debt`);
+    return { ok: true, warnings: r.warnings };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "บันทึกหนี้สูญได้รับคืนไม่สำเร็จ") };
+  }
+}
+
+export async function voidBadDebtRecoveryAction(systemId: string, recoveryId: string, reason: string): Promise<Res> {
+  try {
+    const { auth, tenantId, userId } = await loadAccountSystem(sid(systemId));
+    assertAccountCan(auth, "account.payment.void");
+    const why = String(reason ?? "").trim();
+    if (why.length < 5) return { ok: false, reason: "กรุณาระบุเหตุผลอย่างน้อย 5 ตัวอักษร" };
+    const r = await voidBadDebtRecovery({ tenantId, systemId: sid(systemId) }, { recoveryId: sid(recoveryId), reason: why.slice(0, 300), actorId: userId });
+    if (!r.ok) return r;
+    revalidatePath(`/app/sys/${sid(systemId)}/account/aging/bad-debt`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "ยกเลิกรายการไม่สำเร็จ") };
+  }
+}
+
+export async function saveStatementMeetingAction(systemId: string, fyEnd: string, meetingDate: string | null): Promise<Res> {
+  try {
+    const { auth, tenantId, userId } = await loadAccountSystem(sid(systemId));
+    assertAccountCan(auth, "account.settings.manage");
+    const r = await saveStatementMeeting({ ...mc(auth), userId }, { tenantId, systemId: sid(systemId) }, String(fyEnd ?? "").slice(0, 10), meetingDate ? String(meetingDate).slice(0, 10) : null);
+    if (!r.ok) return r;
+    revalidatePath(`/app/sys/${sid(systemId)}/account/tax/calendar`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, reason: safeReason(e, "บันทึกวันประชุมไม่สำเร็จ") };
   }
 }

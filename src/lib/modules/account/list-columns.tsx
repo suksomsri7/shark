@@ -10,6 +10,7 @@ import type { DocColumn } from "@/components/account-v2/DocTable";
 import { STATUS_LABEL, isOverdue } from "./service";
 import { accountTone } from "./ui";
 import { depositOutcomeLabel } from "./deposit-outcome";
+import { badDebtStatusOf } from "./bad-debt-shared"; // ACC T5c ◂
 
 export type ListRow = {
   id: string;
@@ -24,7 +25,7 @@ export type ListRow = {
   sourceDocId: string | null;
   status: AccountDocStatus;
   contact: { id: string; name: string } | null;
-  payments?: { channel: AccountPayChannel }[];
+  payments?: { channel: AccountPayChannel; amount?: number }[];
   /** ACC T3 (A2) ▸ ใบรับ/จ่ายมัดจำที่คืน/ริบแล้ว — ป้ายตามจริงแทน "หักมัดจำแล้ว" (deposit-outcome.ts) ◂ */
   docType?: string;
   depositOutcome?: unknown;
@@ -50,9 +51,11 @@ export const PAY_CHANNEL_LABEL: Record<AccountPayChannel, string> = {
   BAD_DEBT: "ตัดหนี้สูญ",
 };
 
-export function rowStatusLabel(status: AccountDocStatus, row?: { docType?: string; grandTotal: number; depositOutcome?: unknown }): string {
+export function rowStatusLabel(status: AccountDocStatus, row?: { docType?: string; grandTotal: number; depositOutcome?: unknown; payments?: { channel: string; amount?: number }[] }): string {
   const dep = row?.docType ? depositOutcomeLabel({ docType: row.docType, status, grandTotal: row.grandTotal, depositOutcome: row.depositOutcome }) : null;
-  return dep ?? ROW_STATUS_LABEL[status] ?? STATUS_LABEL[status];
+  // ACC T5c ▸ ใบที่ตัดหนี้สูญ — ไม่ใช่ "ชำระแล้ว" ◂
+  const bd = badDebtStatusOf({ status }, row?.payments?.map((p) => ({ channel: p.channel, amount: p.amount ?? 0 })));
+  return dep ?? bd?.labelTh ?? ROW_STATUS_LABEL[status] ?? STATUS_LABEL[status];
 }
 
 export function StatusCell({ row }: { row: ListRow }) {
@@ -60,6 +63,9 @@ export function StatusCell({ row }: { row: ListRow }) {
   // ACC T3 (A2) ▸ คืน/ริบมัดจำแล้ว — ป้ายตามจริง (ไม่ใช่ "หักมัดจำแล้ว"/"ยกเลิก") ◂
   const dep = row.docType ? depositOutcomeLabel({ docType: row.docType, status: row.status, grandTotal: row.grandTotal, depositOutcome: row.depositOutcome }) : null;
   if (dep) return <StatusChip value={dep} tone="muted" />;
+  // ACC T5c ▸ ตัดหนี้สูญ (ทั้งใบ/บางส่วน) — ป้ายคำนวณจากรายการชำระ ไม่ใช่ "ชำระแล้ว" ◂
+  const bd = badDebtStatusOf({ status: row.status }, row.payments?.map((p) => ({ channel: p.channel, amount: p.amount ?? 0 })));
+  if (bd) return <StatusChip value={bd.labelTh} tone="muted" />;
   return <StatusChip value={row.status} map={ROW_STATUS_LABEL_FULL()} toneOf={accountTone} />;
 }
 // StatusChip เตือน console.warn เมื่อ value ไม่อยู่ใน map — ต้องส่ง map ครบทุก enum (ผสาน override เข้ากับ STATUS_LABEL เต็ม)

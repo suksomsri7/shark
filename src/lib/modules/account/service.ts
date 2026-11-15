@@ -1478,11 +1478,11 @@ export type DocTabCounts = Partial<Record<AccountDocStatus, number>> & {
 const LIST_DOCUMENTS_INCLUDE = {
   contact: { select: { id: true, name: true } },
   // ใช้แสดงคอลัมน์ "ช่องทางรับเงิน" ของหน้ารายการ RECEIPT (§5.1) — เอาแค่รายการล่าสุดที่ไม่ถูก void
+  // ACC T5c ▸ ทุกรายการที่ยังไม่ยกเลิก (ช่องทาง + ยอด) — [0] = ล่าสุด (คอลัมน์ช่องทาง) · รวม BAD_DEBT = ป้าย "ตัดหนี้สูญ" (bad-debt-shared) ◂
   payments: {
     where: { voidedAt: null },
     orderBy: { paidAt: "desc" as const },
-    take: 1,
-    select: { channel: true },
+    select: { channel: true, amount: true },
   },
 } satisfies Prisma.AccountDocumentInclude;
 
@@ -1613,7 +1613,7 @@ export async function listDocumentsPaged(
     input.slim
       ? prisma.accountDocument
           .findMany(listArgs)
-          .then((rs) => rs.map((r) => ({ ...r, contact: null, payments: [] as { channel: AccountPayChannel }[] })))
+          .then((rs) => rs.map((r) => ({ ...r, contact: null, payments: [] as { channel: AccountPayChannel; amount: number }[] })))
       : prisma.accountDocument.findMany({ ...listArgs, include: LIST_DOCUMENTS_INCLUDE }),
     prisma.accountDocument.count({ where }),
     input.skipStatusCounts ? Promise.resolve([] as { status: AccountDocStatus; _count: { _all: number } }[]) : prisma.accountDocument.groupBy({ by: ["status"], where: base, _count: { _all: true } }),

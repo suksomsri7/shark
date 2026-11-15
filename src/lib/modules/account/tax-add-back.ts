@@ -41,6 +41,28 @@ export type EntertainmentCap = {
   giftDocs: { documentId: string; docNo: string | null; date: string; amount: number }[];
 };
 
+/** ACC T5c ▸ บริจาคเทียบเพดานร้อยละของกำไรสุทธิ (ตัวช่วย · ไม่บันทึกบัญชี) */
+export type DonationCap = {
+  amount: number;
+  /** กำไรก่อนหักเงินบริจาค — ประมาณจากกำไรทางบัญชีของช่วง หรือค่าที่ผู้ทำบัญชีกรอก */
+  profit: number;
+  profitSource: "BOOK_ESTIMATE" | "INPUT";
+  rateBp: number | null;
+  cap: number | null;
+  excess: number;
+};
+/** ACC T5c ▸ ค่าเช่ารถยนต์นั่งเทียบเพดานต่อคันต่อเดือน/วัน (ตัวช่วย · ไม่บันทึกบัญชี) */
+export type CarRentCap = {
+  rent: number;
+  rentSource: "INPUT" | "ACCOUNTS";
+  carMonths: number;
+  carDays: number;
+  monthlyCap: number | null;
+  dailyCap: number | null;
+  cap: number | null;
+  excess: number;
+};
+
 export type TaxAddBackReport = {
   from: string;
   to: string;
@@ -51,6 +73,8 @@ export type TaxAddBackReport = {
   totals: { amount: number; addBack: number };
   entertainment: EntertainmentCap | null;
   donationCapRateBp: number | null;
+  donation: DonationCap | null;
+  carRent: CarRentCap | null;
   sections: typeof TAX_ADD_BACK_SECTIONS;
   warnings: LegalWarning[];
 };
@@ -67,7 +91,34 @@ export function entertainmentCapOf(o: { revenue: number; capital: number | null;
   return { cap, baseLabel: byCap > byRev ? "ทุนชำระแล้ว" : "รายได้" };
 }
 
-export async function taxAddBackReport(ctx: BookCtx, input: { asOf?: string; from?: string; to?: string; paidUpCapital?: number | null } = {}): Promise<TaxAddBackReport> {
+/** pure: เพดานบริจาค = อัตรา × กำไร (กำไร ≤ 0 = เพดาน 0) */
+export function donationCapOf(o: { amount: number; profit: number; rateBp: number | null }): { cap: number | null; excess: number } {
+  if (o.rateBp === null) return { cap: null, excess: 0 };
+  const cap = o.profit > 0 ? Math.floor((o.profit * o.rateBp) / 10_000) : 0;
+  return { cap, excess: Math.max(o.amount - cap, 0) };
+}
+
+/** pure: เพดานค่าเช่ารถยนต์นั่ง = เพดานต่อเดือน × คัน-เดือน + เพดานต่อวัน × คัน-วัน */
+export function carRentCapOf(o: { rent: number; carMonths: number; carDays: number; monthlyCap: number | null; dailyCap: number | null }): { cap: number | null; excess: number } {
+  if ((o.carMonths > 0 && o.monthlyCap === null) || (o.carDays > 0 && o.dailyCap === null)) return { cap: null, excess: 0 };
+  const cap = (o.monthlyCap ?? 0) * o.carMonths + (o.dailyCap ?? 0) * o.carDays;
+  return { cap, excess: Math.max(o.rent - cap, 0) };
+}
+
+export type TaxAddBackInput = {
+  asOf?: string;
+  from?: string;
+  to?: string;
+  paidUpCapital?: number | null;
+  /** ACC T5c ▸ กำไรสุทธิที่ผู้ทำบัญชีกรอก (สตางค์) แทนค่าประมาณจากบัญชี */
+  netProfit?: number | null;
+  /** ACC T5c ▸ จำนวนคัน × เดือน และคัน × วัน ที่เช่ารถยนต์นั่ง · ยอดค่าเช่า (ไม่กรอก = ยอดบัญชีที่ติดธง (20) ทั้งหมด) */
+  carMonths?: number | null;
+  carDays?: number | null;
+  carRent?: number | null;
+};
+
+export async function taxAddBackReport(ctx: BookCtx, input: TaxAddBackInput = {}): Promise<TaxAddBackReport> {
   const db = tenantDb(ctx);
   const [legal, policy, ledgers] = await Promise.all([
     loadBookLegal(ctx),
@@ -85,8 +136,10 @@ export async function taxAddBackReport(ctx: BookCtx, input: { asOf?: string; fro
     .map((l) => ({ l, code: effectiveTaxAddBack({ code: l.code, taxAddBack: l.taxAddBack }) }))
     .filter((x): x is { l: (typeof ledgers)[number]; code: string } => !!x.code && !!taxAddBackSectionOf(x.code));
   const incomeIds = ledgers.filter((l) => l.type === "INCOME").map((l) => l.id);
+  // ACC T5c ▸ ค่าใช้จ่าย/ต้นทุนทั้งหมด — กำไรทางบัญชีของช่วง (ตัวช่วยเพดานบริจาค) · คิวรีเดียวกับเดิม (ไม่เพิ่มคิวรี) ◂
+  const expenseIds = ledgers.filter((l) => l.type === "EXPENSE" || l.type === "COGS").map((l) => l.id);
   const capitalLedger = ledgers.find((l) => l.code === "3000" && l.type === "EQUITY");
-  const sumIds = [...new Set([...flagged.map((x) => x.l.id), ...incomeIds])];
+  const sumIds = [...new Set([...flagged.map((x) => x.l.id), ...incomeIds, ...expenseIds])];
   const [sums, capSum] = await Promise.all([
     sumIds.length ? db.accountJournalLine.groupBy({ by: ["accountId"], where: { systemId: ctx.systemId, accountId: { in: sumIds }, entry: { date: range } }, _sum: { debit: true, credit: true } }) : Promise.resolve([]),
     input.paidUpCapital == null && capitalLedger
@@ -132,11 +185,46 @@ export async function taxAddBackReport(ctx: BookCtx, input: { asOf?: string; fro
     };
   }
 
+  // ── ACC T5c ▸ บริจาค (3) — กำไรก่อนหักบริจาค = รายได้ − ค่าใช้จ่ายทั้งหมด + บริจาค (ประมาณจากบัญชี) หรือค่าที่กรอก ──
+  const donIds = flagged.filter((x) => x.code === "S65TRI_3").map((x) => x.l.id);
+  let donation: DonationCap | null = null;
+  if (donIds.length) {
+    const amount = donIds.reduce((s2, id) => s2 + net(id), 0);
+    const expenses = expenseIds.reduce((s2, id) => s2 + net(id), 0);
+    const profit = input.netProfit != null ? input.netProfit : revenue - expenses + amount;
+    const rate = bookRuleFrom(legal, "DONATION_CAP_RATE", at);
+    const c = donationCapOf({ amount, profit, rateBp: rate.value });
+    donation = { amount, profit, profitSource: input.netProfit != null ? "INPUT" : "BOOK_ESTIMATE", rateBp: rate.value, cap: c.cap, excess: c.excess };
+  }
+  // ── ACC T5c ▸ ค่าเช่ารถยนต์นั่ง (20) — ต้องรู้จำนวนคัน-เดือน/คัน-วัน (ระบบไม่รู้ว่ามีกี่คัน) ──
+  const carIds = flagged.filter((x) => x.code === "S65TRI_20").map((x) => x.l.id);
+  let carRent: CarRentCap | null = null;
+  const carMonths = Math.max(0, Math.floor(input.carMonths ?? 0));
+  const carDays = Math.max(0, Math.floor(input.carDays ?? 0));
+  if (carIds.length) {
+    const accounts = carIds.reduce((s2, id) => s2 + net(id), 0);
+    const rent = input.carRent != null ? input.carRent : accounts;
+    const mc = bookRuleFrom(legal, "CAR_RENT_MONTHLY_CAP", at);
+    const dc = bookRuleFrom(legal, "CAR_RENT_DAILY_CAP", at);
+    const c = carMonths + carDays > 0 ? carRentCapOf({ rent, carMonths, carDays, monthlyCap: mc.value, dailyCap: dc.value }) : { cap: null, excess: 0 };
+    carRent = { rent, rentSource: input.carRent != null ? "INPUT" : "ACCOUNTS", carMonths, carDays, monthlyCap: mc.value, dailyCap: dc.value, cap: c.cap, excess: c.excess };
+  }
+  const shareOf = (excess: number, total: number, amount: number) => Math.round((excess * amount) / (total || 1));
+
   const rows: AddBackRow[] = flagged
     .map(({ l, code }) => {
       const sec = taxAddBackSectionOf(code)!;
       const amount = net(l.id);
-      const addBack = sec.scope === "FULL" ? amount : code === "S65TRI_4" && entertainment ? Math.round((entertainment.excess * amount) / (entertainment.amount || 1)) : null;
+      const addBack =
+        sec.scope === "FULL"
+          ? amount
+          : code === "S65TRI_4" && entertainment
+            ? Math.round((entertainment.excess * amount) / (entertainment.amount || 1))
+            : code === "S65TRI_3" && donation && donation.cap !== null
+              ? shareOf(donation.excess, donation.amount, amount)
+              : code === "S65TRI_20" && carRent && carRent.cap !== null
+                ? shareOf(carRent.excess, carRent.rentSource === "INPUT" ? carIds.reduce((s2, id) => s2 + net(id), 0) : carRent.rent, amount)
+                : null;
       return { ledgerId: l.id, code: l.code, name: l.name, section: code, sectionTh: sec.sectionTh, labelTh: sec.labelTh, scope: sec.scope, origin: (l.taxAddBack && l.taxAddBack !== TAX_ADD_BACK_NONE ? "SHOP" : "DEFAULT") as "SHOP" | "DEFAULT", amount, addBack };
     })
     .sort((a, b) => a.code.localeCompare(b.code));
@@ -165,6 +253,18 @@ export async function taxAddBackReport(ctx: BookCtx, input: { asOf?: string; fro
     );
   if (entertainment && entertainment.giftDocs.length && entertainment.giftLimit !== null)
     warnings.push(legalWarning("ENTERTAINMENT_GIFT_CHECK", { count: entertainment.giftDocs.length, limit: baht(entertainment.giftLimit) }));
+  if (donation && donation.amount > 0 && donation.cap !== null)
+    warnings.push(legalWarning("DONATION_CAP_ESTIMATE", { amount: baht(donation.amount), rate: (donation.rateBp ?? 0) / 100, profit: baht(donation.profit), cap: baht(donation.cap), excess: baht(donation.excess) }));
+  if (carRent && carRent.cap !== null && carRent.excess > 0)
+    warnings.push(
+      legalWarning("CAR_RENT_CAP_EXCEEDED", {
+        amount: baht(carRent.rent),
+        units: [carRent.carMonths ? `${carRent.carMonths} คัน-เดือน` : "", carRent.carDays ? `${carRent.carDays} คัน-วัน` : ""].filter(Boolean).join(" + "),
+        cap: baht(carRent.cap),
+        rule: [carRent.carMonths ? `${baht(carRent.monthlyCap ?? 0)} บาทต่อคันต่อเดือน` : "", carRent.carDays ? `${baht(carRent.dailyCap ?? 0)} บาทต่อคันต่อวัน` : ""].filter(Boolean).join(" · "),
+        excess: baht(carRent.excess),
+      }),
+    );
   return {
     from,
     to,
@@ -174,6 +274,8 @@ export async function taxAddBackReport(ctx: BookCtx, input: { asOf?: string; fro
     totals,
     entertainment,
     donationCapRateBp: bookRuleFrom(legal, "DONATION_CAP_RATE", at).value,
+    donation,
+    carRent,
     sections: TAX_ADD_BACK_SECTIONS,
     warnings,
   };

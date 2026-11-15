@@ -171,7 +171,8 @@ try {
   const tx = await call("GET", "/settings/tax", kO.rawKey);
   const book = tx.body?.data?.tables?.book ?? [];
   // ORACLE-EDIT (ACC T5 · เลน 2): ตาราง "สมุดบัญชี" มีแถวระบบเพิ่ม 13 แถว (เกณฑ์จด VAT · ค่ารับรอง · หนี้สูญ · อากร · เตือนรายปี) = 23 · สองแถวเป็นค่าเริ่มต้นของระบบ [S] (ระดับ "ใกล้เกณฑ์" · วันเตือนรายปี — skill ไม่กำหนด) ที่เหลือ [V]
-  eq("A6.1", "GET /settings/tax → tables.book 23 แถวระบบ · ป้าย V ยกเว้น 2 แถวค่าเริ่มต้นระบบ [S]", [tx.status, book.filter((r: Any) => r.origin === "SYSTEM").length, book.filter((r: Any) => r.tag !== "V").map((r: Any) => r.tag)], [200, 23, ["S", "S"]]);
+  // ORACLE-EDIT (ACC T5c · เลน 2): + 2 แถวระบบ [V] ค่าเช่ารถยนต์นั่ง 36,000/คัน/เดือน · 1,200/คัน/วัน (ม.65 ตรี (20) · พ.ร.ฎ.315) = 25
+  eq("A6.1", "GET /settings/tax → tables.book 25 แถวระบบ · ป้าย V ยกเว้น 2 แถวค่าเริ่มต้นระบบ [S]", [tx.status, book.filter((r: Any) => r.origin === "SYSTEM").length, book.filter((r: Any) => r.tag !== "V").map((r: Any) => r.tag)], [200, 25, ["S", "S"]]);
   const tu = await call("PATCH", "/settings/tax", kO.rawKey, { bookRows: [{ rule: "JOURNAL_ENTRY_DAYS", value: 30, from: null, to: null, source: "นักบัญชีของร้าน" }] });
   eq("A6.2", "PATCH bookRows (รายวัน 30 วัน) → 2xx + SHOP_DIFFERS_FROM_DEFAULT", [tu.status < 300, JSON.stringify(tu.body?.data ?? {}).includes("SHOP_DIFFERS_FROM_DEFAULT")], [true, true]);
   const tb = await call("PATCH", "/settings/tax", kO.rawKey, { bookRows: [{ rule: "NOPE", value: 1, from: null, to: null }] });

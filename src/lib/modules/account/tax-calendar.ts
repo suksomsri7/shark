@@ -19,6 +19,9 @@ import {
 import { accountNow } from "./clock";
 import { bkkYmd, bookRuleFrom, legalValueFrom, loadBookLegal, upcomingDeadlinesFrom, type BookCtx, type BookLegal } from "./legal-values";
 import { getPolicy } from "./policy";
+import { ACCOUNT_SETTING_KEYS } from "@/lib/core/settings/defs/account";
+import { resolveBookSettings, setSettings } from "@/lib/core/settings/service";
+import type { SettingsActor } from "@/lib/core/settings/types";
 
 // ───────── วันที่ (ข้อความ YYYY-MM-DD ตามปฏิทินไทย · คำนวณแบบ UTC ล้วน) ─────────
 const DAY = 86_400_000;
@@ -107,7 +110,10 @@ function fiscalYearEndingIn(y: number, s: number): { start: string; end: string;
   return { start, end, halfEnd: monthEnd(startY, s + 5) };
 }
 
-export function taxCalendarFrom(legal: BookLegal, o: { today: Date; vatRegistered: boolean; fiscalStartMonth: number }): TaxCalendar {
+/** ACC T5c ▸ วันประชุมใหญ่อนุมัติงบต่อรอบ (ค่าตั้ง account.entity.statementMeetings) */
+export type StatementMeeting = { fyEnd: string; meetingDate: string };
+
+export function taxCalendarFrom(legal: BookLegal, o: { today: Date; vatRegistered: boolean; fiscalStartMonth: number; meetings?: readonly StatementMeeting[] }): TaxCalendar {
   const today = bkkYmd(o.today);
   const year = Number(today.slice(0, 4));
   const kind = legal.entityKind;
@@ -156,19 +162,25 @@ export function taxCalendarFrom(legal: BookLegal, o: { today: Date; vatRegistere
     if (kind === "JURISTIC_PARTNERSHIP")
       nextOf("FS_PARTNERSHIP", fys.map((f) => ({ key: `FY:${f.end}`, label: `งบรอบ ${ymdTh(f.start)} – ${ymdTh(f.end)}`, anchor: f.end })), "งบต้องผ่านผู้สอบบัญชี (เว้นห้างที่เข้าเกณฑ์ขนาดเล็กตามกฎกระทรวง)");
     if (kind === "COMPANY") {
-      // บริษัท: นับจากวันประชุมใหญ่ที่ระบบไม่รู้ ⇒ ข้อความกำหนด (ไม่คำนวณวัน) ของรอบที่สิ้นสุดล่าสุด
+      // บริษัท: นับจากวันประชุมใหญ่ — ACC T5c ▸ ร้านใส่วันประชุมของรอบนั้นแล้ว = คำนวณวัน (วันประชุม + N เดือน ตามแถวตาราง ·
+      //   นับแบบเดียวกับกำหนดรายปีอื่นในปฏิทิน) · ยังไม่ใส่ = ข้อความกำหนดเหมือนเดิม (ของรอบที่สิ้นสุดล่าสุด) ◂
       const lastEnded = [...fys].reverse().find((f) => f.end < today) ?? fys[0];
       const p = legalValueFrom(legal, "filing.deadline", dateOf(lastEnded.end), { form: "FS_COMPANY", channel: "PAPER" });
+      const meeting = (o.meetings ?? []).find((m) => m.fyEnd === lastEnded.end && /^\d{4}-\d{2}-\d{2}$/.test(m.meetingDate));
+      const due = meeting && p.value !== null && p.row ? ymdAddMonthsEom(meeting.meetingDate, p.value) : null;
       items.push({
         form: "FS_COMPANY",
         formLabel: FILING_FORM_LABEL_TH.FS_COMPANY,
         cadence: "ANNUAL",
         periodKey: `FY:${lastEnded.end}`,
         periodLabel: `งบรอบ ${ymdTh(lastEnded.start)} – ${ymdTh(lastEnded.end)}`,
-        paper: null,
+        paper:
+          due && p.row
+            ? { date: due, daysLeft: Math.round((t(due) - t(today)) / DAY), ruleTh: `${deadlineValueLabelTh("FS_COMPANY", "PAPER", p.value!)} (ประชุมใหญ่ ${ymdTh(meeting!.meetingDate)})`, source: p.row.source, tag: p.row.tag }
+            : null,
         online: null,
-        whenTh: p.value !== null ? deadlineValueLabelTh("FS_COMPANY", "PAPER", p.value) : null,
-        conditionTh: "งบต้องผ่านผู้สอบบัญชีรับอนุญาต",
+        whenTh: due ? null : p.value !== null ? deadlineValueLabelTh("FS_COMPANY", "PAPER", p.value) : null,
+        conditionTh: due ? "งบต้องผ่านผู้สอบบัญชีรับอนุญาต" : "งบต้องผ่านผู้สอบบัญชีรับอนุญาต · ใส่วันประชุมใหญ่ในตั้งค่าเพื่อให้ปฏิทินคำนวณวันยื่น",
         warnings: p.warnings,
       });
     }
@@ -195,8 +207,28 @@ export function taxCalendarFrom(legal: BookLegal, o: { today: Date; vatRegistere
 }
 
 export async function taxCalendar(ctx: BookCtx, today: Date = accountNow()): Promise<TaxCalendar> {
-  const [legal, policy] = await Promise.all([loadBookLegal(ctx), getPolicy(ctx)]);
-  return taxCalendarFrom(legal, { today, vatRegistered: policy.vatRegistered, fiscalStartMonth: policy.fiscalYearStartMonth });
+  const [legal, policy, meetings] = await Promise.all([loadBookLegal(ctx), getPolicy(ctx), statementMeetingsOf(ctx)]);
+  return taxCalendarFrom(legal, { today, vatRegistered: policy.vatRegistered, fiscalStartMonth: policy.fiscalYearStartMonth, meetings });
+}
+
+/** ACC T5c ▸ วันประชุมใหญ่ที่ร้านใส่ (ค่าตั้งชั้นสมุด) */
+export async function statementMeetingsOf(ctx: BookCtx): Promise<StatementMeeting[]> {
+  const k = ACCOUNT_SETTING_KEYS.statementMeetings;
+  const r = await resolveBookSettings({ tenantId: ctx.tenantId }, [k], ctx.systemId);
+  const v = r[k]?.value;
+  return Array.isArray(v) ? (v as StatementMeeting[]).filter((m) => m && typeof m.fyEnd === "string" && typeof m.meetingDate === "string") : [];
+}
+
+/** ACC T5c ▸ บันทึกวันประชุมใหญ่ของรอบ (meetingDate null = ลบ) — ผ่านเครื่องยนต์ค่าตั้ง (สิทธิ์ · ประวัติ · zod) */
+export async function saveStatementMeeting(actor: SettingsActor, ctx: BookCtx, fyEnd: string, meetingDate: string | null): Promise<{ ok: true; meetings: StatementMeeting[] } | { ok: false; reason: string }> {
+  const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+  if (!YMD_RE.test(fyEnd) || (meetingDate !== null && !YMD_RE.test(meetingDate))) return { ok: false, reason: "วันที่ต้องเป็นรูปแบบ YYYY-MM-DD" };
+  if (meetingDate !== null && meetingDate < fyEnd) return { ok: false, reason: "วันประชุมใหญ่ต้องไม่ก่อนวันสิ้นรอบบัญชี" };
+  const cur = await statementMeetingsOf(ctx);
+  const next = [...cur.filter((m) => m.fyEnd !== fyEnd), ...(meetingDate ? [{ fyEnd, meetingDate }] : [])].sort((a, b) => a.fyEnd.localeCompare(b.fyEnd));
+  const res = await setSettings(actor, { tenantId: ctx.tenantId }, [{ key: ACCOUNT_SETTING_KEYS.statementMeetings, scope: "ACCOUNT_BOOK", scopeId: ctx.systemId, value: next }]);
+  if (!res.ok) return { ok: false, reason: res.issues.map((i) => i.messageTh).join(" · ") || "บันทึกไม่สำเร็จ" };
+  return { ok: true, meetings: next };
 }
 
 /** ข้อความเตือนของแบบรายปี (ตัวเตือนรายวัน + จอ) — ทะเบียนกลาง TAX_CALENDAR_DUE */

@@ -8,7 +8,8 @@ import { ackField } from "../ack-field";
 import { actorAuditId, actorAuditType, actorRefId, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError, legalAckApiError } from "../respond";
-import { badDebtSummary, setDoubtfulAllowance, writeOffBadDebt } from "../../bad-debt";
+import { RECOVERY_CHANNELS, badDebtSummary, recoverBadDebt, setDoubtfulAllowance, voidBadDebtRecovery, writeOffBadDebt } from "../../bad-debt";
+import { saveStatementMeeting } from "../../tax-calendar";
 import { cashBook } from "../../cash-book";
 import { setTaxAddBack, taxAddBackReport } from "../../tax-add-back";
 import { setStampDutyRef, taxChecks } from "../../tax-checks";
@@ -107,20 +108,24 @@ const reportsTaxAddBack = defineOp({
   action: "account.report.view",
   rate: "report",
   summary:
-    "Expenses that may have to be added back for income tax (Revenue Code s.65 ter): every account flagged with its subsection and the amount of the accounting period, the part to add back where the system can tell (whole amount, or the part of entertainment above the ministerial cap), and the entertainment cap helper (0.3% of revenue or paid-up capital, whichever is higher, at most 10 million baht; gifts above 2,000 baht per person per occasion). It does not compute taxable profit or tax payable.",
+    "Expenses that may have to be added back for income tax (Revenue Code s.65 ter): every account flagged with its subsection and the amount of the accounting period, the part to add back where the system can tell (whole amount, or the part above a cap), the entertainment cap helper (0.3% of revenue or paid-up capital, whichever is higher, at most 10 million baht; gifts above 2,000 baht per person per occasion), the donation helper (2% of net profit, estimated from the book unless netProfitSatang is given) and the passenger car rental helper (36,000 baht per car per month or 1,200 per car per day including VAT; needs carMonths/carDays). Helpers are suggestions only and are never posted. It does not compute taxable profit or tax payable.",
   label: "รายจ่ายที่อาจต้องบวกกลับทางภาษี",
   input: z
     .object({
       asOf: ymdField("asOf").optional(),
       from: ymdField("from").optional(),
       to: ymdField("to").optional(),
-      paidUpCapitalSatang: z.number().int().min(0).max(1_000_000_000_000).optional().describe("Paid-up capital at the period end in satang; default = balance of account 3000."),
+      paidUpCapitalSatang: z.coerce.number().int().min(0).max(1_000_000_000_000).optional().describe("Paid-up capital at the period end in satang; default = balance of account 3000."),
+      netProfitSatang: z.coerce.number().int().min(-1_000_000_000_000).max(1_000_000_000_000).optional().describe("Net profit before donations given by the bookkeeper, in satang; default = an estimate from the book (revenue - all expenses + donations of the period)."),
+      carMonths: z.coerce.number().int().min(0).max(100_000).optional().describe("Passenger cars rented x months in the period (for the monthly rental cap)."),
+      carDays: z.coerce.number().int().min(0).max(1_000_000).optional().describe("Passenger cars rented x days, for cars rented by the day (daily cap)."),
+      carRentSatang: z.coerce.number().int().min(0).max(1_000_000_000_000).optional().describe("Rental paid for passenger cars in the period, in satang; default = all accounts flagged s.65 ter (20)."),
     })
     .strict(),
   tool: { name: "account_tax_add_back", hint: "Use for questions about non-deductible expenses, add-backs or the entertainment limit. Say the amounts are for the bookkeeper to review, not tax payable." },
   test: "T5-API.5a",
   async handler({ actor, input }) {
-    const r = await taxAddBackReport(ctxOf(actor), { asOf: input.asOf, from: input.from, to: input.to, paidUpCapital: input.paidUpCapitalSatang ?? null });
+    const r = await taxAddBackReport(ctxOf(actor), { asOf: input.asOf, from: input.from, to: input.to, paidUpCapital: input.paidUpCapitalSatang ?? null, netProfit: input.netProfitSatang ?? null, carMonths: input.carMonths ?? null, carDays: input.carDays ?? null, carRent: input.carRentSatang ?? null });
     const e = r.entertainment;
     return {
       from: r.from,
@@ -132,6 +137,10 @@ const reportsTaxAddBack = defineOp({
         ? { amountSatang: e.amount, revenueSatang: e.revenue, capitalSatang: e.capital, capitalSource: e.capitalSource, rateBp: e.rateBp, maxCapSatang: e.maxCap, capSatang: e.cap, base: e.baseLabel, excessSatang: e.excess, giftLimitSatang: e.giftLimit, giftDocuments: e.giftDocs.map((g) => ({ documentId: g.documentId, docNo: g.docNo, date: g.date, amountSatang: g.amount })) }
         : null,
       donationCapRateBp: r.donationCapRateBp,
+      donation: r.donation ? { amountSatang: r.donation.amount, profitSatang: r.donation.profit, profitSource: r.donation.profitSource, rateBp: r.donation.rateBp, capSatang: r.donation.cap, excessSatang: r.donation.excess } : null,
+      carRent: r.carRent
+        ? { rentSatang: r.carRent.rent, rentSource: r.carRent.rentSource, carMonths: r.carRent.carMonths, carDays: r.carRent.carDays, monthlyCapSatang: r.carRent.monthlyCap, dailyCapSatang: r.carRent.dailyCap, capSatang: r.carRent.cap, excessSatang: r.carRent.excess }
+        : null,
       sections: r.sections.map((s) => ({ code: s.code, labelTh: s.labelTh, sectionTh: s.sectionTh, scope: s.scope })),
       warnings: warnView(r.warnings),
     };
@@ -236,6 +245,8 @@ const badDebtSummaryOp = defineOp({
       tiers: { tier1MaxSatang: r.tiers.tier1Max, tier2MaxSatang: r.tiers.tier2Max },
       candidates: r.candidates.map((c) => ({ documentId: c.documentId, docType: c.docType, docNo: c.docNo, contactId: c.contactId, contactName: c.contactName, issueDate: c.issueDate, dueDate: c.dueDate, daysOverdue: c.daysOverdue, outstandingSatang: c.outstanding })),
       writeOffs: r.writeOffs.map((w) => ({ paymentId: w.paymentId, documentId: w.documentId, docNo: w.docNo, contactName: w.contactName, date: w.date, amountSatang: w.amount, voided: w.voided, note: w.note })),
+      writtenOffDocuments: r.writtenDocs.map((w) => ({ documentId: w.documentId, docNo: w.docNo, contactName: w.contactName, writtenOffSatang: w.writtenOff, recoveredSatang: w.recovered, recoverableSatang: w.recoverable })),
+      recoveries: r.recoveries.map((x) => ({ recoveryId: x.recoveryId, documentId: x.documentId, docNo: x.docNo, contactName: x.contactName, date: x.date, amountSatang: x.amount, channel: x.channel, voided: x.voided, note: x.note, journalEntryId: x.entryId })),
     };
   },
 });
@@ -300,4 +311,89 @@ const badDebtAllowance = defineOp({
   },
 });
 
-export const TAX_T5_OPS: ApiOp[] = [reportsCashBook, taxVatThreshold, reportsTaxAddBack, chartSetTaxAddBack, taxChecksOp, documentsStampDutyRef, badDebtSummaryOp, badDebtWriteOff, badDebtAllowance];
+// ═══ ACC T5c (เลน 2) ▸ หนี้สูญได้รับคืน · วันประชุมใหญ่อนุมัติงบ ═══
+const badDebtRecover = defineOp({
+  id: "bad-debt.recover",
+  method: "POST",
+  path: "/documents/{id}/bad-debt-recovery",
+  kind: "write",
+  action: "account.payment.record",
+  summary:
+    "Record money received later for a debt that was already written off as bad debt on this sales document: posted as income 'bad debts recovered' (cash or bank / account 4920) on the date received, linked to the written-off document; the document is not reopened as a receivable. Amount defaults to the written-off amount not yet recovered and cannot exceed it. If the write-off released undue service VAT, a warning says VAT and a tax invoice may arise on the money received (not decided by the system). Undo with bad-debt.recovery-void.",
+  label: "บันทึกหนี้สูญได้รับคืน",
+  input: z
+    .object({
+      amountSatang: z.number().int().positive().optional().describe("Amount received in satang; default = the written-off amount not yet recovered."),
+      date: ymdField("date").optional(),
+      channel: z.enum(RECOVERY_CHANNELS).optional().describe("How the money came in; default CASH."),
+      financeAccountId: z.string().max(40).optional().describe("Money account (from finance accounts) that received it; default = the channel's default ledger."),
+      note: z.string().max(300).optional(),
+      idempotencyKey: z.string().min(8).max(80).optional(),
+    })
+    .strict(),
+  tool: { name: "account_recover_bad_debt", hint: "Use when a customer pays a debt that was written off as bad debt. It is booked as income, not as a normal payment. Proposed for confirmation." },
+  test: "T5c-API.1a",
+  async handler({ actor, params, input }) {
+    const r = await recoverBadDebt(ctxOf(actor), {
+      documentId: params.id ?? "",
+      amount: input.amountSatang ?? null,
+      date: input.date ? dayOf(input.date) : undefined,
+      channel: input.channel,
+      financeAccountId: input.financeAccountId ?? null,
+      note: input.note ?? null,
+      createdById: actorAuditId(actor),
+      actorType: actorAuditType(actor) as "USER" | "API_KEY",
+      idempotencyKey: input.idempotencyKey ?? null,
+    });
+    if (!r.ok) {
+      if (r.reason.startsWith("ไม่พบ")) throw notFound(r.reason);
+      failWith(r.reason);
+    }
+    if (!r.ok) return null;
+    return { documentId: params.id, recoveryId: r.recoveryId, journalEntryId: r.entryId, amountSatang: r.amount, duplicate: r.duplicate, warnings: warnView(r.warnings) };
+  },
+});
+
+const badDebtRecoveryVoid = defineOp({
+  id: "bad-debt.recovery-void",
+  method: "POST",
+  path: "/bad-debt/recoveries/{id}/void",
+  kind: "danger",
+  action: "account.payment.void",
+  summary: "Cancel a recorded bad debt recovery: its journal entry is reversed (posted rows are never edited) and the row is marked voided with the reason.",
+  label: "ยกเลิกรายการหนี้สูญได้รับคืน",
+  input: z.object({ reason: z.string().min(5).max(300).describe("Why the recovery is cancelled, at least 5 characters. Stored on the reversing journal entry and in the audit log.") }).strict(),
+  tool: { name: "account_void_bad_debt_recovery", hint: "Irreversible: reverses one recorded bad debt recovery. Needs a reason and a double confirmation." },
+  test: "T5c-API.1b",
+  async handler({ actor, params, input }) {
+    const r = await voidBadDebtRecovery(ctxOf(actor), { recoveryId: params.id ?? "", reason: input.reason, actorId: actorAuditId(actor), actorType: actorAuditType(actor) as "USER" | "API_KEY" });
+    if (!r.ok) {
+      if (r.reason.startsWith("ไม่พบ")) throw notFound(r.reason);
+      failWith(r.reason);
+    }
+    return { recoveryId: params.id, documentId: r.ok ? r.documentId : null, voided: true };
+  },
+});
+
+const settingsStatementMeeting = defineOp({
+  id: "settings.statement-meeting",
+  method: "PUT",
+  path: "/settings/statement-meetings/{id}",
+  kind: "write",
+  action: "account.settings.manage",
+  summary:
+    "Set (or clear with null) the date of the shareholders' meeting that approved the financial statements of the accounting period ending on {id} (YYYY-MM-DD). Companies file the statements within 1 month from that meeting (legal value table row FS_COMPANY); with the date the tax calendar shows the computed filing date, without it the rule text.",
+  label: "บันทึกวันประชุมใหญ่อนุมัติงบ",
+  input: z.object({ meetingDate: ymdField("meetingDate").nullable() }).strict(),
+  tool: { name: "account_set_statement_meeting", hint: "Use when the owner gives the date of the annual general meeting that approved the financial statements. Proposed for confirmation." },
+  test: "T5c-API.2",
+  async handler({ actor, params, input }) {
+    const fyEnd = params.id ?? "";
+    if (!YMD.test(fyEnd)) throw new ApiError(422, "unprocessable", "วันสิ้นรอบบัญชีต้องเป็น YYYY-MM-DD", "The path id must be the accounting period end date YYYY-MM-DD.");
+    const r = await saveStatementMeeting({ ...actor.membership, userId: actorRefId(actor) }, ctxOf(actor), fyEnd, input.meetingDate);
+    if (!r.ok) failWith(r.reason);
+    return { fyEnd, meetingDate: input.meetingDate, meetings: r.ok ? r.meetings : [] };
+  },
+});
+
+export const TAX_T5_OPS: ApiOp[] = [reportsCashBook, taxVatThreshold, reportsTaxAddBack, chartSetTaxAddBack, taxChecksOp, documentsStampDutyRef, badDebtSummaryOp, badDebtWriteOff, badDebtAllowance, badDebtRecover, badDebtRecoveryVoid, settingsStatementMeeting];

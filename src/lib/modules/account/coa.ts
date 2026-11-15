@@ -65,6 +65,7 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["4800", "INCOME", "ส่วนลดจ่าย (contra)", "Discounts Given"],
   ["4900", "INCOME", "รายได้อื่น / กำไรจากการจำหน่ายสินทรัพย์", "Other Income / Disposal Gain"],
   ["4910", "INCOME", "ดอกเบี้ยรับ", "Interest Income"], // V2 (WO 5.3): ดอกเบี้ยเงินฝากจากแถว statement
+  ["4920", "INCOME", "หนี้สูญได้รับคืน", "Bad Debts Recovered"], // ACC T5c (เลน 2): เงินที่ได้รับจากหนี้ที่ตัดเป็นหนี้สูญไปแล้ว = รายได้
   // 5000-5999 ต้นทุน
   ["5000", "COGS", "ซื้อสินค้า/ต้นทุนขาย", "Purchases / COGS"],
   // V2 (WO 4.3 · SPEC §8.4) — เอกสารปรับปรุงสต็อก/ต้นทุน
@@ -141,6 +142,7 @@ const MAPPINGS: [string, string][] = [
   ["DOUBTFUL_ALLOWANCE", "1109"], // ACC T5.7
   ["DOUBTFUL_EXPENSE", "6710"], // ACC T5.7
   ["BAD_DEBT_EXPENSE", "6720"], // ACC T5.7
+  ["BAD_DEBT_RECOVERED", "4920"], // ACC T5c (เลน 2)
 ];
 
 /** ACC T1.4 — ธง `vatTreatment` ของบัญชีระบบที่เป็นหมวดภาษีซื้อต้องห้าม (common-vat-invoice.md §17 · checklist C2) */
@@ -239,6 +241,7 @@ export const MAPPING_KEY_LABEL: Record<string, string> = {
   DOUBTFUL_ALLOWANCE: "ค่าเผื่อหนี้สงสัยจะสูญ",
   DOUBTFUL_EXPENSE: "หนี้สงสัยจะสูญ (ตั้งค่าเผื่อ)",
   BAD_DEBT_EXPENSE: "หนี้สูญ",
+  BAD_DEBT_RECOVERED: "หนี้สูญได้รับคืน",
 };
 
 /** ป้ายไทยของ mapping key — คีย์ "DOC:<docType>" (override ใบกำกับภาษีอัตโนมัติต่อชนิดเอกสาร) แปลด้วย docTypeLabel

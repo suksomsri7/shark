@@ -2832,6 +2832,26 @@ export async function reverseBadDebtVat(ctx: GlCtx, documentId: string, paymentI
   if (e) await reverseEntry(ctx, e.id, reason, tx);
 }
 
+/**
+ * ACC T5c (เลน 2) ▸ หนี้สูญได้รับคืน — Dr เงิน (บัญชีที่รับจริง) / Cr หนี้สูญได้รับคืน (รายได้) · ไม่แตะลูกหนี้ (ใบเดิมปิดไปแล้วด้วยการตัดหนี้สูญ)
+ *   ใบสำคัญ refType "AccountBadDebtRecovery" · ยกเลิก = reverseFor (กลับรายการ ไม่แก้แถว)
+ */
+export async function postBadDebtRecovery(ctx: GlCtx, recoveryId: string, tx?: Tx): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const r = await db.accountBadDebtRecovery.findFirst({ where: { id: recoveryId, systemId: ctx.systemId }, select: { id: true, date: true, amount: true, channel: true, financeAccountId: true, voidedAt: true, document: { select: { contactId: true, docNo: true } } } });
+    if (!r) throw new Error("ไม่พบรายการรับคืนหนี้สูญ");
+    if (r.voidedAt) return { skipped: true };
+    if (await alreadyPosted(ctx, `AccountBadDebtRecovery#${r.id}#RECOVERY`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    const cashId = await financeLedgerId(ctx, r.financeAccountId, r.channel, db);
+    b.dr(cashId, r.amount, "รับเงินหนี้สูญได้รับคืน");
+    b.cr(await b.id("BAD_DEBT_RECOVERED"), r.amount, `หนี้สูญได้รับคืน ${r.document?.docNo ?? ""}`.trim(), r.document?.contactId ?? undefined);
+    const entry = await commitEntry(ctx, { book: "RECEIPTS", journal: "PAYMENT", date: r.date, refType: "AccountBadDebtRecovery", refId: r.id, event: "RECOVERY", memo: "หนี้สูญได้รับคืน" }, b, db);
+    await db.accountBadDebtRecovery.update({ where: { id: r.id }, data: { entryId: entry.id } });
+    return { entryId: entry.id };
+  });
+}
+
 /** ACC T5.7 ▸ ธุรกรรมของโมดูลบัญชีที่ต้องเขียนเอกสาร + ลงบัญชีพร้อมกัน (ผู้เรียกไม่ต้องลาก prisma ดิบ — fitness F5.1) */
 export function runAccountTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
   return prisma.$transaction(fn);

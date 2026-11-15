@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { MoneyText } from "@/components/ui/MoneyText";
 import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
-import { StampDutyRefForm } from "@/components/account-v2/TaxT5Forms";
+import { StampDutyRefForm, StatementMeetingForm } from "@/components/account-v2/TaxT5Forms";
 import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
-import { calendarDueWarning, taxCalendar, ymdTh, type CalendarItem } from "@/lib/modules/account/tax-calendar";
+import { calendarDueWarning, statementMeetingsOf, taxCalendar, ymdTh, type CalendarItem } from "@/lib/modules/account/tax-calendar";
 import { taxChecks } from "@/lib/modules/account/tax-checks";
 import { vatThreshold } from "@/lib/modules/account/vat-threshold";
-import { setStampDutyRefAction } from "@/lib/modules/account/tax-t5-actions";
+import { saveStatementMeetingAction, setStampDutyRefAction } from "@/lib/modules/account/tax-t5-actions";
+import { accountCan } from "@/lib/modules/account/access";
 import { editorDetailPath } from "@/lib/modules/account/doc-editor-config";
 import type { AccountDocType } from "@prisma/client";
 
@@ -24,7 +25,11 @@ export default async function TaxCalendarPage({ params, searchParams }: { params
   assertAccountCan(auth, "account.report.view");
   const ctx = { tenantId, systemId };
   const base = `/app/sys/${id}/account`;
-  const [cal, vt] = await Promise.all([taxCalendar(ctx), vatThreshold(ctx)]);
+  const [cal, vt, meetings] = await Promise.all([taxCalendar(ctx), vatThreshold(ctx), statementMeetingsOf(ctx)]);
+  // ACC T5c ▸ บริษัท: ใส่วันประชุมใหญ่ของรอบ → ปฏิทินคำนวณวันยื่นงบ ◂
+  const fs = cal.items.find((i) => i.form === "FS_COMPANY");
+  const fsEnd = fs?.periodKey.startsWith("FY:") ? fs.periodKey.slice(3) : null;
+  const canSettings = accountCan(auth, "account.settings.manage");
   const period = isYm(sp.period) ? sp.period : cal.asOf.slice(0, 7);
   const checks = await taxChecks(ctx, { period });
   const soon = cal.items.filter((i) => i.cadence === "ANNUAL" && i.paper && i.paper.daysLeft >= 0 && i.paper.daysLeft <= cal.remindDays).map(calendarDueWarning).filter((w): w is NonNullable<typeof w> => !!w);
@@ -75,6 +80,16 @@ export default async function TaxCalendarPage({ params, searchParams }: { params
             </tbody>
           </table>
         </div>
+        {fs && fsEnd && (
+          <div className="flex flex-col gap-1 border-t pt-2" style={{ borderColor: "var(--color-line)" }} data-testid="statement-meeting">
+            <p className="text-xs text-[color:var(--color-muted)]">ยื่นงบการเงินของบริษัทภายใน 1 เดือนนับแต่วันที่ที่ประชุมใหญ่อนุมัติงบ — {fs.periodLabel}</p>
+            {canSettings ? (
+              <StatementMeetingForm systemId={systemId} fyEnd={fsEnd} initial={meetings.find((m) => m.fyEnd === fsEnd)?.meetingDate ?? null} save={saveStatementMeetingAction} />
+            ) : (
+              <p className="text-xs">วันประชุม: {meetings.find((m) => m.fyEnd === fsEnd)?.meetingDate ?? "ยังไม่ได้ใส่"}</p>
+            )}
+          </div>
+        )}
       </section>
 
       <section className="card flex flex-col gap-2 p-5" data-testid="vat-threshold-card">
