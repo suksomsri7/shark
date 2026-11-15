@@ -78,13 +78,15 @@ const K = {
   T9: "trips.sell.waitlistHoldMinutes",
   X2: "trips.sell.shopConfirmHours",
   X6: "trips.public.showLeftAtOrBelow",
+  X31: "trips.public.unpaidHoldMaxPct",
   X8: "trips.public.rateLimits",
   X10: "trips.public.holdCapPerContact",
   SR: "trips.supplier.respondHours",
   SD: "trips.supplier.shopDecisionHours",
   SA: "trips.supplier.autoCancelOnTimeout",
 } as const;
-const DEP_KEYS = [K.T5, K.T6, K.T9, K.X2, K.X6, K.SR, K.SD, K.SA];
+const DEP_KEYS = [K.T5, K.T6, K.T9, K.X2, K.X6, K.X31, K.SR, K.SD, K.SA];
+const PCT_1_100 = z.number().int().min(1).max(100);
 const INT = z.number().int().min(0);
 const POS = z.number().int().min(1);
 const SPEC = z.object({ daysBefore: INT, atMin: INT });
@@ -113,7 +115,8 @@ function departurePolicyFrom(d: { id: string; productId: string }, r: Resolved):
     shopConfirmHours: settingOf(POS, K.X2, r[K.X2]?.value),
     supplierHours: settingOf(POS, K.SR, r[K.SR]?.value) + (settingOf(z.boolean(), K.SA, r[K.SA]?.value) ? 0 : settingOf(POS, K.SD, r[K.SD]?.value)),
   };
-  return { departureId: d.id, productId: d.productId, t6: settingOf(T6S, K.T6, r[K.T6]?.value) as T6Value, durations, showLeftAtOrBelow: settingOf(INT, K.X6, r[K.X6]?.value) };
+  return { departureId: d.id, productId: d.productId, t6: settingOf(T6S, K.T6, r[K.T6]?.value) as T6Value, durations, showLeftAtOrBelow: settingOf(INT, K.X6, r[K.X6]?.value),
+    unpaidHoldMaxPct: settingOf(PCT_1_100, K.X31, r[K.X31]?.value) };
 }
 /**
  * ค่าตั้งของรอบชุดหนึ่ง (ชุดละ 200 refs) + เพดานถือ X10 ที่ชั้นหน่วย (ค่าเดียวต่อหน่วย · ไม่ขึ้นกับรอบที่โหลดก่อน — X10 มี chain U
