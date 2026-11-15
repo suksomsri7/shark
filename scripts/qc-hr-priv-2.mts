@@ -20,6 +20,9 @@ const MARKED = [F.scope, F.priv, `${H}privacy-shared.ts`, F.slip, F.labor, F.rep
 const HR_ALL = srcFiles("src/lib/modules/hr");
 const FROZEN = ["prisma", "package.json", "src/lib/core", "src/lib/ai", `${H}api`, `${H}filings`, `${H}bank-files`, "scripts/qc-hr-lib.mts", "scripts/qc-hr-h3.8-lib.mts",
  ...HR_ALL.filter((f) => !MARKED.includes(f) && /\/(payroll-(rules|run-rules|rules-v2|opening[^/]*)|payslip-rules|labor-rules|(roster|judge|leave|swap|correction|lifecycle|self|clock|work-entries|settings|law|ai|ot-|inbox-|stock-charge-|line-)[^/]*|pin)\.tsx?$/.test(f))];
+// ORACLE-EDIT (HR LEAVE-3 · controller) S4/S5: explicit allowlist — exactly these files may differ when every hunk carries "HR LEAVE-3" (src) / "ORACLE-EDIT (HR LEAVE-3" or "HR-LEAVE-3" (oracles) on an added line ◂
+const L3_SRC = [`${H}judge.ts`, `${H}work-entries-rules.ts`, `${H}service.ts`, `${H}index.ts`, "src/lib/modules/approval/service.ts", "src/lib/modules/approval/actions.ts", "src/lib/approval-effects.ts", "src/app/app/approvals/page.tsx", "src/app/app/approvals/BulkApprovals.tsx", "src/lib/ai/tools.ts", "src/lib/ai/proposals.ts", `${H}ot.ts`, `${H}self.ts`]; // ORACLE-EDIT (HR LEAVE-3 · controller) ◂ // ORACLE-EDIT (HR LEAVE-3 · controller r3b): + ot.ts · self.ts (W3 · W4.2) ◂
+const L3_ORACLES = ["scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-leave-3.mts", "scripts/qc-hr-leave-3-lib.mts", "scripts/qc-hr-leave-3b.mts", "scripts/qc-hr-h3.6.mts"]; // ORACLE-EDIT (HR LEAVE-3 · controller): + qc-hr-leave-3b (r3 W9) ◂ // ORACLE-EDIT (HR LEAVE-3 · controller merge): + h3.6 ◂
 const OLD = readdirSync(join(ROOT, "scripts")).filter((n) => /^qc-.*\.mts$/.test(n) && !/^qc-hr-priv-2|^qc-hr-lib\.mts$|^qc-hr-h3\.8-lib\.mts$/.test(n)).map((n) => `scripts/${n}`);
 
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
@@ -109,16 +112,21 @@ const PP1_SRC = new Set(["leave.ts", "privacy.ts", "self.ts", "self-ui.tsx", "se
 const PP1_OR = new Set(["h1.3", "h3.2", "h3.4-lib", "h3.6", "h3.8", "h3.9", "h4.3-lib", "priv-2"].map((x) => `scripts/qc-hr-${x}.mts`)); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
 const PP1_OWN = new Set(["scripts/qc-hr-preprod-1.mts", "scripts/qc-hr-preprod-1b.mts", "scripts/qc-hr-preprod-1c.mts", "scripts/qc-hr-preprod-1-lib.mts"]); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
 const pp1Ok = (f: string) => PP1_OWN.has(f) || ((PP1_SRC.has(f) || PP1_OR.has(f)) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PREPROD-1/.test(l)))); // ORACLE-EDIT (HR PREPROD-1 · controller) ◂
+// ORACLE-EDIT (HR LEAVE-3 · controller merge): a file changed by several later tickets passes when EVERY hunk carries the marker of one ticket allowed for that file —
+//   LEAVE-3 (L3_SRC "HR LEAVE-3" · L3_ORACLES "ORACLE-EDIT (HR LEAVE-3"/"HR-LEAVE-3") · PREPROD-1 (PP1_SRC/PP1_OR "HR PREPROD-1") · H4.9 (skills.ts · pages/registry.ts "HR H4.9" · its oracles "ORACLE-EDIT (HR H4.9 · controller)") · unmarked still fails ◂
+const mixRes = (f: string): RegExp[] => [...(L3_SRC.includes(f) ? [/HR LEAVE-3/] : []), ...(L3_ORACLES.includes(f) ? [/ORACLE-EDIT \(HR LEAVE-3|HR-LEAVE-3/] : []), ...(PP1_SRC.has(f) || PP1_OR.has(f) ? [/HR PREPROD-1/] : []), ...(["src/lib/ai/skills.ts", "src/lib/pages/registry.ts"].includes(f) ? [/HR H4\.9/] : []), ...(["scripts/qc-nav-functions.mts", "scripts/qc-hr-h4.3.mts", "scripts/qc-hr-h4.3-lib.mts"].includes(f) ? [/ORACLE-EDIT \(HR H4\.9 · controller\)/] : [])]; // ORACLE-EDIT (HR LEAVE-3 · controller merge) ◂
+const mixOk = (f: string) => { const rs = mixRes(f), hs = diffHunks(BASE, f) ?? []; return rs.length > 0 && hs.length > 0 && hs.every((h) => h.added.some((l) => rs.some((r) => r.test(l)))); }; // ORACLE-EDIT (HR LEAVE-3 · controller merge) ◂
 {
  // ORACLE-EDIT (HR H4.9 · controller) S4: explicit files — skills.ts when every hunk adds "HR H4.9" · the oracles H4.9-FIX1 edited when every hunk adds "ORACLE-EDIT (HR H4.9 · controller)" ◂
  const H49_MARK: Record<string, string> = { "src/lib/ai/skills.ts": "HR H4.9", "scripts/qc-nav-functions.mts": "ORACLE-EDIT (HR H4.9 · controller)", "scripts/qc-hr-h4.3.mts": "ORACLE-EDIT (HR H4.9 · controller)", "scripts/qc-hr-h4.3-lib.mts": "ORACLE-EDIT (HR H4.9 · controller)" }; // ORACLE-EDIT (HR H4.9 · controller) ◂
  const h49Ok = (f: string) => f in H49_MARK && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes(H49_MARK[f]!))); // ORACLE-EDIT (HR H4.9 · controller) ◂
  const ch0 = changedVsBase(BASE, FROZEN), oc = changedVsBase(BASE, OLD); // ORACLE-EDIT (HR H4.9 · controller): ch0 → ch below drops h49Ok files ◂
- const chLeft = ch0.startsWith("changed: ") ? ch0.slice(9).split(",").filter((f) => !h49Ok(f) && !pp1Ok(f)) : null; // ORACLE-EDIT (HR H4.9 · controller) ◂ // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Ok ◂
+ const chLeft = ch0.startsWith("changed: ") ? ch0.slice(9).split(",").filter((f) => !h49Ok(f) && !pp1Ok(f) && !mixOk(f)) : null; // ORACLE-EDIT (HR H4.9 · controller) ◂ // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Ok ◂ // ORACLE-EDIT (HR LEAVE-3 · controller merge): + mixOk ◂
  const ch = chLeft === null ? ch0 : chLeft.length ? `changed: ${chLeft.join(",")}` : "unchanged"; // ORACLE-EDIT (HR H4.9 · controller) ◂
  const bad = oc === "unchanged" ? [] : !oc.startsWith("changed: ") ? [oc] : oc.slice(9).split(",").filter((f) => !pp1Ok(f)).filter((f) => { // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Ok ◂
   const hs = diffHunks(BASE, f) ?? [];
   if (h49Ok(f)) return false; // ORACLE-EDIT (HR H4.9 · controller) S4 ◂
+  if (mixOk(f)) return false; // ORACLE-EDIT (HR LEAVE-3 · controller merge) S4: every hunk marked by one of the tickets allowed for this file ◂
   // ORACLE-EDIT (HR HF-SSO · controller fix2) S4: once PRIV-2 is in base, the HF-SSO fix2 allowlist conversions in these exact oracle files are accepted when every hunk carries that marker ◂
   if (["scripts/qc-hr-h3.2.mts", "scripts/qc-hr-h3.4-lib.mts", "scripts/qc-hr-h3.6.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts"].includes(f) && hs.length > 0 && hs.every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR HF-SSO · controller fix2)")))) return false;
   return f === F.h43 ? hs.some((h) => !h.added.some((l) => l.includes("ORACLE-EDIT (HR-PRIV-2"))) : !hs.some((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*PRIV-2/.test(l)));
@@ -131,7 +139,7 @@ const pp1Ok = (f: string) => PP1_OWN.has(f) || ((PP1_SRC.has(f) || PP1_OR.has(f)
  const ok = (f: string) => MARKED.includes(f) || /^src\/messages\/(th|en)\/common\.json$/.test(f) || (f.startsWith(H) && fileAt(BASE, f) === null && /HR PRIV-2/.test(rd(f).split("\n").slice(0, 3).join("\n")));
  const H49_SRC = ["src/lib/ai/skills.ts", "src/lib/pages/registry.ts"]; // ORACLE-EDIT (HR H4.9 · controller) S5: explicit files, every hunk must add "HR H4.9" ◂
  const h49Src = (f: string) => H49_SRC.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR H4.9"))); // ORACLE-EDIT (HR H4.9 · controller) ◂
- const out = ch.filter((f) => !ok(f) && !h49Src(f) && !pp1Ok(f)), bad = unmarkedHunks(BASE, ch.filter((f) => MARKED.includes(f) && !pp1Ok(f))); // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Ok ◂
+ const out = ch.filter((f) => !ok(f) && !h49Src(f) && !pp1Ok(f) && !mixOk(f)), bad = unmarkedHunks(BASE, ch.filter((f) => MARKED.includes(f) && !pp1Ok(f) && !mixOk(f))); // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Ok ◂ // ORACLE-EDIT (HR LEAVE-3 · controller merge) S5: + mixOk (e.g. service.ts with LEAVE-3 and PREPROD-1 hunks) ◂
  chk("S5", !out.length && !bad.length, "", `outside=${out.join(",") || "none"} hunks=${bad.join(",") || "ok"}`);
 }
 {

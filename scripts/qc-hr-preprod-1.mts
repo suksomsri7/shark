@@ -119,7 +119,10 @@ const FROZEN = ["prisma", "src/lib/core", `${H}api`, "package.json", "scripts/qc
 const code = (p: string) => stripComments(rd(p));
 function runStatic(): void {
   ck("ST1", { sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA }, "payroll-rules.ts sha");
-  { const d = BASE ? changedVsBase(BASE, FROZEN) : "no base"; ck("ST2", { unchanged: d === "unchanged" }, "unchanged", d.slice(0, 160)); }
+  // ORACLE-EDIT (HR LEAVE-3 · controller merge) ST2: explicit allowlist — once PREPROD-1 is in the base, hr judge.ts · ot.ts (frozen here) may differ only by hunks that each carry "HR LEAVE-3" (later ticket) · unmarked still fails ◂
+  const L3_ST2 = [`${H}judge.ts`, `${H}ot.ts`]; // ORACLE-EDIT (HR LEAVE-3 · controller merge) ◂
+  const l3St2 = (f: string) => IN_BASE && L3_ST2.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR LEAVE-3/.test(l))); // ORACLE-EDIT (HR LEAVE-3 · controller merge) ◂
+  { const d0 = BASE ? changedVsBase(BASE, FROZEN) : "no base"; const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !l3St2(f)) : null; const d = left === null ? d0 : left.length ? `changed: ${left.join(",")}` : "unchanged"; ck("ST2", { unchanged: d === "unchanged" }, "unchanged", d.slice(0, 160)); } // ORACLE-EDIT (HR LEAVE-3 · controller merge): + l3St2 ◂
   const ch = BASE ? changedFiles(BASE).filter((f) => !f.startsWith("scratchpad/")) : ["∅base"];
   const srcCh = ch.filter((f) => f.startsWith("src/") && !f.endsWith(".json"));
   {

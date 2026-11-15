@@ -185,6 +185,7 @@ type ApprovalDecidePayload = {
   requestSummary?: string;
   decision: "APPROVED" | "REJECTED";
   note?: string;
+  expectedStep?: number; // HR LEAVE-3 ▸ R2: ขั้นที่เห็นตอนเสนอ (ข้อเสนอรุ่นเก่าไม่มี) ◂
 };
 type InventoryConsumePayload = { sku: string; qty: number; note?: string };
 type RewardRedeemPayload = {
@@ -1238,6 +1239,7 @@ async function dispatch(
     const p = payload as ApprovalDecidePayload;
     const decision = p.decision === "REJECTED" ? "REJECTED" : "APPROVED";
     let requestId = String(p.requestId ?? "").trim();
+    let expectedStep: number | undefined = typeof p.expectedStep === "number" && Number.isInteger(p.expectedStep) ? p.expectedStep : undefined; // HR LEAVE-3 ▸ R2 ◂
     if (!requestId) {
       // ค้นจาก summary → เทียบ entityType/entityId ใน PENDING (ไม่มี field summary ในตาราง)
       const summary = String(p.requestSummary ?? "").trim();
@@ -1252,13 +1254,14 @@ async function dispatch(
         throw new Error(`มีหลายคำขอที่ตรง กรุณาระบุให้ชัด — ${list}`);
       }
       requestId = matched[0].id;
+      expectedStep = matched[0].currentStepOrder; // HR LEAVE-3 ▸ R2: ขั้นที่เพิ่งค้นเจอ ◂
     }
     // decide ตรวจสิทธิ์ตาม step ด้วย (m ต้องมี userId ตอน runtime — คนกดยืนยันจริง)
     const res = await approvalSvc.decide(
       { ...m, userId: uid },
       { tenantId },
       requestId,
-      { decision, note: p.note ? String(p.note).trim() : null },
+      { decision, note: p.note ? String(p.note).trim() : null, ...(expectedStep === undefined ? {} : { expectedStep }) }, // HR LEAVE-3 ▸ R2 ◂
     );
     if (!res.ok) throw new Error(res.reason ?? "ตัดสินคำขอไม่สำเร็จ — คำขออาจถูกปิดไปแล้วหรือคุณไม่มีสิทธิ์ในขั้นนี้"); // HF-HR-0 ▸ R5.1: เหตุผลเฉพาะก่อน ◂
     if (res.status === "APPROVED") return "อนุมัติคำขอเรียบร้อยแล้ว";

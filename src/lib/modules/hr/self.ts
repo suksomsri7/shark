@@ -232,7 +232,7 @@ export async function myWeek(actor: SelfActor, input: { week?: unknown } = {}, o
     ownEntries(me, start, end),
     db.hrLeave.findMany({
       where: { tenantId: me.tenantId, systemId: me.ctx.systemId, employeeId: me.employeeId, status: { in: ["PENDING", "APPROVED"] }, fromDate: { lte: dbDate(end) }, toDate: { gte: dbDate(start) } },
-      select: { type: true, fromDate: true, toDate: true, halfDay: true, policy: { select: { name: true } } },
+      select: { type: true, fromDate: true, toDate: true, halfDay: true, status: true, hours: true, policy: { select: { name: true } } }, // HR LEAVE-3 ▸ W4: + status · hours ◂
       take: 50,
     }),
     holidaysBetween(me.ctx, { unitId: me.homeUnitId, from: start, to: end }),
@@ -242,12 +242,15 @@ export async function myWeek(actor: SelfActor, input: { week?: unknown } = {}, o
   for (let i = 0; i < 7; i++) {
     const d = addDays(start, i);
     const lv = leaves.find((l) => dayOf(l.fromDate) <= d && dayOf(l.toDate) >= d);
+    // HR LEAVE-3 ▸ W4 (r3): ใบครึ่งเช้า + ครึ่งบ่ายที่อนุมัติทั้งคู่ในวันเดียว = ลาทั้งวัน (half null · ตรงกับตัวตัดสินเวลา) ◂
+    const onD = leaves.filter((l) => l.status === "APPROVED" && l.hours === null && dayOf(l.fromDate) === d && dayOf(l.toDate) === d);
+    const pairDay = onD.some((l) => l.halfDay === "AM") && onD.some((l) => l.halfDay === "PM"); // HR LEAVE-3 ◂
     days.push({
       date: d,
       entries: entries
         .filter((e) => dayOf(e.date) === d)
         .map((e) => ({ shiftName: e.shift.name, startMin: e.startMin, endMin: e.endMin, crossesMidnight: e.crossesMidnight, unitName: e.unitId ? (unitNames.get(e.unitId) ?? null) : null })),
-      leave: lv ? { label: lv.policy?.name ?? LEAVE_TYPE_TEXT[lv.type] ?? LEAVE_TYPE_TEXT.OTHER, half: lv.halfDay ?? null } : null,
+      leave: lv ? { label: lv.policy?.name ?? LEAVE_TYPE_TEXT[lv.type] ?? LEAVE_TYPE_TEXT.OTHER, half: pairDay ? null : (lv.halfDay ?? null) } : null, // HR LEAVE-3 ▸ W4 ◂
       holiday: hols.find((h) => h.date === d)?.name ?? null,
     });
   }

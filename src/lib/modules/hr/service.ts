@@ -649,6 +649,7 @@ export class HrLeaveDecisionError extends Error {
 }
 const LEAVE_STATUS_TH: Record<string, string> = { APPROVED: "อนุมัติแล้ว", REJECTED: "ไม่อนุมัติแล้ว", CANCELLED: "ยกเลิกแล้ว" };
 const LEAVE_STALE = "สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่";
+const LEAVE_CANCELLED_DECIDED = "ใบลานี้เคยผ่านขั้นอนุมัติบางขั้นแล้วก่อนถูกถอนจากสาย — ให้เจ้าของกิจการเป็นผู้ตัดสิน"; // HR LEAVE-3 ▸ R4 (Q5) ◂
 const LEAVE_LOCK_TX_OPTS = { maxWait: 20_000, timeout: 60_000 } as const; // HR H0.7 R11 ▸ ธุรกรรมใต้ล็อกต่อใบลา (decide/cancel) ◂
 
 export async function decideLeave(
@@ -701,6 +702,10 @@ export async function decideLeave(
     select: { status: true },
     take: 20,
   });
+  // HR LEAVE-3 ▸ R4 (Q5): สายที่ถูกถอน (CANCELLED) หลังมีผู้อนุมัติบางขั้นแล้ว (แถวเก่าก่อนถอน = ยกเลิกใบลา) — ทางตรงต้องเป็นเจ้าของกิจการ
+  //   (ไม่ข้ามขั้นที่ตัดสินไปแล้ว) · สายที่ถูกถอนโดยยังไม่มีการตัดสิน = ทางตรงเหมือนเดิม (qc-hf-hr-privacy CH-4) ◂
+  const cancelledDecided = await tx.approvalDecision.count({ where: { tenantId: ctx.tenantId, decision: "APPROVED", request: { tenantId: ctx.tenantId, entityType: "HrLeave", entityId: leaveId, status: "CANCELLED" } } });
+  if (cancelledDecided > 0 && !(decidedById && (await isTenantOwner(ctx.tenantId, decidedById, tx)))) throw new HrLeaveDecisionError(LEAVE_CANCELLED_DECIDED);
   const chainHas = (s: string) => chains.some((c) => c.status === s);
   if (chainHas("PENDING")) {
     throw new HrLeaveDecisionError("ใบลานี้อยู่ในสายอนุมัติ — ตัดสินได้ที่หน้า “อนุมัติ” (คำขอรอตัดสิน)");
