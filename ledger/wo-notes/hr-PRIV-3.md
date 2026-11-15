@@ -123,3 +123,71 @@ They were not touched.
   - h3.9 60/60
   - fitness-hr 9/9
 - The two earlier lines in "Runs" ("h3.8 78/78" and "h3.8 S1.13 fixed by acceptances") describe the old head. They are superseded by this section.
+
+## r2 fix round (CONTROLLER RULINGS r2 · R6/R7/R10)
+### R6 — one resolver `src/lib/modules/hr/hr-target.ts` `hrTargetOwned(ctx, { employeeId?, runId?, adjustmentId? })`
+The module is new, with the header `HR PRIV-3`. It imports only `tenantDb`, so it joins no import cycle.
+- Step 1: the HR system must exist in the caller's own tenant (`ctx.tenantId` always comes from the session): `tenantDb(ctx).appSystem` with `{ id, type: "HR" }`.
+- Step 2: each id that is passed must be found inside that system, through `tenantDb(ctx)` (the system-scope filter of core): `hrEmployee`, `hrPayrollRun`, `hrPayAdjustment`.
+- No permission rule lives in this module.
+
+It is called right after the existing key and branch gates, which are pure (no data read), and before any read or write. A refused call returns the action's own unknown-system / empty-input answer:
+
+| action | resolver | refusal |
+|---|---|---|
+| `setSalaryProfileAction` | system + employee | `return` (void, like empty input) |
+| `createPayrollRunAction` | system | `{ ok:false, reason: "คำสั่งไม่ถูกต้อง" }` (same as a missing systemId) |
+| `markPaidAction` | system + run | `return` (no audit) |
+| `reverseRunAction` | system + run | `return` (no audit) |
+| `reverseRunV2Action` | system + run | `{ ok:false, reason: "คำสั่งไม่ถูกต้อง" }` |
+
+The other 48 actions in the 8 payroll action files are unchanged. Oracle 3b X3 pins that they already give the same outcome for our ids as for an unknown system, with nothing written.
+
+Side effect: in the caller's own tenant, an unknown run id on reverse/markPaid is now a silent no-op. Before, it wrote a `…refused` audit with code NOT_FOUND.
+
+### R7 — form paths give one fixed text
+The services gained an opt-in option, `hideForeign`, and only the form actions pass it, so the service defaults are unchanged. h2.3 S2.3, h2.9 S3.3 and h2.6 pin the old texts through direct service calls, and those still pass.
+
+| service | with `hideForeign` |
+|---|---|
+| `cancelLeave` | a non-party (not linked, not a chain requester, not the filer) gets `CANCEL_NOT_FOUND` instead of `CANCEL_NOT_MINE`. Parties keep their texts. |
+| `cancelOtRequest` | not the requester and not the employee ⇒ `T.notFound` |
+| `respondSwap` | `T.notYours` ⇒ `T.stale` (the unknown-id text) |
+| `cancelSwap` | `T.notOwn` ⇒ `T.stale` |
+
+The form actions that pass `hideForeign`: `cancelLeaveAction`, `cancelOtAction`, `respondSwapAction`, `cancelSwapAction`.
+
+### R10 — schema + migration (written, `prisma generate` run; NOT applied to the lane DB, per the controller)
+- `prisma/schema/payroll.prisma`: `HrSalaryProfile @@unique([tenantId, systemId, employeeId])`.
+- `prisma/migrations/20270112000000_hr_tenant_scoped_unique_keys/migration.sql` contains 2× DROP INDEX and 2× CREATE UNIQUE INDEX:
+  - `HrSalaryProfile_tenantId_systemId_employeeId_key`
+  - partial `HrPayrollRun_tenantId_systemId_periodKey_live_key` `WHERE "status" <> 'REVERSED'`
+- Grep for compound-unique call sites: `systemId_employeeId` / `systemId_periodKey_live` in src (excluding account) gives only a comment in `payroll.ts:51`. There are no upsert / ON CONFLICT uses. Nothing to change.
+
+### r2 allowlist acceptances (every hunk marked `HR PRIV-3`)
+- `qc-hr-priv-2` `P3_FILES`, in addition to the earlier entries:
+  - payroll-actions, hr-target, service, ot, swap, ot-actions, swap-actions
+  - `qc-hr-priv-3b.mts`
+  - the R10 schema and migration
+- The priv-2 S4 FROZEN check now also skips `p3Ok` files.
+- `qc-hr-h4.3-lib` `P3_ALLOW` gains `qc-hr-priv-3b.mts`, `payroll-actions.ts`, and the R10 schema + migration. The `ai` part (frozen `prisma` dir) is now accepted file by file through `p3Ok`.
+
+### r2 runs (lane 5 wrapper, head after `2fea7f599`; logs `/tmp/hr-ctl/priv3-build/logs/{c1,d,e}-*`)
+- qc-hr-priv-3: forced ×3 and unforced ×1, **28/28** each, residue none. S6 is a static check and does not need the applied DB.
+- qc-hr-priv-3b: forced ×3 and unforced ×1, **12/13** each. Only **X6** is red: a Prisma unique error from the cross-tenant indexes, which waits for the migration. Residue none in both tenants. X1–X4 and Y1 are green.
+- Green:
+  - qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hr-payadjust 27/27 · qc-audit-trail 21/21 · qc-hf-hr-privacy 194/194
+  - priv-2 47/47 · money-2 57/57 · hf-sso 41/41
+  - h0.6 55/55 · h0.7 74/74 · h1.3 63/63 · h2.3 79/79 · h2.4 68/68 · h2.6 56/56 · h2.9 58/58
+  - h3.3 51/51 · h3.4 85/85 · h3.5 53/53 · h3.6 62/62 · h3.7 68/68
+  - h4.3 45/45 · h4.8 48/48 · qc-hr 9/9 · leave-booking 14/14
+  - fitness-hr 9/9 and fitness 54/54 (with env and with `env -u DATABASE_URL -u DIRECT_URL`)
+- h3.8: 77/78, only S1.13 red (left as is; owner decision pending).
+- Clean typecheck: exit 0. The first attempt timed out waiting for a heavy slot; the retry passed.
+- The preprod suites are not on this branch and were skipped.
+
+### Waits for the migration (controller go-ahead after lane 2 finishes)
+1. `bash scripts/iso.sh bash scripts/qc-hr.sh pnpm exec prisma migrate deploy` (lane 5 wrapper).
+2. Authorised ORACLE-EDITs `qc-hr-h0.6` S2.4 and `qc-hr-h1.3` S1.10: expect the new index name and definition.
+3. `pnpm drift` clean for HrSalaryProfile/HrPayrollRun.
+4. Rerun priv-3b; X6 is expected to turn green, with X7/X8 still green.
