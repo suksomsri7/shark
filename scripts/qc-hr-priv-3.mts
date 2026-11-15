@@ -1,6 +1,6 @@
 // QC HR PRIV-3 page role gates (employees / leave / payroll) · brief hr-brief-PRIV-3.md (+ CONTROLLER RULINGS) · notes hr-PRIV-3-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-priv-3.mts
-//   QC_PRIV3_MEASURE=1 prints the measured goldens (GOLD) — taken on base ea2b41ea1 (r2 cells on 44a75f37a) · registry base column re-based to 44a75f37a (PRIV-3 build): all GREEN · r2 RED items live in qc-hr-priv-3b.mts
+//   QC_PRIV3_MEASURE=1 prints the measured goldens (GOLD) — taken on base ea2b41ea1 (r2 cells on 44a75f37a) · registry base column re-based to 50b272695: RED = S6 (R14 order/IF EXISTS) · other r2/r3 RED items live in qc-hr-priv-3b.mts
 import { readdirSync } from "node:fs";
 import { join } from "node:path";
 import { type Any, type Def, ROOT, rd, errText, canon, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, sha, srcFiles, stripComments, QUERY_COUNTER } from "./qc-hr-lib.mjs";
@@ -23,7 +23,7 @@ const CHECKS: Def[] = [
  D("S2", "R2 R7", "CG", "[static] 3 pages import requireHrPage + call it after the system check and before any data read · fitness pageGuard guarded · PAGE_GUARD_BASELINE −3 (kiosk kept)"),
  D("S3", "R3 R4 R5", "MG", "[static] nav gateOf + requestLeaveAction + HrLeaveSection + HrHub use the helper · hrTabs/HrOtSection bodies = base"),
  D("S4", "§files", "MG", "[static] allowed files only (incl. .mts) · ui/actions hunks in their ranges · every src hunk marked HR PRIV-3 · oracle edits marked · payroll-rules sha · prisma only = R10 schema + migration"),
- D("S6", "r2 R10", "MR", "[static] exactly ONE new migration (after the latest HR migration): only DROP/CREATE UNIQUE INDEX on HrSalaryProfile + HrPayrollRun · keys (tenantId, systemId, employeeId) and (tenantId, systemId, periodKey) WHERE status <> 'REVERSED' · schema @@unique swapped, nothing else · no old compound-key call site"),
+ D("S6", "r2 R10 R14", "MR", "[static] exactly ONE new migration (after the latest HR migration): only DROP INDEX IF EXISTS / CREATE UNIQUE INDEX (new created BEFORE old dropped) on HrSalaryProfile + HrPayrollRun · keys (tenantId, systemId, employeeId) and (tenantId, systemId, periodKey) WHERE status <> 'REVERSED' · schema @@unique swapped, nothing else · no old compound-key call site"),
  D("S5", "R1", "mG", "[static] no new import cycle through privacy.ts"),
  D("G1", "R1", "CG", "hrPageAccessOf truth table (13 viewers incl. r2 PR/PA + API key) · requireHrPage = table · malformed viewer ⇒ all false — the table qc-hr-h2.10 S7.1 now follows (pinned here)"),
  D("P1", "R2 Q1", "CG", "/hr/employees K N S S0 SR PR PA ⇒ not-found identical to unknown system (digest + SQL count) · nothing rendered"),
@@ -107,7 +107,7 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
  const marked = (f: string, m: string) => { const hs = hunksOf(f); return hs.length > 0 && hs.every((x) => x.added.some((l) => l.includes(m))); };
  const ch = changed(), outside: string[] = [], bad: string[] = [];
  const uiB = fileAtBase(F.ui) ?? "", acB = fileAtBase(F.acts) ?? "";
- const RANGES: Record<string, [number, number][]> = { [F.ui]: [[1, importEnd(uiB) + 1], fnRange(uiB, "HrLeaveSection"), fnRange(uiB, "HrHub")], [F.acts]: [[1, importEnd(acB) + 1], [fnRange(acB, "requestLeaveAction")[0], fnRange(acB, "requestLeaveAction")[0] + 16], fnRange(acB, "cancelLeaveAction")] }; // r2 R7: cancelLeaveAction
+ const RANGES: Record<string, [number, number][]> = { [F.ui]: [[1, importEnd(uiB) + 1], fnRange(uiB, "HrLeaveSection"), fnRange(uiB, "HrHub")], [F.acts]: [[1, importEnd(acB) + 1], [fnRange(acB, "requestLeaveAction")[0], fnRange(acB, "requestLeaveAction")[0] + 16], fnRange(acB, "cancelLeaveAction"), ...["createEmployeeAction", "updateEmployeeAction", "removeEmployeeAction", "restoreEmployeeAction"].map((n) => fnRange(acB, n))] }; // r2 R7: cancelLeaveAction · r3 R12: employee create/update/remove/restore
  for (const f of ch) {
   if (ORACLE_OWN.includes(f) || /^ledger\/wo-notes\/hr-PRIV-3[^/]*\.md$/.test(f) || f === "ledger/hr-briefs/hr-brief-PRIV-3.md") continue; // brief: controller rulings r2 appended
   if (SRC_OK.includes(f)) {
@@ -149,7 +149,11 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
  const prof = stmts.find((x) => /^CREATE UNIQUE INDEX .* ON "HrSalaryProfile"/.test(x)), run = stmts.find((x) => /^CREATE UNIQUE INDEX .* ON "HrPayrollRun"/.test(x));
  if (cols(prof ?? "") !== "tenantId,systemId,employeeId") bad.push(`profile key ${cols(prof ?? "") || "none"}`);
  if (cols(run ?? "") !== "tenantId,systemId,periodKey" || !/WHERE \(?\s*"status" <> 'REVERSED'/.test(run ?? "")) bad.push(`run key ${cols(run ?? "") || "none"}`);
- if (!stmts.some((x) => /DROP INDEX .*"HrSalaryProfile_systemId_employeeId_key"/.test(x)) || !stmts.some((x) => /DROP INDEX .*"HrPayrollRun_systemId_periodKey_live_key"/.test(x))) bad.push("old keys not dropped");
+ for (const [t, old] of [["HrSalaryProfile", "HrSalaryProfile_systemId_employeeId_key"], ["HrPayrollRun", "HrPayrollRun_systemId_periodKey_live_key"]] as const) { // r3 R14: CREATE new first · DROP INDEX IF EXISTS old
+  const di = stmts.findIndex((x) => new RegExp(`^DROP INDEX (IF EXISTS )?"${old}"$`).test(x)), ci = stmts.findIndex((x) => new RegExp(`^CREATE UNIQUE INDEX .* ON "${t}"`).test(x));
+  if (di < 0) bad.push(`${old} not dropped`);
+  else { if (!/^DROP INDEX IF EXISTS /.test(stmts[di]!)) bad.push(`${t}: DROP without IF EXISTS`); if (ci < 0 || ci > di) bad.push(`${t}: CREATE not before DROP`); }
+ }
  const sc = stripComments(rd(SCHEMA)), model = /model HrSalaryProfile \{[\s\S]*?\n\}/.exec(sc)?.[0] ?? "";
  if (!/@@unique\(\[\s*tenantId\s*,\s*systemId\s*,\s*employeeId\s*\]/.test(model) || /@@unique\(\[\s*systemId\s*,\s*employeeId\s*\]/.test(model)) bad.push("schema HrSalaryProfile key");
  const sch = hunksOf(SCHEMA).flatMap((x) => [...x.added, ...x.removed]).filter((l) => !/^\s*(\/\/|$)/.test(l) && !/@@unique|@@index/.test(l));

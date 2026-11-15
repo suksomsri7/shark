@@ -1,25 +1,33 @@
 // QC HR PRIV-3b — CONTROLLER RULINGS r2 (R6 payroll actions vs foreign ids · R7 cancel/respond parity · R8 kiosk PIN replies) · brief hr-brief-PRIV-3.md · notes hr-PRIV-3-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-priv-3b.mts
-//   registry base = 44a75f37a (PRIV-3 build, before the r2 fix round) · own tenants qc-hr-priv3b-* (ours + a foreign shop) · residue checked in both
+//   registry base = 50b272695 (r3: complete forms · R11 approve/V2 · R12 employee create · R13 decided leave · R14 old index names) · own tenants qc-hr-priv3b-* (ours + a foreign shop) · residue checked in both
 import { type Any, type Def, errText, canon, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, rd } from "./qc-hr-lib.mjs";
 import { installNetGuard, tenantTables, sweepTenants, sweepResidue } from "./qc-hr-h4.3-lib.mjs";
+import { v1Item } from "./qc-hr-h3.8-lib.mjs";
+import { bodyOf } from "./qc-hr-priv-2-lib.mjs";
 import { inScope, fd, h, renderEl, installIntl } from "./qc-hr-priv-3-lib.mjs";
 
 const SUITE = "qc-hr-priv-3b", ARGV = process.argv.slice(2), FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run"), PFX = "qc-hr-priv3b-";
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
 const CHECKS: Def[] = [
- D("X1", "R6", "MR", "setSalaryProfileAction as a foreign OWNER / foreign hr.payroll.create holder: our system × {unknown emp, real emp without profile, real emp with profile, our runs} = unknown system · nothing written in either tenant"),
- D("X2", "R6", "MR", "markPaidAction · reverseRunAction · reverseRunV2Action as a foreign OWNER on our run ids: same refusal as unknown system · no audit/row in either tenant"),
- D("X3", "R6", "MR", "[RED: createPayrollRunAction] every other action of the payroll action files (payroll · opening · work-entries · stock-charge · attendance-pay · payslip · bank-files · filings) as a foreign OWNER: same outcome as unknown system · nothing written"),
- D("X4", "R6", "MR", "squat: after the foreign attempts our owner still creates the profile of an employee that had none · no row on our system outside our tenant"),
+ D("X1", "R6", "MG", "setSalaryProfileAction as a foreign OWNER / foreign hr.payroll.create holder: our system × {unknown emp, real emp without profile, real emp with profile, our runs} = unknown system · nothing written in either tenant"),
+ D("X2", "R6", "MG", "markPaidAction · reverseRunAction · reverseRunV2Action as a foreign OWNER on our run ids: same refusal as unknown system · no audit/row in either tenant"),
+ D("X3", "R6 R11", "MR", "[complete forms] every other action of the payroll action files (payroll · opening · work-entries · stock-charge · attendance-pay · payslip · bank-files · filings) as a foreign OWNER: same outcome as unknown system · nothing written"),
+ D("X4", "R6", "MG", "squat: after the foreign attempts our owner still creates the profile of an employee that had none · no row on our system outside our tenant"),
  D("X5", "R6", "MG", "[control] same tenant: owner + payroll set a profile · owner marks paid · reverse reaches our run (code ≠ NOT_FOUND)"),
- D("Y1", "R7", "mR", "cancel/respond (leave · OT · swap, form + self paths) as K · N · unrelated staff: real-not-yours = unknown id · nothing written"),
+ D("Y1", "R7 R13", "mR", "cancel/respond (leave incl. PENDING leave with a decided chain · OT · swap, form + self paths) as K · N · unrelated staff: real-not-yours = unknown id · nothing written"),
  D("Y2", "R7", "mG", "[control] the filer still cancels own leave"),
  D("K1", "R8", "mG", "kiosk wrong PIN for employees NOT on the kiosk's list (unknown · inactive · other HR system · other tenant · other branch for a branch kiosk) + wrong PIN of a PIN holder ⇒ exactly \"PIN ไม่ถูกต้อง\", no name"),
  D("K2", "R8", "mG", "[control] on-list employee without PIN: reply names them, and the kiosk page already lists that name to the kiosk account (ruling exception)"),
- D("X6", "R6 r2", "MR", "rightful shop creates the profile / the run although a FOREIGN-tenant row holds the same (systemId, employeeId) / (systemId, periodKey) — the fix must not rely on cross-tenant uniqueness (unique indexes are cross-tenant today ⇒ migration decision)"),
+ D("X6", "R6 r2", "MG", "rightful shop creates the profile / the run although a FOREIGN-tenant row holds the same (systemId, employeeId) / (systemId, periodKey) — the fix must not rely on cross-tenant uniqueness (unique indexes are cross-tenant today ⇒ migration decision)"),
  D("X7", "R10", "MG", "[control] uniqueness kept in the OWN tenant: a second profile for the same (system, employee) and a second live run for the same (system, period) are refused by the DB"),
  D("X8", "R10", "MG", "[control] the foreign tenant's squat rows are still there and unchanged after our owner's create (nothing deleted)"),
+ D("X9", "R11", "MG", "[positive control] the complete-form driver reaches the write point: our owner's approve writes its audit · create run writes a run · set profile writes (same forms as the foreign matrix)"),
+ D("X10", "R11", "MR", "[static] every action of the 8 payroll action files that takes a system/run/employee/adjustment id from the client calls hrTargetOwned before any other awaited work (after the permission checks)"),
+ D("E1", "R12", "MR", "createEmployee/update/remove/restore as a foreign OWNER on our system = unknown system · nothing written in either tenant"),
+ D("E2", "R12", "MG", "[control] chain closed: with no fake employee, follow-ups (adjustment · OT · roster · schedule · lifecycle · LINE) as a foreign OWNER on our system write nothing"),
+ D("E3", "R12", "MR", "[static] the employee create/update/remove/restore actions call hrTargetOwned before any other awaited work"),
+ D("M1", "R14", "MG", "[db] lane DB: old unique index names gone · new tenant-scoped unique indexes present"),
  D("Z1", "-", "CG", "residue none in both tenants · rate buckets removed"),
 ];
 const R = makeRegistry(SUITE, "", CHECKS);
@@ -37,10 +45,23 @@ installIntl();
 const imp = async (s: string) => (await import(s).catch((e: unknown) => ({ __err: errText(e) }))) as Any;
 const PAYFILES = ["payroll-actions", "payroll-opening-actions", "work-entries-actions", "stock-charge-actions", "attendance-pay-actions", "payslip-actions", "bank-files/actions", "filings/actions"];
 const M: Record<string, Any> = { sys: await imp("@/lib/modules/system/service"), acts: await imp("@/lib/modules/hr/actions"), ot: await imp("@/lib/modules/hr/ot-actions"), swap: await imp("@/lib/modules/hr/swap-actions"), self: await imp("@/lib/modules/hr/self-actions"), ui: await imp("@/lib/modules/hr/ui") };
-for (const f of PAYFILES) M[f] = await imp(`@/lib/modules/hr/${f}`);
+const CHAIN = ["ot-actions", "roster-actions", "lifecycle-actions", "line-actions"];
+for (const f of [...PAYFILES, ...CHAIN, "actions"]) M[f] = await imp(`@/lib/modules/hr/${f}`);
 const badImp = Object.entries(M).filter(([, m]) => m?.__err).map(([k, m]) => `${k}:${m.__err}`);
 if (badImp.length) console.log(`import problems: ${badImp.join(" | ")}`);
 const listed = PAYFILES.flatMap((f) => [...rd(`src/lib/modules/hr/${f}.ts`).matchAll(/^export async function (\w+Action)\b/gm)].map((m) => [f, m[1]!] as const));
+// ── r3 statics: hrTargetOwned first (R11 · R12) ──
+const guardFirst = (src0: string, name: string): string => {
+ const src = src0.replace(/\/\/[^\n]*/g, ""), b = bodyOf(src, name);
+ if (!b) return "no body";
+ const g = b.indexOf("hrTargetOwned(");
+ if (g < 0) { // delegated: a local helper called by the action (e.g. one(fd) · systemOf(fd)) must call the shared resolver
+  const helpers = [...new Set([...b.matchAll(/\b(\w+)\(/g)].map((m) => m[1]!))].filter((n) => n !== name && new RegExp(`(?:function\\s+${n}\\b|const\\s+${n}\\s*=)`).test(src));
+  return helpers.some((n) => bodyOf(src, n).includes("hrTargetOwned(")) ? "" : `no hrTargetOwned${helpers.length ? ` (helpers ${helpers.slice(0, 3).join("/")})` : ""}`;
+ }
+ const aw = [...b.matchAll(/\bawait\s+(?!requireTenant\(|hrTargetOwned\()/g)].map((m) => m.index!).find((i) => i < g);
+ return aw === undefined ? "" : `await before guard: ${b.slice(aw, aw + 40).replace(/\s+/g, " ")}`;
+};
 const REAL = { ...console };
 const mute = () => Object.assign(console, { log: () => {}, info: () => {}, warn: () => {}, error: () => {} });
 const unmute = () => Object.assign(console, REAL);
@@ -77,9 +98,14 @@ async function buildFixture() {
  const entry = async (e: string, day: string) => (await P.hrRosterEntry.create({ data: { ...sc, employeeId: E[e]!.id, date: dbDate(day), shiftId: sh, unitId: U1, startMin: 480, endMin: 1020, breakMin: 60, crossesMidnight: false, published: true, publishedAt: new Date() } })).id as string;
  const swap = (await P.hrShiftSwapRequest.create({ data: { ...sc, requesterEmployeeId: E.e2!.id, targetEmployeeId: E.e1!.id, fromEntryId: await entry("e2", addDay(D0, 5)), toEntryId: await entry("e1", addDay(D0, 5)), status: "AWAITING_PEER", reason: "swap" } })).id as string;
  const run = (periodKey: string, status: string) => P.hrPayrollRun.create({ data: { ...sc, periodKey, payDate: new Date(`${periodKey}-28T12:00:00+07:00`), status, engineVersion: 1, totalGrossSatang: 0, totalSsoEmployeeSatang: 0, totalSsoEmployerSatang: 0, totalWhtSatang: 0, totalNetSatang: 0, totalAddSatang: 0 } }).then((r: Any) => r.id as string);
- const runPaid = await run(prevMonth(MONTH, 2), "PAID"), runApproved = await run(prevMonth(MONTH, 1), "APPROVED");
+ const runPaid = await run(prevMonth(MONTH, 2), "PAID"), runApproved = await run(prevMonth(MONTH, 1), "APPROVED"), runDraft = await run(prevMonth(MONTH, 3), "DRAFT");
+ await P.hrPayrollItem.create({ data: { ...sc, runId: runDraft, employeeId: E.e2!.id, ...v1Item(2_000_000, [], { add: 0, deduct: 0, gross: 2_000_000, ssoBase: 1_500_000, ee: 75_000, wht: 0 }) } });
+ // r3 R13: PENDING leave whose approval chain is already decided (effect not yet written) — filed by the owner, not by K/N/U
+ const leaveD = (await P.hrLeave.create({ data: { ...sc, employeeId: E.e2!.id, type: "PERSONAL", fromDate: dbDate(addDay(D0, 24)), toDate: dbDate(addDay(D0, 24)), status: "PENDING", reason: "ธุระ", days: 1, filedById: W.O.id } })).id as string;
+ const pol = await P.approvalPolicy.create({ data: { tenantId: T, name: `QCP3b ลา ${tag}`, entityType: "HrLeave", active: true, steps: { create: [{ tenantId: T, order: 1, approverRole: "MANAGER" }] } } });
+ await P.approvalRequest.create({ data: { tenantId: T, policyId: pol.id, entityType: "HrLeave", entityId: leaveD, systemId: HRS, status: "APPROVED", requestedById: W.O.id, decidedAt: new Date(), idempotencyKey: `approval-HrLeave-${leaveD}` } });
  const adj = (await P.hrPayAdjustment.create({ data: { ...sc, employeeId: E.e2!.id, periodKey: MONTH, kind: "BONUS", amountSatang: 12_345, status: "PENDING", note: "QC", requestedById: W.O.id } })).id as string;
- return { T, T2, U1, U2, HRS, HRS2, HRX, W, E, leave, ot, swap, runPaid, runApproved, adj };
+ return { T, T2, U1, U2, HRS, HRS2, HRX, W, E, leave, leaveD, ot, swap, runPaid, runApproved, runDraft, adj, sh };
 }
 
 let crashed = "";
@@ -91,7 +117,7 @@ try {
  const sql = tables.map((t) => `SELECT '${t}' AS t, md5(coalesce(string_agg(x::text, '|' ORDER BY x::text), '')) AS h FROM "${t}" x WHERE x."tenantId" = $1`).join(" UNION ALL ");
  const dig = async (): Promise<Record<string, string>> => { const o: Record<string, string> = {}; for (const [n, t] of [["T", X.T], ["T2", X.T2]]) for (const r of (await P.$queryRawUnsafe(sql, t)) as Any[]) o[`${n}:${r.t}`] = r.h; return o; };
  const diff = (a: Record<string, string>, b: Record<string, string>) => Object.keys(b).filter((k) => a[k] !== b[k]);
- const IDS = () => [...Object.values(E as Record<string, Any>).map((e) => e.id), X.leave, X.ot, X.swap, X.runPaid, X.runApproved, X.adj, HRS, X.HRS2, X.HRX];
+ const IDS = () => [...Object.values(E as Record<string, Any>).map((e) => e.id), X.leave, X.ot, X.swap, X.runPaid, X.runApproved, X.runDraft, X.leaveD, X.adj, HRS, X.HRS2, X.HRX];
  const norm = (s: string, extra: string[] = []) => { let o = s; for (const v of [...IDS(), ...extra]) if (v) o = o.split(String(v)).join("<ID>"); return o.replace(/c[a-z0-9]{20,}/g, "<ID>").replace(/\d{4}-\d{2}-\d{2}T[\d:.]+Z/g, "<T>"); };
  const call = async (k: string, path: string, fn: () => Promise<unknown>) => { mute(); try { return String(canon(await inScope(`${W[k].cookie}; LOCALE=th`, path, fn)) ?? "undefined"); } catch (e) { const d = String((e as Any)?.digest ?? ""); return d ? `CTL ${d.split(";").slice(0, 3).join(";")}` : `THROW ${errText(e)}`; } finally { unmute(); } };
 
@@ -100,17 +126,45 @@ try {
  const U0 = unk();
  const CASES: Record<string, Case> = {
   unkEmp: { sys: HRS, emp: U0, run: U0, adj: U0 }, empNoProfile: { sys: HRS, emp: E.eA.id, run: U0, adj: U0 }, empProfile: { sys: HRS, emp: E.eB.id, run: U0, adj: U0 },
-  runApproved: { sys: HRS, emp: U0, run: X.runApproved, adj: X.adj }, runPaid: { sys: HRS, emp: U0, run: X.runPaid, adj: X.adj }, unkSystem: { sys: U0, emp: U0, run: U0, adj: U0 },
+  runApproved: { sys: HRS, emp: U0, run: X.runApproved, adj: X.adj }, runDraft: { sys: HRS, emp: E.e2.id, run: X.runDraft, adj: X.adj }, runPaid: { sys: HRS, emp: U0, run: X.runPaid, adj: X.adj }, unkSystem: { sys: U0, emp: U0, run: U0, adj: U0 },
  };
- const form = (c: Case) => fd({
-  systemId: c.sys, employeeId: c.emp, runId: c.run, id: c.adj, adjustmentId: c.adj, chargeId: c.adj, claimId: c.adj, certId: c.run, fileId: c.run, presetId: c.run, requestId: c.adj,
-  baseSalaryBaht: "23456", periodKey: MONTH, period: MONTH, payDate: `${MONTH}-28`, kind: "BONUS", amountBaht: "100", hours: "1", reason: "qc-foreign", note: "qc", decision: "APPROVED", status: "APPROVED",
-  engine: "2", enabled: "on", consent: "on", year: MONTH.slice(0, 4), taxYear: MONTH.slice(0, 4), format: "KBANK", normalMinutes: "480", purpose: "qc", qty: "1", amount: "100", description: "qc", itemName: "qc", financeAccountId: c.run, accountSystemId: c.run,
- });
- const argsOf = (name: string, c: Case): unknown[] => (name === "createPayrollRunAction" ? [null, form(c)] : name === "requestAdjustmentAction" ? [c.sys, { status: "idle" }, form(c)] : [form(c)]);
+ // r3 R11: COMPLETE forms — every field name the action file reads, filled from OUR shop (ids per case) so the call reaches its write point
+ const SRC: Record<string, string> = {};
+ const srcOf = (f: string) => (SRC[f] ??= rd(`src/lib/modules/hr/${f}.ts`));
+ const namesOf = (f: string) => [...new Set([...srcOf(f).matchAll(/\.(?:get|getAll|has)\(\s*["'`]([\w-]+)["'`]/g), ...srcOf(f).matchAll(/\(\s*(?:fd|formData|form)\s*,\s*["']([\w-]+)["']/g)].map((m) => m[1]!))];
+ const val = (n: string, c: Case): string => {
+  if (n === "systemId") return c.sys;
+  if (n === "employeeId" || n === "targetEmployeeId") return c.emp;
+  if (/^run/i.test(n)) return c.run;
+  if (n === "shiftId") return X.sh;
+  if (n === "unitId") return ""; // "no branch" = valid for an all-branch caller (a foreign owner has no unit of ours)
+  if (/^expect(Net|Items|Gross)$/.test(n)) return "0";
+  if (n === "expectDigest") return "0".repeat(64);
+  if (/Id$|^id$|Ids$/.test(n)) return /file|cert|account|preset|book|journal|finance/i.test(n) ? c.run : c.adj;
+  if (/Baht$|amount|Satang|rate/i.test(n)) return "100";
+  if (/period|month/i.test(n)) return MONTH;
+  if (/year/i.test(n)) return MONTH.slice(0, 4);
+  if (/date|Date|On$|^day$|^from$|^to$|Week$/.test(n)) return `${MONTH}-28`;
+  if (/^(start|end)$/.test(n)) return n === "start" ? "18:00" : "19:00";
+  if (/hours|minutes|qty|count|children|Min$|days|grace/i.test(n)) return "1";
+  if (n === "kind") return "BONUS";
+  if (/decision|status/i.test(n)) return "APPROVED";
+  if (n === "engine" || n === "engineVersion") return "2";
+  if (n === "format") return "CSV";
+  if (n === "accept") return "1";
+  if (n === "pin") return "483920";
+  if (/reason|note|desc|name|title|purpose|memo|body|label|item/i.test(n)) return "qc ทดสอบ";
+  return "on";
+ };
+ const formOf = (f: string, c: Case) => fd(Object.fromEntries(namesOf(f).map((n) => [n, val(n, c)])));
+ const objOf = (f: string, name: string, c: Case) => Object.fromEntries([...(new RegExp(`function ${name}\\(\\s*input:\\s*\\{([^}]*)\\}`).exec(srcOf(f))?.[1] ?? "").matchAll(/(\w+)\??:/g)].map((m) => [m[1]!, /Min$/.test(m[1]!) ? 480 : val(m[1]!, c)]));
+ const argsOf = (f: string, name: string, c: Case): unknown[] => {
+  const params = (new RegExp(`function ${name}\\(([^)]*)\\)`).exec(srcOf(f))?.[1] ?? "").split(",").map((x) => x.trim().split(/[?:]/)[0]!.trim()).filter(Boolean);
+  return params.map((p) => (/^(formData|fd|form)$/.test(p) ? formOf(f, c) : /prev/i.test(p) ? { status: "idle" } : p === "input" ? objOf(f, name, c) : p === "systemId" ? c.sys : p === "employeeId" ? c.emp : val(p, c)));
+ };
  const runAs = async (k: string, f: string, name: string) => {
   const before = await dig(), out: Record<string, string> = {};
-  for (const [cn, c] of Object.entries(CASES)) out[cn] = norm(await call(k, `/app/sys/${c.sys}/hr/payroll`, () => M[f][name](...argsOf(name, c))));
+  for (const [cn, c] of Object.entries(CASES)) out[cn] = norm(await call(k, `/app/sys/${c.sys}/hr/payroll`, () => M[f][name](...argsOf(f, name, c))));
   const wrote = diff(before, await dig());
   const odd = Object.entries(out).filter(([cn, v]) => cn !== "unkSystem" && v !== out.unkSystem).map(([cn]) => cn);
   return { wrote, odd, out };
@@ -128,7 +182,9 @@ try {
    else { x3.push(bad); if (r.wrote.length) found.push(`${f}:${name}`); }
   }
  }
- if (found.length) console.log(`🔴🔴 OTHER PAYROLL ACTIONS WRITING FOR A FOREIGN ID: ${found.join(", ")}`);
+ if (found.length) console.log(`🔴🔴 OTHER PAYROLL ACTIONS WRITING FOR A FOREIGN/UNKNOWN SYSTEM (complete forms): ${found.join(", ")}`);
+ const writers = [...x1, ...x2, ...x3].filter((x) => /wrote\[[^\]]/.test(x)).map((x) => x.split(":")[0]);
+ console.log(`  · WRITES for foreign/unknown system (complete forms): ${writers.join(", ") || "none"}`);
  console.log(`  · payroll action files: ${listed.length} actions enumerated${missing.length ? ` · not loaded: ${missing.join(",")}` : ""}`);
  chk("X1", !x1.length, "same refusal · 0 rows", L(x1));
  chk("X2", !x2.length, "same refusal · 0 rows", L(x2));
@@ -140,6 +196,34 @@ try {
   if (!/"ok":false/.test(r) || w.length) x3.push(`createPayrollRunAction(unknown system): ${r.slice(0, 50)}${w.length ? ` wrote ${w.join(",")}` : ""}`);
  }
  chk("X3", !x3.length && !missing.length, `${listed.length} actions · unknown system refused`, L([...missing, ...x3], 12));
+ {
+  const bad = listed.map(([f, n]) => [f, n, guardFirst(srcOf(f), n)] as const).filter(([, , w]) => w).map(([f, n, w]) => `${f.split("/").pop()}:${n} ${w}`);
+  console.log(`  · X10 actions without hrTargetOwned first (${bad.length}/${listed.length}): ${bad.map((x) => x.split(" ")[0]!.split(":")[1]).join(", ") || "none"}`);
+  chk("X10", !bad.length, "guard first", `${bad.length}: ${L(bad, 6)}`);
+  const e3 = ["createEmployeeAction", "updateEmployeeAction", "removeEmployeeAction", "restoreEmployeeAction"].map((n) => [n, guardFirst(srcOf("actions"), n)] as const).filter(([, w]) => w).map(([n, w]) => `${n} ${w}`);
+  chk("E3", !e3.length, "guard first", L(e3));
+ }
+ // ── R12 employee register actions (foreign owner) + chain ──
+ {
+  const e1: string[] = [];
+  const chainCases: Record<string, Case> = { realEmp: { sys: HRS, emp: E.e2.id, run: X.runDraft, adj: X.adj }, unkEmp: { sys: HRS, emp: U0, run: U0, adj: U0 }, unkSystem: CASES.unkSystem! };
+  const e2: string[] = [], chainList = [["payroll-actions", "requestAdjustmentAction"], ["actions", "setWorkScheduleAction"], ...CHAIN.flatMap((f) => [...srcOf(f).matchAll(/^export async function (\w+Action)\b/gm)].map((m) => [f, m[1]!]))] as [string, string][];
+  for (const [f, n] of chainList) {
+   if (typeof M[f]?.[n] !== "function") { e2.push(`${f}:${n} not loaded`); continue; }
+   const before = await dig();
+   for (const c of Object.values(chainCases)) await call("XO", `/app/sys/${c.sys}/hr`, () => M[f][n](...argsOf(f, n, c)));
+   const w = diff(before, await dig());
+   if (w.length) e2.push(`${n} wrote ${w.join(",")}`);
+  }
+  chk("E2", !e2.length, "0 rows", L(e2, 10));
+  for (const n of ["createEmployeeAction", "updateEmployeeAction", "removeEmployeeAction", "restoreEmployeeAction"]) {
+   const before = await dig(), out: Record<string, string> = {};
+   for (const [cn, c] of Object.entries({ real: { sys: HRS, emp: n === "restoreEmployeeAction" ? E.e5.id : E.e4.id, run: U0, adj: U0 }, unkSystem: CASES.unkSystem! })) out[cn] = norm(await call("XO", `/app/sys/${c.sys}/hr/employees`, () => M.actions[n](...argsOf("actions", n, c))));
+   const w = diff(before, await dig());
+   if (w.length || out.real !== out.unkSystem) e1.push(`${n}: ${w.length ? `wrote ${w.join(",")} ` : ""}${out.real !== out.unkSystem ? `${out.real!.slice(0, 40)} ≠ ${out.unkSystem!.slice(0, 40)}` : ""}`);
+  }
+  chk("E1", !e1.length, "= unknown system · 0 rows", L(e1));
+ }
  {
   const r = await call("O", `/app/sys/${HRS}/hr/payroll`, () => M["payroll-actions"].setSalaryProfileAction(fd({ systemId: HRS, employeeId: E.eA.id, baseSalaryBaht: "25000" })));
   const ours = await P.hrSalaryProfile.findFirst({ where: { tenantId: X.T, systemId: HRS, employeeId: E.eA.id } }), squat = await P.hrSalaryProfile.count({ where: { systemId: HRS, NOT: { tenantId: X.T } } });
@@ -188,16 +272,40 @@ try {
   if (dupR !== "refused") u7.push(`live run dup ${dupR}`);
   chk("X7", !u7.length, "refused", L(u7));
  }
+ // ── X9 complete-form reachability (own owner, same forms) ──
+ {
+  const own: Case = { sys: HRS, emp: E.e4.id, run: X.runDraft, adj: X.adj }, pa = M["payroll-actions"], bad: string[] = [], pth = `/app/sys/${HRS}/hr/payroll`;
+  const a0 = await P.auditLog.count({ where: { tenantId: X.T, action: "hr.payroll.approve" } });
+  await call("O", pth, () => pa.approvePayrollRunAction(...argsOf("payroll-actions", "approvePayrollRunAction", own)));
+  if ((await P.auditLog.count({ where: { tenantId: X.T, action: "hr.payroll.approve" } })) !== a0 + 1) bad.push("approve audit");
+  const ownRun: Case = { ...own, run: U0 }, perX = MONTH;
+  const r0 = await P.hrPayrollRun.count({ where: { tenantId: X.T, periodKey: perX } });
+  const rc = await call("O", pth, () => pa.createPayrollRunAction(...argsOf("payroll-actions", "createPayrollRunAction", ownRun)));
+  if ((await P.hrPayrollRun.count({ where: { tenantId: X.T, periodKey: perX } })) !== r0 + 1) bad.push(`create run ${rc.slice(0, 50)}`);
+  await call("O", pth, () => pa.setSalaryProfileAction(...argsOf("payroll-actions", "setSalaryProfileAction", own)));
+  if ((await P.hrSalaryProfile.findFirst({ where: { tenantId: X.T, employeeId: E.e4.id } }))?.baseSalarySatang !== 10_000) bad.push("set profile");
+  chk("X9", !bad.length, "own writes reached", L(bad));
+ }
+ {
+  const ix = (await P.$queryRawUnsafe(`SELECT indexname, indexdef FROM pg_indexes WHERE tablename IN ('HrSalaryProfile','HrPayrollRun')`)) as Any[], has = (n: string) => ix.find((i) => i.indexname === n);
+  const bad: string[] = [];
+  for (const o of ["HrSalaryProfile_systemId_employeeId_key", "HrPayrollRun_systemId_periodKey_live_key"]) if (has(o)) bad.push(`old ${o} present`);
+  const p = ix.find((i) => /UNIQUE/.test(i.indexdef) && /"HrSalaryProfile"/.test(i.indexdef) && /\("tenantId", "systemId", "employeeId"\)/.test(i.indexdef));
+  const r = ix.find((i) => /UNIQUE/.test(i.indexdef) && /"HrPayrollRun"/.test(i.indexdef) && /\("tenantId", "systemId", "periodKey"\)/.test(i.indexdef) && /REVERSED/.test(i.indexdef));
+  if (!p) bad.push("new profile key missing"); if (!r) bad.push("new run key missing");
+  chk("M1", !bad.length, "old gone · new present", L(bad));
+ }
  // ── R7 cancel/respond parity ──
  {
   const bad: string[] = [], p = `/app/sys/${HRS}/hr/leave`;
   const ACT: Record<string, (id: string) => Promise<unknown>> = {
    cancelLeave: (id) => M.acts.cancelLeaveAction(fd({ systemId: HRS, leaveId: id })), selfCancelLeave: (id) => M.self.selfCancelLeaveAction(id),
+   cancelLeaveDecided: (id) => M.acts.cancelLeaveAction(fd({ systemId: HRS, leaveId: id })), selfCancelLeaveDecided: (id) => M.self.selfCancelLeaveAction(id), // r3 R13
    cancelOt: (id) => M.ot.cancelOtAction(null, fd({ systemId: HRS, id })), selfCancelOt: (id) => M.self.selfCancelOtAction(id),
    respondSwap: (id) => M.swap.respondSwapAction(fd({ systemId: HRS, swapId: id, accept: "1" })), cancelSwap: (id) => M.swap.cancelSwapAction(fd({ systemId: HRS, swapId: id })),
    selfRespondSwap: (id) => M.self.selfRespondSwapAction(id, true), selfCancelSwap: (id) => M.self.selfCancelSwapAction(id),
   };
-  const realOf: Record<string, string> = { cancelLeave: X.leave, selfCancelLeave: X.leave, cancelOt: X.ot, selfCancelOt: X.ot, respondSwap: X.swap, cancelSwap: X.swap, selfRespondSwap: X.swap, selfCancelSwap: X.swap };
+  const realOf: Record<string, string> = { cancelLeaveDecided: X.leaveD, selfCancelLeaveDecided: X.leaveD, cancelLeave: X.leave, selfCancelLeave: X.leave, cancelOt: X.ot, selfCancelOt: X.ot, respondSwap: X.swap, cancelSwap: X.swap, selfRespondSwap: X.swap, selfCancelSwap: X.swap };
   for (const k of ["K", "N", "U"]) for (const [n, f] of Object.entries(ACT)) {
    const before = await dig(), u = unk(), a = norm(await call(k, p, () => f(realOf[n]!))), b = norm(await call(k, p, () => f(u)), [u]), w = diff(before, await dig());
    if (a !== b || w.length) bad.push(`${k}.${n}: ${a.slice(0, 60)} ≠ ${b.slice(0, 60)}${w.length ? ` wrote ${w.join(",")}` : ""}`);

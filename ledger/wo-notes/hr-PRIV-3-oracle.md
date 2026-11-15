@@ -168,3 +168,21 @@ The 3b suite uses its own tenants `qc-hr-priv3b-*`: our shop plus a foreign shop
   - Residue none, in both tenants for 3b. tsc 0 errors.
 - **Compound-unique call sites:** none (grep in the brief R10 section).
 - **Old code vs the new DB index:** it keeps working. The DB-state oracles `qc-hr-h0.6` S2.4 and `qc-hr-h1.3` S1.10 (index name/def) and `pnpm drift` on other branches will flag the lane DB, so warn lane 2 first.
+
+### r3 (registry re-based to 50b272695 · R10 migration applied on the lane DB)
+- **Complete-form driver (3b):**
+  - For each action, the args are built from its signature: FormData / `_prev` / `input` object / `systemId` / `employeeId`.
+  - The FormData holds every field name its file reads (`.get/.getAll/.has`, `(fd, "x")`), filled from our shop per case. Cases: unknown employee, employee without profile, employee with profile, approved run, draft run with an item, paid run, adjustment, and unknown system.
+  - Values are valid-looking: `expectNet`/`expectItems` integers, an empty `unitId`, periods, dates, amounts.
+  - X9 (positive control) proves our owner's same-form approve, create-run and set-profile calls reach their writes.
+- **Driven that way, writes for a foreign/unknown system:**
+  - `approvePayrollRunAction`: writes `T2:AuditLog`.
+  - `createEmployeeAction`: writes `T2:HrEmployee` + `T2:Party`.
+  - The other 48 payroll actions, updateEmployee/removeEmployee/restoreEmployee, and the follow-up chain (requestAdjustment, setWorkSchedule, OT, roster, lifecycle, LINE) write nothing.
+- **X10 (static):** 44 of 49 payroll actions do not call `hrTargetOwned` first (directly or through a local helper). Only setSalaryProfile, createPayrollRun, reverseRun, markPaid and reverseRunV2 do. The file-local `systemOf` resolvers (opening, work-entries, bank-files, filings, …) are second copies and count only if they call `hrTargetOwned`.
+- **S6 (main):** now also requires CREATE-before-DROP and `DROP INDEX IF EXISTS`. It is RED on the current migration, which drops first and has no IF EXISTS.
+- **M1:** old index names are gone on the lane DB, and the new ones are present (GREEN).
+- **Counts:**
+  - priv-3: 28/28 as registered (RED: S6).
+  - priv-3b: 19/19 as registered (RED: X3 X10 E1 E3 Y1 · GREEN 14).
+  - Residue none, in both tenants. tsc 0 errors. Sizes: priv-3 + lib 61.8 KB · 3b 36.5 KB.
