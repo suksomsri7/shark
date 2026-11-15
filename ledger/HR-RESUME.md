@@ -741,3 +741,33 @@
 ### 2026-11-15T08:20Z · เจ้าของตอบ "แก้ไขทั้ง 2 เรื่องเลย"
 - (1) ค่าตรึง h3.8 S1.13: อนุญาตแล้ว → ผู้คุมแก้บน session/hr ในเครื่อง (ค่า privacy.ts หลัง PREPROD-1 = 1847a6a0…) · ทุกใบที่แตะ privacy.ts หลังจากนี้ (PRIV-3, LEAVE-3?) ต้องให้ผู้คุมตรึงค่าใหม่ตอน merge (คำอนุญาตครอบเรื่องนี้) — ตัวแทนยังห้ามแก้เอง
 - (2) hotfix ช่องโหว่ปุ่มเงินเดือนข้ามร้านขึ้น production แยก: อนุมัติให้ทำ → แผน: รอผู้สร้าง PRIV-3 ทำ R6 + R10 เสร็จบน session/hr → เปิดใบ HF-TENANT พอร์ตเฉพาะ R6 (resolver ทุกปุ่มใน payroll action ของ main) + migration R10 ลงสาขา `hotfix/hr-payroll-tenant-guard` จาก origin/main ในทรีใหม่ → ข้อสอบ + ผู้ตรวจ → **ยังต้องขอ GO จากเจ้าของก่อน push main / deploy / ลง migration บน production ทุกครั้ง**
+
+## 🟡 CHECKPOINT ก่อนพัก — 2026-11-15T00:15Z (อา. 15 พ.ย. 07:15 ไทย) · เจ้าของ: "จบงานส่วนนี้แล้วจะให้พัก · จะสั่งเริ่มต่อเอง"
+**สถานะนับ: 40/44 (91%)** · origin/session/hr = 40/44 (ด่านเขียว) · session/hr ในเครื่อง = นำหน้า origin 55+ commit **ยังไม่ผ่านด่านรวม ยังไม่ push**
+กติกาตอนพัก: ไม่เปิดงานใหม่ · ไม่ tg รายชั่วโมง · ไม่ push session/hr จนกว่าด่านรวมผ่าน · ไม่แตะ production
+
+### ทรีและสาขา (ทุกอย่าง commit ในเครื่องแล้ว ยกเว้นที่ระบุ)
+| ทรี | สาขา @ head | งาน | สถานะ |
+|---|---|---|---|
+| `/root/projects/shark-hr-merge` (ไม่มี node_modules · ใช้ merge + สมุดคุมงาน) | `session/hr` | ผู้คุม | มี: HF-SSO fix2 · H4.9-FIX1 · HR-PREPROD-1 (1e53bba91) · ค่าตรึง h3.8 S1.13 แก้แล้ว (เจ้าของอนุมัติ 15 พ.ย.) · walker tuning · ใบสั่ง PRIV-3 |
+| `/root/projects/shark-hr-c` (ทรีผู้คุมเดิม · QC4 · มี .next) | `tmp/walk-vis5b` 0afc19d43 | สาขาถ่ายภาพเท่านั้น = session/hr(เก่า)+VIS-5a+VIS-5b · **ห้าม merge** | unit `hr-rewalk-r3` กำลัง build+เดิน (สถานะ /tmp/hr-ctl/walk/r3/status) · serve :3226 · ข้อมูลเดินหน้าจอ (seed-hr-walk) ยังอยู่บน QC4 → ต้อง `--down` ก่อนด่าน pm-full · ตอนกลับมาคุม: `git checkout session/hr` ในทรีนี้หลังถ่ายเสร็จ แล้วลบ worktree shark-hr-merge ได้ |
+| เลน 1 `/root/projects/shark-hr` | `wip/hr-vis-5bc` 0c37a8069 | VIS-5b หน้ารวม (ผู้สร้าง a538b5242fe7df3d0 · ข้อสอบ a09a65f20a0188281 qc-hr-vis-5b 29) + ใบสั่ง/ข้อสอบ VIS-5c (ยังไม่มีผู้สร้าง) | แก้ตามภาพรอบ 1 แล้ว รอภาพรอบ 3 · ค้าง F5 (การ์ดลงเวลา + ตัด listEmployees) หลัง PRIV-3 เข้า · ต้อง re-pin `hrNavFilter` + vis-5c S1/S8 |
+| เลน 2 `/root/projects/shark-hr-b` | `wip/hr-leave-3` 9b4326127 (+งานค้างยังไม่ commit 1 ไฟล์) | HR-LEAVE-3 (ผู้สร้าง a872228a4f774f395 · ข้อสอบ aceb1aa709a1b580c leave-3 53 + leave-3b 11 · ผู้ตรวจ a116fba15115ccb3e MERGE) | **กำลังทำขั้นสอง**: รวม session/hr (มี PREPROD-1) + W10 การ์ด AI + โพรบลาคู่×ลาป่วยแบ่งส่วน → รายงานแล้ว merge เข้า session/hr ได้ |
+| เลน 3 `/root/projects/shark-hr-l3` | `wip/hr-vis-5a` 3c91c6068 | VIS-5a หน้ารอบจ่าย (ผู้สร้าง a8a2aaeef4ec7ecc8 · ข้อสอบ af937fefaa7374165 qc-hr-vis-5a 39) | 39/39 · แก้ตามภาพรอบ 1 แล้ว รอภาพรอบ 3 · เหลือ: ชื่องวด ISO ใน work-entries-ui / bank-files / filings → VIS-5e |
+| เลน 4 `/root/projects/shark-hr-l4` | `wip/hr-preprod-1` 1e53bba91 | HR-PREPROD-1 | **merged เข้า session/hr ในเครื่องแล้ว** · เลนว่าง |
+| เลน 5 `/root/projects/shark-hr-l5` (ฐาน QC ร่วมเลน 2) | `wip/hr-priv-3` 2fea7f599 (+งานค้าง 1 ไฟล์) | HR-PRIV-3 (ผู้สร้าง a47766f0e3ed7927e · ข้อสอบ a31b21b807884d5a9 priv-3 28 + priv-3b 13 · ผู้ตรวจ ad232656914a642fd · นักล่า a9e849d961b43d3fc) | **กำลังทำรอบแก้** R6 (ปุ่มเงินเดือนข้ามร้าน) R7 R10 (migration ดัชนี tenant) · ⚠ ห้าม migrate ฐานเลน 5 จนเลน 2 จบ (h0.6 S2.4 / h1.3 S1.10 ตรึงดัชนีเดิม) → แล้วส่วนต่างให้ผู้ตรวจ+นักล่า → merge (ผู้คุมตรึงค่า h3.8 S1.13 ใหม่) → ทุกเลน + QC4 `migrate deploy` |
+
+### ลำดับที่เหลือ (ตอนกลับมา)
+1. รับรายงาน LEAVE-3 ขั้นสอง → merge เข้า session/hr (ที่ shark-hr-merge หรือ shark-hr-c หลัง checkout กลับ)
+2. บอกผู้สร้าง PRIV-3 ว่าเลน 2 จบ → migrate + ORACLE-EDIT h0.6 S2.4 / h1.3 S1.10 → ผู้ตรวจส่วนต่าง → merge → ตรึง h3.8 S1.13 ใหม่
+3. **HF-TENANT (เจ้าของอนุมัติให้ทำ hotfix แยก · ยังต้องขอ GO ก่อน push main/deploy/migration บน prod)**: ทรีใหม่จาก origin/main สาขา `hotfix/hr-payroll-tenant-guard` · พอร์ต R6 (resolver ทุกปุ่ม payroll บน main) + migration R10 **ตัวเดียวกันทุกตัวอักษร**กับของ PRIV-3 · ข้อสอบ + ผู้ตรวจ
+4. ดูภาพรอบ 3 (VIS-5a/5b: /root/qc/hr-h5.1 · states 01-hub, 01-hub-rostered*, 11a, 11b, 11v-*, 11d-*, x1–x4, 13b · เทียบตัวเลขวันมีกะ: อยู่กะ 9 · มาแล้ว 9 · สาย 1 น้ำฝน 18 นาที — ตัวเลขนี้อ่านจากฐานเลน 1; บน QC4 วันที่อาจเป็น 13 พ.ย.) → ถ้าผ่าน: ผู้เขียนข้อสอบแต่ละใบ re-pin → VIS-5a, VIS-5b re-merge session/hr (หลัง PRIV-3) → merge
+5. VIS-5c (หน้าพนักงาน/โปรไฟล์ + ปิดบังเลข): เปิดผู้สร้างหลัง PRIV-3 เข้า (ข้อสอบ vis-5c S1/S8 ต้องปรับ)
+6. ร่าง + ทำ VIS-5d (ตั้งค่า/กฎหมาย) · VIS-5e (ภาษา ~240 จุด · วันที่/ยุค · ชื่องวด ISO ที่เหลือ · error ของปุ่มยกเลิกที่ขึ้นหน้าทั่วไปบน prod · tab strip หน้าย่อย · ปุ่มปิดไม่มีเหตุผล · TAP-44 · PAY_SCOPE_EXCLUDED_TEXT ไทยบนหน้าอังกฤษ)
+7. ด่าน pm-full สุดท้าย: `seed-hr-walk --down` ก่อน · `MIGRATE=1` · EXTRA="qc-hr-preprod-1b qc-hr-preprod-1c qc-hr-leave-3 qc-hr-leave-3b qc-hr-priv-3 qc-hr-priv-3b qc-hr-vis-5a qc-hr-vis-5b qc-hr-vis-5c qc-hr-hf-sso qc-hr-money-2 qc-hr-priv-2 qc-account-cpa" → HANDOVER-H4 (รวมรายการ svc/sec ไม่รันโดย HR · หมุด POS ชั้น a) → push → นับ H4.9 = 41/44
+8. เดินหน้าจอซ้ำทั้งระบบ (build ใหม่ · re-seed วันเดิน) + ดูภาพคู่ → นับ H5.1 = 42/44 → H5.3 production (GO ทีละ migration + นักบัญชี 85 ข้อ + ยืนยัน ปกส. 17,500) = 43/44 จบจริง (H4.7 ตัด)
+
+### รอเจ้าของ/ต้องย้ายเข้า HR-OWNER-LIST
+- GO hotfix HF-TENANT เมื่อพร้อม · GO production ทีละ migration · ยืนยัน ปกส. 17,500 / HF-SSO
+- องค์ประกอบในแบบที่ไม่มีหลังบ้าน (ท้ายใบสั่ง VIS-5a/5b/5c): การ์ด AI แนะนำ · PDF สลิปรวม · ประวัติการคำนวณ · เทียบเดือนก่อน · วันหมดอายุเอกสาร · นำเข้า CSV · ปุ่มเปิดดูเลขเต็มแบบมี audit ฯลฯ
+- ผู้ถือ hr.leave.read เห็นทะเบียนพนักงาน (ของเดิม) · ลาบางส่วนของวันปิดคิวจองทั้งวัน (F5) · คืนเงินอัตโนมัติลาป่วยย้อนหลัง (O-29) · ลาป่วยรายชั่วโมงเกินสิทธิ์
