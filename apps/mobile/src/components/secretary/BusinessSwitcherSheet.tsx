@@ -14,7 +14,8 @@
 // 14 พ.ย.: เอาแถว "เลขาของฉัน" และแถบโควตาออกจากชีตนี้ (ย้ายไปหน้าตั้งค่ากิจการ) · ไม่มีรูปโปรไฟล์ผู้ใช้
 // BusinessSwitcherHost ครอบ Stack ของโซน (secretary/customers/business _layout + หน้าระบบ index) → SecTopBar เรียก useBusinessSwitcher().open()
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { LekaaLoader } from "@/src/components/brand/LekaaLoader";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon, Sheet, type IconName } from "@/src/components/airy";
@@ -231,7 +232,7 @@ export function BusinessSwitcherSheet({ visible, onClose, startView = "systems" 
               );
             })}
           </View>
-          {systems === null && !failed ? <ActivityIndicator testID="sec-sheet-loading" style={styles.state} size="small" color={c.iconDim} /> : null}
+          {systems === null && !failed ? <LekaaLoader testID="sec-sheet-loading" style={[styles.state, styles.loaderC]} size={40} /> : null}
           {failed && systems === null ? (
             <Pressable testID="sec-sheet-retry" accessibilityRole="button" onPress={() => setReload((k) => k + 1)} style={[glassStyle(c, radii.sugg), styles.row, styles.state]}>
               <Icon name="wifi-off" size={18} color={c.warn.fg} />
@@ -301,6 +302,7 @@ export function BusinessSwitcherSheet({ visible, onClose, startView = "systems" 
 }
 
 const styles = StyleSheet.create({
+  loaderC: { alignSelf: "center" },
   host: { flex: 1 },
   body: { paddingBottom: spacing.xl },
   flex: { flex: 1, minWidth: 0 },

@@ -15,7 +15,7 @@ import { useAuth } from "@/src/lib/auth-context";
 import { AiryScreen, Glass, PrimaryButton } from "@/src/components/airy";
 import { AuthField, LinkLine, NoteLine, OtpBoxes } from "@/src/components/auth/airy";
 import { SOCIAL_BRAND } from "@/src/components/auth/social";
-import { AnimatedOrb } from "@/src/components/ui/orb";
+import { LekaaLoader } from "@/src/components/brand/LekaaLoader";
 import { authErrorCode, authErrorKey, keepCodeOnError, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, localThaiMobile, normalizeThaiMobile } from "@/src/lib/phone";
 import { useT } from "@/src/i18n";
@@ -269,7 +269,7 @@ export default function LoginScreen() {
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={s.hero}>
-            <AnimatedOrb size={96} />
+            <LekaaLoader size={96} testID="login-logo" />
             <Text style={[s.brand, { color: c.text }]}>Lekaa</Text>
             <Text style={[s.tagline, { color: c.textMuted }]}>{t("auth.login.tagline")}</Text>
           </View>
