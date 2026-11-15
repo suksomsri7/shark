@@ -130,6 +130,7 @@ export const calEn: Record<keyof typeof calTh, string> = {
   "cal.g.exEvent": "Personal events made in the app",
   "cal.g.exRemind": "My reminders",
   "cal.g.exBooking": "Customer bookings I handle",
+  "cal.g.exBookingShopOff": "This business has turned off sending customer bookings to Google",
   "cal.g.target": "To calendar",
   "cal.g.privacy": "Privacy",
   "cal.g.privacyBody": "Only you can see this · your business and colleagues can't see your Google events · the secretary uses them only to plan your time",

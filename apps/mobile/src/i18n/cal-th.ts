@@ -129,6 +129,7 @@ export const calTh = {
   "cal.g.exEvent": "นัดส่วนตัวที่สร้างในแอป",
   "cal.g.exRemind": "เตือนฉัน",
   "cal.g.exBooking": "นัดลูกค้าที่ฉันรับ (บัตรคิว)",
+  "cal.g.exBookingShopOff": "ร้านปิดการส่งนัดลูกค้าไป Google",
   "cal.g.target": "ไปที่ปฏิทิน",
   "cal.g.privacy": "ความเป็นส่วนตัว",
   "cal.g.privacyBody": "เห็นเฉพาะคุณ · ร้านและเพื่อนร่วมงานมองไม่เห็นนัดจาก Google · เลขาใช้ช่วยจัดเวลาให้คุณเท่านั้น",

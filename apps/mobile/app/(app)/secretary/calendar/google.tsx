@@ -87,8 +87,8 @@ export default function CalGoogleScreen() {
     }
   };
 
-  const Toggle = ({ on, onPress, testID, label }: { on: boolean; onPress: () => void; testID: string; label: string }) => (
-    <Pressable testID={testID} accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{ checked: on }} hitSlop={6} onPress={onPress} style={[styles.tg, { backgroundColor: on ? c.sys.chat : c.btnOff.bg }]}>
+  const Toggle = ({ on, onPress, testID, label, disabled = false }: { on: boolean; onPress: () => void; testID: string; label: string; disabled?: boolean }) => (
+    <Pressable testID={testID} accessibilityRole="switch" accessibilityLabel={label} accessibilityState={{ checked: on, disabled }} disabled={disabled} hitSlop={6} onPress={onPress} style={[styles.tg, { backgroundColor: on ? c.sys.chat : c.btnOff.bg }, disabled ? { opacity: 0.4 } : null]}>
       <View style={[styles.knob, { backgroundColor: c.onSys }, on ? styles.knobOn : null]} />
     </Pressable>
   );
@@ -173,10 +173,15 @@ export default function CalGoogleScreen() {
               {EXPORTS.map((e) => {
                 const on = kinds.includes(e.kind);
                 const next = on ? kinds.filter((k) => k !== e.kind) : [...kinds, e.kind];
+                // calendar_c ▸ นัดลูกค้า: ร้านปิดสวิตช์ (ค่าเริ่ม) = สวิตช์เทา + คำอธิบาย · เปิดค้างไว้ได้แต่ไม่มีผลจนร้านเปิด ◂
+                const shopOff = e.kind === "BOOKING" && !!g.bookingExport && (!g.bookingExport.allowed || g.bookingExport.currentShop === false);
                 return (
                   <Row key={e.kind}>
-                    <Text style={[styles.rt, { color: c.text }]}>{t(e.label)}</Text>
-                    <Toggle testID={`cal-g-ex-${e.kind}`} label={t(e.label)} on={on} onPress={() => void put({ exportKinds: next }, (s) => ({ ...s, exportKinds: next }))} />
+                    <View style={styles.rtWrap}>
+                      <Text style={[styles.rt, { color: shopOff ? c.textFaint : c.text }]}>{t(e.label)}</Text>
+                      {shopOff ? <Text testID="cal-g-ex-BOOKING-hint" style={[styles.rsub, { color: c.textMuted }]}>{t("cal.g.exBookingShopOff")}</Text> : null}
+                    </View>
+                    <Toggle testID={`cal-g-ex-${e.kind}`} label={t(e.label)} on={on && !shopOff} disabled={shopOff} onPress={() => void put({ exportKinds: next }, (s) => ({ ...s, exportKinds: next }))} />
                   </Row>
                 );
               })}
@@ -247,6 +252,8 @@ const styles = StyleSheet.create({
   grp: { overflow: "hidden" },
   r: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 11, paddingHorizontal: 14, minHeight: 50 },
   rt: { fontSize: 14 },
+  rtWrap: { flex: 1, gap: 2 },
+  rsub: { fontSize: 12 },
   rs: { fontSize: 11.5, flexShrink: 1 },
   rv: { marginLeft: "auto", fontSize: 13.5 },
   dot: { width: 10, height: 10, borderRadius: 5 },

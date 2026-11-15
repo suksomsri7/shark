@@ -1227,6 +1227,8 @@ const th = {
   "bizset.photo.camPerm": "ต้องอนุญาตให้แอปใช้กล้องก่อน",
   "bizset.sys.title": "ระบบของร้าน",
   "bizset.sys.sub": "เพิ่ม · ปิด · ลบระบบ",
+  "bizset.cal.bookingExport": "อนุญาตให้พนักงานส่งนัดลูกค้าเข้า Google ส่วนตัว",
+  "bizset.cal.bookingExportSub": "ชื่อลูกค้าและเวลานัดจะอยู่ในปฏิทิน Google ของพนักงาน",
   "bizset.sec.mine": "เลขาของฉัน · ตั้งค่า",
   "bizset.export.title": "ส่งออกข้อมูลร้าน",
   "bizset.export.sub": "ไฟล์ข้อมูลทั้งหมด ก่อนลบ/ย้าย",

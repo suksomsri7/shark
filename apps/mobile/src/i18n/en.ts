@@ -1226,6 +1226,8 @@ const en: Record<I18nKey, string> = {
   "bizset.photo.camPerm": "Allow the app to use the camera first",
   "bizset.sys.title": "Business systems",
   "bizset.sys.sub": "Add · close · delete systems",
+  "bizset.cal.bookingExport": "Let staff send customer bookings to their personal Google Calendar",
+  "bizset.cal.bookingExportSub": "Customer names and booking times will be in the staff member's Google Calendar",
   "bizset.sec.mine": "My secretary · settings",
   "bizset.export.title": "Export business data",
   "bizset.export.sub": "All data as a file, before deleting/moving",

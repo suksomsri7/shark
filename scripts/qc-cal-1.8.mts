@@ -167,7 +167,8 @@ function fakeGoogle() {
   return { st, put, fetch: f, deps: () => ({ fetch: f }) };
 }
 
-const fx = await makeFixture(prisma, "qccal18", { a: { role: "OWNER" }, b: { role: "OWNER" } });
+const fx = await makeFixture(prisma, "qccal18", { a: { role: "OWNER" }, b: { role: "OWNER" }, m: { role: "MANAGER" }, s: { role: "STAFF", permissions: { "ai.chat.send": true } } });
+const policy = (await import("@/lib/modules/calendar/shop-policy")) as AnyMod;
 const [tid] = fx.tids;
 const OWNER_M = { role: "OWNER", unitAccess: ["*"], permissions: {} };
 const A = { userId: fx.U.a, tenantId: tid, membership: OWNER_M };
@@ -315,11 +316,21 @@ try {
   const gN = fakeGoogle();
   const DN = gN.deps();
   await google.connectGoogle(NEW, "new", DN);
+  // calendar_c ▸ มติเจ้าของ: ร้านต้องเปิดสวิตช์ก่อน (ค่าเริ่ม ปิด) ◂
+  await prisma.calShopPolicy.deleteMany({ where: { tenantId: "calqc-tenant" } });
+  await google.updateGoogle(NEW, { exportKinds: ["BOOKING"] });
+  await google.syncGoogle(NEW, { deps: DN });
+  const stOff = await google.googleStatus(NEW, { tenantId: "calqc-tenant" });
+  chk("G7-0", "ร้านยังไม่เปิดสวิตช์ (ค่าเริ่ม) = ผู้ใช้เลือก BOOKING ก็ไม่ส่ง · GET google: bookingExport.allowed=false · currentShop=false · hint ไทย", (await prisma.calExternalEvent.count({ where: { userId: NEW, sharkRef: { not: null } } })) === 0 && stOff?.bookingExport?.allowed === false && stOff?.bookingExport?.currentShop === false && stOff?.bookingExport?.hint === "ร้านปิดการส่งนัดลูกค้าไป Google", JSON.stringify(stOff?.bookingExport));
+  await policy.setShopPolicy("calqc-tenant", { userId: "calqc-owner", m: { role: "OWNER" } }, { allowBookingExport: true });
+  const stOn = await google.googleStatus(NEW, { tenantId: "calqc-tenant" });
+  chk("G7-0b", "ร้านเปิดสวิตช์ = allowed=true · currentShop=true · ไม่มี hint", stOn?.bookingExport?.allowed === true && stOn?.bookingExport?.currentShop === true && stOn?.bookingExport?.hint === null);
+  await prisma.calLink.updateMany({ where: { userId: NEW }, data: { leaseUntil: null } });
   await google.updateGoogle(NEW, { exportKinds: ["BOOKING"] }, DN);
   await google.syncGoogle(NEW, { deps: DN });
   const copies = await prisma.calExternalEvent.findMany({ where: { userId: NEW, sharkRef: { not: null } } });
   const remoteN = [...(gN.st.events.get("me@example.com")?.values() ?? [])].filter((e) => e.status !== "cancelled");
-  chk("G7-1", "นัดของครูนิวที่ยังไม่ผ่าน (60 วัน) ส่งไป · sharkRef appt:<tenant>:<id> · ชื่อ <บริการ> · <ลูกค้า> ไม่มีเบอร์ · ไม่มีนัดคนอื่น", copies.length > 0 && copies.every((c: AnyMod) => /^appt:calqc-tenant:calqc-appt-[156]$/.test(c.sharkRef)) && remoteN.every((e) => !/0800000000/.test(JSON.stringify(e)) && / · /.test(e.summary)) && remoteN.length === copies.length, JSON.stringify(copies.map((c: AnyMod) => c.sharkRef)));
+  chk("G7-1", "นัดของครูนิวที่ยังไม่ผ่าน (60 วัน) ส่งไป · sharkRef appt:<tenant>:<id> · ชื่อ <บริการ> · <ชื่อลูกค้า> (Q9) · คำอธิบายที่มา · ไม่มีเบอร์/อีเมล · ไม่มีนัดคนอื่น", copies.length > 0 && copies.every((c: AnyMod) => /^appt:calqc-tenant:calqc-appt-[156]$/.test(c.sharkRef)) && remoteN.every((e) => !/0800000000|@/.test(JSON.stringify(e)) && / · /.test(e.summary) && e.description === google.BOOKING_COPY_NOTE) && remoteN.some((e) => /คุณบี|คุณกานต์/.test(e.summary)) && remoteN.length === copies.length, JSON.stringify(copies.map((c: AnyMod) => c.sharkRef)));
   const agN = await agenda.agendaFor({ userId: NEW, tenantId: "calqc-tenant", membership: { role: "STAFF", unitAccess: ["calqc-unit-dive"], permissions: {} } }, { from: day(0), to: day(1) }, { access: {} });
   chk("G7-2", "สำเนา sharkRef ไม่แสดงใน agenda (นัดยังแสดงจากบัตรคิวครั้งเดียว)", !agN.items.some((i: AnyMod) => i.source === "google"));
   const firstCopy = copies[0];
@@ -345,6 +356,18 @@ try {
   const live = await prisma.calExternalEvent.findMany({ where: { userId: NEW, sharkRef: { not: null } } });
   await google.revokeGoogleForDeletion(NEW, DN);
   chk("G7-5", "ลบบัญชี: ลบสำเนาใน Google ก่อน แล้วถอนสิทธิ์ (review b m6)", live.length > 0 && live.every((c: AnyMod) => gN.st.events.get("me@example.com")?.get(c.externalId)?.status === "cancelled") && gN.st.revoked.includes("rt-new"));
+  // calendar_c ▸ ร้านปิดสวิตช์ภายหลัง = รอบซิงก์ถัดไปลบสำเนาเดิมทั้งหมด (ตัวเลือกของผู้ใช้ยังอยู่ แต่ไม่มีผล) ◂
+  await google.connectGoogle(NEW, "new2", DN);
+  await google.updateGoogle(NEW, { exportKinds: ["BOOKING"] });
+  await prisma.calLink.updateMany({ where: { userId: NEW }, data: { leaseUntil: null } });
+  await google.syncGoogle(NEW, { deps: DN });
+  const beforeOff = await prisma.calExternalEvent.findMany({ where: { userId: NEW, sharkRef: { not: null } } });
+  await policy.setShopPolicy("calqc-tenant", { userId: "calqc-owner", m: { role: "OWNER" } }, { allowBookingExport: false });
+  await prisma.calLink.updateMany({ where: { userId: NEW }, data: { leaseUntil: null } });
+  await google.syncGoogle(NEW, { deps: DN });
+  const kindsKept = (await prisma.calLink.findFirst({ where: { userId: NEW } }))?.exportKinds ?? [];
+  chk("G7-6", "ร้านปิดสวิตช์ = รอบซิงก์ลบสำเนานัดลูกค้าทั้งหมด (Google + ตารางจับคู่) · ตัวเลือก BOOKING ของผู้ใช้คงอยู่", beforeOff.length > 0 && (await prisma.calExternalEvent.count({ where: { userId: NEW, sharkRef: { not: null } } })) === 0 && beforeOff.every((c: AnyMod) => gN.st.events.get("me@example.com")?.get(c.externalId)?.status === "cancelled") && kindsKept.includes("BOOKING"), JSON.stringify({ n: beforeOff.length, kindsKept }));
+  chk("G7-7", "setShopPolicy: STAFF = ปฏิเสธ (ไม่เขียน)", (await policy.setShopPolicy("calqc-tenant", { userId: "calqc-staff-new", m: { role: "STAFF" } }, { allowBookingExport: true }).then(() => "OK", (e: AnyMod) => e?.name ?? e?.constructor?.name)) !== "OK" && (await policy.getShopPolicy("calqc-tenant")).allowBookingExport === false);
   await google.disconnectGoogle(NEW, DN);
 
   // ─────────────── G8 ตั้งค่า ───────────────
@@ -499,6 +522,33 @@ try {
   const cn = await call("google/connect", "POST", { h: HB, body: { serverAuthCode: "x".repeat(600) } });
   chk("G12-6", "connect code ยาวเกิน = 400 (zod)", cn.status === 400);
 
+  // calendar_c ▸ GET/PATCH secretary/business: calendar.allowBookingExport + can.editCalendarPolicy (OWNER/MANAGER) ◂
+  console.log("── G18: business route — นโยบายปฏิทินของร้าน ──");
+  const biz = async (method: string, h: Record<string, string>, body?: unknown) => {
+    const m = (await import("@/app/api/mobile/secretary/business/route")) as AnyMod;
+    const init: RequestInit = { method, headers: { "content-type": "application/json", "x-tenant-id": tid, ...h } };
+    if (body !== undefined) init.body = JSON.stringify(body);
+    const res: Response = await m[method](new Request("http://qc.local/api/mobile/secretary/business", init));
+    const t = await res.text();
+    let b: AnyMod = {};
+    try { b = JSON.parse(t); } catch { b = { t }; }
+    return { status: res.status, body: b };
+  };
+  const HM = { authorization: `Bearer ${(await auth.issueMobileToken(fx.U.m)).token}` };
+  const HS = { authorization: `Bearer ${(await auth.issueMobileToken(fx.U.s)).token}` };
+  const b0 = await biz("GET", HA);
+  chk("G18-1", "GET business (OWNER): calendar.allowBookingExport=false (ค่าเริ่ม) · can.editCalendarPolicy=true", b0.status === 200 && b0.body.calendar?.allowBookingExport === false && b0.body.can?.editCalendarPolicy === true, JSON.stringify(b0.body.calendar));
+  const b1 = await biz("PATCH", HM, { calendar: { allowBookingExport: true } });
+  chk("G18-2", "PATCH (MANAGER) {calendar:{allowBookingExport:true}} = 200 · ค่าใหม่ · โปรไฟล์ไม่เปลี่ยน", b1.status === 200 && b1.body.calendar?.allowBookingExport === true && b1.body.profile?.name === b0.body.profile?.name && (await policy.getShopPolicy(tid)).allowBookingExport === true, JSON.stringify(b1.body).slice(0, 200));
+  const b2 = await biz("PATCH", HS, { calendar: { allowBookingExport: false } });
+  const b3 = await biz("PATCH", HA, { calendar: { allowBookingExport: "yes" } });
+  const b4 = await biz("PATCH", HA, { calendar: { allowBookingExport: false, userId: fx.U.b } });
+  chk("G18-3", "STAFF = 403 ไทย (ไม่เขียน) · ชนิดผิด/คีย์เกิน = 400", b2.status === 403 && thai(b2.body.message) && (await policy.getShopPolicy(tid)).allowBookingExport === true && b3.status === 400 && b4.status === 400);
+  const b5 = await biz("PATCH", HM, { name: "ชื่อใหม่", calendar: { allowBookingExport: false } });
+  chk("G18-4", "PATCH ผสม: ส่วนที่ไม่มีสิทธิ์ (MANAGER แก้ชื่อ) = 403 และสวิตช์ไม่ถูกเขียน (ตรวจก่อนเขียน)", b5.status === 403 && (await policy.getShopPolicy(tid)).allowBookingExport === true);
+  const b6 = await biz("PATCH", HA, { calendar: { allowBookingExport: false } });
+  chk("G18-5", "OWNER ปิดกลับได้", b6.status === 200 && b6.body.calendar?.allowBookingExport === false);
+
   // ─────────────── G11 ยกเลิกเชื่อม ───────────────
   console.log("── G11: ยกเลิกเชื่อม (§10.4) ──");
   const ev2 = await items.createItem(A, { kind: "EVENT", title: "นัดหลังเชื่อมใหม่", startAt: T(3, 10), endAt: T(3, 11) });
@@ -521,6 +571,7 @@ try {
   chk("X", "ไม่โยนระหว่างข้อสอบ", false, errMsg(e) + " " + (e instanceof Error ? e.stack?.split("\n").slice(1, 4).join(" ") : ""));
 } finally {
   await prisma.calLink.deleteMany({ where: { userId: { in: [fx.U.a, fx.U.b, NEW] } } }).catch(() => undefined);
+  await prisma.calShopPolicy.deleteMany({ where: { tenantId: "calqc-tenant" } }).catch(() => undefined);
   await prisma.calItem.updateMany({ where: { userId: NEW }, data: { externalId: null, externalEtag: null, syncDirty: false } }).catch(() => undefined);
   await prisma.chatRateBucket?.deleteMany?.({ where: { key: { contains: fx.U.b } } }).catch(() => undefined);
   residue = await fx.cleanup();

@@ -196,3 +196,15 @@ model CalTravelDismissal {
   @@index([tenantId])
   @@index([dismissedAt])
 }
+
+// calendar_c ▸ นโยบายปฏิทินของ "ร้าน" (มติเจ้าของ 15 พ.ย. · Q9 · review b m6): ร้าน = ผู้ควบคุมข้อมูลลูกค้า
+//   allowBookingExport = อนุญาตให้พนักงานส่งนัดลูกค้า (บัตรคิว) เข้า Google ส่วนตัว · ค่าเริ่ม ปิด · ไม่มีแถว = ปิด
+//   แก้ได้เฉพาะ OWNER/MANAGER (ด่านเดียวกับตั้งค่ากิจการ) ผ่าน PATCH secretary/business · ไม่ใช่ข้อมูลส่วนตัว (ไม่ยกเว้นใน export ร้าน)
+model CalShopPolicy {
+  id                 String   @id @default(cuid())
+  tenantId           String   @unique
+  allowBookingExport Boolean  @default(false)
+  updatedById        String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+}
