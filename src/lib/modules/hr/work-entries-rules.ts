@@ -82,7 +82,7 @@ export type WorkSlot = {
   leaveFraction: string | number | null;
   rosterEntryId: string | null;
 };
-export type WorkLeave = { id: string; status: "APPROVED" | "PENDING"; halfDay: "AM" | "PM" | null; hours: number | null; paid: boolean; legacy: boolean };
+export type WorkLeave = { id: string; status: "APPROVED" | "PENDING"; halfDay: "AM" | "PM" | null; hours: number | null; paid: boolean; legacy: boolean; /** HR PREPROD-1 ▸ R3: สิบส่วนของวันที่ไม่ได้ค่าจ้าง (ลาป่วยเกินวันที่เหลือ) · ไม่มี = ตาม paid ◂ */ unpaidTenths?: number };
 /** otRequestIds = คำขอ OT ที่อนุมัติแล้ว (H2.9) ของวันนั้น — อ้างอิงเท่านั้น: OT จ่ายผ่าน HrPayAdjustment (OT_REQUEST) ที่เดียว */
 export type WorkDayInput = { day: string; unitId: string | null; holiday: { id: string } | null; slots: WorkSlot[]; leaves: WorkLeave[]; otRequestIds?: string[] };
 export type BuildWorkDaysInput = {
@@ -232,6 +232,15 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
     if (use > 0) capped.set(id, use);
     f += Math.max(0, use);
   }
+  // HR LEAVE-3 ▸ R1 (F1): ใบลาครึ่งเช้า + ครึ่งบ่ายที่อนุมัติทั้งคู่ (ใบลาไม่ใช่ชั่วโมงของวันมีแค่คู่นี้) และช่องบันทึกส่วนวันลาของคู่นี้ครบ 1 วัน ⇒
+  //   ใบละครึ่งวัน (5 ส่วนสิบ) · ค่าจ้างตามใบของตัวเอง (paid/legacy ข้างล่าง) · วันอื่นที่มีหลายใบ = เหมือนเดิม ◂
+  const pairIds = dayLeaves.length === 2 && dayLeaves.some((l) => l.halfDay === "AM") && dayLeaves.some((l) => l.halfDay === "PM") ? dayLeaves.map((l) => l.id) : null;
+  if (pairIds && pairIds.reduce((a, id) => a + (fracBy.get(id) ?? 0), 0) >= 10) {
+    capped.clear();
+    for (const id of pairIds) capped.set(id, 5);
+    f = 10;
+  }
+  // ◂ HR LEAVE-3
   if (shiftSlots.length && !pending) {
     const expected = Math.min(10, dayLeaves.reduce((a, l) => a + fullOf(l), 0));
     if (expected !== f) review.add("LEAVE_MISMATCH");
@@ -242,7 +251,8 @@ function buildDay(employeeId: string, d: WorkDayInput, rules: WorkRules): WorkDa
     for (const [id, t] of capped) {
       const lv = approved.get(id)!;
       const min = Math.floor((t * basis) / 10);
-      if (lv.paid || lv.legacy) m.paidLeaveMin += min;
+      const um = (lv.paid || lv.legacy) && lv.unpaidTenths !== undefined ? Math.floor((Math.min(t, Math.max(0, lv.unpaidTenths)) * basis) / 10) : 0; // HR PREPROD-1 ▸ R3: ส่วนไม่ได้ค่าจ้างของใบลารับค่าจ้าง ◂
+      if (lv.paid || lv.legacy) { m.paidLeaveMin += min - um; m.unpaidLeaveMin += um; } // HR PREPROD-1 ◂
       else m.unpaidLeaveMin += min;
       usedLeaves.add(id);
     }

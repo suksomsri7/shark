@@ -53,7 +53,8 @@ export type SubmitInput = {
   requestedById: string;
 };
 
-export type DecideInput = { decision: "APPROVED" | "REJECTED"; note?: string | null };
+// HR LEAVE-3 ▸ R2: expectedStep = ขั้นที่ผู้ตัดสินเห็นบนจอ/ข้อเสนอ — ไม่ตรงขั้นปัจจุบัน ⇒ ไม่ตัดสินอะไร (ผลเดียวกับกดแข่งแพ้) · ไม่ส่ง = ขั้นปัจจุบัน (เดิม) ◂
+export type DecideInput = { decision: "APPROVED" | "REJECTED"; note?: string | null; expectedStep?: number };
 export type DecideResult = { ok: boolean; status: string; note: string | null; code?: string; message?: string; reason?: string }; // POS P1.18 code/message (SELF_APPROVAL) + HF-HR-0 ▸ รอบ 5: reason = เหตุผลไทยเมื่อปฏิเสธ ◂
 
 // ── กติกา (policy) ──────────────────────────────────────────────
@@ -90,6 +91,9 @@ export async function setPolicyActive(ctx: Ctx, policyId: string, active: boolea
   return tenantDb(ctx).approvalPolicy.update({ where: { id: policyId }, data: { active } });
 }
 
+// HR LEAVE-3 ▸ R3: ข้อความคงที่ + จำนวนคำขอที่จะค้าง (ไม่มีชื่อ/รหัส) ◂
+const STEP_EDIT_STRANDS = (n: number) => `แก้ขั้นอนุมัติของสายนี้ไม่ได้ เพราะมีคำขอรอตัดสินอยู่ ${n} รายการ — ตัดสินหรือยกเลิกคำขอเหล่านั้นก่อน หรือปิดสายนี้แล้วสร้างสายใหม่`;
+
 // แก้กติกา + แทนที่ steps ทั้งชุด แบบ atomic ($transaction)
 // - guard tenant: อ่านผ่าน tenantDb ก่อน (cross-tenant → ไม่พบ → throw → ไม่แตะข้อมูลเลย)
 // - steps ว่าง → throw เหมือน createPolicy
@@ -103,6 +107,12 @@ export async function updatePolicy(ctx: Ctx, policyId: string, input: UpdatePoli
   if (!existing) throw new Error("ไม่พบสายอนุมัติในร้านนี้");
 
   await prisma.$transaction(async (tx) => {
+    // HR LEAVE-3 ▸ R3 (F3): ล็อกแถวสาย แล้วนับคำขอที่รอตัดสินซึ่ง "ขั้นปัจจุบัน" จะไม่มีในชุดขั้นใหม่ (คำขอค้างตัดสินไม่ได้) —
+    //   มี ⇒ ปฏิเสธด้วยจำนวน ไม่เขียนอะไร · แก้ขั้นที่ไม่ทำให้คำขอค้าง (ชื่อ · วงเงิน · บทบาทของขั้น · เพิ่ม/ลบขั้นอื่น) ทำได้เหมือนเดิม ◂
+    await tx.$queryRaw`SELECT id FROM "ApprovalPolicy" WHERE id = ${policyId} AND "tenantId" = ${ctx.tenantId} FOR UPDATE`;
+    const stranded = await tx.approvalRequest.count({ where: { tenantId: ctx.tenantId, policyId, status: "PENDING", currentStepOrder: { notIn: input.steps.map((s) => s.order) } } });
+    if (stranded > 0) throw new Error(STEP_EDIT_STRANDS(stranded));
+    // ◂ HR LEAVE-3
     await tx.approvalPolicy.update({
       where: { id: policyId },
       data: {
@@ -252,6 +262,7 @@ function canDecideStep(
 //   = id พนักงาน (ไม่ใช่ user) ⇒ หาเจ้าของจาก entity เอง · ชนิด HR ที่เข้าสายอนุมัติวันนี้มีชนิดเดียว = HrLeave (hr/service.ts requestLeave)
 //   อ่านด้วย prisma + tenantId เอง: HrLeave เป็นตาราง system-scoped แต่คำขอไม่บังคับ systemId · พนักงานที่ไม่ผูกบัญชี = ตรวจไม่ได้ (ข้อจำกัดเดิม)
 export const SELF_DECIDE_REFUSED = "อนุมัติคำขอของตัวเองไม่ได้ — ให้ผู้อนุมัติคนอื่นตัดสิน";
+export const TWO_PERSON_REFUSED = "คุณตัดสินขั้นก่อนหน้าของคำขอนี้แล้ว — ขั้นนี้ต้องให้ผู้อนุมัติคนอื่นตัดสิน"; // HR LEAVE-3 ▸ R2 ◂
 async function isOwnHrSubject(ctx: Ctx, req: Pick<ApprovalRequest, "entityType" | "entityId">, userId: string): Promise<boolean> {
   if (!userId) return false;
   if (req.entityType === "HrLeave") {
@@ -290,6 +301,7 @@ export async function decide(
   if (!req || req.status !== "PENDING") {
     return { ok: false, status: req?.status ?? "NOT_FOUND", note: null };
   }
+  if (input.expectedStep !== undefined && input.expectedStep !== req.currentStepOrder) return { ok: false, status: "PENDING", note: null }; // HR LEAVE-3 ▸ R2: ขั้นที่เห็นผ่านไปแล้ว = กดแข่งแพ้ ◂
   // POS P1.18 ▸ K4 (P1.15 close item): ผู้ยื่นตัดสินคำขอของตัวเองไม่ได้ — ที่แกน (ทุกทาง: หน้าอนุมัติ · bulkDecide · ผู้ช่วย AI) ·
   //   คำขอคง PENDING · ไม่มีแถวตัดสิน · ไม่มี outbox · ยกเว้น 2 กรณี:
   //   (a) ชนิดที่ต้นทางจัดการ "ตัดสินของตัวเอง" เองแล้ว (crm.commission: มติ C3.3 S3 — คง PENDING + โน้ต + แจ้งเจ้าของ · qc-crm-c3.3 S4.8)
@@ -319,10 +331,27 @@ export async function decide(
 
   const decision: ApprovalDecisionValue = input.decision === "REJECTED" ? "REJECTED" : "APPROVED";
   const note = input.note?.trim() ? input.note.trim() : null;
-  const isFinal = idx === steps.length - 1;
-  const curOrder = req.currentStepOrder;
+  const curOrder = req.currentStepOrder; // HR LEAVE-3 ▸ W1: isFinal คิดจากขั้นสดในธุรกรรม ◂
 
   return prisma.$transaction(async (tx) => {
+    // HR LEAVE-3 ▸ W1 (r3): ล็อกแถวสายแบบ FOR SHARE แล้วอ่านขั้น "สด" ในธุรกรรม — updatePolicy (FOR UPDATE แถวเดียวกัน) แทรกระหว่างอ่านขั้นกับ claim ไม่ได้ ·
+    //   วางแผนการตัดสินบนขั้นสด (ขั้นนี้กลายเป็นขั้นสุดท้าย ⇒ จบ APPROVED) · ขั้นปัจจุบันไม่มีแล้ว/สิทธิ์เปลี่ยน = ไม่ตัดสินอะไร (ผลเดียวกับกดแข่งแพ้) ·
+    //   ลำดับล็อก: แถวสาย (SHARE) → แถวคำขอ (claim) — ไม่มีทางไหนถือแถวคำขอแล้วรอแถวสาย ◂
+    await tx.$queryRaw`SELECT id FROM "ApprovalPolicy" WHERE id = ${req.policyId} AND "tenantId" = ${ctx.tenantId} FOR SHARE`;
+    const live = await tx.approvalStep.findMany({ where: { tenantId: ctx.tenantId, policyId: req.policyId }, orderBy: { order: "asc" } });
+    const li = live.findIndex((s) => s.order === curOrder);
+    const step = live[li]; // ขั้นสด (บังเงา step ที่อ่านนอกธุรกรรม) — HR LEAVE-3 ◂
+    if (!step || !canDecideStep(m, step, req)) return { ok: false, status: "PENDING", note: null };
+    const isFinal = li === live.length - 1; // HR LEAVE-3 ▸ W1 ◂
+    // HR LEAVE-3 ▸ R2 (F2) สองคน: ผู้ที่ตัดสินขั้นก่อนหน้าของคำขอนี้แล้ว ตัดสินขั้นถัดไปไม่ได้ (ไม่เขียนอะไร) · ยกเว้น OWNER = เขียนได้ + AuditLog approval.owner_override
+    //   ในธุรกรรมเดียวกับการตัดสิน · การตัดสินขั้นก่อนหน้า commit แล้วก่อนคำขอเลื่อนมาขั้นนี้ ⇒ อ่านก่อน claim ได้ (claim เงื่อนไขขั้นเดิมกันกดแข่ง) ·
+    //   สายขั้นเดียว: ไม่มีขั้นก่อนหน้า ⇒ ผลเหมือนเดิมทุกไบต์ ◂
+    const earlier = await tx.approvalDecision.findFirst({ where: { tenantId: ctx.tenantId, requestId, decidedById: m.userId, stepOrder: { lt: step.order } }, orderBy: { stepOrder: "desc" }, select: { stepOrder: true } });
+    if (earlier && m.role !== "OWNER") return { ok: false, status: "PENDING", note: null, code: "TWO_PERSON", reason: TWO_PERSON_REFUSED };
+    const override = earlier
+      ? () => tx.auditLog.create({ data: { tenantId: ctx.tenantId, actorType: "USER", actorId: m.userId, action: "approval.owner_override", targetType: "ApprovalRequest", targetId: requestId, after: { step: step.order, previousDeciderStep: earlier.stepOrder } } })
+      : async () => null;
+    // ◂ HR LEAVE-3
     // ── REJECT: ปิดทันที ──
     if (decision === "REJECTED") {
       const claim = await tx.approvalRequest.updateMany({
@@ -333,6 +362,7 @@ export async function decide(
       await tx.approvalDecision.create({
         data: { tenantId: ctx.tenantId, requestId, stepOrder: step.order, decidedById: m.userId, decision: "REJECTED", note },
       });
+      await override(); // HR LEAVE-3 ▸ R2 ◂
       await emitOutbox(tx, {
         tenantId: ctx.tenantId,
         type: "approval.request.rejected",
@@ -354,6 +384,7 @@ export async function decide(
       await tx.approvalDecision.create({
         data: { tenantId: ctx.tenantId, requestId, stepOrder: step.order, decidedById: m.userId, decision: "APPROVED", note },
       });
+      await override(); // HR LEAVE-3 ▸ R2 ◂
       await emitOutbox(tx, {
         tenantId: ctx.tenantId,
         type: "approval.request.approved",
@@ -366,7 +397,7 @@ export async function decide(
     }
 
     // ── APPROVED ขั้นกลาง → เลื่อนไป step ถัดไป (ยัง PENDING) ──
-    const next = steps[idx + 1];
+    const next = live[li + 1]; // HR LEAVE-3 ▸ W1: ขั้นถัดไปจากขั้นสด ◂
     const claim = await tx.approvalRequest.updateMany({
       where: { id: requestId, tenantId: ctx.tenantId, status: "PENDING", currentStepOrder: curOrder },
       data: { currentStepOrder: next.order },
@@ -375,6 +406,7 @@ export async function decide(
     await tx.approvalDecision.create({
       data: { tenantId: ctx.tenantId, requestId, stepOrder: step.order, decidedById: m.userId, decision: "APPROVED", note },
     });
+    await override(); // HR LEAVE-3 ▸ R2 ◂
     return { ok: true, status: "PENDING", note };
   });
 }
@@ -402,11 +434,13 @@ export async function bulkDecide(
   requestIds: string[],
   decision: "APPROVED" | "REJECTED",
   note?: string | null,
+  steps?: Record<string, number>, // HR LEAVE-3 ▸ R2: ขั้นที่ผู้ตัดสินเห็นต่อคำขอ (ไม่มี = ขั้นปัจจุบัน) ◂
 ): Promise<BulkDecideResult> {
   const result: BulkDecideResult = { done: 0, failed: [] };
-  for (const id of requestIds) {
+  for (const id of [...new Set(requestIds)]) { // HR LEAVE-3 ▸ R2: id ซ้ำในชุด = ตัดทิ้งเงียบ ๆ (Q4) ◂
     try {
-      const r = await decide(m, ctx, id, { decision, note: note ?? null });
+      const st = steps && Object.prototype.hasOwnProperty.call(steps, id) ? steps[id] : undefined; // HR LEAVE-3 ▸ R2 ◂
+      const r = await decide(m, ctx, id, { decision, note: note ?? null, ...(st === undefined ? {} : { expectedStep: st }) }); // HR LEAVE-3 ▸ R2 ◂
       if (r.ok) result.done += 1;
       else result.failed.push({ id, reason: r.code === "SELF_APPROVAL" && r.message ? r.message : (r.reason ?? bulkFailReason(r.status)) }); // POS P1.18 ▸ K4 ◂ · HF-HR-0 ▸ R5.1 ◂
     } catch (e) {
@@ -431,9 +465,11 @@ export async function listPending(ctx: Ctx, m: MembershipCtx & { userId: string 
   // โหลด step ปัจจุบันของแต่ละ policy (ครั้งเดียวต่อ policy)
   const policyIds = [...new Set(requests.map((r) => r.policyId))];
   const steps = await tenantDb(ctx).approvalStep.findMany({ where: { policyId: { in: policyIds } } });
+  // HR LEAVE-3 ▸ W6 (r3): ผู้ที่ไม่ใช่ OWNER ซึ่งตัดสินขั้นก่อนหน้าของคำขอแล้ว ไม่เห็นคำขอนั้นในขั้นถัดไป (กติกาสองคนของ decide) · OWNER เห็นเหมือนเดิม ◂
+  const mine = m.role === "OWNER" ? [] : await tenantDb(ctx).approvalDecision.findMany({ where: { requestId: { in: requests.map((r) => r.id) }, decidedById: m.userId }, select: { requestId: true, stepOrder: true } });
   return requests.filter((r) => {
     const step = steps.find((s) => s.policyId === r.policyId && s.order === r.currentStepOrder);
-    return !!step && canDecideStep(m, step, r);
+    return !!step && canDecideStep(m, step, r) && !mine.some((d) => d.requestId === r.id && d.stepOrder < r.currentStepOrder); // HR LEAVE-3 ▸ W6 ◂
   });
 }
 

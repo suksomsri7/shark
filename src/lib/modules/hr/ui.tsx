@@ -424,7 +424,7 @@ export async function HrLeaveSection({ systemId }: { systemId: string }) {
           items={leaves.map((l) => ({
             key: l.id,
             primary: `${l.employeeName} · ${LEAVE_TYPE_LABEL[l.type] ?? l.type}`,
-            secondary: [dateRange(l.fromDate, l.toDate), l.filedBy].filter(Boolean).join(" · "), // HR H0.7 ▸ "ยื่นโดย" เฉพาะผู้จัดการ/HR (privacy.ts) ◂
+            secondary: [dateRange(l.fromDate, l.toDate), l.unpaidDays ? `ได้ค่าจ้าง ${l.paidDays ?? 0} วัน · ไม่ได้ค่าจ้าง ${l.unpaidDays} วัน` : null, l.filedBy].filter(Boolean).join(" · "), // HR H0.7 ▸ "ยื่นโดย" เฉพาะผู้จัดการ/HR (privacy.ts) ◂ // HR PREPROD-1 ▸ R3: ลาป่วยเกินวันที่เหลือ — ส่วนได้/ไม่ได้ค่าจ้าง ◂
             trailing: (
               <StatusChip value={l.status} map={LEAVE_STATUS_LABEL} tone={leaveTone(l.status)} />
             ),

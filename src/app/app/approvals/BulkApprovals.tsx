@@ -10,7 +10,7 @@ import { bulkDecideAction, type BulkDecideState } from "@/lib/modules/approval/a
 type PosCard = { amount: string | null; reason: string | null; chip: string | null; rows: [string, string][]; policy: string | null; detailLabel: string };
 // SVC R0.4 ▸ คำขอข้ามคำเตือนกฎหมายในค่าตั้ง: สรุปค่าก่อน → หลัง + เหตุผลต่อบรรทัด (ประกอบที่หน้าเพจ · ค่า PRIVACY ถูกซ่อนแล้ว) ◂
 type LegalCard = { codes: string[]; lines: { key: string; labelTh: string; beforeTh: string; afterTh: string; reasonTh: string | null }[] };
-type Item = { id: string; label: string; meta: string; pos?: PosCard; legal?: LegalCard };
+type Item = { id: string; label: string; meta: string; pos?: PosCard; legal?: LegalCard; step?: number }; // HR LEAVE-3 ▸ R2: step = ขั้นที่หน้าเพจแสดง ◂
 
 export default function BulkApprovals({ items }: { items: Item[] }) {
   const [state, formAction, pending] = useActionState<BulkDecideState, FormData>(
@@ -47,6 +47,8 @@ export default function BulkApprovals({ items }: { items: Item[] }) {
         เลือกทั้งหมด ({selected.size}/{items.length})
       </label>
 
+      {/* HR LEAVE-3 ▸ R2: ขั้นที่เห็นต่อคำขอ (step:<id>) — คำขอที่เลื่อนขั้นไปแล้วระหว่างเปิดหน้า = ไม่ตัดสินซ้ำ ◂ */}
+      {items.map((i) => (i.step === undefined ? null : <input key={`step:${i.id}`} type="hidden" name={`step:${i.id}`} value={i.step} />))}
       <div className="flex flex-col gap-2">
         {items.map((i) =>
           i.pos ? (
