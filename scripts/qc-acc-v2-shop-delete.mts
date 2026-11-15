@@ -130,6 +130,19 @@ try {
   const pg = src("src/app/app/settings/privacy/page.tsx");
   chk("D4.5", "หน้าความเป็นส่วนตัว: ลิงก์ดาวน์โหลดต่อสมุด + คำเตือนกลาง + ประวัติการขอลบ", /export\/books/.test(pg) && /DeleteShopForm/.test(pg) && /privacy-deletion-log/.test(pg), "ครบ", "ขาด");
 
+  // ═══ D5 (merge T4+T5) ตารางของเลน 2 ต้องถูกลบด้วย — e-Tax (ไฟล์ append-only มี trigger กัน UPDATE) · หนี้สูญได้รับคืน · JV มือที่อนุมัติแล้ว · รายได้รับล่วงหน้า ═══
+  const L2 = { tenantId: tid, systemId: SYS, documentId: r1.id };
+  await prisma.accountEtaxSubmission.create({ data: { ...L2, attemptNo: 1, status: "SENT", subjectKind: "INV", fromAddress: "shop@qc.invalid", toAddress: "buyer@qc.invalid", subject: "[01012570][INV][QC]", bodyText: "qc", attachmentName: "qc.pdf", attachmentBytes: 3, pdfSha256: "00", pdfConformance: "NONE", transport: "CAPTURE" } });
+  await prisma.accountEtaxFile.create({ data: { ...L2, role: "SENT", fileName: "qc.pdf", mimeType: "application/pdf", sizeBytes: 3, sha256: "00", bytes: Buffer.from("pdf") } });
+  await prisma.accountBadDebtRecovery.create({ data: { ...L2, date: now, amount: 100, channel: "CASH" } });
+  const lidOf = async (type: string) => (await prisma.accountLedger.findFirstOrThrow({ where: { systemId: SYS, type }, orderBy: { code: "asc" }, select: { id: true } })).id;
+  await prisma.accountDeferral.create({ data: { tenantId: tid, systemId: SYS, description: "qc", totalSatang: 1200, startMonth: "2026-01", months: 12, incomeAccountId: await lidOf("INCOME"), deferredAccountId: await lidOf("LIABILITY") } });
+  const mj = await gl.postManualJV(ctx, { date: now, memo: "JV อนุมัติแล้ว (ลบร้าน)", lines: [{ accountId: await lidOf("EXPENSE"), debit: 100, credit: 0 }, { accountId: await lidOf("ASSET"), debit: 0, credit: 100 }] });
+  await prisma.accountJournalEntry.update({ where: { id: mj.entryId }, data: { approvedById: owner.id, approvedAt: now } });
+  const l2Count = async () => ({ etaxSub: await prisma.accountEtaxSubmission.count({ where: { tenantId: tid } }), etaxFile: await prisma.accountEtaxFile.count({ where: { tenantId: tid } }), recovery: await prisma.accountBadDebtRecovery.count({ where: { tenantId: tid } }), deferral: await prisma.accountDeferral.count({ where: { tenantId: tid } }) });
+  const l2Before = await l2Count();
+  chk("D5.0", "ฟิกซ์เจอร์ตารางเลน 2 + JV มือที่อนุมัติแล้ว (ก่อนลบร้าน)", Object.values(l2Before).every((n) => n === 1), { etaxSub: 1, etaxFile: 1, recovery: 1, deferral: 1 }, l2Before);
+
   // ═══ D5 ลบร้านจริงผ่านทางของระบบ ในโหมด strict ═══
   console.log("\n── D5 purge ผ่านด่าน T4.4 ──");
   await prisma.tenant.update({ where: { id: tid }, data: { status: "PENDING_DELETE", deleteRequestedAt: new Date("2000-01-01T00:00:00Z") } });
@@ -142,6 +155,8 @@ try {
   }
   const left = { tenant: await prisma.tenant.count({ where: { id: tid } }), jv: await prisma.accountJournalEntry.count({ where: { tenantId: tid } }), audit: await prisma.auditLog.count({ where: { tenantId: tid } }) };
   chk("D5.1", "โหมด strict: ทางลบร้านของระบบลบได้ครบ (ร้าน · สมุดรายวัน · AuditLog)", purged === 1 && left.tenant === 0 && left.jv === 0 && left.audit === 0, { purged: 1, left: 0 }, { purged, left });
+  const l2After = await l2Count();
+  chk("D5.4", "โหมด strict: ตารางเลน 2 (e-Tax ส่ง/ไฟล์ · หนี้สูญได้รับคืน · รายได้รับล่วงหน้า) ถูกลบครบ", Object.values(l2After).every((n) => n === 0), { etaxSub: 0, etaxFile: 0, recovery: 0, deferral: 0 }, l2After);
   const log2 = await PD.listTenantDeletionLog(tid);
   const pr = log2.find((l: Any) => l.event === "PURGED");
   chk("D5.2", "log PURGED อยู่หลังร้านถูกลบ · มีชื่อร้าน", !!pr && pr.tenantName === TENANT_NAME, TENANT_NAME, log2.map((l: Any) => [l.event, l.tenantName]));

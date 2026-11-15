@@ -8,6 +8,7 @@
 // ตรวจตัวเอง: ยอดปลายงวดรวม = ส่วนของเจ้าของในงบฐานะการเงิน ณ เดือน `to` (reconciled)
 import { tenantDb } from "@/lib/core/db";
 import { balanceSheet, fiscalYearStartKey } from "./reports";
+import { STATEMENT_DRAFT_LABEL_TH } from "./fiscal-rules";
 
 export type GlCtx = { tenantId: string; systemId: string };
 export type EquityColumn = { key: string; code: string | null; name: string };
@@ -15,7 +16,7 @@ export type EquityRow = { kind: "OPENING" | "CONTRIBUTION" | "WITHDRAWAL" | "RET
 export type EquityBlock = { from: string; to: string; label: string; rows: EquityRow[]; closingTotal: number; bsTotalEquity: number; reconciled: boolean };
 export type EquityStatement = { columns: EquityColumn[]; current: EquityBlock; prior: EquityBlock | null; draftLabel: string };
 
-export const EQUITY_DRAFT_LABEL = "ร่างสำหรับผู้ทำบัญชี/ผู้สอบบัญชี";
+export const EQUITY_DRAFT_LABEL = STATEMENT_DRAFT_LABEL_TH; // merge T4+T5 ▸ ป้ายเดียวกับงบอื่น (ACC T4.6 fiscal-rules) ◂
 const RETAINED = "__retained";
 
 function shift(key: string, n: number): string {
@@ -113,12 +114,12 @@ export async function equityStatement(ctx: GlCtx, to: string, opts: { fiscalYear
 }
 
 /** CSV: หนึ่งแถวต่อ (งวด × แถวของงบ) */
-export function equityStatementCsv(s: EquityStatement): { headers: string[]; rows: (string | number)[][] } {
+export function equityStatementCsv(s: EquityStatement): { headers: string[]; rows: (string | number)[][]; preamble: string[] } {
   const headers = ["งวด", "รายการ", ...s.columns.map((c) => (c.code ? `${c.code} ${c.name}` : c.name)), "รวม"];
   const rows: (string | number)[][] = [];
   for (const b of [s.prior, s.current]) {
     if (!b) continue;
     for (const r of b.rows) rows.push([b.label, r.label, ...s.columns.map((c) => (r.amounts[c.key] ?? 0) / 100), r.total / 100]);
   }
-  return { headers, rows };
+  return { headers, rows, preamble: [s.draftLabel] }; // merge T4+T5 ▸ ป้ายร่างบรรทัดแรกของไฟล์ (ACC T4.6) ◂
 }

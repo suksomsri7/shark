@@ -287,6 +287,38 @@ try {
   chk("G6.3", "audit ของยกเลิกเอกสาร/รายการชำระเก็บ reason", /action: "account\.doc\.void"[\s\S]{0,200}reason/.test(src("src/lib/modules/account/actions.ts")) && /action: "account\.payment\.void"[\s\S]{0,200}reason/.test(src("src/lib/modules/account/actions.ts")), "มี", "ไม่มี");
   chk("G6.4", "กล่องยืนยันยกเลิกเอกสารบนหน้าเอกสาร: เหตุผล required", /label: "เหตุผลการยกเลิก", required: true/.test(src("src/components/account-v2/DocDetailPage.tsx")), "required", "ไม่ required");
   chk("G6.5", "REST: documents.void / payments.void / journal.reverse / cheques.void / wht.unmark-filed ต้องมี reason", /reason: z\.string\(\)\.min\(5\)/.test(src("src/lib/modules/account/api/ops/documents-write.ts")) && /reasonField\("Why the entry is being reversed\."\)/.test(src("src/lib/modules/account/api/ops/gl-write.ts")), "มี", "ไม่มี", "MAJOR");
+
+  // ═══ G8 (merge T4+T5) ผู้อนุมัติ JV มือ (ACC T4.1) ภายใต้ด่าน — ตั้งได้ครั้งเดียว ว่าง → มีค่า ═══
+  console.log("\n── G8 ผู้อนุมัติ JV มือ × ด่านสมุดรายวัน ──");
+  const jvLines = async () => [{ accountId: await ledgerId("6900"), debit: 10_000, credit: 0 }, { accountId: bank.ledgerAccountId ?? (await ledgerId("1110")), debit: 0, credit: 10_000 }];
+  const dk = new Date(Date.now() + 7 * 3600_000).toISOString().slice(0, 10);
+  const d1 = await J2.createManualEntry(ctx, { dateKey: dk, memo: "G8 ร่าง", postedById: clerk.id, lines: await jvLines() });
+  chk("G8.0", "ฟิกซ์เจอร์: JV มือยังไม่อนุมัติ (โหมด qc)", d1.ok === true && d1.approved === false, true, d1);
+  const d1id = d1.ok ? d1.entryId : "";
+  chk("G8.1", "อนุมัติครั้งแรก (ว่าง → ผู้อนุมัติ + เวลา) + ปลดธงร่าง = ยอม", (await strict((tx) => tx.accountJournalEntry.update({ where: { id: d1id }, data: { approvedById: owner.id, approvedAt: new Date(), needsReview: false, flagNote: null } }))) === "ok", "ok", "ปฏิเสธ");
+  chk("G8.2", "ตั้งผู้อนุมัติครึ่งเดียว (ไม่มีเวลา) = ปฏิเสธ", rejected(await strict((tx) => tx.accountJournalEntry.update({ where: { id: d1id }, data: { approvedById: owner.id } }))), "LEDGER_GUARD", "ผ่าน");
+  chk("G8.3", "อนุมัติใบที่ระบบลงจากเอกสาร (AUTO) = ปฏิเสธ", rejected(await strict((tx) => tx.accountJournalEntry.update({ where: { id: e1.id }, data: { approvedById: owner.id, approvedAt: new Date() } }))), "LEDGER_GUARD", "ผ่าน");
+  chk("G8.4", "อนุมัติพร้อมเปลี่ยนสถานะเป็น REVERSED ในคำสั่งเดียว = ปฏิเสธ", rejected(await strict((tx) => tx.accountJournalEntry.update({ where: { id: d1id }, data: { approvedById: owner.id, approvedAt: new Date(), status: "REVERSED" } }))), "LEDGER_GUARD", "ผ่าน");
+  let a1: Any = null;
+  let a2: Any = null;
+  let c1: Any = null;
+  try {
+    await setMode("strict");
+    a1 = await J2.approveJournalEntry(ctx, d1id, owner.id);
+    c1 = await J2.createManualEntry(ctx, { dateKey: dk, memo: "G8 อนุมัติพร้อมบันทึก", postedById: clerk.id, approvedById: owner.id, lines: await jvLines() });
+    const d2 = await J2.createManualEntry(ctx, { dateKey: dk, memo: "G8 ร่างมีธง", postedById: clerk.id, lines: await jvLines() });
+    if (d2.ok) {
+      await J2.toggleNeedsReview(ctx, d2.entryId, J2.JV_DRAFT_FLAG_NOTE);
+      a2 = await J2.approveJournalEntry(ctx, d2.entryId, owner.id);
+    }
+  } finally {
+    await setMode("qc");
+  }
+  chk("G8.5", "ทางของระบบในโหมด strict: อนุมัติภายหลัง · อนุมัติพร้อมบันทึก · ร่างมีธง → อนุมัติปลดธง", a1?.ok === true && c1?.ok === true && c1.approved === true && a2?.ok === true && a2.flagCleared === true, true, { a1, c1, a2 });
+  chk("G8.6", "เปลี่ยนผู้อนุมัติหลังอนุมัติแล้ว = ปฏิเสธ", rejected(await strict((tx) => tx.accountJournalEntry.update({ where: { id: d1id }, data: { approvedById: clerk.id, approvedAt: new Date() } }))), "LEDGER_GUARD", "ผ่าน");
+  chk("G8.7", "ล้างการอนุมัติ (→ ว่าง) = ปฏิเสธ", rejected(await strict((tx) => tx.accountJournalEntry.update({ where: { id: d1id }, data: { approvedById: null, approvedAt: null } }))), "LEDGER_GUARD", "ผ่าน");
+  const d1row = await prisma.accountJournalEntry.findFirst({ where: { id: d1id }, select: { approvedById: true, approvedAt: true } });
+  chk("G8.8", "หลังข้อสอบ: ผู้อนุมัติ = เจ้าของ (ไม่ถูกทับ)", d1row?.approvedById === owner.id && !!d1row?.approvedAt, owner.id, d1row);
 } catch (e) {
   chk("CRASH", "จบ", false, "จบ", e instanceof Error ? `${e.message.slice(0, 400)}\n${e.stack?.split("\n").slice(1, 5).join("\n")}` : String(e));
   await setMode("qc").catch(() => undefined);

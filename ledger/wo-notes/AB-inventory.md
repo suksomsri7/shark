@@ -113,6 +113,22 @@
 | การเชื่อมต่อ | e-Tax Invoice · bank feed · โรงแรม · จอง/ทริป "เปิดระบบก่อน" | ไม่มีระบบ | labelled (ตามเฟรม g14) | b-set-conn.txt |
 | สิทธิ์ | ตารางสิทธิ์ · เพดานอนุมัติ · ถอนสิทธิ์ | มีผล | works | permissions M3 |
 | เมนูตั้งค่า | แพ็กเกจและการใช้งาน | ไม่มีหน้า | labelled (ป้ายจาง ไม่ลิงก์) | — |
+| **merge T4+T5 (15 พ.ย.) — ค่าตั้งที่สองเลนเพิ่มหลังรอบ A6** | | | | ไม่เพิ่มฟีเจอร์ · แถวละหลักฐานที่มีผลจริง |
+| ภาษี › ตารางค่ากฎหมาย "สมุดบัญชี · ค่าเสื่อม · รอบบัญชี" (`account.legal.bookRules` · เลน 2 T4.1–T4.3 T4.6) | กำหนดลงรายการ 15/15/3 · เพดานค่าเสื่อมทางภาษี · รอบบัญชีแรก | ใหม่ | works — เตือนลงช้าใช้ค่าร้าน (jvLateBasis) · รอบแรกยาวเกินเพดาน · ค่าเสื่อมเกินอัตรา | qc-acc-v2-jv-manual · qc-acc-v2-fiscal (saveBookTax FIRST_PERIOD_MAX_MONTHS) · qc-acc-v2-depreciation · qc-account-api-books-t4 A6.2 |
+| นโยบาย › วันเริ่มทำบัญชี (`AccountSettings.booksStartDate` · เลน 2 T4.6) | วันเริ่มสมุด | ใหม่ | works — คำเตือนรอบบัญชีแรก (FIRST_PERIOD_SHORT) | qc-acc-v2-fiscal · qc-account-api-books-t4 |
+| ผังบัญชี › ธง "อาจต้องบวกกลับทางภาษี" ต่อบัญชี (`AccountLedger.taxAddBack` · เลน 2 T5.5) | อนุมาตรา ม.65 ตรี / ไม่มี | ใหม่ | works — รายงานบวกกลับใช้ธงที่ร้านตั้ง/ปลด (ค่าเริ่มตามรหัส) | qc-acc-v2-tax-add-back · qc-acc-v2-t5c-leftovers |
+| ข้อมูลกิจการ › วันประชุมใหญ่อนุมัติงบ (`account.entity.statementMeetings` · เลน 2 T5c) | รอบบัญชี → วันประชุม | ใหม่ | works — ปฏิทินภาษีคำนวณวันยื่นงบบริษัท (ไม่มี = ข้อความกำหนด) · วันประชุมก่อนสิ้นรอบ = ปฏิเสธ | qc-acc-v2-t5c-leftovers C3.1 C3.x · qc-acc-v2-tax-calendar P2.4 |
+| ภาษี › e-Tax ประทับเวลา: เปิดใช้ (`account.etax.tsEnabled`) | เปิด/ปิด | ใหม่ | works — ปิด = ส่งไม่ได้ (NOT_ELIGIBLE · ไม่มีแถว) | qc-acc-v2-etax-ts E1.1–E1.3 · qc-account-api-etax |
+| ภาษี › e-Tax: ส่งอัตโนมัติเมื่อออกเอกสาร (`account.etax.tsAutoOnIssue`) | เปิด/ปิด | ใหม่ | works — ส่งเฉพาะเมื่อยืนยันสิทธิแล้ว · ใบเสร็จไม่ส่ง | qc-acc-v2-etax-ts E12.1–E12.3 |
+| ภาษี › e-Tax: อีเมลผู้ส่ง (`account.etax.tsSenderEmail`) | อีเมล | ใหม่ | works — "จาก" ของจดหมาย · รูปผิด = ปฏิเสธ | qc-acc-v2-etax-ts E2.1 E4.2 |
+| ภาษี › e-Tax: สำเนาถึง (`account.etax.tsCcAddress`) | อีเมล (ว่าง = ค่าตาราง) | ใหม่ | works — ค่าร้านทับ + คำเตือนต่างจากค่าเริ่ม | qc-acc-v2-etax-ts E0.5 E11.2 |
+| ภาษี › e-Tax: รูปวันที่ในหัวเรื่อง (`account.etax.tsSubjectDateFormat`) | พ.ศ./ค.ศ. | ใหม่ | works — หัวเรื่องอีเมล | qc-acc-v2-etax-ts E0.3 E11.2 |
+| ภาษี › e-Tax: สิทธิจัดทำ (`account.etax.tsEligibility`) | ยังไม่ยืนยัน/ยืนยันแล้ว | ใหม่ | works — ไม่ยืนยัน = ต้องกดยืนยันคำเตือน + ไม่ส่งอัตโนมัติ | qc-acc-v2-etax-ts E3.1 E12.1 · qc-account-api-etax |
+| การเชื่อมต่อ › e-Tax Invoice (การ์ด "เปิดระบบก่อน" เดิม) | — | labelled | ตามเดิม (ช่องทางผู้ให้บริการยังปิด — ส่วนประทับเวลาอยู่ที่ ภาษี › อัตราภาษีและกำหนดยื่น) | — |
+| ภาษี › ค่ากฎหมายอื่น (`account.legal.complianceValues` · เลน 1 T4.5 T4.8) | ระยะเก็บเอกสาร · เงินประกันหอ | ใหม่ | works — คำเตือนลบร้าน · ตรวจเงินประกันหอ | qc-acc-v2-shop-delete D2.x · qc-acc-v2-stock-deposits · qc-account-api-t4b |
+| เชื่อมจุดขาย › ทิป (`account.pos.tipTreatment` · เลน 1 T4.7) | รายได้/รับแทนพนักงาน/พนักงานรับตรง | ใหม่ | works — GL ของบิล POS ตามค่าที่เลือก | qc-acc-v2-pos-link · qc-account-api-t4b |
+| สินค้าคงเหลือ › ถือเป็นการขาย (`account.stock.deemedSale` · เลน 1 T5.9) | แสดงยอด+เตือน / ปิด | ใหม่ | works — ปิด = ไม่แสดงยอด (ยังเตือน) | qc-acc-v2-goods · qc-acc-v2-stock-deposits |
+| ข้อมูลกิจการ › สาขา · วิธียื่น ภ.พ.30 (`account.entity.branches` · `account.entity.vatFilingMode` · เลน 1 T5.11) | ตารางสาขา · แยก/รวม | ใหม่ | works — สาขาของเอกสาร/รายงานภาษีแยกสาขา · ยื่นรวมต้องยืนยัน | qc-acc-v2-branches · qc-account-api-t5b |
 
 ## 7. ป้าย "เร็ว ๆ นี้"/อีโมจิอื่นที่เจอระหว่างเดิน
 | จอ | รายการ | ผล |

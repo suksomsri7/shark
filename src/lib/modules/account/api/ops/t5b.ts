@@ -9,6 +9,7 @@ import { accountNow } from "../../clock";
 import { getPolicy } from "../../policy";
 import { vatRateBpAt } from "../../legal-values";
 import { equityStatement } from "../../equity-statement";
+import { statementDraft } from "../../fiscal-rules"; // merge T4+T5 ◂
 import { giveawayDeemedSales, goodsPeriodReport, saveStockEvidence, wasteLog } from "../../goods-report";
 import { cancelDeferral, createDeferral, DEPOSIT_KINDS, DISCOUNT_FUNDERS, listDeferrals, recognizeDeferrals, setDiscountFunder, setProductDepositKind } from "../../deferral";
 import { loadBranches, purchaseTaxReportForBranch, salesTaxReportForBranch, saveBranches, setDocumentBranch } from "../../branches";
@@ -50,7 +51,10 @@ const equity = defineOp({
   async handler({ actor, input }) {
     const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
     const policy = await getPolicy(ctx);
-    return equityStatement(ctx, input.to ?? curKey(), { fiscalYearStartMonth: policy.fiscalYearStartMonth, compare: input.compare !== "false" });
+    const s = await equityStatement(ctx, input.to ?? curKey(), { fiscalYearStartMonth: policy.fiscalYearStartMonth, compare: input.compare !== "false" });
+    // merge T4+T5 ▸ ช่องร่างแบบเดียวกับงบอื่น (ACC T4.6 gl-read statementDraftRest): draft · draftLabelTh · draftWarning ◂
+    const d = statementDraft();
+    return { ...s, draft: d.draft, draftLabelTh: d.labelTh, draftWarning: d.warning };
   },
 });
 

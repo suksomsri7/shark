@@ -48,7 +48,7 @@ export default async function EquityStatementPage({ params, searchParams }: { pa
   const bad = [s.current, s.prior].filter((b): b is EquityBlock => !!b && !b.reconciled);
   return (
     <div className="flex max-w-5xl flex-col gap-4" data-testid="equity-page">
-      <ReportHeader base={base} title="งบแสดงการเปลี่ยนแปลงส่วนของเจ้าของ" subtitle={`ตั้งแต่ต้นปีบัญชีถึงสิ้นเดือน ${to}${compare ? " · เทียบงวดเดียวกันของปีบัญชีก่อน" : ""}`} />
+      <ReportHeader draft base={base} title="งบแสดงการเปลี่ยนแปลงส่วนของเจ้าของ" subtitle={`ตั้งแต่ต้นปีบัญชีถึงสิ้นเดือน ${to}${compare ? " · เทียบงวดเดียวกันของปีบัญชีก่อน" : ""}`} />
       <p className="rounded-lg border px-3 py-2 text-sm" style={{ borderColor: "var(--color-line)" }} data-testid="equity-draft-label">
         {s.draftLabel} — ตัวเลขคำนวณจากสมุดรายวัน ยังไม่ใช่งบที่ผ่านการตรวจสอบ
       </p>
