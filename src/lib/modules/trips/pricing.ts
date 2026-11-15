@@ -27,7 +27,7 @@ import {
 import { SnapshotKeyMissing, toTripsSnapshot, type SnapshotFlags, type TripsBookingSnapshot } from "./snapshot";
 
 // ═══════════════ port (ฉีดได้ · คืนตัวยกเลิกลงทะเบียน) ═══════════════
-export type AgencyPricingQuery = { agentAccountId?: string; linkId?: string; productId: string; departureId: string; travelDate: string; at: Date };
+export type AgencyPricingQuery = { agentAccountId?: string; linkId?: string; productId: string; departureId: string; travelDate: string; at: Date; currency?: string /* สกุลของการจอง (A1.3a Z1) */ };
 export type AgencyPricingPort = { load(ctx: SellCtx, q: AgencyPricingQuery): Promise<AgencyPricingInput | null> };
 export type TripPromoProvider = {
   key: string;
@@ -164,7 +164,7 @@ async function loadAll(ctx: SellCtx, line: LineRequest, opts?: QuoteLineOpts): P
     if (!port) {
       if (actor === "AGENT") return fail("FORBIDDEN", "ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้", { reason: "AGENCY_NOT_ENABLED" });
     } else {
-      const got = await port.load(ctx, { ...(agentAccountId ? { agentAccountId } : {}), ...(o.data.linkId ? { linkId: o.data.linkId } : {}), productId: product.id, departureId: dep.id, travelDate, at: now });
+      const got = await port.load(ctx, { ...(agentAccountId ? { agentAccountId } : {}), ...(o.data.linkId ? { linkId: o.data.linkId } : {}), productId: product.id, departureId: dep.id, travelDate, at: now, currency });
       if (got) {
         const v = agencyPricingInputSchema.safeParse(got);
         if (!v.success) return fail("VALIDATION", "ข้อมูลสัญญาเอเจนซี่ไม่ครบ");

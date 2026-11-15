@@ -946,6 +946,7 @@ function resolveInner(raw: unknown): PricingResult {
     const paidSeats = sum(work.map(commissionSeatQty));
     const gross =
       mode === "COMMISSION_PCT" ? (level && level.rateBp !== null ? mulBpHalfUp(base, level.rateBp) : 0) : mode === "COMMISSION_FIXED" ? (level?.fixedSatang ?? 0) * paidSeats : 0;
+    if (gross > base) return fail("VALIDATION", "COMMISSION_EXCEEDS_PAYABLE"); // A1.3a Z4: คอมฯ รวมเกินฐานคอมฯ (ก่อน gross-up)
     // ส่วนลดจากคอมฯ (A24) — ไม่เกินเพดาน · ไม่เกินยอดที่ลดได้ · ไม่ทำให้คอมฯ ติดลบ
     const agentDisc = inp.agentDiscountSatang;
     if (agentDisc > 0) {

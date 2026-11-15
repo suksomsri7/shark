@@ -911,6 +911,9 @@ const MODULE_DEFS: readonly ModuleDef[] = [
       "agency.account.suspend": "ระงับ/บล็อก/คืนสิทธิ์/ปิดบัญชีเอเจนซี่",
       "agency.account.edit": "แก้ข้อมูลเอเจนซี่ + ผูก CRM",
       "agency.account.money": "แก้ข้อมูลภาษี/บัญชีธนาคารของเอเจนซี่",
+      // TRIPS A1.3a ▸ ระดับ · ตารางราคา · ช่วงพิเศษ (ใบสั่ง §10) ◂
+      "agency.rate.view": "ดูระดับและราคาของเอเจนซี่",
+      "agency.rate.edit": "แก้ระดับ ตารางราคา และช่วงพิเศษของเอเจนซี่",
     },
   },
 ] as const;
