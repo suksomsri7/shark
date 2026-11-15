@@ -345,9 +345,11 @@ try {
   await st("S-4", "src/app/book/** import เฉพาะ next/react/platform trips-public(-core)/components/book · ไม่มี prisma · ไม่มี @/lib/modules · ไม่มี @/lib/core · คอมโพเนนต์ book ไม่ import prisma/core/db/modules (ยกเว้น import type)", () => {
     needOwn();
     const bad: string[] = [];
+    // ORACLE-EDIT S-4 (มติ R3 · W1.2 §2): เส้นจอง W1.2a ใต้ app/book (actions.ts · c/ · my/ · หน้าสินค้า) import ชั้น platform ของเส้นจองได้ — trips-book / trips-book-core (ยังห้าม prisma/modules/core)
+    const PLAT_OK = ["@/lib/platform/trips-public", "@/lib/platform/trips-public-core", "@/lib/platform/trips-book", "@/lib/platform/trips-book-core"];
     for (const f of appFiles) for (const m of stripComments(read(f)).matchAll(/from\s+["']([^"']+)["']/g)) {
       const s = m[1] ?? "";
-      if (!(s === "react" || s.startsWith("next/") || s === "next" || s === "@/lib/platform/trips-public" || s === "@/lib/platform/trips-public-core" || s.startsWith("@/components/book/") || s.startsWith("./") || s.startsWith("../"))) bad.push(`${basename(f)} ← ${s}`);
+      if (!(s === "react" || s.startsWith("next/") || s === "next" || PLAT_OK.includes(s) || s.startsWith("@/components/book/") || s.startsWith("./") || s.startsWith("../"))) bad.push(`${basename(f)} ← ${s}`);
     }
     ok(bad.length === 0, `import ต้องห้ามใน app/book: ${bad.slice(0, 5).join(" · ")}`);
     const bad2: string[] = [];
@@ -360,7 +362,10 @@ try {
   await st("S-5", "มติ X1 — หน้าไม่ส่งเวลา/ของภายในเข้าบริการ · ต่อไฟล์หน้า: open* ถูกห่อ cache() ของ React ตัวเดียว (อาร์กิวเมนต์เป็นค่าพื้นฐาน) และมีจุดเรียก openBook*( จุดเดียว · generateMetadata กับหน้าใช้ผลชุดเดียวกัน · ไม่มีตัวโหลด/ตัวแก้/ด่าน/ฐานนอก open* · ชื่อหน้าใช้ได้เฉพาะผลที่ ok · หน้าแจ้งไม่รับข้อมูลร้าน · ไม่มี loading/route/'use server'", () => {
     needOwn();
     const src = appFiles.map((f) => stripComments(read(f))).join("\n");
-    for (const [re, what] of [[/\bnow\s*:/, "now:"], [/\bdeps\s*:/, "deps:"], [/new Date\(/, "new Date("], [/Date\.now\(/, "Date.now"], [/bookPageGate/, "bookPageGate ตรง"], [/["']use server["']/, "use server"],
+    // ORACLE-EDIT S-5 (มติ R3 · W1.2 §2): 'use server' มีได้เฉพาะ src/app/book/[shop]/actions.ts (action ของเส้นจอง W1.2a) · หน้า c/ my/ เป็นหน้า server ปกติ (ตรวจใน qc-trips-w1.2 S-4 S-7)
+    const usFiles = appFiles.filter((f) => /["']use server["']/.test(read(f)));
+    eq(usFiles, usFiles.length ? ["src/app/book/[shop]/actions.ts"] : [], "ไฟล์ที่มี 'use server' ใต้ app/book");
+    for (const [re, what] of [[/\bnow\s*:/, "now:"], [/\bdeps\s*:/, "deps:"], [/new Date\(/, "new Date("], [/Date\.now\(/, "Date.now"], [/bookPageGate/, "bookPageGate ตรง"],
       [/loadBook(Shop|Product)VM/, "loadBook*VM (ตัวโหลดนอกด่าน — มติ X1)"], [/resolveBookShop|bookFramePolicy|getPublicBranding|findPublicProduct|loadPublic(Catalog|Product)/, "ตัวแก้ร้าน/ตราสินค้า/ตัวอ่านสินค้า นอก open*"],
       [/clientIpFromHeaders\(|bookClientKey\(|canonicalClientIp\(/, "ตัวอ่าน IP/ทำกุญแจเอง (ต้องผ่าน bookRequestFromHeaders — มติ X2)"], [/x-forwarded-for|x-real-ip/i, "ชื่อหัว IP ในหน้า"]] as const) ok(!re.test(src), `app/book มี ${what}`);
     for (const [f, fn] of [[PAGE_INDEX, "openBookShop"], [PAGE_PRODUCT, "openBookProduct"]] as const) {
@@ -694,7 +699,9 @@ try {
     const sel = asRec(vm.selected) ?? {};
     const s0 = asArr(sel.slots)[0] ?? {};
     eq([sel.date, asArr(sel.slots).length, s0.timeText, s0.optionName, s0.state, s0.left, s0.capacity, s0.guaranteed, s0.cutoffLocal, vm.requestedUnavailable, vm.cta, dayOf(vm, D14).selected, weeksDays(vm).filter((d) => d.selected).length],
-      [D14, 1, TIME_TEXT, { text: "ร่วมกลุ่ม", fallback: false }, "OPEN", dayOf(vm, D14).left, R.capacity, true, "2026-11-13 18:00", false, { enabled: false }, true, 1], "รอบ");
+      [D14, 1, TIME_TEXT, { text: "ร่วมกลุ่ม", fallback: false }, "OPEN", dayOf(vm, D14).left, R.capacity, true, "2026-11-13 18:00", false, { enabled: false, reason: null }, true, 1], "รอบ");
+    // ORACLE-EDIT SD-5 (มติ R3 · R7 · W1.2 §4 ข้อ 4): cta = { enabled, reason } · ตัวโหลด (loadBookProductVM) ไม่ตัดสินปุ่ม ⇒ ปิด ไม่มีเหตุ ·
+    // ด่านเปิดปุ่มอยู่ที่ openBookProduct — ร้านที่ไม่เปิด X29 trips.public.bookingEnabled ⇒ enabled:false reason BOOKING_OFF (ตรวจที่ร้านชั่วคราว x ใน XR-6 · ร้าน seed เปิด X29 ผ่าน seed ตามมติ R17)
   });
   await st("SD-6", "ตารางราคา ส. 14 พ.ย. (ภาพ 19 :57–:72 · :101–:103): ผู้ใหญ่ 3,500 · เด็ก 2,450 · ทารก 0 ไม่มีที่นั่ง · ค่าอุทยาน 600/300 เก็บแทน · กล้อง 500 ต่อการจอง · ทดลองดำน้ำ 1,900 ต่อคน · VAT รวมแล้ว · ขั้นบันได 100/50/0 · เท่ากับ quoteTripLine ที่ข้อสอบเรียกเอง", async () => {
     const vm = VM(await call("loadBookProductVM", { shop: DIVE_SLUG, productSlug: RACHA_SLUG, lang: "en", month: "2026-11", date: D14 }, O), "ราคา");
@@ -878,9 +885,15 @@ try {
     eq([db15.map((r) => r.n), dayOf(vm, "2027-03-15").left], [[5, 30], db15[0]?.n], "ช่อง 15 = ที่ว่างของรอบแรกในฐาน");
     const two = VM(await call("loadBookProductVM", { shop: SA, productSlug: PRD.A.slug, lang: "en", month: "2027-03", date: "2027-03-15" }, N0), "15");
     eq(asArr(asRec(two.selected)?.slots).map((s) => [s.timeText, s.state, s.left, s.capacity, s.guaranteed, s.optionName]), [["07:00–15:00", "LOW", 5, 10, false, { text: "Join-in", fallback: false }], ["13:00–21:00", "OPEN", 30, 40, false, { text: "Join-in", fallback: false }]], "สองรอบเรียงเวลา");
-    eq([asArr(asRec(two.selected)?.slots).map((s) => [s.selected, s.token, s.selectable]), asRec(two.selected)?.moreSlots], [[[true, "0700", true], [false, "1300", true]], 0], "รอบที่เลือกปริยาย = รอบแรกที่ขายได้ · ตัวอ้างรอบ = เวลาออก");
+    // ORACLE-EDIT IS-5 (มติ W5 · W1.2): ตัวอ้างรอบ `t` = ref สาธารณะของ id รอบ (12 ตัว a-z2-7 · ต่างกันต่อรอบ · ?t=<ref> เลือกรอบนั้น) แทนเวลาออก HHMM
+    const REF_T = /^[a-z2-7]{12}$/;
+    const twoSl = asArr(asRec(two.selected)?.slots);
+    eq([twoSl.map((s) => [s.selected, REF_T.test(String(s.token)), s.selectable]), asRec(two.selected)?.moreSlots, new Set(twoSl.map((s) => s.token)).size], [[[true, true, true], [false, true, true]], 0, 2], "รอบที่เลือกปริยาย = รอบแรกที่ขายได้ · ตัวอ้างรอบรูป ref ต่างกันต่อรอบ");
+    const pickPm = VM(await call("loadBookProductVM", { shop: SA, productSlug: PRD.A.slug, lang: "en", month: "2027-03", date: "2027-03-15", slot: String(twoSl[1]?.token) }, N0), "15 ?t=รอบบ่าย");
+    eq(asArr(asRec(pickPm.selected)?.slots).map((s) => [s.selected, s.timeText, s.token]), [[false, "07:00–15:00", twoSl[0]?.token], [true, "13:00–21:00", twoSl[1]?.token]], "?t=<ref ของรอบบ่าย> เลือกรอบบ่าย · ตัวอ้างคงที่ข้ามคำขอ");
     const one = asArr(asRec(vm.selected)?.slots);
-    eq(one.map((s) => [s.selected, s.token, s.selectable, s.left]), [[true, "0800", true, 35]], "วันรอบเดียว: รอบนั้นคือรอบที่เลือก");
+    eq(one.map((s) => [s.selected, REF_T.test(String(s.token)), s.selectable, s.left]), [[true, true, true, 35]], "วันรอบเดียว: รอบนั้นคือรอบที่เลือก");
+    ok(!twoSl.some((s) => s.token === one[0]?.token), "ตัวอ้างรอบซ้ำข้ามวัน");
     eq([await call("loadBookProductVM", { shop: SA, productSlug: PRD.A.slug, month: "2027-03", date: "2027-03-12" }, N0).then((r) => [asRec(asRec(r.vm)?.selected)?.date, asRec(r.vm)?.requestedUnavailable])], [["2027-03-10", true]], "ขอวันเต็ม");
   });
   await st("IS-6", "ราคาร้านชั่วคราวมาจากบริการราคา: ผู้ใหญ่ 1,234 · เด็ก 567 · ทารก 0 · ค่าอุทยานเก็บแทน · กล้อง · เท่ากับ quoteTripLine ที่ข้อสอบเรียกเอง · แก้ราคาในฐาน ⇒ หน้าเห็นราคาใหม่ทันที · มติ X7: ราคาของประเภทคนเดียวหาย ⇒ ซ่อนเฉพาะแถวนั้น · หายทุกประเภท ⇒ price null + priceError (ไม่ throw ไม่ปั้นเลข)", async () => {
@@ -1396,54 +1409,68 @@ try {
     ok(Number.isInteger(qbChild) && Number(qbChild) > 0, `ฟิกซ์เจอร์: ราคาเด็กของรอบบ่าย ${fmt(qbChild)}`);
     const vm = await loadX("S", { date: "2027-03-15" });
     const sl = slotsOf(vm);
+    // ORACLE-EDIT XR-6 (มติ W5 · W1.2): ตัวอ้างรอบ = ref สาธารณะ 12 ตัว a-z2-7 ต่างกันต่อรอบ (ไม่ใช่เวลาออก HHMM) · ค่าที่ใช้ต่อมาอ่านจาก VM แล้วส่งกลับ ?t=<ref>
+    const REF_T = /^[a-z2-7]{12}$/;
+    const T15A = String(sl[0]?.token), T15B = String(sl[1]?.token);
+    eq([REF_T.test(T15A), REF_T.test(T15B), T15A !== T15B], [true, true, true], `ตัวอ้างรอบ: ${fmt([T15A, T15B])}`);
     eq(sl.map((s) => [s.timeText, s.left, s.state, s.from, s.token, s.selectable, s.selected]),
-      [["07:00–15:00", r15[0]?.publicLeft, r15[0]?.showLeft ? "LOW" : "OPEN", { code: "ADULT", unitSatang: qa }, "0700", true, true], ["13:00–21:00", r15[1]?.publicLeft, r15[1]?.showLeft ? "LOW" : "OPEN", { code: "ADULT", unitSatang: qb }, "1300", true, false]], "แต่ละรอบ: ที่ว่าง + ราคาเริ่มต้นของรอบนั้นเอง");
+      [["07:00–15:00", r15[0]?.publicLeft, r15[0]?.showLeft ? "LOW" : "OPEN", { code: "ADULT", unitSatang: qa }, T15A, true, true], ["13:00–21:00", r15[1]?.publicLeft, r15[1]?.showLeft ? "LOW" : "OPEN", { code: "ADULT", unitSatang: qb }, T15B, true, false]], "แต่ละรอบ: ที่ว่าง + ราคาเริ่มต้นของรอบนั้นเอง");
+    eq(slotsOf(await loadX("S", { date: "2027-03-15" })).map((s) => s.token), [T15A, T15B], "ตัวอ้างรอบคงที่ข้ามคำขอ");
     const day = dayOf(vm, "2027-03-15");
     eq([day.left, day.state, day.departures, day.selected, selOf(vm).moreSlots], [r15[0]?.publicLeft, r15[0]?.showLeft ? "LOW" : "OPEN", 2, true, 0], "ช่องปฏิทิน = รอบที่ออกเร็วที่สุดที่ขายได้ + จำนวนรอบ");
     const p0 = asRec(selOf(vm).price);
     eq([asArr(p0?.pax)[0]?.unitSatang, p0?.headline, sl[0]?.from], [qa, { code: "ADULT", unitSatang: qa }, p0?.headline], "ปริยาย: ตารางราคา/ราคาเริ่มต้น มาจากรอบที่เลือก (รอบแรกที่ขายได้)");
     // เลือกรอบบ่ายด้วยตัวอ้างรอบ
-    const vb = await loadX("S", { date: "2027-03-15", slot: "1300" });
+    const vb = await loadX("S", { date: "2027-03-15", slot: T15B });
     const pb = asRec(selOf(vb).price);
     eq([slotsOf(vb).map((s) => s.selected), asArr(pb?.pax).map((p) => [p.code, p.unitSatang]), pb?.headline, slotsOf(vb)[1]?.from, slotsOf(vb)[1]?.left, slotsOf(vb)[0]?.from, dayOf(vb, "2027-03-15").left],
-      [[false, true], [["ADULT", qb], ["CHILD", qbChild], ["INFANT", 0]], { code: "ADULT", unitSatang: qb }, { code: "ADULT", unitSatang: qb }, r15[1]?.publicLeft, { code: "ADULT", unitSatang: qa }, r15[0]?.publicLeft], "?t=1300: หัว/ตารางราคา/ที่ว่างของรอบบ่ายรอบเดียวกัน (ช่องปฏิทินยังเป็นรอบแรก)");
-    for (const bad of ["9999", "13:00", "1300 ", "1300-2", "0700-9", "", "2460", XDEP.s15b, ["1300"], 1300, null, { t: "1300" }]) {
+      [[false, true], [["ADULT", qb], ["CHILD", qbChild], ["INFANT", 0]], { code: "ADULT", unitSatang: qb }, { code: "ADULT", unitSatang: qb }, r15[1]?.publicLeft, { code: "ADULT", unitSatang: qa }, r15[0]?.publicLeft], "?t=<ref รอบบ่าย>: หัว/ตารางราคา/ที่ว่างของรอบบ่ายรอบเดียวกัน (ช่องปฏิทินยังเป็นรอบแรก)");
+    // ตัวอ้างผิดรูป/รูปเดิม HHMM/id ภายใน/ตัวพิมพ์ใหญ่/ref ของรอบวันอื่น ⇒ รอบแรกที่ขายได้ (GET ไม่ผิดพลาด)
+    for (const bad of ["9999", "13:00", "1300", "0700", "1300 ", "1300-2", "0700-9", "", "2460", XDEP.s15b, T15B.toUpperCase(), `${T15B} `, T15B.slice(0, 11), ["1300"], [T15B], 1300, null, { t: T15B }]) {
       const v = await loadX("S", { date: "2027-03-15", slot: bad });
       eq([slotsOf(v).map((s) => s.selected), asRec(selOf(v).price)?.headline], [[true, false], { code: "ADULT", unitSatang: qa }], `ตัวอ้างรอบ ${fmt(bad).slice(0, 30)} ⇒ รอบแรกที่ขายได้`);
     }
     // รอบเช้าขายหมด + รอบบ่ายเปิด: รอบที่เลือก = รอบบ่าย · หัว/ราคา/ที่ว่างมาจากรอบบ่าย · ตัวอ้างของรอบที่ขายไม่ได้ไม่มี และขอมาก็ไม่ถูกเลือก
-    for (const slot of [undefined, "0700", "1300"]) {
+    const T16B = String(slotsOf(await loadX("S", { date: "2027-03-16" }))[1]?.token);
+    ok(REF_T.test(T16B) && T16B !== T15B, `ตัวอ้างรอบบ่าย 16 มี.ค.: ${T16B}`);
+    for (const slot of [undefined, "0700", T15A, T16B]) {
       const v = await loadX("S", { date: "2027-03-16", ...(slot ? { slot } : {}) });
       const s16 = slotsOf(v), p16 = asRec(selOf(v).price);
       eq([s16.map((s) => [s.timeText, s.state, s.left, s.token, s.selectable, s.selected, s.from]), p16?.headline, asArr(p16?.pax)[0]?.unitSatang, dayOf(v, "2027-03-16").left, dayOf(v, "2027-03-16").departures, selOf(v).priceError],
-        [[["07:00–15:00", "FULL", 0, null, false, false, null], ["13:00–21:00", "OPEN", r16[1]?.publicLeft, "1300", true, true, { code: "ADULT", unitSatang: qc }]], { code: "ADULT", unitSatang: qc }, qc, r16[1]?.publicLeft, 1, null], `16 มี.ค. ?t=${String(slot)}: รอบเช้าเต็ม ⇒ ทุกอย่างมาจากรอบบ่าย`);
+        [[["07:00–15:00", "FULL", 0, null, false, false, null], ["13:00–21:00", "OPEN", r16[1]?.publicLeft, T16B, true, true, { code: "ADULT", unitSatang: qc }]], { code: "ADULT", unitSatang: qc }, qc, r16[1]?.publicLeft, 1, null], `16 มี.ค. ?t=${String(slot)}: รอบเช้าเต็ม ⇒ ทุกอย่างมาจากรอบบ่าย`);
     }
     // ผ่าน openBookProduct (?t ในคำขอ) + ไม่มี id
-    const viaOpen = await openX("S", { clientKey: ck(), countView: false, query: { m: "2027-03", d: "2027-03-15", t: "1300" } });
+    const viaOpen = await openX("S", { clientKey: ck(), countView: false, query: { m: "2027-03", d: "2027-03-15", t: T15B } });
     ok(viaOpen.ok === true, fmt(viaOpen).slice(0, 200));
     eq([slotsOf(asRec(viaOpen.vm) ?? {}).map((s) => s.selected), asRec(selOf(asRec(viaOpen.vm) ?? {}).price)?.headline], [[false, true], { code: "ADULT", unitSatang: qb }], "openBookProduct ส่ง ?t ถึงตัวโหลด");
-    const junk = await openX("S", { clientKey: ck(), countView: false, query: { m: "2027-03", d: "2027-03-15", t: ["1300", "0700"] } });
+    const junk = await openX("S", { clientKey: ck(), countView: false, query: { m: "2027-03", d: "2027-03-15", t: [T15B, T15A] } });
     eq(slotsOf(asRec(junk.vm) ?? {}).map((s) => s.selected), [true, false], "?t ซ้ำ (array) ⇒ รอบแรกที่ขายได้");
+    // ORACLE-EDIT SD-5 ส่วนด่าน (มติ R7 · W1.2 §4 ข้อ 4): ร้าน x ไม่เปิด X29 ⇒ หน้าสินค้า cta ปิดพร้อมเหตุ BOOKING_OFF แม้รอบขายได้
+    eq(asRec(viaOpen.vm)?.cta, { enabled: false, reason: "BOOKING_OFF" }, "cta ของร้านที่ไม่เปิดปุ่มจอง (X29)");
     for (const v of [vm, vb, asRec(viaOpen.vm) ?? {}]) noInternal(v, [...allIds, ...Object.values(XDEP)], "VM วันหลายรอบ");
     eq(Object.keys(sl[0] ?? {}).sort(), ["capacity", "cutoffLocal", "from", "guaranteed", "left", "optionName", "selectable", "selected", "state", "timeText", "token"], "คีย์ของรอบ");
   });
   await st("XR-7", "มติ X4 (ตัวช่วย + เพดาน): parseBookSlot รับเฉพาะ HHMM (+ -2…-9) · slotTokensOf เวลาซ้ำได้ลำดับต่อท้าย · bookHref ต่อ t ท้ายสุด · วันที่มี 10 รอบ ⇒ แสดง 8 (รอบที่ขายได้มาก่อน เรียงเวลาออก) + moreSlots 2 · จอ: หัวหน้า (book-meta) ใช้รอบที่ selected · ลิงก์เลือกรอบสร้างด้วย bookHref ที่มี t", async () => {
     needX();
-    const ps = P("parseBookSlot"), tk = P("slotTokensOf"), href = P("bookHref");
-    eq([ps({ t: "0700" }), ps({ t: "2359" }), ps({ t: "0700-2" }), ps({ t: "0700-9" })], ["0700", "2359", "0700-2", "0700-9"], "ตรงรูป");
-    eq([ps({ t: "2400" }), ps({ t: "0760" }), ps({ t: "700" }), ps({ t: "07:00" }), ps({ t: "0700-1" }), ps({ t: "0700-10" }), ps({ t: " 0700" }), ps({ t: "0700\n" }), ps({ t: ["0700"] }), ps({ t: 700 }), ps({}), ps(null), ps("0700"), ps({ t: "w11qc_d_abc" }), ps({ t: "0700' OR 1=1" })], Array(15).fill(null), "ผิดรูป ⇒ null");
-    eq([tk(["07:00", "13:00"]), tk(["07:00", "07:00", "13:00", "07:00"]), tk([]), tk(["7:00", "07:00"])], [["0700", "1300"], ["0700", "0700-2", "1300", "0700-3"], [], [null, "0700"]], "slotTokensOf");
-    eq([href("s", "p", { lang: "en", a: "A1", m: "2027-03", d: "2027-03-15", t: "1300" }), href("s", "p", { t: "0700-2", d: "2027-03-15" }), href("s", "p", { t: "", d: "2027-03-15" }), href("s", "p", { t: null })],
-      ["/book/s/t/p?lang=en&a=A1&m=2027-03&d=2027-03-15&t=1300", "/book/s/t/p?d=2027-03-15&t=0700-2", "/book/s/t/p?d=2027-03-15", "/book/s/t/p"], "bookHref");
+    // ORACLE-EDIT XR-7 (มติ W5 · W1.2): parseBookSlot รับเฉพาะตัวอ้างรอบรูป ref (12 ตัว a-z2-7) · รูปเดิม HHMM ⇒ null · (slotTokensOf รูปเดิมไม่ใช่ตัวอ้างแล้ว — ไม่ตรึง)
+    const ps = P("parseBookSlot"), href = P("bookHref");
+    const R1 = "abcdefghij23", R2 = "zz7234567abc";
+    eq([ps({ t: R1 }), ps({ t: R2 })], [R1, R2], "ตรงรูป");
+    eq([ps({ t: "0700" }), ps({ t: "2359" }), ps({ t: "0700-2" }), ps({ t: "ABCDEFGHIJ23" }), ps({ t: "abcdefghij01" }), ps({ t: "abcdefghij2" }), ps({ t: "abcdefghij234" }), ps({ t: ` ${R1}` }), ps({ t: `${R1}\n` }), ps({ t: [R1] }), ps({ t: 700 }), ps({}), ps(null), ps(R1), ps({ t: "w11qc_d_abc" }), ps({ t: `${R1}' OR 1=1` })], Array(16).fill(null), "ผิดรูป ⇒ null");
+    eq([href("s", "p", { lang: "en", a: "A1", m: "2027-03", d: "2027-03-15", t: R1 }), href("s", "p", { t: R2, d: "2027-03-15" }), href("s", "p", { t: "", d: "2027-03-15" }), href("s", "p", { t: null })],
+      [`/book/s/t/p?lang=en&a=A1&m=2027-03&d=2027-03-15&t=${R1}`, `/book/s/t/p?d=2027-03-15&t=${R2}`, "/book/s/t/p?d=2027-03-15", "/book/s/t/p"], "bookHref");
     const cap = Number(coreV("BOOK_SLOT_CAP"));
     eq(cap, 8, "BOOK_SLOT_CAP (มติ X4: เพดาน 8)");
     const v = await loadX("S", { date: "2027-03-20" });
     const s20 = slotsOf(v);
-    eq([s20.length, selOf(v).moreSlots, s20.map((s) => String(s.timeText).slice(0, 5)), s20.map((s) => s.selectable), s20.filter((s) => s.selected).map((s) => s.token), dayOf(v, "2027-03-20").departures, dayOf(v, "2027-03-20").left],
-      [8, 2, ["06:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"], [false, true, true, true, true, true, true, true], ["0900"], 7, 7], "10 รอบ: ที่แสดง 8 (รอบขายได้ครบ 7 + รอบแรกที่ขายไม่ได้ 1) เรียงเวลา · รอบที่เลือก = 09:00 · ช่องปฏิทิน = 09:00 เหลือ 7");
+    eq([s20.length, selOf(v).moreSlots, s20.map((s) => String(s.timeText).slice(0, 5)), s20.map((s) => s.selectable), s20.filter((s) => s.selected).map((s) => String(s.timeText).slice(0, 5)), dayOf(v, "2027-03-20").departures, dayOf(v, "2027-03-20").left],
+      [8, 2, ["06:00", "09:00", "10:00", "11:00", "12:00", "13:00", "14:00", "15:00"], [false, true, true, true, true, true, true, true], ["09:00"], 7, 7], "10 รอบ: ที่แสดง 8 (รอบขายได้ครบ 7 + รอบแรกที่ขายไม่ได้ 1) เรียงเวลา · รอบที่เลือก = 09:00 · ช่องปฏิทิน = 09:00 เหลือ 7");
+    const tok20 = s20.filter((s) => s.selectable).map((s) => String(s.token));
+    ok(tok20.every((t) => /^[a-z2-7]{12}$/.test(t)) && new Set(tok20).size === tok20.length, `ตัวอ้างรอบที่ขายได้ต้องรูป ref ไม่ซ้ำ: ${fmt(tok20)}`);
+    const T1500 = String(s20.find((s) => String(s.timeText).startsWith("15:00"))?.token);
     ok(s20.filter((s) => s.selectable).every((s) => asRec(s.from)?.unitSatang === 123_400) && s20[0]?.from === null, `ราคาเริ่มต้นต่อรอบ: ${fmt(s20.map((s) => s.from)).slice(0, 200)}`);
-    const pick = await loadX("S", { date: "2027-03-20", slot: "1500" });
-    eq([slotsOf(pick).filter((s) => s.selected).map((s) => [s.token, s.left]), asRec(selOf(pick).price)?.headline], [[["1500", 1]], { code: "ADULT", unitSatang: 123_400 }], "?t=1500 (รอบสุดท้าย เหลือ 1)");
+    const pick = await loadX("S", { date: "2027-03-20", slot: T1500 });
+    eq([slotsOf(pick).filter((s) => s.selected).map((s) => [s.token, String(s.timeText).slice(0, 5), s.left]), asRec(selOf(pick).price)?.headline], [[[T1500, "15:00", 1]], { code: "ADULT", unitSatang: 123_400 }], "?t=<ref รอบ 15:00> (รอบสุดท้าย เหลือ 1)");
     const bpz = stripComments(read(`${COMP}/BookProduct.tsx`));
     const meta = bpz.match(/data-testid="book-meta"[\s\S]{0,700}/)?.[0] ?? "";
     const chosenVar = bpz.match(/const\s+(\w+)\s*=\s*\w+\?*\.slots\.find\(\(\w+\)\s*=>\s*\w+\.selected\)/)?.[1] ?? "";
@@ -1486,8 +1513,9 @@ try {
     const av = await availX("S", "2027-03-17", "2027-03-18");
     eq(av.map((r) => [r.localDate, r.status, r.saleBlock === null && Number(r.publicLeft) > 0]), [["2027-03-17", "FULL", false], ["2027-03-17", "OPEN", true], ["2027-03-18", "FULL", false]], "ฟิกซ์เจอร์: บริการไม่ขายรอบสถานะ FULL (ขายหมด)");
     const v17 = await loadX("S", { date: "2027-03-17" });
-    eq([slotsOf(v17).map((x) => [x.state, x.token, x.selectable, x.selected]), dayOf(v17, "2027-03-18").state, dayOf(v17, "2027-03-18").left, dayOf(v17, "2027-03-18").selectable, dayOf(v17, "2027-03-17").departures],
-      [[["FULL", null, false, false], ["OPEN", "1300", true, true]], "FULL", 0, false, 1], "รอบ/วันสถานะ FULL ⇒ เต็ม");
+    // ORACLE-EDIT XR-9 (มติ W5 · W1.2): ตัวอ้างรอบที่ขายได้ = ref 12 ตัว a-z2-7 (ไม่ใช่ "1300")
+    eq([slotsOf(v17).map((x) => [x.state, x.token === null ? null : /^[a-z2-7]{12}$/.test(String(x.token)), x.selectable, x.selected]), dayOf(v17, "2027-03-18").state, dayOf(v17, "2027-03-18").left, dayOf(v17, "2027-03-18").selectable, dayOf(v17, "2027-03-17").departures],
+      [[["FULL", null, false, false], ["OPEN", true, true, true]], "FULL", 0, false, 1], "รอบ/วันสถานะ FULL ⇒ เต็ม");
     const m = msgs();
     ok(/เต็ม/.test(String(m.th["day.FULL"])) && /เต็ม/.test(String(m.th["slotState.FULL"])) && /full/i.test(String(m.en["day.FULL"])) && /full/i.test(String(m.en["slotState.FULL"])), "ข้อความสภาพ FULL");
     ok(!/park|อุทยาน/i.test(`${String(m.en["price.passThrough"])} ${String(m.th["price.passThrough"])}`), `ป้ายเก็บแทนฝังชนิดค่าธรรมเนียม: ${fmt([m.th["price.passThrough"], m.en["price.passThrough"]])}`);
@@ -1634,7 +1662,48 @@ try {
     const cs = stripComments(read(CATALOG));
     ok(/reduce\([\s\S]{0,160}?\)\s*!==\s*\w+\.payableSatang\)\s*return\s*\{\s*ok:\s*false/.test(cs), "public-catalog: ไม่พบการตรวจ ผลรวมยอดจ่ายของบรรทัด !== totals.payableSatang ⇒ ไม่มีราคา");
     ok(/amountSatang\s*\+\s*\w+\.vatSatang/.test(cs) && !/vatRate|rateBp|\*\s*7\b|0\.07|1\.07/.test(cs), "public-catalog: ยอดรวมภาษีต้องมาจาก amountSatang + vatSatang ของบริการ (ไม่คูณอัตราเอง)");
-    ok(!/vatSatang|amountSatang|payableSatang/.test(uiSrc) && !/vatSatang|amountSatang|payableSatang/.test(stripComments(read(SVC))), "จอ/platform ต้องไม่แตะยอดภาษีของใบเสนอ (อยู่ในตัวโหลดของโมดูลที่เดียว)");
+    // ORACLE-EDIT XR-15 (มติ R3 · W1.2 §3.2): คอมโพเนนต์ของเส้นจอง W1.2 อ่านช่อง amountSatang ของ VM (pay.amountSatang · lines[].amountSatang ที่ platform คิดแล้ว) ได้
+    // — ยกเว้นเฉพาะการอ่านช่อง (`<ตัวแปร>.amountSatang` · `"amountSatang" in <ตัวแปร>`) ในไฟล์ของ W1.2 · ยังห้ามคิดเลขกับช่องเงินในจอ · vatSatang/payableSatang ห้ามทั้งจอ
+    const W12_COMP = new Set(["BookSelect.tsx", "BookCheckout.tsx", "BookReservation.tsx", "BookFlowParts.tsx"]);
+    const uiRest = [...compFiles.filter((f) => !W12_COMP.has(basename(f))), ...appFiles].map((f) => stripComments(read(f))).join("\n");
+    ok(!/vatSatang|amountSatang|payableSatang/.test(uiRest) && !/vatSatang|payableSatang/.test(compFiles.map((f) => stripComments(read(f))).join("\n")) && !/vatSatang|amountSatang|payableSatang/.test(stripComments(read(SVC))), "จอ/platform ต้องไม่แตะยอดภาษีของใบเสนอ (อยู่ในตัวโหลดของโมดูลที่เดียว)");
+    // ORACLE-EDIT XR-15 (มติผู้คุมหลังตรวจรอบ 2 W1.2 · ผู้เขียนข้อสอบแยกรอบ 2): คำแทนช่องเงิน (`…Satang`) ในคอมโพเนนต์ src/components/book/** ปรากฏได้เฉพาะ
+    //   (ก) อาร์กิวเมนต์ตัวเดียวของตัวจัดรูปเงิน `bookMoney(t, <ช่อง>[ ?? 0])` / `formatBaht(<ช่อง>)` (ข) เทียบกับ 0 / null (ค) ตรวจการมีช่อง `"…Satang" in x`
+    //   + รูปที่มติอื่นบังคับและไม่ใช่การคิดเลข: ประกาศชนิด (`x: number`) · รับ/ส่งค่าเดิมทั้งก้อน (destructure/shorthand) · `seen: String(<ช่อง>)` (R6 ยอดที่จอแสดงกลับไปในฟอร์ม)
+    //   · `<ช่อง> !== <ช่อง>` เทียบสองยอดว่าเท่ากัน (W5 แยกกรณียอดเท่าเดิม) — นอกนั้นทั้งหมด = ห้าม (ครอบ + - * / % += -= ลบหน้า Math.* .reduce( Number(...) ตามด้วยตัวดำเนินการ ฟังก์ชันอื่น)
+    const moneyIssues = (src: string): string[] => {
+      const out: string[] = [];
+      const TOK = /(?<![\w$.])(?:[A-Za-z_$][\w$]*\??\.)*[A-Za-z_$][\w$]*Satang\b/g;
+      const toks = [...src.matchAll(TOK)].map((m) => ({ i: m.index ?? 0, s: m[0] }));
+      const okPair = new Set<number>();
+      for (let k = 0; k + 1 < toks.length; k++) {
+        const a = toks[k], b = toks[k + 1];
+        if (!a || !b) continue;
+        const mid = src.slice(a.i + a.s.length, b.i), before = src.slice(Math.max(0, a.i - 30), a.i), after = src.slice(b.i + b.s.length, b.i + b.s.length + 20);
+        if (/^\s*(===|!==)\s*$/.test(mid) && /(^|[{(?:!,]|&&|\|\||[^=!<>+\-*/%]=)\s*$/.test(before) && /^\s*([?)&|}:,;]|$)/.test(after)) { okPair.add(a.i); okPair.add(b.i); }
+      }
+      for (const { i, s } of toks) {
+        if (okPair.has(i)) continue;
+        const before = src.slice(Math.max(0, i - 40), i), after = src.slice(i + s.length, i + s.length + 40);
+        const fmtArg = (/bookMoney\(\s*t\s*,\s*$/.test(before) || /formatBaht\(\s*$/.test(before)) && /^\s*(\?\?\s*0\s*)?[,)]/.test(after);
+        const cmp0 = /(^|[{(?:!,]|&&|\|\||[^=!<>+\-*/%]=)\s*$/.test(before) && /^\s*(===|!==|==|!=|>=|<=|>|<)\s*(0|null)\b\s*(?![-+*/%.])/.test(after);
+        const cmp0rev = /\b(0|null)\s*(===|!==|==|!=|>=|<=|>|<)\s*$/.test(before) && !/[-+*/%]\s*(0|null)\s*(===|!==|==|!=|>=|<=|>|<)\s*$/.test(before) && /^\s*([?)&|}:,;]|$)/.test(after);
+        const has = /["']$/.test(before) && /^["']\s+in\s/.test(after);
+        const decl = /(^|[{;,\n(])\s*$/.test(before) && /^\??\s*:\s*(number|null)(\s*\|\s*(number|null))?\s*[;,}\n)]/.test(after);
+        const shorthand = /(^|[{,\n])\s*$/.test(before) && /^\s*[,}\n]/.test(after) && !s.includes(".");
+        const seen = /\bseen\s*:\s*String\(\s*$/.test(before) && /^\s*\)/.test(after);
+        if (!(fmtArg || cmp0 || cmp0rev || has || decl || shorthand || seen)) out.push(`${s} ← «${before.slice(-20).replace(/\s+/g, " ")}|${after.slice(0, 20).replace(/\s+/g, " ")}»`);
+      }
+      return out;
+    };
+    // positive control: ตัวอย่างหลุดของผู้ตรวจ + รูปคิดเลขอื่น ต้องถูกจับทุกตัว · รูปที่อนุญาตต้องผ่าน
+    const leaks = ["sum += l.amountSatang;", "const s2 = s + (l.amountSatang);", "<span>{-(l.amountSatang)}</span>", "{Math.max(l.amountSatang, 0)}", "{bookMoney(t, a.totalSatang - b.paidSatang)}", "{bookMoney(t, s.totalSatang * 2)}",
+      "{Number(vm.totalSatang) / 100}", "{lines.reduce((a, l) => a + l.amountSatang, 0)}", "{l.amountSatang % 100 === 0 ? 1 : 2}", "x -= vm.paidSatang;", "{fmt(vm.totalSatang)}", "{vm.totalSatang + vm.paidSatang === 0 ? 1 : 2}"];
+    const allowed = ["{bookMoney(t, vm.totalSatang)}", "{bookMoney(t, p.unitSatang, true)}", "{l.amountSatang === 0 ? a : b}", "{s.passThroughSatang > 0 ? a : null}", "{pay && \"amountSatang\" in pay ? a : b}",
+      "{priced && heldTotalSatang !== totalSatang ? a : b}", "bookMoney(t, heldTotalSatang ?? 0)", "  heldTotalSatang: number | null;", "q={{ nonce, seen: String(s.totalSatang) }}", "function F({\n  heldTotalSatang,\n  totalSatang,\n}) {}"];
+    eq([leaks.map((x) => moneyIssues(x).length > 0), allowed.map((x) => moneyIssues(x))], [leaks.map(() => true), allowed.map(() => [])], "positive control ของตัวตรวจช่องเงิน");
+    const compIssues = compFiles.flatMap((f) => moneyIssues(stripComments(read(f))).map((x) => `${basename(f)}: ${x}`));
+    ok(compIssues.length === 0, `จอ (components/book) ใช้ช่องเงินนอกรูปที่อนุญาต (ห้ามคิดเลข · ยอดมาจาก platform): ${compIssues.slice(0, 4).join(" · ")}`);
   });
   await st("XR-16", "มติ X1 (ระดับฟังก์ชัน): ผลของ open* เมื่อไม่พบ/ถูกจำกัด ไม่มีชื่อร้าน · ชื่อสินค้า · slug · ตราสินค้า ใด ๆ (ชื่อหน้าและเนื้อหาจึงไม่มีทางได้ข้อมูลร้าน) · ผล ok มีชื่อร้าน/สินค้า (ตัวควบคุม) · ?a ของเครื่องที่ถูกจำกัด/คำขอไม่พบ ไม่ถูกส่งถึงตัวแก้ลิงก์", async () => {
     needX();

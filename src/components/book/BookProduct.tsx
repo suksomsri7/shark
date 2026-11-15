@@ -1,5 +1,5 @@
 // components/book/BookProduct.tsx — หน้าสินค้าทัวร์ `/book/[shop]/t/[productSlug]` (ภาพ 19 จอใหญ่ · ภาพ 01ก มือถือ) · RUN TRIPS W1.1a
-// แสดงผลเท่านั้น (อ่านอย่างเดียว): ปฏิทินที่ว่างจริง · วันที่เลือก · ตารางราคาต่อหน่วย · เนื้อหาร้าน — ยังไม่ถือที่/ไม่จอง ⇒ ปุ่มหลักปิดไว้
+// แสดงผลเท่านั้น: ปฏิทินที่ว่างจริง · วันที่เลือก · ตารางราคาต่อหน่วย · เนื้อหาร้าน · (W1.2) แผงเลือกคน/รับส่ง/เสริม + สรุป + ถือที่ เมื่อปุ่มจองเปิด
 // จอใหญ่ (xl ขึ้นไป) = สองคอลัมน์ + แผงสรุปติดจอ 430 · เล็กกว่านั้น = คอลัมน์เดียว + แถบล่างติดจอ · ไม่มีตรรกะธุรกิจ/นาฬิกา/การคิดเงินในไฟล์นี้
 // วันเดียวหลายรอบ: หัวหน้า · ตารางราคา · ราคาเริ่มต้น อ้างรอบที่ VM ทำเครื่องหมาย selected รอบเดียวเสมอ — รอบอื่นเลือกด้วยลิงก์ `?t=` (ตัวอ้างเวลา ไม่ใช่ id)
 import { formatYmd } from "@/components/trips/trips-shared";
@@ -7,6 +7,7 @@ import { bookHref, type BookCarry, type BookProductVM } from "@/lib/platform/tri
 import { BookCalendar } from "./BookCalendar";
 import { BookSection, BookUntranslated, shopLang } from "./BookContent";
 import { BookCancel, BookPrices, bookMoney } from "./BookPrices";
+import { BookSelectBottom, BookSelectPanel, BookSummaryPanel, type BookSelectData } from "./BookSelect";
 import { BookShell } from "./BookShell";
 import { bookDateNames, bookGmtOffset, bookT } from "./book-i18n";
 
@@ -16,7 +17,11 @@ const BADGE = "inline-flex w-fit items-center rounded-lg border px-2.5 py-1 text
 const SLOT = "group flex flex-col gap-1.5 rounded-xl border p-3 data-[selected=true]:border-2 data-[selected=true]:border-[color:var(--color-accent)]";
 const PICK = "inline-flex min-h-11 w-fit max-w-full items-center rounded-lg border px-3 text-sm font-medium text-[color:var(--color-accent)] hover:border-[color:var(--color-accent)]";
 
-export function BookProduct({ vm, carry }: { vm: BookProductVM; carry: BookCarry }) {
+/**
+ * select = แผงเลือกคน/รับส่ง/เสริม + สรุป + ถือที่ (W1.2 · มีเมื่อปุ่มจองเปิด) · ไม่มี ⇒ หน้าอ่านอย่างเดียวแบบ W1.1
+ * closed = platform ปิดการถือของร้านนี้ (เวลาถือสั้นเกิน · มติ Y1) ⇒ แสดงแบบปิดจอง "ติดต่อร้าน"
+ */
+export function BookProduct({ vm, carry, select, closed: closedByHold }: { vm: BookProductVM; carry: BookCarry; select?: BookSelectData | null; closed?: boolean }) {
   const t = bookT(vm.locale);
   const names = bookDateNames(vm.locale);
   const shop = vm.shop.slug;
@@ -26,6 +31,8 @@ export function BookProduct({ vm, carry }: { vm: BookProductVM; carry: BookCarry
   const price = sel?.price ?? null;
   /** มีรอบให้เลือกมากกว่า 1 ⇒ แสดงตัวเลือกรอบ และพาตัวอ้างรอบไปกับลิงก์สลับภาษา */
   const multi = (sel?.slots.filter((s) => s.selectable).length ?? 0) > 1;
+  /** ร้านปิดปุ่มจองออนไลน์ / สินค้าที่ร้านต้องยืนยันก่อน (มติ R7 R8) ⇒ บอกให้ติดต่อร้าน */
+  const closed = closedByHold === true || vm.cta.reason === "BOOKING_OFF" || vm.cta.reason === "SHOP_CONFIRMS";
   const view = { a: carry.a, m: vm.month, d: sel?.date ?? null, t: multi ? (chosen?.token ?? null) : null };
   /** "YYYY-MM-DD HH:MM" (เวลาร้านจาก VM) ⇒ วันแบบอ่านง่าย + เวลา */
   const closeText = (cutoffLocal: string): string => {
@@ -70,6 +77,7 @@ export function BookProduct({ vm, carry }: { vm: BookProductVM; carry: BookCarry
           ) : null}
 
           <BookCalendar vm={vm} carry={carry} />
+          {select ? <BookSelectPanel data={select} locale={vm.locale} /> : null}
           {sel ? <BookPrices price={price} locale={vm.locale} /> : null}
           <BookSection testId="book-itinerary" title={t("product.itinerary")} value={vm.product.itinerary} locale={vm.locale} />
           <BookSection testId="book-includes" title={t("product.includes")} value={vm.product.includes} locale={vm.locale} />
@@ -124,12 +132,26 @@ export function BookProduct({ vm, carry }: { vm: BookProductVM; carry: BookCarry
             ) : (
               <p className="text-base text-[color:var(--color-ink-soft)]">{t("product.noDates")}</p>
             )}
-            <button data-testid="book-cta" type="button" disabled className={`${CTA} w-full`}>
-              {t("cta.continue")}
-            </button>
-            <p data-testid="book-cta-note" className="text-sm text-[color:var(--color-ink-soft)]">
-              {t("cta.notYet")}
-            </p>
+            {select ? (
+              <div className="border-t pt-4">
+                <BookSummaryPanel data={select} locale={vm.locale} />
+              </div>
+            ) : (
+              <>
+                <button data-testid="book-cta" type="button" disabled className={`${CTA} w-full`}>
+                  {t("cta.continue")}
+                </button>
+                {closed ? (
+                  <p data-testid="book-closed" role="status" className="text-sm font-medium text-[color:var(--color-ink-soft)]">
+                    {t("select.closed")}
+                  </p>
+                ) : (
+                  <p data-testid="book-cta-note" className="text-sm text-[color:var(--color-ink-soft)]">
+                    {t("cta.notYet")}
+                  </p>
+                )}
+              </>
+            )}
             {price ? (
               <div className="border-t pt-4">
                 <BookCancel ladder={price.cancelLadder} locale={vm.locale} />
@@ -144,6 +166,7 @@ export function BookProduct({ vm, carry }: { vm: BookProductVM; carry: BookCarry
 
       {/* แถบล่างติดจอ (จอเล็กกว่า xl): ราคาเริ่มต้นต่อคน + ปุ่มหลัก (ยังปิด) — เปลือกเว้นท้ายหน้าไว้แล้ว ไม่บังเนื้อหา */}
       <div data-testid="book-bottom-bar" className="fixed inset-x-0 bottom-0 z-10 border-t bg-[color:var(--color-surface)] px-4 py-3 xl:hidden">
+        {select ? <BookSelectBottom data={select} locale={vm.locale} /> : (
         <div className="mx-auto flex w-full max-w-[1360px] items-center justify-between gap-3">
           <div className="min-w-0">
             {price?.headline ? (
@@ -159,6 +182,7 @@ export function BookProduct({ vm, carry }: { vm: BookProductVM; carry: BookCarry
             {t("cta.continue")}
           </button>
         </div>
+        )}
       </div>
     </BookShell>
   );
