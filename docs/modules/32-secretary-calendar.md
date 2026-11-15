@@ -876,3 +876,107 @@ bash scripts/iso.sh bash /root/projects/shark-sec/scripts/qc-sec.sh bash -c 'cd 
 | D-B37 | m7 | `updateGoogle`/route PUT ไม่ยิง Google — ติดธง `syncDirty` แล้วรอบซิงก์ (after() ของ PUT + job) ลบ/ย้าย/ส่ง · `CalItem.externalCalendarId` = ปฏิทินที่สำเนาอยู่ (ย้ายปลายทาง = ลบจากที่เดิมถูกปฏิทิน) · ยกเลิกเชื่อม/ลบบัญชี: ลบสำเนาขนาน 6 ภายใน 8 วิ แล้วถอนสิทธิ์ (ที่เหลือ = WARN ops) |
 | D-B38 | m6 | ส่งนัดลูกค้าไป Google ส่วนตัว: ค่าเริ่ม **ปิด** (Q9 ยังรอเจ้าของ) · ส่งเฉพาะสาขาที่ยังเข้าถึง (`canAccessUnit`) และร้านไม่ได้ตั้งเลขาระบบบัตรคิว OFF · ลบบัญชี = ลบสำเนาก่อนถอนสิทธิ์ · ⚠️ PDPA: ชื่อลูกค้าของร้านไปอยู่ในบัญชี Google ส่วนตัวของพนักงาน — ร้าน (ผู้ควบคุมข้อมูล) ยังไม่มีสวิตช์ระดับร้าน (เจ้าของตัดสิน · ledger/cal-briefs/google-verification-draft.md ข้อ 4.2) |
 | D-B39 | M4 · m8 | agenda: เตือนครั้งเดียวอ่านเฉพาะช่วงคำขอ (−14 วัน) · ทำซ้ำเฉพาะ OPEN · บัญชี: ใบในช่วงเท่านั้น + ยอดเกินกำหนดเป็น aggregate · ภาษี: ใบ 50 ทวิสถานะ DRAFT/VOIDED/CANCELLED ไม่นับ · ภ.ง.ด.1/ปกส. ตามเดือนที่จ่าย (`payDate`) ไม่ใช่ `periodKey` (skill shark-thai-law common-withholding-tax §8 :68 · :129) · m10 (จำนวนคิวรีต่อคำขอ) ยังไม่แก้ — เฝ้าดูเมื่อร้าน > 100 คน |
+
+---
+
+## 16. Q8 เผื่อเวลาเดินทาง (มติเจ้าของ 15 พ.ย. 2569 · ภาพ `/root/mockups/secretary-calendar/q8/q8.png`)
+
+> มติ: เลขา **ถาม** ว่าต้องเผื่อเวลาเดินทางไหม/กี่นาที → **จำต่อประเภทงาน** → ครั้งต่อไป **เสนอ** แต่ **ทุกครั้งต้องบอกและให้ผู้ใช้ยืนยัน** (ห้ามสร้างเตือนออกเดินทางเงียบ ๆ แม้จำได้แล้ว) · แทน `CalPref.travelMinutes` ค่าเดียว (ค่านั้นคงไว้ ไม่ใช้ในข้อเสนอ Q8)
+> M3: กฎ/การปัดทิ้งเป็นของผู้ใช้คนเดียว ต่อร้าน · ไม่มี userId ใน API · ไม่มีชื่อเรื่องในผลเครื่องมือ AI (review b B1)
+
+### 16.1 โมเดล (migration `calendar_q8` · 20261228000500 · additive)
+```prisma
+model CalTravelRule {        // "ประเภทนี้เผื่อกี่นาที" ที่เลขาจำ (จอ 3 ของ q8)
+  id        String   @id @default(cuid())
+  userId    String
+  tenantId  String
+  typeKey   String   // §16.2 · ≤ 200
+  minutes   Int      // 0..240 · 0 = "ไม่ต้องเผื่อ" (จำว่าไม่ต้องถาม)
+  label     String?  // ป้ายตอนจำ (google/device = ชื่อปฏิทิน) — แสดงในจอตั้งค่าเมื่อหาแหล่งไม่เจอแล้ว
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  @@unique([userId, tenantId, typeKey])
+  @@index([tenantId])
+}
+model CalTravelDismissal {   // "ข้าม/ไม่ต้อง" ของคู่นัดหนึ่งคู่ (ไม่ถาม/เสนอคู่นี้อีก)
+  id          String   @id @default(cuid())
+  userId      String
+  tenantId    String
+  pairKey     String
+  dismissedAt DateTime @default(now())
+  @@unique([userId, tenantId, pairKey])
+  @@index([tenantId])
+  @@index([dismissedAt])  // calendar.fire เก็บกวาด > 60 วัน
+}
+```
+ข้อมูลส่วนตัว: `PERSONAL_MODELS` (ไม่อยู่ใน export ร้าน) · `deleteUserTraces` · `purgeMemberCalendar` (removeStaff + เว็บถอนสิทธิ์) · purge ร้าน = ลบ (แกน tenant)
+
+### 16.2 ประเภท (typeKey) + ป้ายไทย
+| แหล่ง AgendaItem | typeKey | ป้าย (`typeLabel`) | sub ในจอตั้งค่า |
+|---|---|---|---|
+| `event` (นัดส่วนตัว) | `event` | นัดส่วนตัวนอกร้าน | – |
+| `booking` | `booking` | นัดลูกค้า · บัตรคิว | นัดในร้าน |
+| `crm` | `crm` | นัดลูกค้า · CRM | – |
+| `google` | `google:<calendarId>` | นัดจาก Google · <ชื่อปฏิทิน> | – |
+| `device` | `device:<calendarId>` | นัดจาก iPhone · <ชื่อปฏิทิน> | – (เซิร์ฟเวอร์เก็บแค่กฎ · อีเวนต์อยู่ในเครื่อง — แอปคำนวณข้อเสนอเองด้วยฟังก์ชันสำเนา) |
+reminder/kanban/account/tax/hr/dorm/ticket/trips = ไม่ใช่นัดที่ต้องเดินทาง (ไม่เป็นทั้งต้นและปลาย)
+
+### 16.3 กติกา `travelSuggestions(items, rules, dismissed, now, opts)` (บริสุทธิ์ · `travel.ts` ข้าง `conflicts.ts`)
+1. รายการที่เข้าเกณฑ์ = `mine` · ไม่ `allDay` · ไม่ `done` · source ∈ {event, booking, crm, google, device} · `endAt` ไม่มี = ใช้ `startAt` เป็นเวลาจบ
+2. เรียงตาม startAt → id · คู่ **ติดกัน** (prev, next) ใน **วันไทยเดียวกัน** · `gap = next.start − prev.end` (นาที) · เข้าเกณฑ์เมื่อ `0 ≤ gap ≤ 120` (ทับกัน = นัดชน §11 ไม่ใช่ Q8)
+3. กฎของประเภท **next** (`rules[typeKeyOf(next)]`):
+   - ไม่มีกฎ → `mode "ask"` (ต้องให้ `next.start > now`)
+   - `minutes = 0` → ไม่มีข้อเสนอ
+   - `minutes > 0` → `mode "propose"` · `leaveAt = next.start − minutes` · `leaveAt ≤ now` = ไม่มีข้อเสนอ
+4. `pairKey = sha1("travel|" + prev.id + "|" + next.id)` · อยู่ใน `dismissed` = ไม่มีข้อเสนอ
+5. ผลเรียงตาม next.start
+
+```ts
+type TravelSuggestion = {
+  pairKey: string;
+  mode: "ask" | "propose";
+  prevId: string; nextId: string;              // AgendaItem.id
+  typeKey: string; typeLabel: string;
+  prevEndAt: string; nextStartAt: string;      // ISO
+  gapMinutes: number;
+  minutes: number | null;                      // propose = นาทีที่จำไว้ · ask = null
+  leaveAt: string | null;                      // propose = ISO · ask = null (แอปคำนวณจากชิปที่เลือก)
+  title: string;                               // ask: "ต้องเผื่อเวลาเดินทางไหมครับ?" · propose: "⏱ <typeLabel> — คุณเคยเผื่อ N นาที"
+  sub: string;                                 // ask: "นัดก่อนหน้า: <prev.title> เลิก HH:MM → นัดนี้ HH:MM"
+                                               // propose: "<next.title> HH:MM · นัดก่อนหน้าเลิก HH:MM\nให้เตือนออกเดินทาง HH:MM เหมือนเดิมไหมครับ?"
+  badge: string | null;                        // propose = "จำจากครั้งก่อน"
+  options: number[];                           // ชิป ask: [0, 15, 30, 45] (+ "อื่น ๆ" ในแอป)
+};
+```
+
+### 16.4 API (`/api/mobile/secretary/calendar/travel*` · ด่าน `gate(req, null)` · actor เท่านั้น · strict body)
+| METHOD | path | request | response 200 | rate | errors |
+|---|---|---|---|---|---|
+| GET | `calendar/travel?day=YYYY-MM-DD` | – | `{ day, suggestions: TravelSuggestion[] }` (ของผู้ดูเท่านั้น · รวมแหล่งที่เซิร์ฟเวอร์รู้ · ไม่รวม device) | 60 | 400 "วันไม่ถูกต้อง" |
+| POST | `calendar/travel/confirm` | `{ pairKey, day: YYYY-MM-DD, minutes: 0..240, remember: boolean }` | `{ item: CalItemDto \| null, rule: TravelRuleDto \| null }` | 30 | 404 `not_found` "ไม่พบนัดคู่นี้แล้ว — ลองดึงปฏิทินใหม่" (คู่ไม่อยู่ในข้อเสนอของวันนั้นแล้ว) · 400 `past_time` "เวลาออกเดินทางผ่านไปแล้ว" · 400 invalid |
+| POST | `calendar/travel/dismiss` | `{ pairKey, day }` | `{ ok: true }` (ซ้ำได้) | 30 | 404 คู่ไม่อยู่ในข้อเสนอวันนั้น |
+| GET | `calendar/travel/rules` | – | `{ rules: TravelRuleDto[] }` เรียง label | 60 | – |
+| PUT | `calendar/travel/rules/[typeKey]` | `{ minutes: 0..240, label? }` | `{ rule }` (upsert · ใช้กับ `device:*` จากแอปด้วย) | 30 | 400 typeKey/นาทีผิด |
+| DELETE | `calendar/travel/rules/[typeKey]` | – | `{ ok: true }` ("ปัดซ้ายเพื่อลบ · เลขาจะถามใหม่ครั้งหน้า") | 30 | – |
+
+`TravelRuleDto = { typeKey, label, sub: string | null, minutes, updatedAt }` · typeKey ใน path = encodeURIComponent
+
+**confirm** (🔴 เซิร์ฟเวอร์คำนวณคู่ใหม่ ไม่เชื่อเวลา/ชื่อจากแอป): `agendaFor(day)` → `travelSuggestions` (ไม่กรอง dismissed) → หา `pairKey`
+- `minutes > 0` → สร้าง `CalItem` REMINDER · source `SUGGEST` · title `ออกเดินทางไป <next.title>` (ตัด 200) · `startAt = next.start − minutes` · lead 0 · ผ่าน `createItem` (ตรวจ past_time)
+- `minutes = 0` → ไม่สร้างเตือน
+- `remember = true` → upsert `CalTravelRule(typeKeyOf(next), minutes, label)` · ทุกกรณี → upsert dismissal ของคู่นี้ (ไม่เสนอซ้ำ)
+- ไม่มีการยืนยันแทนผู้ใช้: มีแต่ route นี้ (กดในแอป) ที่สร้างเตือนออกเดินทางได้ — เครื่องมือ AI ไม่มีเส้นยืนยัน
+
+### 16.5 agenda + การ์ดในห้อง
+- `GET calendar/agenda` เพิ่มช่อง `travel: TravelSuggestion[]` (คำนวณจาก items ของผล · ไม่ device) · ข้อเสนอ "เตือนออกตอน" เดิมของ `conflicts` แบบ `TIGHT` **ถูกตัดออก** (Q8 แทน) · `OVERLAP` + `conflictWith` คงเดิม
+- เครื่องมือ `calendar_add` (EVENT) และ `calendar_agenda`: เมื่อวันนั้นมีข้อเสนอ → เพิ่ม `CalRoomCard { kind: "TRAVEL", fromDay = toDay = วันนั้น }` (ไม่มีชื่อเรื่อง/เวลาเข้าโมเดล) · ผลเครื่องมือมี `travel: { day, count, card: "travel" }` + `next`: "บอกผู้ใช้ว่า \"นัดนี้ใกล้นัดอื่น ดูการ์ดด้านล่าง\" — ห้ามตั้งเตือนออกเดินทางเองหรือยืนยันแทน" · แอปวาดการ์ด TRAVEL ด้วย `GET calendar/travel?day=` ของผู้ดู
+- `CalRoomCardDto.kind` = `"AGENDA" | "LIST" | "TRAVEL"`
+
+### 16.6 จอ q8 ↔ สัญญา
+| จอ | องค์ประกอบ | ช่อง/เส้น |
+|---|---|---|
+| 1 | "ตั้งนัดให้แล้วครับ · นัดนี้ใกล้นัดอื่น ดูการ์ดด้านล่าง" | ผล `calendar_add.travel` + persona |
+| 1 | การ์ด "ต้องเผื่อเวลาเดินทางไหมครับ?" · sub · "เห็นเฉพาะคุณ" · ชิป ไม่ต้อง/15/30/45/อื่น ๆ · ☑ จำไว้สำหรับ <typeLabel> · ยืนยัน/ข้าม | `mode ask` · `title/sub/options/typeLabel` · confirm `{minutes, remember}` · ข้าม = dismiss |
+| 1 | "ตั้งเตือนออกเดินทางให้แล้วครับ (ดูเวลาในการ์ด · 12:15)" | ข้อความจากแอปหลัง confirm (`item.startAt`) — ไม่ผ่านโมเดล |
+| 2 | การ์ดเหลือง "⏱ นัดส่วนตัวนอกร้าน — คุณเคยเผื่อ 45 นาที" · sub · ป้าย "จำจากครั้งก่อน" · ใช่ เตือนเลย / ไม่ต้อง / เปลี่ยน… | `mode propose` · `title/sub/badge` · ใช่ = confirm `{minutes: s.minutes, remember: false}` · ไม่ต้อง = dismiss · เปลี่ยน… = ชิปแบบจอ 1 แล้ว confirm |
+| 3 | "เผื่อเวลาเดินทาง (เลขาจำไว้)" รายการ ประเภท + นาที/"ไม่ต้องเผื่อ" · ปัดซ้ายลบ | `GET/PUT/DELETE travel/rules` |
