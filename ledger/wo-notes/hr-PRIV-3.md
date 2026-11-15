@@ -229,3 +229,33 @@ The form actions that pass `hideForeign`: `cancelLeaveAction`, `cancelOtAction`,
   - qc-approval 16/16 · qc-payroll 19/19 · payroll-reverse 14/14 · payadjust 27/27
   - fitness-hr 9/9 · fitness 54/54 (both modes)
   - clean typecheck exit 0 (tsconfig does not include `.mts`, so the later oracle edits do not affect it)
+
+## r3 fix round (CONTROLLER RULINGS r3 · R11–R15)
+- **R11:** `hrTargetOwned` now runs first, right after the existing permission checks, in every action of the 8 payroll action files that takes a client id.
+  - `payroll-actions.ts`: 19 new guard lines, covering approve v1 · request/decide/cancel/move adjustment · delete/recompute draft · v2 create/recompute/approve/pay · confirm · engine · consent · book · pay account · posting · give back. The five earlier guards remain.
+  - The file-local `systemOf`/`ctxOf` helpers of work-entries, attendance-pay, payslip, bank-files, filings and stock-charge now call `hrTargetOwned`; their `tenantDb.appSystem` copies are removed.
+  - `payroll-opening-actions.ts` calls `hrTargetOwned` inline in `one()` and in the bulk action; its `systemOf` copy is removed.
+  - Each guard returns that action's existing unknown-system answer. Proof: the oracle's complete-form driver, as a scratch copy (`/tmp/hr-ctl/priv3-build/measure3b.mts`), recorded the unknown-system answer of all 49 payroll actions and the 4 employee actions before and after the change. **0 differences** (`meas-before.json` vs `meas-after.json`).
+  - Answers reuse existing constants where they exist (`APPROVE_NOT_DRAFT_TH`, `RUN2_TEXT.engineV1/confirmNo`, `RUN2_RESULT_TEXT.payNotApproved`, `H37_TEXT.payAccount`, `GIVE_BACK_TEXT.engine`, `LIFE_TEXT.noAccess`).
+  - **Debt:** the remaining answers are literal copies of service texts that the service does not export: "ไม่พบรายการ", "ไม่พบรอบจ่าย", "ไม่พบพนักงาน", the engine-failed text, the consent text, "ไม่พบระบบเงินเดือนนี้ในร้าน", "ไม่พบสมุดบัญชีนี้ในร้าน".
+  - **Debt:** the guard now precedes some service-level role checks. For a caller who fails those checks AND sends an unknown/foreign system, the answer is now the not-found text instead of the role refusal. Own-system answers are unchanged.
+  - **Not done, reported:** `requestSalaryCertAction` and `cancelSalaryCertRequestAction` are self-service actions. They receive no system/run/employee/adjustment id; the system comes from the caller's linked employee via `resolveSelf`. The ruling's scope does not cover them, and a call with an invented ctx would be a syntactic dodge. 3b X10 flags them (2/49).
+- **R12:** `hrTargetOwned` comes first in `createEmployeeAction`, `updateEmployeeAction`, `removeEmployeeAction` and `restoreEmployeeAction`. A miss returns void, or for remove throws `HrBranchError(LIFE_TEXT.noAccess)` — the existing answers.
+- **R13:** `cancelLeave` with `hideForeign` returns `CANCEL_NOT_FOUND` for a non-party before any status branch, including the decided-chain branch.
+- **R14:** the migration was edited in place (same folder): it now runs CREATE UNIQUE INDEX ×2 first, then `DROP INDEX IF EXISTS` ×2, and still contains only index statements.
+  - **Checksum:** on this setup `prisma migrate status` says "Database schema is up to date!" and `prisma migrate deploy` says "No pending migrations to apply". Neither complains about the edited applied migration, so the lane DB's `_prisma_migrations` row was **left alone**. No index statement was re-run.
+- **R15:** `qc-hr-h3.9` S1.2 now accepts, for HrSalaryProfile only, a hunk whose removed lines are exactly `@@unique([systemId, employeeId])` (plus comments) and whose added lines are exactly `@@unique([tenantId, systemId, employeeId])` (plus comments). The earlier "any hunk marked HR PRIV-3" acceptance is gone.
+- **Allowlists:** the 7 newly touched action files were added to `P3_FILES` in leave-3 and preprod-1, to priv-2 `P3_FILES`, and to h4.3-lib `P3_ALLOW`.
+- `session/hr` did not move in src/prisma/scripts, so no merge was needed.
+- **r3 older-static acceptance:** `qc-hr-h3.6` S1.6 `bankUnmarked` now also accepts `bank-files/actions.ts` hunks marked "HR PRIV-3". h3.6 is added to the leave-3, preprod-1, priv-2 and h4.3-lib allowlists.
+- **r3 runs (head `c2c394c6f` + allowlist commit):**
+  - priv-3: 28/28 ×4 (forced ×3 + unforced).
+  - priv-3b: **18/19 ×4**. Only **X10** is red: the 2 self-service salary-cert actions (see R11). Every other check is green: X1–X9, E1–E3, Y1/Y2, K1/K2, M1, Z1; residue none.
+  - Green:
+    - preprod-1 57 · 1b 25 · 1c 16 · leave-3 53 · leave-3b 11 · money-2 57 · priv-2 47 · hf-sso 41 · hf-hr-privacy 194
+    - h0.6 55 · h0.7 74 · h1.3 63 · h2.4 68 · h2.9 58 · h2.10 57 · h3.3 51 · h3.4 85 · h3.4-ytd 44 · h3.5 53 · h3.6 62 · h3.7 68 · h3.9 60 · h4.3 45 · h4.8 48
+    - qc-approval 16 · qc-payroll 19 · payroll-reverse 14 · payadjust 27 · audit-trail 21 · qc-hr 9 · leave-booking 14
+    - fitness-hr 9/9 · fitness 54/54 (both modes)
+  - h3.8: 77/78, S1.13 only.
+  - `pnpm drift`: the only diff is `DormUtilityRate` (non-HR). HR tables are clean.
+  - Typecheck: after the last file change; result in the final report.
