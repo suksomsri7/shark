@@ -357,6 +357,58 @@
   },
   "GET /api/mobile/secretary/rooms/r3/proposals": {
    "items": []
+  },
+  "GET /api/mobile/secretary/rooms/r4": {
+   "id": "r4",
+   "conversationId": "c-r4",
+   "title": "นัดคุณเอก",
+   "status": "OPEN",
+   "systems": [
+    "crm"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [],
+   "canManage": true,
+   "createdAt": "2026-11-16T11:42:00.000Z",
+   "updatedAt": "2026-11-16T11:46:00.000Z",
+   "closedAt": null,
+   "plans": [],
+   "reminders": [],
+   "calendarCards": [
+    {
+     "id": "cc4",
+     "kind": "TRAVEL",
+     "fromDay": "2026-11-18",
+     "toDay": "2026-11-18",
+     "createdAt": "2026-11-16T01:10:05.000Z",
+     "pairKey": "fx-travel-ask"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/rooms/r4/messages": {
+   "items": [
+    {
+     "id": "q1",
+     "role": "USER",
+     "content": "นัดคุณเอกพรุ่งนี้บ่ายโมง ที่ธนาคารสินเชื่อเรือ",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-16T01:10:00.000Z"
+    },
+    {
+     "id": "q2",
+     "role": "ASSISTANT",
+     "content": "ตั้งนัดให้แล้วครับ · นัดนี้ใกล้นัดอื่น ดูการ์ดด้านล่าง",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-16T01:10:04.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r4/proposals": {
+   "items": []
   }
  },
  "shots": [
@@ -681,6 +733,60 @@
     {
      "sleep": 600
     }
+   ]
+  },
+  {
+   "name": "q8-ask",
+   "route": "/secretary/room/r4",
+   "steps": [
+    {
+     "wait": "cal-travel-fx-travel-ask"
+    },
+    {
+     "tap": "cal-travel-fx-travel-ask-min-45"
+    },
+    {
+     "sleep": 600
+    }
+   ],
+   "mock": [
+    "q8",
+    1
+   ]
+  },
+  {
+   "name": "q8-remembered",
+   "route": "/secretary/calendar?day=2026-11-17",
+   "steps": [
+    {
+     "wait": "cal-travel-fx-travel-bank"
+    },
+    {
+     "sleep": 600
+    }
+   ],
+   "mock": [
+    "q8",
+    2
+   ]
+  },
+  {
+   "name": "q8-settings",
+   "route": "/secretary/calendar/settings",
+   "steps": [
+    {
+     "wait": "cal-tr-rule-event"
+    },
+    {
+     "scroll": "cal-tr-rules"
+    },
+    {
+     "sleep": 400
+    }
+   ],
+   "mock": [
+    "q8",
+    3
    ]
   }
  ]

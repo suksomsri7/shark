@@ -40,7 +40,7 @@ export function suggestRemindAt(bStartMs: number, travelMinutes: number, now: Da
 }
 
 // ───────── sha1 (UTF-8 · hex) — แทน node:crypto ของเซิร์ฟเวอร์ ─────────
-function sha1Hex(str: string): string {
+export function sha1Hex(str: string): string {
   const bytes: number[] = [];
   for (const ch of unescape(encodeURIComponent(str))) bytes.push(ch.charCodeAt(0));
   const ml = bytes.length * 8;

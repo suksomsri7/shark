@@ -3,6 +3,8 @@
 //   สรุปวันนี้: ส่งสรุปตอนเช้า (สวิตช์) + เวลา "08:00 (ค่าเริ่ม)" · สรุปพรุ่งนี้ตอนเย็น (สวิตช์) + เวลา — แตะเวลา = แผ่นเลือกชั่วโมง/นาที
 //   แสดงในปฏิทิน (เฉพาะระบบที่คุณมีสิทธิ์): prefs.sources[] (จุดสีระบบ + ชื่อ + บรรทัดรอง + สวิตช์)
 //   ซิงก์ปฏิทินนอก: Google Calendar (สถานะ เชื่อมแล้ว/เชื่อม/ต้องเชื่อมใหม่ → จอ 9) · ปฏิทิน iPhone (CAL2.11 → /secretary/calendar/device · สถานะจากค่าในเครื่อง)
+//   Q8 (q8.png จอ 3): "เผื่อเวลาเดินทาง (เลขาจำไว้)" — GET calendar/travel/rules · แตะ = แผ่นเลือกนาที (PUT) · ปัดซ้าย = ลบ (ยืนยัน · DELETE · เลขาถามใหม่)
+//     ประเภท device:<calendarId> แสดงชื่อปฏิทินในเครื่อง (ชื่อไม่ถูกส่งขึ้นเซิร์ฟเวอร์)
 //   บันทึกทันทีที่สลับ (PUT calendar/prefs · ล้ม = คืนค่าเดิม + ข้อความ)
 import { useCallback, useState, type ReactNode } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
@@ -11,7 +13,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text } from "@/src/components/ui/text";
 import { AiryScreen, Icon, IconBtn, LoadError, Loading, Sheet } from "@/src/components/airy";
 import { calCard } from "@/src/components/calendar/style";
-import { calApi, type ColorKey, type PrefSourceKey, type PrefsPut, type PrefsRes } from "@/src/api/calendar";
+import { calApi, travelApi, type ColorKey, type PrefSourceKey, type PrefsPut, type PrefsRes, type TravelRule } from "@/src/api/calendar";
+import { SwipeRow } from "@/src/components/customers/SwipeRow";
+import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
+import { listDeviceCalendars } from "@/src/lib/device-calendar";
+import type { SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { apiErrorText } from "@/src/api/client";
 import { minuteText } from "@/src/lib/cal-date";
 import { devicePermission, deviceLabel, loadDevicePrefs } from "@/src/lib/device-calendar";
@@ -42,9 +48,41 @@ export default function CalSettingsScreen() {
   const [note, setNote] = useState<string | null>(null);
   const [pickFor, setPickFor] = useState<"morning" | "evening" | null>(null);
   const [devOn, setDevOn] = useState(false);
+  const [rules, setRules] = useState<TravelRule[] | null>(null);
+  const [calTitles, setCalTitles] = useState<Record<string, string>>({});
+  const [editRule, setEditRule] = useState<TravelRule | null>(null);
+  const [delRule, setDelRule] = useState<TravelRule | null>(null);
+  const [openRow, setOpenRow] = useState<SwipeableMethods | null>(null);
+  const ruleLabel = (r: TravelRule) => (r.typeKey.startsWith("device:") && calTitles[r.typeKey.slice(7)] ? `${r.label} · ${calTitles[r.typeKey.slice(7)]}` : r.label);
+  const putRule = async (r: TravelRule, minutes: number) => {
+    const before = rules;
+    setRules((rs) => (rs ? rs.map((x) => (x.typeKey === r.typeKey ? { ...x, minutes } : x)) : rs));
+    setEditRule((e) => (e ? { ...e, minutes } : e));
+    try {
+      await travelApi.putRule(r.typeKey, minutes);
+    } catch (e) {
+      setRules(before);
+      setNote(apiErrorText(e));
+    }
+  };
+  const deleteRule = async (r: TravelRule) => {
+    const before = rules;
+    setRules((rs) => (rs ? rs.filter((x) => x.typeKey !== r.typeKey) : rs));
+    try {
+      await travelApi.deleteRule(r.typeKey);
+    } catch (e) {
+      setRules(before);
+      setNote(apiErrorText(e));
+    }
+  };
 
   const load = useCallback(async () => {
     void Promise.all([loadDevicePrefs(), devicePermission()]).then(([p, pm]) => setDevOn(p.enabled && pm === "granted"));
+    void travelApi
+      .rules()
+      .then(setRules)
+      .catch(() => setRules([]));
+    void listDeviceCalendars().then((cs) => setCalTitles(Object.fromEntries(cs.map((x) => [x.id, x.title]))));
     try {
       setPrefs(await calApi.prefs());
       setFailed(null);
@@ -156,6 +194,47 @@ export default function CalSettingsScreen() {
               )}
             </View>
 
+            <Text testID="cal-tr-rules" style={[styles.sect, { color: c.textFaint }]}>
+              {t("cal.tr.rules")}
+            </Text>
+            {rules && rules.length > 0 ? (
+              <View>
+                {rules.map((r) => (
+                  <SwipeRow
+                    key={r.typeKey}
+                    testID={`cal-tr-rule-swipe-${r.typeKey}`}
+                    enabled
+                    label={t("cal.rem.delete")}
+                    onDelete={() => setDelRule(r)}
+                    onOpen={(m) => {
+                      if (openRow && openRow !== m) openRow.close();
+                      setOpenRow(m);
+                    }}
+                    onClose={() => {}}
+                  >
+                    <Pressable testID={`cal-tr-rule-${r.typeKey}`} accessibilityRole="button" onPress={() => setEditRule(r)} style={[calCard(c, 16), styles.r]}>
+                      <Text style={[styles.rt, { color: c.text }]} numberOfLines={1}>
+                        {ruleLabel(r)}
+                      </Text>
+                      {r.sub ? (
+                        <Text style={[styles.rs, { color: c.textFaint }]} numberOfLines={1}>
+                          {r.sub}
+                        </Text>
+                      ) : null}
+                      <Text style={[styles.rv, { color: c.textMuted }]}>{r.minutes > 0 ? t("cal.tr.min", { n: r.minutes }) : t("cal.tr.noNeed")} ›</Text>
+                    </Pressable>
+                  </SwipeRow>
+                ))}
+                <Text style={[styles.hint, { color: c.textFaint }]}>{t("cal.tr.rulesHint")}</Text>
+              </View>
+            ) : (
+              <View style={[calCard(c, 16), styles.grp]}>
+                <Row last>
+                  <Text style={[styles.rs, { color: c.textMuted }]}>{rules ? t("cal.tr.rulesEmpty") : t("sec.state.loading")}</Text>
+                </Row>
+              </View>
+            )}
+
             <Text style={[styles.sect, { color: c.textFaint }]}>{t("cal.set.sync")}</Text>
             <View style={[calCard(c, 16), styles.grp]}>
               <Row testID="cal-set-google" onPress={() => router.push("/secretary/calendar/google")}>
@@ -175,6 +254,48 @@ export default function CalSettingsScreen() {
         )}
       </ScrollView>
 
+      <Sheet testID="cal-tr-edit" visible={!!editRule} onClose={() => setEditRule(null)} top={470}>
+        <Text style={[styles.pickH, { color: c.text }]}>{editRule ? t("cal.tr.edit", { type: ruleLabel(editRule) }) : ""}</Text>
+        <View style={styles.hours}>
+          {[0, 15, 30, 45, 60, 90].map((m) => {
+            const on = editRule?.minutes === m;
+            return (
+              <Pressable key={m} testID={`cal-tr-edit-${m}`} accessibilityRole="button" onPress={() => editRule && void putRule(editRule, m)} style={[styles.trChip, { backgroundColor: on ? c.accent : c.chip.bg }]}>
+                <Text style={[styles.hChipT, { color: on ? c.onAccent : c.chip.fg }]}>{m === 0 ? t("cal.tr.noNeed") : t("cal.tr.min", { n: m })}</Text>
+              </Pressable>
+            );
+          })}
+        </View>
+        <View style={styles.mins}>
+          <Pressable testID="cal-tr-edit-minus" accessibilityRole="button" onPress={() => editRule && void putRule(editRule, Math.max(0, editRule.minutes - 5))} style={[styles.mChip, { backgroundColor: c.chip.bg }]}>
+            <Icon name="minus" size={14} color={c.text} />
+          </Pressable>
+          <Text style={[styles.pickNow, styles.trNow, { color: c.text }]}>{editRule ? (editRule.minutes > 0 ? t("cal.tr.min", { n: editRule.minutes }) : t("cal.tr.noNeed")) : ""}</Text>
+          <Pressable testID="cal-tr-edit-plus" accessibilityRole="button" onPress={() => editRule && void putRule(editRule, Math.min(240, editRule.minutes + 5))} style={[styles.mChip, { backgroundColor: c.chip.bg }]}>
+            <Icon name="plus" size={14} color={c.text} />
+          </Pressable>
+        </View>
+        <Pressable testID="cal-tr-edit-done" accessibilityRole="button" onPress={() => setEditRule(null)} style={[styles.done, { backgroundColor: c.accent }]}>
+          <Text style={[styles.doneT, { color: c.onAccent }]}>{t("cal.add.done")}</Text>
+        </Pressable>
+      </Sheet>
+      <ConfirmSheet
+        testID="cal-tr-del"
+        visible={!!delRule}
+        title={delRule ? t("cal.tr.deleteAsk", { type: ruleLabel(delRule) }) : ""}
+        body={t("cal.tr.deleteBody")}
+        yes={t("cal.rem.deleteYes")}
+        no={t("cal.rem.deleteNo")}
+        onClose={() => {
+          setDelRule(null);
+          openRow?.close();
+        }}
+        onYes={() => {
+          const r = delRule;
+          setDelRule(null);
+          if (r) void deleteRule(r);
+        }}
+      />
       <Sheet testID="cal-set-pick" visible={!!pickFor} onClose={() => setPickFor(null)} top={380}>
         <Text style={[styles.pickH, { color: c.text }]}>{t("cal.set.pickTime")}</Text>
         <Text style={[styles.pickNow, { color: c.textMuted }]}>{pickFor ? minuteText(prefs?.[pickFor].minute ?? 0) : ""}</Text>
@@ -251,6 +372,9 @@ const styles = StyleSheet.create({
   hChipT: { fontSize: 13.5 },
   mins: { flexDirection: "row", gap: 6, marginTop: 12 },
   mChip: { flex: 1, paddingVertical: 8, borderRadius: 12, alignItems: "center" },
+  hint: { fontSize: 12, marginTop: 8, marginHorizontal: 6 },
+  trChip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 12, alignItems: "center" },
+  trNow: { flex: 2, textAlign: "center", fontWeight: "700", marginTop: 0, alignSelf: "center" },
   done: { marginTop: 16, borderRadius: 16, paddingVertical: 13, alignItems: "center" },
   doneT: { fontSize: 15, fontWeight: "700" },
 });

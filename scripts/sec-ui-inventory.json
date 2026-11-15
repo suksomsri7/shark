@@ -2457,6 +2457,104 @@
    "screen": "ปฏิทินในเครื่อง · ยืนยันเลิกเชื่อม",
    "action": "ปิดแผ่น",
    "wo": "CAL2.11"
+  },
+  {
+   "testID": "cal-travel-<pairKey>-min-<n>",
+   "file": "apps/mobile/src/components/calendar/TravelCard.tsx",
+   "screen": "การ์ดเผื่อเวลาเดินทาง (q8 จอ 1 · ห้อง/ปฏิทินวัน)",
+   "action": "เลือกนาที (0 = ไม่ต้อง · 15/30/45)",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-travel-<pairKey>-other",
+   "file": "apps/mobile/src/components/calendar/TravelCard.tsx",
+   "screen": "การ์ดเผื่อเวลาเดินทาง (ask)",
+   "action": "อื่น ๆ → ปุ่ม ± 5 นาที (-minus / -plus)",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-travel-<pairKey>-remember",
+   "file": "apps/mobile/src/components/calendar/TravelCard.tsx",
+   "screen": "การ์ดเผื่อเวลาเดินทาง (ask)",
+   "action": "☑ จำไว้สำหรับ <ประเภท>",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-travel-<pairKey>-confirm",
+   "file": "apps/mobile/src/components/calendar/TravelCard.tsx",
+   "screen": "การ์ดเผื่อเวลาเดินทาง (ask)",
+   "action": "POST travel/confirm {pairKey, day, minutes, remember} · คู่ในเครื่อง = PUT travel/rules/<device:id> + POST items ชื่อกลาง ๆ",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-travel-<pairKey>-skip",
+   "file": "apps/mobile/src/components/calendar/TravelCard.tsx",
+   "screen": "การ์ดเผื่อเวลาเดินทาง (ask)",
+   "action": "POST travel/dismiss · คู่ในเครื่อง = จำในเครื่อง",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-travel-<pairKey>-yes",
+   "file": "apps/mobile/src/components/calendar/TravelCard.tsx",
+   "screen": "การ์ดเผื่อเวลาเดินทาง (propose · q8 จอ 2)",
+   "action": "ใช่ เตือนเลย → confirm {minutes: ที่จำ, remember: false}",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-travel-<pairKey>-no",
+   "file": "apps/mobile/src/components/calendar/TravelCard.tsx",
+   "screen": "การ์ดเผื่อเวลาเดินทาง (propose)",
+   "action": "ไม่ต้อง → dismiss",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-travel-<pairKey>-change",
+   "file": "apps/mobile/src/components/calendar/TravelCard.tsx",
+   "screen": "การ์ดเผื่อเวลาเดินทาง (propose)",
+   "action": "เปลี่ยน… → ชิปแบบ ask (ค่าที่จำไว้ถูกเลือก)",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-tr-rule-<typeKey>",
+   "file": "apps/mobile/app/(app)/secretary/calendar/settings.tsx",
+   "screen": "ตั้งค่าปฏิทิน · เผื่อเวลาเดินทาง (q8 จอ 3)",
+   "action": "แผ่นแก้นาที cal-tr-edit-<n> / -minus / -plus / -done → PUT travel/rules/<typeKey>",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-tr-rule-swipe-<typeKey>-delete",
+   "file": "apps/mobile/src/components/customers/SwipeRow.tsx",
+   "screen": "ตั้งค่าปฏิทิน · เผื่อเวลาเดินทาง (ปัดซ้าย)",
+   "action": "ยืนยัน cal-tr-del → DELETE travel/rules/<typeKey>",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-tr-del-yes",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "ตั้งค่าปฏิทิน · ยืนยันลบสิ่งที่เลขาจำ",
+   "action": "DELETE travel/rules/<typeKey>",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-tr-del-no",
+   "file": "apps/mobile/src/components/calendar/ConfirmSheet.tsx",
+   "screen": "ตั้งค่าปฏิทิน · ยืนยันลบสิ่งที่เลขาจำ",
+   "action": "ปิดแผ่น",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-tr-edit-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ตั้งค่าปฏิทิน · แก้นาที",
+   "action": "ปิดแผ่น",
+   "wo": "Q8"
+  },
+  {
+   "testID": "cal-tr-del-dim",
+   "file": "apps/mobile/src/components/airy/Sheet.tsx",
+   "screen": "ตั้งค่าปฏิทิน · ยืนยันลบ",
+   "action": "ปิดแผ่น",
+   "wo": "Q8"
   }
  ]
 }

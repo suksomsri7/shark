@@ -43,7 +43,7 @@ export type AgendaItem = {
 export type ConflictNote = { key: string; kind: "OVERLAP" | "TIGHT"; earlierId: string; laterId: string; text: string; suggestRemindAt: string | null };
 
 export type AgendaNote = { code: "BOOKING_UNLINKED" | "SECTION_FAILED" | "SECTION_OFF"; source: AgendaSource; text: string };
-export type AgendaResult = { items: AgendaItem[]; conflicts: ConflictNote[]; notes: AgendaNote[] };
+export type AgendaResult = { items: AgendaItem[]; conflicts: ConflictNote[]; notes: AgendaNote[]; /** Q8 (§16) ข้อเสนอเผื่อเวลาเดินทางของวันนั้น · เซิร์ฟเวอร์เก่า = ไม่มี */ travel?: TravelSuggestion[] };
 
 export type MonthRes = { ym: string; days: Record<string, ColorKey[]> };
 
@@ -209,7 +209,7 @@ export const calApi = {
 
 /** รูปเสียบางส่วน (เซิร์ฟเวอร์รุ่นแรก) ⇒ ค่าว่างที่ปลอดภัย */
 function normAgenda(r: AgendaResult): AgendaResult {
-  return { items: Array.isArray(r?.items) ? r.items : [], conflicts: Array.isArray(r?.conflicts) ? r.conflicts : [], notes: Array.isArray(r?.notes) ? r.notes : [] };
+  return { items: Array.isArray(r?.items) ? r.items : [], conflicts: Array.isArray(r?.conflicts) ? r.conflicts : [], notes: Array.isArray(r?.notes) ? r.notes : [], ...(Array.isArray(r?.travel) ? { travel: r.travel } : {}) };
 }
 
 // ───────── นัดในเครื่อง (CAL2.11 · expo-calendar · ฝั่งเครื่องเท่านั้น — ไม่เคยส่งขึ้นเซิร์ฟเวอร์) ─────────
@@ -284,4 +284,45 @@ export async function linkCandidates(): Promise<LinkCandidate[]> {
   } catch {
     return [];
   }
+}
+
+// ───────── Q8 เผื่อเวลาเดินทาง (มติเจ้าของ 15 พ.ย. · สัญญา §16) ─────────
+//   เลขา "ถาม" ครั้งแรก (ask) · จำต่อประเภทงาน (propose) แต่ **ทุกครั้งต้องบอกและให้ยืนยัน** — ห้ามตั้งเตือนออกเดินทางเงียบ ๆ
+/** §16.3 — ข้อความ title/sub มาจากเซิร์ฟเวอร์ (คู่ในเครื่อง = แอปสร้างด้วยสำเนา src/lib/travel.ts) */
+export type TravelSuggestion = {
+  pairKey: string;
+  mode: "ask" | "propose";
+  prevId: string;
+  nextId: string;
+  typeKey: string;
+  typeLabel: string;
+  prevEndAt: string;
+  nextStartAt: string;
+  gapMinutes: number;
+  minutes: number | null;
+  leaveAt: string | null;
+  title: string;
+  sub: string;
+  badge: string | null;
+  options: number[];
+};
+export type TravelRule = { typeKey: string; label: string; sub: string | null; minutes: number; updatedAt?: string };
+export type TravelConfirmRes = { item: CalItemDto | null; rule: TravelRule | null };
+
+const ruleSub = (typeKey: string) => `travel/rules/${encodeURIComponent(typeKey)}`;
+export const travelApi = {
+  forDay: (day: string) => call<{ day: string; suggestions: TravelSuggestion[] }>("GET", "travel", { q: { day } }).then((r) => (Array.isArray(r?.suggestions) ? r.suggestions : [])),
+  confirm: (pairKey: string, day: string, minutes: number, remember: boolean) => call<TravelConfirmRes>("POST", "travel/confirm", { body: { pairKey, day, minutes, remember } }),
+  dismiss: (pairKey: string, day: string) => call<{ ok: true }>("POST", "travel/dismiss", { body: { pairKey, day } }),
+  rules: () => call<{ rules: TravelRule[] }>("GET", "travel/rules").then((r) => (Array.isArray(r?.rules) ? r.rules : [])),
+  putRule: (typeKey: string, minutes: number, label?: string) => call<{ rule: TravelRule }>("PUT", ruleSub(typeKey), { body: { minutes, ...(label ? { label } : {}) } }),
+  deleteRule: (typeKey: string) => call<{ ok: true }>("DELETE", ruleSub(typeKey)),
+};
+
+/** เวลาออกเดินทาง = เริ่มนัดถัดไป − นาทีที่เผื่อ (§16.3 · ไม่ปัด) · ผ่านแล้ว/ไม่เผื่อ = null */
+export function travelLeaveAt(nextStartIso: string, minutes: number, nowMs: number): string | null {
+  const b = Date.parse(nextStartIso);
+  if (!Number.isFinite(b) || minutes <= 0) return null;
+  const at = b - minutes * 60_000;
+  return at > nowMs ? new Date(at).toISOString() : null;
 }

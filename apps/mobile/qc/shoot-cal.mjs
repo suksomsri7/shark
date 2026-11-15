@@ -89,7 +89,8 @@ const UDD = `/tmp/chr-cal-app-${process.pid}`;
 const browser = await puppeteer.launch({ executablePath: "/usr/bin/chromium-browser", headless: true, args: ["--no-sandbox", "--disable-gpu", "--font-render-hinting=none", "--hide-scrollbars", `--user-data-dir=${UDD}`] });
 
 async function shootMockup(sheet, phone, dark) {
-  const file = join(MOCK_DIR, `cal-${dark ? "dark-" : ""}${sheet}.html`);
+  // Q8: sheet "q8" = q8/q8.html (มีแบบสว่างอย่างเดียว · มืดเทียบกับแบบสว่าง)
+  const file = sheet === "q8" ? join(MOCK_DIR, "q8", "q8.html") : join(MOCK_DIR, `cal-${dark ? "dark-" : ""}${sheet}.html`);
   const out = join(OUT, `mock-${sheet}-${phone}${dark ? "-dark" : ""}.png`);
   const p = await browser.newPage();
   await p.setViewport({ width: 1900, height: 1100, deviceScaleFactor: 2 });
@@ -164,6 +165,11 @@ try {
             await page.type(`[data-testid="${st.type[0]}"]`, st.type[1]);
           }
           if (st.sleep) await new Promise((r) => setTimeout(r, st.sleep));
+          if (st.scroll) {
+            await page.waitForSelector(`[data-testid="${st.scroll}"]`, { timeout: 20000 });
+            await page.$eval(`[data-testid="${st.scroll}"]`, (el) => el.scrollIntoView({ block: "start" }));
+            await new Promise((r) => setTimeout(r, 500));
+          }
         } catch (e) {
           errors.push("step " + JSON.stringify(st) + " " + String(e.message).slice(0, 100));
         }

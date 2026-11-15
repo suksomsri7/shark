@@ -5,6 +5,8 @@
 //     ดึงลง = โหลดใหม่ + google/sync แบบไม่รอ · ว่าง = ข้อความว่าง · notes ของเซิร์ฟเวอร์ใต้หัว · การ์ดนัดชน (CAL2.12) ท้ายรายการ
 //   เดือน (CAL2.3): ตาราง 7 คอลัมน์เริ่มอาทิตย์ · จุดสี ≤ 3 · ‹ › เปลี่ยนเดือน (ปี พ.ศ.) · แตะวัน = รายการของวันนั้นด้านล่าง
 //   เตือนฉัน (CAL2.4): RemindList
+//   Q8 เผื่อเวลาเดินทาง (q8.png จอ 2): AgendaResult.travel (เซิร์ฟเวอร์) + คู่ที่นัดหลังเป็นนัดในเครื่อง (src/lib/travel.ts) → TravelCard
+//     แทนการ์ดนัดชนแบบ TIGHT (เวลาเดินทางไม่พอ) · การ์ด OVERLAP (ทับกันจริง) คงไว้ · เซิร์ฟเวอร์เก่าไม่มี travel = การ์ดนัดชนแบบเดิม
 //   นัดชน (CAL2.12 · จอ 10): AgendaResult.conflicts + คู่ที่มีนัดในเครื่อง (cal-conflicts.ts) → ConflictCard ท้ายรายการวัน · ไม่ต้อง = จำในเครื่อง
 //   params: ?day=YYYY-MM-DD (push/การ์ดวันนี้/ลิงก์ของเตือน) · ?item=<id> (เปิดแผ่นแก้ไขของเตือนนั้น · CAL2.6) · ?view=month|remind
 // ข้อมูลผ่าน src/api/calendar.ts (dev/QC = fixture เมื่อเซิร์ฟเวอร์ยังไม่มีเส้น) · ไม่มีสีฝัง (ธีม c.cal)
@@ -22,9 +24,13 @@ import { RemindList } from "@/src/components/calendar/RemindList";
 import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
 import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
 import { ConflictCard, loadSkipped, skipConflict } from "@/src/components/calendar/ConflictCard";
+import { TravelCard } from "@/src/components/calendar/TravelCard";
+import { confirmDeviceTravel, confirmServerTravel, deviceTravel, dismissServerTravel } from "@/src/lib/travel";
+import { listDeviceCalendars } from "@/src/lib/device-calendar";
 import { conflicts as localConflicts } from "@/src/lib/cal-conflicts";
 import { onDeviceCalChanged } from "@/src/lib/device-calendar";
 import { runDeviceExportSync } from "@/src/lib/device-sync";
+import { travelApi, type TravelRule, type TravelSuggestion } from "@/src/api/calendar";
 import { calApi, calChanged, deepLinkRoute, deviceAgenda, onCalChanged, sortAgenda, useCalFixture, type AgendaItem, type AgendaResult, type CalItemDto, type ColorKey, type ConflictNote } from "@/src/api/calendar";
 import { apiErrorText } from "@/src/api/client";
 import { scheduleZoneBadges } from "@/src/api/secretary";
@@ -55,11 +61,25 @@ export default function CalendarScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [busy, setBusy] = useState<Set<string>>(new Set());
   const [note, setNote] = useState<string | null>(null);
+  const [noteOk, setNoteOk] = useState(false);
   const [ask, setAsk] = useState<{ it: CalItemDto; run: () => void } | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   // CAL2.12 นัดชน: "ไม่ต้อง" ที่จำในเครื่อง + เวลาเดินทางของผู้ใช้ (prefs · ใช้คำนวณคู่ที่มีนัดในเครื่อง)
   const [skipped, setSkipped] = useState<Set<string>>(new Set());
   const [travel, setTravel] = useState(0);
+  const [travelRules, setTravelRules] = useState<TravelRule[]>([]);
+  const [calTitles, setCalTitles] = useState<Record<string, string>>({});
+  const loadTravelRules = useCallback(() => {
+    void travelApi
+      .rules()
+      .then(setTravelRules)
+      .catch(() => {});
+  }, []);
+  useEffect(() => {
+    loadTravelRules();
+    void listDeviceCalendars().then((cs) => setCalTitles(Object.fromEntries(cs.map((x) => [x.id, x.title]))));
+    return onCalChanged(loadTravelRules);
+  }, [loadTravelRules]);
   useEffect(() => {
     void loadSkipped().then((s) => setSkipped(new Set(s)));
     calApi
@@ -185,8 +205,17 @@ export default function CalendarScreen() {
     // นัดในเครื่องไม่เคยถึงเซิร์ฟเวอร์ ⇒ แอปคำนวณคู่ที่มี device เอง (สำเนา §11)
     const local = data.device.length ? localConflicts([...data.res.items, ...data.device], travel, new Date()).notes.filter((n) => n.earlierId.startsWith("device:") || n.laterId.startsWith("device:")) : [];
     const seen = new Set<string>();
-    return [...server, ...local].filter((n) => !skipped.has(n.key) && !seen.has(n.key) && !!seen.add(n.key));
+    const all = [...server, ...local].filter((n) => !skipped.has(n.key) && !seen.has(n.key) && !!seen.add(n.key));
+    // Q8: เซิร์ฟเวอร์ส่ง travel แล้ว ⇒ TIGHT (เวลาเดินทาง) ไปอยู่ในการ์ดเผื่อเวลาเดินทางแทน
+    return Array.isArray(data.res.travel) ? all.filter((n) => n.kind === "OVERLAP") : all;
   }, [data, day, travel, skipped]);
+  const travelSugs = useMemo<{ sug: TravelSuggestion; local: boolean }[]>(() => {
+    if (!data || data.day !== day) return [];
+    const server = (data.res.travel ?? []).map((sug) => ({ sug, local: false }));
+    const local = data.device.length ? deviceTravel([...data.res.items, ...data.device], travelRules, (id) => calTitles[id] ?? null, skipped).map((sug) => ({ sug, local: true })) : [];
+    const seen = new Set(server.map((x) => x.sug.pairKey));
+    return [...server, ...local.filter((x) => !seen.has(x.sug.pairKey))].sort((a, b) => Date.parse(a.sug.nextStartAt) - Date.parse(b.sug.nextStartAt));
+  }, [data, day, travelRules, calTitles, skipped]);
   const remindConflict = async (n: ConflictNote) => {
     const later = items?.find((i) => i.id === n.laterId);
     if (!n.suggestRemindAt) return;
@@ -198,6 +227,7 @@ export default function CalendarScreen() {
       scheduleZoneBadges();
       calChanged();
     } catch (e) {
+      setNoteOk(false);
       setNote(apiErrorText(e));
     }
   };
@@ -243,6 +273,7 @@ export default function CalendarScreen() {
       void loadMonth(ymOf(day), true);
     } catch (e) {
       setDone(it.id, it.done);
+      setNoteOk(false);
       setNote(apiErrorText(e));
     } finally {
       setBusy((b) => {
@@ -314,7 +345,7 @@ export default function CalendarScreen() {
         />
         {fixture && __DEV__ ? <Text style={[styles.note, { color: c.warn.fg }]}>{t("cal.sample")}</Text> : null}
         {note ? (
-          <Text testID="cal-note" style={[styles.note, { color: note === t("cal.conflict.made") ? c.sys.acc : c.bad.fg }]}>
+          <Text testID="cal-note" style={[styles.note, { color: noteOk || note === t("cal.conflict.made") ? c.sys.acc : c.bad.fg }]}>
             {note}
           </Text>
         ) : null}
@@ -341,6 +372,22 @@ export default function CalendarScreen() {
               </View>
             ) : (
               <View testID="cal-day-list">
+                {travelSugs.map(({ sug, local }) => (
+                  <TravelCard
+                    key={sug.pairKey}
+                    sug={sug}
+                    onConfirm={async (min, rem) => {
+                      const msg = local ? await confirmDeviceTravel(sug, min, rem, t, (k) => skipConflict(k)) : await confirmServerTravel(sug, min, rem, t);
+                      setNote(msg); // การ์ดหายเมื่อโหลดใหม่ ⇒ บอกผลไว้ใต้หัวจอ (มติ Q8 "บอกทุกครั้ง")
+                      setNoteOk(true);
+                      return msg;
+                    }}
+                    onDismiss={async () => {
+                      if (local) skipConflict(sug.pairKey);
+                      else await dismissServerTravel(sug);
+                    }}
+                  />
+                ))}
                 {allDay.length ? <Text style={[styles.sect, { color: c.textFaint }]}>{t("cal.sect.allDay")}</Text> : null}
                 {list(allDay, "cal-row")}
                 {timed.length ? <Text style={[styles.sect, { color: c.textFaint }]}>{t("cal.sect.timed")}</Text> : null}

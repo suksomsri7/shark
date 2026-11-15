@@ -8,7 +8,9 @@ import { Pressable, StyleSheet, View } from "react-native";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { Icon } from "@/src/components/airy";
-import { calApi, deepLinkRoute, deviceAgenda, onCalChanged, sortAgenda, type AgendaItem, type CalItemDto } from "@/src/api/calendar";
+import { calApi, deepLinkRoute, deviceAgenda, onCalChanged, sortAgenda, travelApi, type AgendaItem, type CalItemDto, type TravelSuggestion } from "@/src/api/calendar";
+import { confirmServerTravel, dismissServerTravel } from "@/src/lib/travel";
+import { TravelCard } from "./TravelCard";
 import { apiErrorText } from "@/src/api/client";
 import { dateNum, dayOfIso, dayOfMs, hhmm, monthName, shortDate, ymOf } from "@/src/lib/cal-date";
 import { useLang, useT } from "@/src/i18n";
@@ -18,7 +20,7 @@ import { useCalSheet } from "./AddCalSheet";
 import { repeatText } from "./RemindList";
 import { calCard } from "./style";
 
-export type RoomCalCardDto = { id: string; kind: "AGENDA" | "LIST"; fromDay: string; toDay: string; createdAt: string };
+export type RoomCalCardDto = { id: string; kind: "AGENDA" | "LIST" | "TRAVEL"; fromDay: string; toDay: string; createdAt: string; pairKey?: string };
 const MAX_ROWS = 8;
 
 function rangeText(from: string, to: string, lang: "th" | "en"): string {
@@ -27,7 +29,32 @@ function rangeText(from: string, to: string, lang: "th" | "en"): string {
   return `${shortDate(from, lang)} – ${shortDate(to, lang)}`;
 }
 
+/** Q8 (q8.png จอ 1 · สัญญา §16.5): การ์ดเผื่อเวลาเดินทางในห้อง — ข้อเสนอของผู้ดูเองจาก GET calendar/travel?day=fromDay · ผู้อื่นไม่ได้การ์ด · ไม่มีข้อเสนอแล้ว = ไม่แสดง */
+function RoomTravelCard({ card }: { card: RoomCalCardDto }) {
+  const t = useT();
+  const [sugs, setSugs] = useState<TravelSuggestion[] | null>(null);
+  useEffect(() => {
+    void travelApi
+      .forDay(card.fromDay)
+      .then((r) => setSugs(card.pairKey ? r.filter((x) => x.pairKey === card.pairKey) : r))
+      .catch(() => setSugs([]));
+  }, [card.fromDay, card.pairKey]);
+  if (!sugs?.length) return null;
+  return (
+    <View testID={`cal-card-${card.id}`}>
+      {sugs.map((s) => (
+        <TravelCard key={s.pairKey} sug={s} onConfirm={(m, r) => confirmServerTravel(s, m, r, t)} onDismiss={() => dismissServerTravel(s)} />
+      ))}
+    </View>
+  );
+}
+
 export function RoomCalCard({ card }: { card: RoomCalCardDto }) {
+  if (card.kind === "TRAVEL") return <RoomTravelCard card={card} />;
+  return <RoomAgendaListCard card={card} />;
+}
+
+function RoomAgendaListCard({ card }: { card: RoomCalCardDto }) {
   const { c } = useTheme();
   const t = useT();
   const lang = useLang();

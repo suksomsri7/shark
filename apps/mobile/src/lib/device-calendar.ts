@@ -138,6 +138,7 @@ export async function deviceEventsFor(from: string, to: string): Promise<AgendaI
           done: false,
           mine: true,
           colorKey: "device",
+          ref: { systemId: e.calendarId }, // Q8: ประเภทงาน "device:<calendarId>" (id ปฏิทินอยู่ในเครื่อง · ชื่อนัดไม่ออกจากเครื่อง)
         } satisfies AgendaItem;
       });
   } catch {

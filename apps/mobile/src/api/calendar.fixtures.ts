@@ -2,7 +2,7 @@
 // เนื้อหาตามภาพแบบที่อนุมัติ /root/mockups/secretary-calendar/cal-{1,2,3}.png (จอ 2/3/4/8/9/10) · วันยึด = "วันนี้" ของเครื่อง
 //   (QC ปักนาฬิกาที่ 16 พ.ย. 2569 08:05 ⇒ ตรงภาพ) · แก้ไข/ติ๊ก/ลบ/เพิ่ม ได้ในหน่วยความจำ (หายเมื่อเปิดแอปใหม่)
 // ไม่มีข้อมูลจริงของลูกค้า · ชื่อทั้งหมดเป็นตัวอย่างในภาพแบบ
-import type { AgendaItem, AgendaResult, CalItemBody, CalItemDto, CalItemPatch, ColorKey, ConflictNote, GoogleLinkDto, MonthRes, PrefsPut, PrefsRes, TodayRes } from "./calendar";
+import type { AgendaItem, AgendaResult, CalItemBody, CalItemDto, CalItemPatch, ColorKey, ConflictNote, GoogleLinkDto, MonthRes, PrefsPut, PrefsRes, TodayRes, TravelRule, TravelSuggestion } from "./calendar";
 import { ApiError } from "./client";
 import { addDays, dayOfIso, dayOfMs, dayStartMs, daysInMonth, isoAt, shortDate, weekdayOf, ymOf } from "@/src/lib/cal-date";
 
@@ -33,7 +33,7 @@ const GENERIC: Record<ColorKey, { title: string; sub: string; hour: number; allD
   device: { title: "นัดในเครื่อง", sub: "", hour: 12 },
 };
 
-type Store = { base: string; items: CalItemDto[]; doneShop: Set<string>; prefs: PrefsRes; google: GoogleLinkDto; seq: number };
+type Store = { base: string; items: CalItemDto[]; doneShop: Set<string>; prefs: PrefsRes; google: GoogleLinkDto; seq: number; rules: TravelRule[]; travelDone: Set<string> };
 let S: Store | null = null;
 
 function item(p: Partial<CalItemDto> & Pick<CalItemDto, "id" | "kind" | "title" | "startAt">): CalItemDto {
@@ -56,6 +56,13 @@ function store(): Store {
     base: d0,
     seq: 1,
     doneShop: new Set(),
+    travelDone: new Set(),
+    // Q8 ภาพ q8.png จอ 3 (สิ่งที่เลขาจำ)
+    rules: [
+      { typeKey: "event", label: "นัดส่วนตัวนอกร้าน", sub: null, minutes: 45 },
+      { typeKey: "booking", label: "นัดลูกค้า · บัตรคิว", sub: "นัดในร้าน", minutes: 0 },
+      { typeKey: "google:home", label: "นัดจาก Google · งานบ้าน", sub: null, minutes: 20 },
+    ],
     items: [
       item({
         id: "fx-call-ek", kind: "REMINDER", title: "โทรหาคุณเอก เรื่องมัดจำเรือ", startAt: isoAt(d0, 15), source: "CHAT", roomId: "fx-room",
@@ -192,6 +199,35 @@ function range(from: string, to: string): string[] {
   return out;
 }
 
+/** Q8 (§16 · q8.png): พรุ่งนี้ = propose (ประชุมธนาคาร หลังนัดสระเลิก 12:00 · เผื่อ 45 → 12:15) · มะรืน = ask (นัดคุณเอก 13:00 หลัง Open Water เลิก 12:00) */
+function travelFor(day: string, st: Store): TravelSuggestion[] {
+  const d1 = addDays(st.base, 1);
+  const d2 = addDays(st.base, 2);
+  const out: TravelSuggestion[] = [];
+  const bank = st.items.find((i) => i.id === "fx-bank" && i.status === "OPEN");
+  const rule = st.rules.find((r) => r.typeKey === "event");
+  const base = { options: [0, 15, 30, 45], gapMinutes: 60 };
+  if (day === d1 && bank && rule && rule.minutes > 0) {
+    const leaveAt = new Date(Date.parse(bank.startAt) - rule.minutes * 60_000).toISOString();
+    const hm = (iso: string) => new Date(Date.parse(iso) + 7 * 3600_000).toISOString().slice(11, 16);
+    out.push({
+      ...base, pairKey: "fx-travel-bank", mode: "propose", prevId: "booking:fx-b3", nextId: "event:fx-bank", typeKey: "event", typeLabel: "นัดส่วนตัวนอกร้าน",
+      prevEndAt: isoAt(d1, 12), nextStartAt: bank.startAt, minutes: rule.minutes, leaveAt,
+      title: `⏱ นัดส่วนตัวนอกร้าน — คุณเคยเผื่อ ${rule.minutes} นาที`,
+      sub: `${bank.title} ${hm(bank.startAt)} · นัดก่อนหน้าเลิก 12:00\nให้เตือนออกเดินทาง ${hm(leaveAt)} เหมือนเดิมไหมครับ?`,
+      badge: "จำจากครั้งก่อน",
+    });
+  }
+  if (day === d2) {
+    out.push({
+      ...base, pairKey: "fx-travel-ask", mode: "ask", prevId: "booking:fx-ow", nextId: "event:fx-ek", typeKey: "event", typeLabel: "นัดส่วนตัวนอกร้าน",
+      prevEndAt: isoAt(d2, 12), nextStartAt: isoAt(d2, 13), minutes: null, leaveAt: null,
+      title: "ต้องเผื่อเวลาเดินทางไหมครับ?", sub: "นัดก่อนหน้า: Open Water ที่สระ เลิก 12:00 → นัดนี้ 13:00", badge: null,
+    });
+  }
+  return out.filter((x) => !st.travelDone.has(x.pairKey));
+}
+
 function agenda(from: string, to: string): AgendaResult {
   const st = store();
   const items = range(from, to).flatMap((d) => [...shopRows(d, st), ...ownRows(d, st)]);
@@ -207,7 +243,7 @@ function agenda(from: string, to: string): AgendaResult {
       suggestRemindAt: isoAt(d1, 12, 15),
     });
   }
-  return { items, conflicts, notes: [] };
+  return { items, conflicts, notes: [], travel: range(from, to).flatMap((d) => travelFor(d, st)) };
 }
 
 const PRIORITY: ColorKey[] = ["remind", "personal", "booking", "crm", "kanban", "account", "hr", "dorm", "ticket", "google", "device"];
@@ -357,6 +393,40 @@ function route(method: string, sub: string, q: Q, body: unknown): unknown {
       if (it.status === "DRAFT") touch(it, { status: "OPEN" });
       return { item: it };
     }
+  }
+  if (method === "GET" && sub === "travel") return { day: qs("day"), suggestions: travelFor(qs("day"), st) };
+  if (method === "POST" && sub === "travel/dismiss") {
+    st.travelDone.add(String(b.pairKey));
+    return { ok: true };
+  }
+  if (method === "POST" && sub === "travel/confirm") {
+    const key = String(b.pairKey);
+    const sug = travelFor(String(b.day), st).find((x) => x.pairKey === key);
+    if (!sug) throw new FixtureError(404, "ไม่พบนัดคู่นี้แล้ว — ลองดึงปฏิทินใหม่");
+    const minutes = Math.max(0, Number(b.minutes) || 0);
+    if (b.remember) {
+      const r: TravelRule = { typeKey: sug.typeKey, label: sug.typeLabel, sub: null, minutes };
+      st.rules = [...st.rules.filter((x) => x.typeKey !== sug.typeKey), r];
+    }
+    st.travelDone.add(key);
+    let item: CalItemDto | null = null;
+    if (minutes > 0) {
+      item = create({ kind: "REMINDER", title: "ออกเดินทางไป นัด", startAt: new Date(Date.parse(sug.nextStartAt) - minutes * 60_000).toISOString() });
+    }
+    return { item, rule: b.remember ? st.rules.find((x) => x.typeKey === sug.typeKey) : null };
+  }
+  if (method === "GET" && sub === "travel/rules") return { rules: st.rules };
+  const rk = sub.match(/^travel\/rules\/(.+)$/);
+  if (method === "PUT" && rk) {
+    const typeKey = decodeURIComponent(rk[1]);
+    const prev = st.rules.find((x) => x.typeKey === typeKey);
+    const r = { typeKey, label: String(b.label ?? prev?.label ?? typeKey), sub: prev?.sub ?? null, minutes: Math.max(0, Number(b.minutes) || 0) };
+    st.rules = st.rules.some((x) => x.typeKey === r.typeKey) ? st.rules.map((x) => (x.typeKey === r.typeKey ? r : x)) : [...st.rules, r];
+    return { rule: r };
+  }
+  if (method === "DELETE" && rk) {
+    st.rules = st.rules.filter((x) => x.typeKey !== decodeURIComponent(rk[1]));
+    return { ok: true };
   }
   if (method === "GET" && sub === "prefs") return st.prefs;
   if (method === "PUT" && sub === "prefs") {

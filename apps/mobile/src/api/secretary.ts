@@ -627,7 +627,7 @@ export type RoomDetail = {
   /** CAL2.7 (สัญญา 32 §8.1 · R-CAL-20): เตือน/นัดที่ผู้เรียกสั่งในห้องนี้ (เซิร์ฟเวอร์ส่งเฉพาะของผู้เรียก) · เซิร์ฟเวอร์เก่า = [] */
   reminders: CalItemDto[];
   /** B1 (cal-review-b · สัญญา §15.2): การ์ดปฏิทินของผู้เรียกในห้องนี้ (เลขาไม่ทวนรายการส่วนตัวในข้อความ · แอปดึงรายละเอียดเอง) · คนอื่นในห้อง = [] */
-  calendarCards: { id: string; kind: "AGENDA" | "LIST"; fromDay: string; toDay: string; createdAt: string }[];
+  calendarCards: { id: string; kind: "AGENDA" | "LIST" | "TRAVEL"; fromDay: string; toDay: string; createdAt: string; pairKey?: string }[];
 };
 export function normalizeRoomDetail(v: unknown): RoomDetail {
   const o = rec(rec(v).room ?? v);
@@ -651,7 +651,14 @@ export function normalizeRoomDetail(v: unknown): RoomDetail {
     calendarCards: (Array.isArray(o.calendarCards) ? o.calendarCards : [])
       .map((x) => rec(x))
       .filter((x) => str(x.id) && /^\d{4}-\d{2}-\d{2}$/.test(str(x.fromDay)))
-      .map((x) => ({ id: str(x.id), kind: str(x.kind) === "LIST" ? ("LIST" as const) : ("AGENDA" as const), fromDay: str(x.fromDay), toDay: /^\d{4}-\d{2}-\d{2}$/.test(str(x.toDay)) ? str(x.toDay) : str(x.fromDay), createdAt: isoOf(x.createdAt) })),
+      .map((x) => ({
+        id: str(x.id),
+        kind: str(x.kind) === "LIST" ? ("LIST" as const) : str(x.kind) === "TRAVEL" ? ("TRAVEL" as const) : ("AGENDA" as const),
+        fromDay: str(x.fromDay),
+        toDay: /^\d{4}-\d{2}-\d{2}$/.test(str(x.toDay)) ? str(x.toDay) : str(x.fromDay),
+        createdAt: isoOf(x.createdAt),
+        ...(str(x.pairKey) ? { pairKey: str(x.pairKey) } : {}),
+      })),
     reminders: (Array.isArray(o.reminders) ? o.reminders : []).filter((x): x is CalItemDto => !!x && typeof rec(x).id === "string" && typeof rec(x).title === "string" && typeof rec(x).startAt === "string"),
   };
 }
