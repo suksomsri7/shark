@@ -26,6 +26,7 @@ import { IMPORT_OPS } from "./ops/import";
 import { SETTINGS_WRITE_OPS } from "./ops/settings-write";
 import { WEBHOOKS_OPS } from "./ops/webhooks";
 import { TAX_T5_OPS } from "./ops/tax-t5"; // ACC T5 (เลน 2) ◂
+import { ETAX_OPS } from "./ops/etax"; // ACC T5.4 (เลน 2) ◂
 
 export * from "./op";
 
@@ -50,6 +51,7 @@ export const ACCOUNT_OPS: ApiOp[] = [
   ...SETTINGS_WRITE_OPS,
   ...WEBHOOKS_OPS,
   ...TAX_T5_OPS,
+  ...ETAX_OPS,
 ];
 
 // ── การจับคู่ path (ตรรกะจริงอยู่แกนกลาง `src/lib/api/dispatch.ts` ตั้งแต่ K1.15) ──────────

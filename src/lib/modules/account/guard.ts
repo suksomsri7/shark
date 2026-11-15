@@ -168,6 +168,7 @@ export const ACCOUNT_PAGE_PERMISSIONS: Record<string, string> = {
   "reports/cash-book/page.tsx": "account.report.view",
   "reports/tax-add-back/page.tsx": "account.report.view",
   "aging/bad-debt/page.tsx": "account.report.view",
+  "etax-file/[fileId]/route.ts": "account.doc.view", // ACC T5.4 ▸ ดาวน์โหลดไฟล์ e-Tax ที่เก็บไว้ ◂
   // WO 2.3: "ดูภาพรวม" รายรับ/รายจ่าย (§6) — อ่านอย่างเดียว เหมือน page.tsx หลัก
   "overview/expense/page.tsx": "account.doc.view",
   "overview/revenue/page.tsx": "account.doc.view",

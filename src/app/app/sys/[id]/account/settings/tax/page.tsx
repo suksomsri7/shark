@@ -3,6 +3,7 @@ import { bookTaxView, upcomingDeadlines } from "@/lib/modules/account/legal-valu
 import { saveLegalRowsAction, saveWhtSettingsAction } from "@/lib/modules/account/tax-settings-actions";
 import { SettingsNav } from "@/components/account-v2/SettingsNav";
 import { LegalValuesPanel } from "@/components/account-v2/LegalValuesPanel";
+import { EtaxSettingsCard } from "@/components/account-v2/EtaxTsBlocks"; // ACC T5.4 ◂
 
 // หน้า "ตั้งค่า › ข้อมูลกิจการ › อัตราภาษีและกำหนดยื่น" (ACC T0.2)
 // ตารางค่ากฎหมายมีวันที่มีผล: แถวของระบบ (จาก skill shark-thai-law · ที่มา + ป้าย + วันที่ตรวจ) + แถวที่ร้านเพิ่ม/ทับ
@@ -24,6 +25,9 @@ export default async function AccountTaxSettingsPage({ params }: { params: Promi
         <SettingsNav base={base} activeGroup="org" activeSub="tax" />
         <div className="min-w-0 flex-1">
           <LegalValuesPanel systemId={systemId} orgSettingsHref={`${base}/settings`} view={view} save={saveLegalRowsAction} saveWht={saveWhtSettingsAction} deadlines={deadlines} calendarHref={`${base}/tax/calendar`} />
+          <div className="mt-4">
+            <EtaxSettingsCard tenantId={tenantId} systemId={systemId} />
+          </div>
         </div>
       </div>
     </div>

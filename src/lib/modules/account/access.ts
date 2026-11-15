@@ -87,6 +87,12 @@ const AUDIT_ACTION_LABELS: Record<string, string> = {
   "account.doc.print.set": "พิมพ์ชุดต้นฉบับ + สำเนา",
   "account.doc.print.substitute": "ออกใบแทน",
   "account.doc.print.original_reprint": "พิมพ์ต้นฉบับซ้ำ (ยืนยันคำเตือนแล้ว)",
+  // ACC T5.4 ▸ e-Tax แบบประทับเวลา · T5c ▸ หนี้สูญได้รับคืน ◂
+  "account.etax.ts.send": "ส่ง e-Tax (ประทับเวลา)",
+  "account.etax.ts.resend_stamped": "ส่งไฟล์ประทับเวลาซ้ำให้ผู้ซื้อ",
+  "account.etax.ts.stamped": "บันทึกไฟล์ที่ระบบประทับเวลาส่งกลับ",
+  "account.bad-debt.recover": "บันทึกหนี้สูญได้รับคืน (รายได้)",
+  "account.bad-debt.recover.void": "ยกเลิกรายการหนี้สูญได้รับคืน",
   // T0.4 — ผู้ใช้กดยืนยันผ่านคำเตือนกฎหมาย (รหัสคำเตือนอยู่ใน after.codes)
   "legal.warning.ack": "ยืนยันทำต่อหลังเห็นคำเตือนตามกฎหมาย",
   "account.doc.approve": "อนุมัติเอกสารบัญชี",
