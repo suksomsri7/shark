@@ -218,6 +218,11 @@ model AccountDocument {
   whtCertReceivedNote String?
   /// ACC T2.7 — ประวัติการพิมพ์ (ต้นฉบับ/สำเนา/ใบแทน)
   prints        AccountDocumentPrint[]
+  /// ACC T5.4 — e-Tax Invoice by Time Stamp: ความพยายามส่ง + ไฟล์ที่ส่ง/ไฟล์ประทับเวลา (เพิ่มอย่างเดียว)
+  etaxSubmissions AccountEtaxSubmission[]
+  etaxFiles       AccountEtaxFile[]
+  /// ACC T5c — หนี้สูญได้รับคืน (ลงรายได้ · อ้างใบที่ตัดหนี้สูญ)
+  badDebtRecoveries AccountBadDebtRecovery[]
 
   lines         AccountDocumentLine[]
   payments      AccountDocumentPayment[]
@@ -811,4 +816,96 @@ model AccountDocumentPrint {
 
   @@unique([documentId, substituteSeq])
   @@index([tenantId, systemId, documentId, createdAt])
+}
+
+// ───────────── ACC T5.4 (เลน 2) ▸ e-Tax Invoice by Time Stamp ─────────────
+// design note: ledger/wo-notes/T5.4.md · 1 แถว = อีเมล 1 ฉบับ (ใบกำกับ/ใบเพิ่มหนี้/ใบลดหนี้ 1 ใบ) · ส่งซ้ำ = แถวใหม่ (attemptNo ถัดไป)
+// status: QUEUED · SENT (รอไฟล์ประทับเวลา) · STAMPED (ร้านอัปโหลดไฟล์ที่ระบบประทับเวลาส่งกลับ) · FAILED (+ error)
+model AccountEtaxSubmission {
+  id                String          @id @default(cuid())
+  tenantId          String
+  systemId          String
+  documentId        String
+  document          AccountDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  attemptNo         Int
+  /// TIME_STAMP (ไม่มีผู้ให้บริการ) · PROVIDER (จุดต่อขยาย — ยังไม่เปิด)
+  scheme            String          @default("TIME_STAMP")
+  /// SEND · RESEND · RESEND_STAMPED (ประกาศ ข้อ 7: ผู้ซื้อทำไฟล์หาย = ส่งไฟล์ที่ประทับเวลาแล้วซ้ำ ไม่ออกใบแทน)
+  mode              String          @default("SEND")
+  status            String
+  /// INV · DBN · CRN · INV_REPLACE (ประกาศ ข้อ 9)
+  subjectKind       String
+  fromAddress       String
+  toAddress         String
+  ccAddress         String?
+  subject           String
+  bodyText          String
+  attachmentName    String
+  attachmentBytes   Int
+  pdfSha256         String
+  pdfFileId         String?
+  /// ผลตรวจรูปแบบไฟล์ที่ระบบทำเองได้ (ไม่ใช่ผลของตัวตรวจ PDF/A) — ข้อความ
+  pdfConformance    String
+  /// CAPTURE (ไม่ส่งจริง — นอก production) · NONE (ยังไม่มีช่องทางส่งจากอีเมลที่ร้านแจ้ง) · RESEND
+  transport         String
+  providerMessageId String?
+  error             String?
+  warnings          Json            @default("[]")
+  stampedFileId     String?
+  stampedSha256     String?
+  stampedAt         DateTime?
+  stampedById       String?
+  idempotencyKey    String?         @unique
+  createdById       String?
+  actorType         String          @default("USER")
+  createdAt         DateTime        @default(now())
+  sentAt            DateTime?
+  updatedAt         DateTime        @updatedAt
+
+  @@unique([documentId, attemptNo])
+  /// ชื่อดัชนีเกิน 63 ตัวอักษร — Postgres ตัดเหลือชื่อนี้ (migration 20270106000000)
+  @@index([tenantId, systemId, documentId, createdAt], map: "AccountEtaxSubmission_tenantId_systemId_documentId_createdAt_id")
+}
+
+/// ACC T5.4 ▸ ไฟล์ที่ส่ง (SENT) / ไฟล์ที่ระบบประทับเวลาส่งกลับ (STAMPED) — ไบต์จริง + sha256 · แก้ไม่ได้ (trigger ในฐาน)
+model AccountEtaxFile {
+  id           String          @id @default(cuid())
+  tenantId     String
+  systemId     String
+  documentId   String
+  document     AccountDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  submissionId String?
+  /// SENT · STAMPED
+  role         String
+  fileName     String
+  mimeType     String
+  sizeBytes    Int
+  sha256       String
+  bytes        Bytes
+  createdById  String?
+  createdAt    DateTime        @default(now())
+
+  @@index([tenantId, systemId, documentId])
+}
+
+/// ACC T5c ▸ หนี้สูญได้รับคืน — รายได้ (ม.65 ตรี / กฎกระทรวง 186: ได้รับคืนภายหลังเป็นรายได้) · ยกเลิก = กลับรายการ (ไม่แก้แถวบัญชี)
+model AccountBadDebtRecovery {
+  id               String            @id @default(cuid())
+  tenantId         String
+  systemId         String
+  documentId       String
+  document         AccountDocument   @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  date             DateTime
+  amount           Int
+  channel          AccountPayChannel
+  financeAccountId String?
+  note             String?
+  entryId          String?
+  voidedAt         DateTime?
+  voidReason       String?
+  createdById      String?
+  idempotencyKey   String?           @unique
+  createdAt        DateTime          @default(now())
+
+  @@index([tenantId, systemId, documentId])
 }

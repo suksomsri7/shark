@@ -182,6 +182,9 @@ export const BOOK_RULES = [
   "STAMP_LEASE_PER_1000",
   "STAMP_E_PAY_DAYS",
   "ANNUAL_FILING_REMIND_DAYS",
+  // ACC T5c (เลน 2) ▸ ค่าเช่ารถยนต์นั่งส่วนเกิน (ม.65 ตรี (20) · พ.ร.ฎ.315) — ตัวช่วยในรายงานบวกกลับ ◂
+  "CAR_RENT_MONTHLY_CAP",
+  "CAR_RENT_DAILY_CAP",
 ] as const;
 export type BookRule = (typeof BOOK_RULES)[number];
 /** หน่วยของค่าในแถว: วัน · วันทำการ · เดือน · basis point ต่อปี · รอบบัญชี · สตางค์ */
@@ -210,6 +213,8 @@ export const BOOK_RULE_META: Record<BookRule, { labelTh: string; unit: BookRuleU
   STAMP_LEASE_PER_1000: { labelTh: "อากรแสตมป์เช่าที่ดิน/โรงเรือน ต่อค่าเช่าทุก 1,000 บาทหรือเศษ", unit: "SATANG", min: 1, max: 1_000_000 },
   STAMP_E_PAY_DAYS: { labelTh: "ตราสารอิเล็กทรอนิกส์: ชำระอากรภายใน (วันนับแต่วันถัดจากวันกระทำตราสาร)", unit: "DAYS", min: 1, max: 365 },
   ANNUAL_FILING_REMIND_DAYS: { labelTh: "เตือนแบบรายปี (ภ.ง.ด.50/51/90/94 · ยื่นงบ) ล่วงหน้า", unit: "DAYS", min: 1, max: 90 },
+  CAR_RENT_MONTHLY_CAP: { labelTh: "ค่าเช่ารถยนต์นั่ง ≤10 ที่นั่ง หักได้ไม่เกิน (ต่อคันต่อเดือน รวม VAT)", unit: "SATANG", min: 1, max: 100_000_000 },
+  CAR_RENT_DAILY_CAP: { labelTh: "ค่าเช่ารถยนต์นั่ง ≤10 ที่นั่ง หักได้ไม่เกิน (ต่อคันต่อวัน รวม VAT)", unit: "SATANG", min: 1, max: 10_000_000 },
 };
 export const isBookRule = (v: unknown): v is BookRule => typeof v === "string" && (BOOK_RULES as readonly string[]).includes(v);
 /** แถวตาราง "สมุดบัญชี" — value ตามหน่วยของกฎ (BOOK_RULE_META) */
@@ -554,8 +559,35 @@ export const SYSTEM_BOOK_ROWS: readonly BookRuleRow[] = [
   br("sys-stamp-hire", "STAMP_HIRE_PER_1000", 100, `references/domain-accounting-books.md §ง5 — บัญชีอัตราอากรแสตมป์ ลักษณะ 4 จ้างทำของ: 1 บาทต่อ 1,000 บาทหรือเศษของสินจ้าง · ผู้รับจ้างเสีย (https://www.rd.go.th/6162.html)`),
   br("sys-stamp-lease", "STAMP_LEASE_PER_1000", 100, `references/domain-accounting-books.md §ง5 — บัญชีอัตราอากรแสตมป์ ลักษณะ 1 เช่าที่ดิน/โรงเรือน: 1 บาทต่อ 1,000 บาทหรือเศษของค่าเช่าตลอดอายุสัญญา · ผู้ให้เช่าเสีย`),
   br("sys-stamp-e-days", "STAMP_E_PAY_DAYS", 15, `references/domain-accounting-books.md §ง5 — ประกาศอธิบดีฯ เกี่ยวกับอากรแสตมป์ ฉบับที่ 66 แก้โดยฉบับที่ 68: ตราสารอิเล็กทรอนิกส์ชำระ (อ.ส.9) "ก่อนกระทำตราสาร หรือภายในสิบห้าวัน นับแต่วันถัดจากวันกระทำตราสาร"`),
+  br("sys-car-rent-month", "CAR_RENT_MONTHLY_CAP", 3_600_000, `references/domain-business-income-tax.md §ก4 (20) — ม.65 ตรี (20) + พ.ร.ฎ. (ฉบับที่ 315): ค่าเช่ารถยนต์นั่ง/รถยนต์โดยสารไม่เกิน 10 ที่นั่ง ส่วนที่เกิน 36,000 บาทต่อคันต่อเดือน (รวมภาษีมูลค่าเพิ่ม) (https://www.rd.go.th/2796.html)`),
+  br("sys-car-rent-day", "CAR_RENT_DAILY_CAP", 120_000, `references/domain-business-income-tax.md §ก4 (20) — พ.ร.ฎ. (ฉบับที่ 315): เช่าเป็นรายวัน ส่วนที่เกิน 1,200 บาทต่อคันต่อวัน (รวมภาษีมูลค่าเพิ่ม)`),
   { id: "sys-annual-remind", rule: "ANNUAL_FILING_REMIND_DAYS", value: 14, from: null, to: null, source: "ค่าเริ่มต้นของระบบ — skill ไม่กำหนดวันเตือนล่วงหน้าของแบบรายปี (ภ.พ.30/ภ.ง.ด. รายเดือนเตือนล่วงหน้า 5 วันตามเดิม)", tag: "S", checkedAt: "2026-11-13", note: "ร้านปรับได้" },
 ];
+
+// ═══════════════════ ACC T5.4 (เลน 2) ▸ e-Tax Invoice by Time Stamp ═══════════════════
+// ประกาศกรมสรรพากร ลว. 12 พ.ค. 2566 (ใช้ 1 มิ.ย. 2566) + คู่มือผู้ประกอบการของกรมสรรพากร 1 มิ.ย. 2566 — design note ledger/wo-notes/T5.4.md
+// ค่าเป็นข้อความ/ตัวเลข (ไม่ใช่ตารางตามวันที่ของสมุด) · ร้านทับได้เฉพาะ "สำเนาถึง" และ "รูปวันที่ในหัวเรื่อง" (ค่าตั้ง account.etax.*)
+const ETAX_TS_NOTICE = "ประกาศกรมสรรพากร เรื่อง การจัดทำ ส่ง หรือเก็บรักษา ใบกำกับภาษี โดยการประทับรับรองเวลา (Time Stamp) ลงวันที่ 12 พ.ค. 2566 (https://www.rd.go.th/fileadmin/user_upload/kormor/newlaw/pa_time_stampA.pdf)";
+const ETAX_TS_MANUAL = "คู่มือผู้ประกอบการในการจัดทำใบกำกับภาษี โดยการประทับรับรองเวลา (Time Stamp) กรมสรรพากร 1 มิ.ย. 2566 (https://www.rd.go.th/fileadmin/user_upload/eTax/manual_time_stamp_010666.pdf)";
+export const ETAX_TS_KEYS = ["ETAX_TS_CC_ADDRESS", "ETAX_TS_MAX_BYTES", "ETAX_TS_TO_MAX", "ETAX_TS_DOCS_PER_MAIL", "ETAX_TS_FILE_FORMAT", "ETAX_TS_SUBJECT_DATE", "ETAX_TS_VALIDATION_URL"] as const;
+export type EtaxTsKey = (typeof ETAX_TS_KEYS)[number];
+export type EtaxTsRow = { id: string; key: EtaxTsKey; labelTh: string; value: string | number; source: string; tag: LegalTag; checkedAt: Ymd; note?: string };
+export const SYSTEM_ETAX_TS_ROWS: readonly EtaxTsRow[] = [
+  { id: "sys-etax-ts-cc", key: "ETAX_TS_CC_ADDRESS", labelTh: "อีเมลของระบบประทับรับรองเวลา (ใส่ในช่องสำเนาถึง)", value: "csemail@etax.teda.th", source: `${ETAX_TS_MANUAL} ข้อ 1.3(5) และ 5.2 ข้อ 4 · ${ETAX_TS_NOTICE} ข้อ 5(2) ให้ส่งถึงผู้ซื้อและระบบประทับรับรองเวลา "ในคราวเดียวกัน"`, tag: "V", checkedAt: "2026-11-12", note: "ตัวประกาศไม่ระบุที่อยู่ — ที่อยู่มาจากคู่มือ" },
+  { id: "sys-etax-ts-size", key: "ETAX_TS_MAX_BYTES", labelTh: "ขนาดไฟล์ใบกำกับไม่เกิน (ไบต์)", value: 3_000_000, source: `${ETAX_TS_MANUAL} ข้อ 1.3(3) และ 5.2 ข้อ 6: "ไม่เกิน 3 เมกะไบต์ (3 MB)"`, tag: "V", checkedAt: "2026-11-13", note: "คู่มือไม่นิยาม 1 MB = กี่ไบต์ — ระบบใช้ 3,000,000 ไบต์ (เข้มกว่า)" },
+  { id: "sys-etax-ts-to", key: "ETAX_TS_TO_MAX", labelTh: "ผู้รับในช่อง \"ถึง\" (ผู้ซื้อ) ได้ไม่เกิน", value: 1, source: `${ETAX_TS_MANUAL} ข้อ 1.3(5) และ 5.2 ข้อ 3: "ระบุได้ 1 ที่อยู่"`, tag: "V", checkedAt: "2026-11-12" },
+  { id: "sys-etax-ts-per-mail", key: "ETAX_TS_DOCS_PER_MAIL", labelTh: "ใบกำกับต่ออีเมล 1 ฉบับ (แนบ 1 ไฟล์)", value: 1, source: `${ETAX_TS_MANUAL} ข้อ 1.3(2)(6) และ 5.2 ข้อ 6`, tag: "V", checkedAt: "2026-11-12" },
+  { id: "sys-etax-ts-format", key: "ETAX_TS_FILE_FORMAT", labelTh: "รูปแบบไฟล์ (ไม่เข้ารหัส ไม่ใส่รหัสผ่าน)", value: "PDF/A-3", source: `${ETAX_TS_MANUAL} ข้อ 1.3(1)(4) และ 5.1 · รายการในไฟล์ตาม ม.86/4 (ใบเพิ่มหนี้ ม.86/9 · ใบลดหนี้ ม.86/10) — ${ETAX_TS_NOTICE} ข้อ 5(1) ข้อ 8`, tag: "V", checkedAt: "2026-11-13", note: "\"รูปแบบ ขนาด และประเภทของข้อมูลที่ประกาศบนเว็บไซต์\" ของกรมฯ ยังไม่ได้เปิดอ่าน" },
+  { id: "sys-etax-ts-subject-date", key: "ETAX_TS_SUBJECT_DATE", labelTh: "รูปวันที่ในหัวเรื่องอีเมล", value: "DDMMYYYY_BE", source: `${ETAX_TS_NOTICE} ข้อ 9 ("[วันเดือนปีที่ออกใบกำกับภาษี][INV][เลขที่ใบกำกับภาษี]") · ตัวอย่างในคู่มือข้อ 5.2 ข้อ 5: [12012560][INV][INV0001]`, tag: "V", checkedAt: "2026-11-12", note: "รูปวัน-เดือน-ปี พ.ศ. มาจากตัวอย่างในคู่มือ — ตัวประกาศไม่กำหนดรูป" },
+  { id: "sys-etax-ts-validate", key: "ETAX_TS_VALIDATION_URL", labelTh: "ตรวจตราประทับเวลาในไฟล์", value: "https://validation.teda.th", source: `${ETAX_TS_MANUAL} ข้อ 1.5 และ 6.2`, tag: "V", checkedAt: "2026-11-12", note: "ร้านเปิดตรวจเอง — ระบบไม่เรียกเว็บไซต์นี้" },
+];
+export const etaxTsRow = (key: EtaxTsKey): EtaxTsRow => SYSTEM_ETAX_TS_ROWS.find((r) => r.key === key)!;
+export const ETAX_TS_SUBJECT_DATE_FORMATS = ["DDMMYYYY_BE", "DDMMYYYY_CE"] as const;
+export type EtaxTsSubjectDateFormat = (typeof ETAX_TS_SUBJECT_DATE_FORMATS)[number];
+export const ETAX_TS_SUBJECT_DATE_LABEL_TH: Record<EtaxTsSubjectDateFormat, string> = { DDMMYYYY_BE: "วันเดือนปี พ.ศ. (เช่น 12012560 — ตามตัวอย่างในคู่มือ)", DDMMYYYY_CE: "วันเดือนปี ค.ศ. (เช่น 12012017)" };
+export const ETAX_TS_ELIGIBILITY = ["UNDECLARED", "LISTED"] as const;
+export type EtaxTsEligibility = (typeof ETAX_TS_ELIGIBILITY)[number];
+export const ETAX_TS_ELIGIBILITY_LABEL_TH: Record<EtaxTsEligibility, string> = { UNDECLARED: "ยังไม่ได้ยืนยัน", LISTED: "ร้านยืนยันแล้ว: ยื่นแบบ ก.อ.01 ได้รับประกาศรายชื่อ และแจ้งอีเมลที่ใช้ส่งกับกรมสรรพากรแล้ว" };
 
 export const SYSTEM_ROWS: { [K in LegalTableKind]: readonly LegalRowOf<K>[] } = {
   vat: SYSTEM_VAT_ROWS,

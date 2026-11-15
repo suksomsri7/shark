@@ -29,6 +29,10 @@ import {
   WHT_GROSS_UP_FORMULA_LABEL_TH,
   BOOK_RULES,
   BOOK_RULE_META,
+  ETAX_TS_ELIGIBILITY,
+  ETAX_TS_ELIGIBILITY_LABEL_TH,
+  ETAX_TS_SUBJECT_DATE_FORMATS,
+  ETAX_TS_SUBJECT_DATE_LABEL_TH,
 } from "../legal/th-tax-2569";
 
 const EDIT = "account.settings.manage";
@@ -216,9 +220,63 @@ const DEFS: SettingDef[] = [
     defaults: { _fallback: "GROSS_UP_ONE_STEP" },
     chain: CHAIN, editPermission: EDIT,
   },
+  // ── ACC T5c (เลน 2) ▸ วันประชุมใหญ่อนุมัติงบ (บริษัท) — ปฏิทินคำนวณวันยื่นงบจากแถวตาราง FS_COMPANY ◂
+  {
+    key: "account.entity.statementMeetings", domain: "account", group: "entity", type: "table", labelTh: "วันประชุมใหญ่ผู้ถือหุ้นที่อนุมัติงบ",
+    helpTh: "บริษัทยื่นงบการเงินภายใน 1 เดือนนับแต่วันที่ที่ประชุมใหญ่อนุมัติงบ — ใส่วันประชุมของแต่ละรอบบัญชีให้ปฏิทินภาษีคำนวณวันยื่นงบ (ไม่ใส่ = แสดงเป็นข้อความกำหนด)",
+    schema: z.array(z.object({ fyEnd: YMD, meetingDate: YMD }).strict()).max(40),
+    defaults: { _fallback: [] },
+    chain: CHAIN, editPermission: EDIT,
+    tableTh: { item: { kind: "object", labelTh: "รอบบัญชี", fields: { fyEnd: { kind: "text", labelTh: "วันสิ้นรอบบัญชี" }, meetingDate: { kind: "text", labelTh: "วันประชุมใหญ่" } } }, emptyTh: "ยังไม่ได้ใส่วันประชุม" },
+  },
+  // ── ACC T5.4 (เลน 2) ▸ e-Tax Invoice by Time Stamp (ค่าคงที่ของระบบประทับเวลาอยู่ใน SYSTEM_ETAX_TS_ROWS) ◂
+  {
+    key: "account.etax.tsEnabled", domain: "account", group: "etax", type: "bool", labelTh: "ส่ง e-Tax แบบประทับเวลา (Time Stamp)",
+    helpTh: "เปิดเมื่อร้านได้รับประกาศรายชื่อเป็นผู้มีสิทธิจัดทำใบกำกับภาษีโดยการประทับรับรองเวลาแล้ว — ปุ่มส่งจะขึ้นบนใบกำกับภาษี ใบเพิ่มหนี้ ใบลดหนี้",
+    schema: z.boolean(),
+    defaults: { _fallback: false },
+    chain: CHAIN, editPermission: EDIT,
+  },
+  {
+    key: "account.etax.tsAutoOnIssue", domain: "account", group: "etax", type: "bool", labelTh: "ส่งอัตโนมัติเมื่อออกเอกสาร",
+    helpTh: "ส่งทันทีหลังออกใบที่มีอีเมลผู้ซื้อ (เฉพาะเมื่อร้านยืนยันสิทธิแล้ว)",
+    schema: z.boolean(),
+    defaults: { _fallback: false },
+    chain: CHAIN, editPermission: EDIT,
+  },
+  {
+    key: "account.etax.tsSenderEmail", domain: "account", group: "etax", type: "text", labelTh: "อีเมลที่ร้านแจ้งกรมสรรพากรไว้สำหรับส่ง",
+    helpTh: "ต้องเป็นอีเมลเดียวกับที่แจ้งในระบบของกรมสรรพากร — อีเมลอื่นจะไม่ได้รับการประทับเวลา",
+    schema: z.string().trim().max(200).refine((v) => v === "" || /^[^\s<>@,;"]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(v), "รูปแบบอีเมลไม่ถูกต้อง"),
+    defaults: { _fallback: "" },
+    chain: CHAIN, editPermission: EDIT,
+  },
+  {
+    key: "account.etax.tsCcAddress", domain: "account", group: "etax", type: "text", labelTh: "อีเมลระบบประทับเวลา (สำเนาถึง)",
+    helpTh: "ว่าง = ใช้ค่าในตารางค่ากฎหมาย (csemail@etax.teda.th ตามคู่มือกรมสรรพากร) — เปลี่ยนเมื่อกรมสรรพากรประกาศที่อยู่ใหม่",
+    schema: z.string().trim().max(200).refine((v) => v === "" || /^[^\s<>@,;"]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$/.test(v), "รูปแบบอีเมลไม่ถูกต้อง"),
+    defaults: { _fallback: "" },
+    chain: CHAIN, editPermission: EDIT,
+  },
+  {
+    key: "account.etax.tsSubjectDateFormat", domain: "account", group: "etax", type: "enum", labelTh: "รูปวันที่ในหัวเรื่องอีเมล",
+    helpTh: "ตัวประกาศเขียนว่า [วันเดือนปี] — ตัวอย่างในคู่มือใช้ปี พ.ศ.",
+    schema: z.enum(ETAX_TS_SUBJECT_DATE_FORMATS),
+    enumLabelsTh: ETAX_TS_SUBJECT_DATE_LABEL_TH,
+    defaults: { _fallback: "DDMMYYYY_BE" },
+    chain: CHAIN, editPermission: EDIT,
+  },
+  {
+    key: "account.etax.tsEligibility", domain: "account", group: "etax", type: "enum", labelTh: "สิทธิจัดทำใบกำกับภาษีโดยการประทับเวลา",
+    helpTh: "ร้านยืนยันเอง — ระบบตรวจรายชื่อกับกรมสรรพากรไม่ได้ · ยังไม่ยืนยัน = ส่งได้หลังกดยืนยันคำเตือนทุกครั้ง และไม่ส่งอัตโนมัติ",
+    schema: z.enum(ETAX_TS_ELIGIBILITY),
+    enumLabelsTh: ETAX_TS_ELIGIBILITY_LABEL_TH,
+    defaults: { _fallback: "UNDECLARED" },
+    chain: CHAIN, editPermission: EDIT,
+  },
 ];
 
-defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน", wht: "หัก ณ ที่จ่าย" } });
+defineSettings("account", DEFS, { groupLabelsTh: { entity: "ข้อมูลกิจการ", legal: "ตารางค่ากฎหมาย", report: "รายงาน", wht: "หัก ณ ที่จ่าย", etax: "e-Tax (ประทับเวลา)" } });
 
 export const ACCOUNT_SETTING_KEYS = {
   entityKind: "account.entity.kind",
@@ -231,4 +289,11 @@ export const ACCOUNT_SETTING_KEYS = {
   ewhtEnabled: "account.wht.ewhtEnabled",
   grossUpAlways: "account.wht.grossUpAlways",
   grossUpOnce: "account.wht.grossUpOnce",
+  statementMeetings: "account.entity.statementMeetings",
+  etaxTsEnabled: "account.etax.tsEnabled",
+  etaxTsAutoOnIssue: "account.etax.tsAutoOnIssue",
+  etaxTsSenderEmail: "account.etax.tsSenderEmail",
+  etaxTsCcAddress: "account.etax.tsCcAddress",
+  etaxTsSubjectDateFormat: "account.etax.tsSubjectDateFormat",
+  etaxTsEligibility: "account.etax.tsEligibility",
 } as const;
