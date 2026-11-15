@@ -135,3 +135,8 @@ Bulk slips PDF · per-line formula text + POS bill numbers · calc history · vs
 3. Engine-1 shops: history tab hidden in the nav (run view already lists runs); explicit `?view=history` still renders.
 4. Nav gates (existing functions, no new gate): run always · hours `canReadWorkEntries ∨ canViewPayroll` · adjust `canViewPayroll ∨ canRequestStockCharge ∨ canSeeStockCharges` · profiles, history `canViewPayroll` · docs `canUseBankFiles ∨ canUseFilings ∨ canUseSalaryCerts` · ytd `canUseFilings`. Branch-limited payroll viewer ⇒ run, hours, adjust, profiles, history.
 - Oracle: W2 (GREEN control) pins section roots per viewer (OWNER / branch-limited payroll / MANAGER) recorded from the base page; after the build the union over that viewer's nav views must equal the base set.
+
+## CONTROLLER RULINGS r3 (14 Nov) — run table "add" vs OT
+- Mockup: "เพิ่ม" excludes OT; OT has its own column. Where the OT column is visible (≥ 1280, `xl` per §6 column plan) the add cell shows additions EXCLUDING OT (server-side: stored additions total − stored OT line amounts; no client arithmetic). Where the OT column is hidden the cell shows the stored additions total + a small "รวม OT" hint (message key th/en).
+- Row arithmetic holds in both: wage + add (+ OT) − deductions − SSO − WHT = net; totals row follows the same rule (branch-limited viewer: in-scope rows only).
+- Oracle: T1 (RED until built). N1 fixed: an id is satisfied by the inventory row of the page where it renders (`hr-run2-engine*` = /hr/settings); every id rendered on a payroll view still needs its payroll row.

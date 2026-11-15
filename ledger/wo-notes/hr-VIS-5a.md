@@ -87,3 +87,64 @@ Above-the-fold positions and page heights · the sticky bar at 390 (`max-md:cont
 - fitness 54/54 and fitness-hr 9/9, both with env and with `env -u DATABASE_URL -u DIRECT_URL`.
 - Clean typecheck (`rm -rf .next/types tsconfig.tsbuildinfo`, ISO_MEM=14000M, started at MemAvailable 14.7 GB) → exit 0.
 - Process note: one earlier typecheck was started by mistake at MemAvailable 8.5 GB. I stopped it (its iso unit) after ~7 min, before it finished.
+
+## Ruling r3 (add vs OT) — commit `93895540d`
+- `pay-run-view.ts`: per row `addNoOtSatang` = stored `addSatang` − Σ stored OT lines. When a row does not reconcile, it stays the stored `addSatang` and that row's OT cell shows "—". The totals are `addNoOtSatang` = Σ rows and `otRowsSatang` = Σ row OT cells. All of this is server-side; the tsx only displays the values.
+- Table: there are two "เพิ่ม" header/cell pairs.
+  - `hidden xl:table-cell` (or `2xl` while the drawer is open): additions excluding OT, beside the OT column. The code labels drop OT.
+  - `hidden md:table-cell xl:hidden` (or `2xl:hidden`): the stored additions total, with the hint `hr.run2.addInclOt` ("รวม OT" / "incl. OT") when the person has OT.
+  - The totals row follows the same pattern. A row without OT shows the same value in both variants.
+- Re-shoot: 11a O at 1440 and 1024 — check that the add/OT cells read as in the mockup (≥1280: add excludes OT) and that the hint sits under the stored total at 1024.
+- Runs after r3: listed in the controller report.
+- N1 was fixed by the oracle author (55478f5d1). The Thai excluded-staff note on the English page is deferred to VIS-5e.
+
+## Picture round 1 (controller list on e9edb3338) — commit `60ed7fa29`
+### Investigations
+- **I1 (PB reverse control):** checked with a scratch probe outside the repo (own tenant, lane-3 wrapper; the oracle's shim renders the page and the probe calls `reverseRunV2Action` in the same request scope). BASE 09713f430 was rendered through `TSX_TSCONFIG_PATH` → a base worktree in /tmp; it showed no sub-nav, which confirms it was the base code.
+  - BASE: `hr-run2-reverse` was rendered for PB on a v2 PAID run. The action refused: read-only PB got "ไม่พบรอบจ่ายนี้ หรือคุณไม่มีสิทธิ์ดู" (key check); PB holding every payroll key got "รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้" (`assertRunAllBranches`). The run stayed PAID.
+  - HEAD before the fix: same as base. After the fix: reverse not rendered for either PB. An all-branch STAFF with keys still sees it.
+  - Fix: create / rebuild / approve / pay / reverse are rendered only when `isAllBranches(hrScopeOf(...))`, the same check as `assertRunAllBranches`.
+- **I2 (history "1 คน: ต้องตรวจ" vs run "10"):** they count different things.
+  - History (legacy v1 list) counts rows whose snapshot carries the `PARTIAL_MONTH` flag. That is เจ, mid-month, and its text says "ยังไม่คิดตามสัดส่วน".
+  - The run view counts review items from `previewPayrollRunV2`: 10 × `YTD_OPENING`, opening YTD missing.
+  - For a v2 run the history text is wrong in substance: the v2 engine does prorate (the `PRORATION` line "÷30" shows under เจ's additions). This is legacy copy outside this ticket; proposed for VIS-5e.
+- **I3:**
+  - "มิ้นท์ −฿150" twice = the same stock charge seen twice: once as the pending pay adjustment it created (tagged "เบิกของ/ค่าเสียหาย · หนังสือยินยอม …") in the additions/deductions list, and once in the stock-charge section's own list. The base page stacked both sections too, so the split did not create it.
+  - Hours view second block = the legacy `PayrollSection` attendance part. It always shows this month and the previous month (`monthlyAttendance(now)`), not the `?period`. The brief's §3 table put it in hours. Pre-existing; not changed.
+### Fixes
+- **F1:** the row status is a badge + a short reason (`hr.run2.rs_*`, e.g. "ยังไม่กรอกยอดยกมา" + "+N" when there is more than one). The full texts are in the "ต้องตรวจ N รายการ" block (grouped) and in the drawer.
+- **F2:** `draft` = DRAFT ∧ v2. Locked runs show the run state chip in rows and in the totals, and no review sub-label on the stepper.
+  - Sync is hidden when the page period has an APPROVED/PAID run. That is the same condition as `frozenRun` (work-entries) and the attendance-pay sync check.
+  - Rebuild / approve / branch confirm stay DRAFT-only.
+- **F3:** REVERSED: banner and run first. The create form sits in its own block at the end ("สร้างรอบจ่ายใหม่ของงวด …" + note). The banner copy now says "ด้านล่าง". With no run, the create form stays near the top.
+- **F4:** the engine-1 banner is an info banner (accent border + accent-soft background + bold title) in the same `rounded-2xl border p-3` family as the status and danger banners.
+  - The gross tile label reads "ยอดก่อนภาษี/ประกันสังคม (ค่าจ้างฐาน + เพิ่ม − หัก)".
+  - OT/commission "—" now carry "รอบนี้ไม่แยกรายการเพิ่มตามประเภท · รายการเพิ่มทั้งหมด ฿X".
+- **F5:** when a run exists but the preview is refused (a MANAGER of every branch — `previewPayrollRunV2` `mgr && allUnits`), the page shows a banner "งวดนี้มีรอบจ่ายแล้ว (ร่าง) — รายละเอียด…ไม่เปิดให้บัญชีของคุณ" instead of "ยังไม่มีรอบ".
+  - Branch managers get a minutes table: name · days · worked · unpaid leave · holiday work. It uses the same `<table>` (`tableOf`, one `<table>` in source).
+  - The test ids moved to the frames: `hr-run2-table` / `hr-run2-minutes`.
+- **F6:** at 390 the action bar is no longer sticky. It is in flow, right after header / chips / banner / step line (`max-md:-order-*`), so nothing is ever covered.
+  - Tiles are `min-w-0` with wrapping labels; en `tile_deduct` became "Deductions (late, absence, advance, claims)". This removes the 400 px page.
+- **F7:** `whitespace-nowrap` on every money cell, on tile values (text-lg below sm), drawer amounts, "รวม N คน" and the status chips.
+- **F8:** the page wrapper is always `max-w-[1200px]`. Only the view content of adjust / profiles / ytd / history is wrapped in `max-w-2xl`, so the sub-nav stays on one row at 1440.
+- **F9:** `PayrollSection` gets `locale` from the page. Adjust list, exclusions, stranded, run rows, confirm titles and slip chips use `periodLabel`. The 13b title uses `periodLabel` / `dayLabel`.
+  - **Not done:** "งวด 2026-06" in the hours panel (`work-entries-ui.tsx`) and the docs periods (`bank-files/**`, `filings/**`). Those files are outside VIS5A_ALLOW / frozen by S1 — this needs your ruling.
+- **F10:** walk states `11d-payroll-drawer` (O 1440 th+en), `11d-payroll-drawer-390` (O 390 th), `11d-payroll-drawer-pb` (PB 1440 th), `11d-payroll-drawer-click` (O 1440 th, clicks `[data-testid^="hr-run2-lines-"]`). The trigger `hr-run2-lines-*` is an inventory row `kind: link`.
+### Runs (after 60ed7fa29)
+- qc-hr-vis-5a: forced ×4 → 39/39 each; unforced → 39/39; RESIDUE none every run.
+- h3.4 85/85 · h3.4-ytd 44/44 · h3.6 62/62 · h3.7 68/68 · h3.8 78/78 · priv-2 47/47 · qc-hf-hr-privacy 194/194.
+- fitness 54/54 and fitness-hr 9/9 in both modes.
+- Clean typecheck exit 0 (MemAvailable 15.7 GB at start).
+### Re-shoot (picture round 2)
+- **11a O 1440 th:** rows about 56 px with a short reason; totals on one line; sub-nav on one row.
+- **11a O 1024 th:** SSO tile on one line; add column shows the stored total + "รวม OT" where there is OT.
+- **11a O 390 th/en:** order is header → chips → banner → step line → approve button (in flow, not covering) → tiles. en width 390, no horizontal scroll; deduct label wraps.
+- **11a M 1440:** banner "งวดนี้มีรอบจ่ายแล้ว (ร่าง) …"; no "ยังไม่มีรอบ" text.
+- **11a MB 1440:** minutes table.
+- **x1 / x2 O:** rows show "อนุมัติแล้ว" / "จ่ายแล้ว"; no sync button.
+- **x2 PB:** no reverse button and no doc-link buttons beyond the docs gate.
+- **x3 O:** red banner → tiles → table → "สร้างรอบจ่ายใหม่ของงวด ก.ค. 2569" block at the bottom; sync visible (period not frozen).
+- **x4 O:** blue info banner with a bold title; gross tile label with the formula; OT note "ไม่แยกประเภท".
+- **11v adjust / profiles / ytd / history:** sub-nav on one row; Thai period labels in the legacy lists.
+- **13b:** title "… · ก.ย. 2569".
+- **New:** `11d-payroll-drawer*` states.

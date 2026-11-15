@@ -22,6 +22,7 @@ import {
   reverseRunAction,
   setSalaryProfileAction,
 } from "./payroll-actions";
+import { periodLabel } from "./period-label"; // HR VIS-5a ▸ F9 ◂
 import { HrSalaryOtRateField } from "./ui"; // HR H2.9 ▸ #18 ช่องอัตรา OT ต่อชั่วโมง (ui.tsx) ◂
 
 const muted = "text-[color:var(--color-muted)]";
@@ -70,9 +71,10 @@ const NEGATIVE_NET_TEXT = "ยอดสุทธิติดลบ (รายก
 // ───────────── PayrollSection (หน้าย่อย /app/sys/[id]/hr/payroll) ─────────────
 // HR VIS-5a ▸ parts = which legacy parts to render (views of /hr/payroll) · omitted = every part (old output) · loaders unchanged; reads that feed only hidden parts are skipped ◂
 export type PayrollPart = "profiles" | "attendance" | "adjust" | "create" | "runs";
-export async function PayrollSection({ systemId, parts }: { systemId: string; parts?: PayrollPart[] }) { // HR VIS-5a ◂
+export async function PayrollSection({ systemId, parts, locale = "th" }: { systemId: string; parts?: PayrollPart[]; locale?: string }) { // HR VIS-5a ▸ F9: locale for period labels (page passes it) ◂
   const auth = await requireTenant();
   const show = (p: PayrollPart) => !parts || parts.includes(p); // HR VIS-5a ◂
+  const pl = (k: string) => periodLabel(k, locale); // HR VIS-5a ▸ F9: "มิ.ย. 2569" / "Jun 2026" instead of ISO on screen ◂
 
   // 🔒 PDPA: เงินเดือน + เลขผู้เสียภาษี = ข้อมูลอ่อนไหว — เห็นเฉพาะ OWNER หรือผู้มีสิทธิ์ hr.payroll.read
   const membership = {
@@ -268,7 +270,7 @@ export async function PayrollSection({ systemId, parts }: { systemId: string; pa
                       {formatBaht(a.amountSatang)}
                     </span>
                     <span className={`block truncate text-xs ${muted}`}>
-                      งวด {a.periodKey}
+                      งวด {pl(a.periodKey)} {/* HR VIS-5a ◂ */}
                       {a.hours ? ` · ${a.hours} ชม.` : ""}
                       {a.note ? ` · ${a.note}` : ""}
                       {a.runId ? " · เข้ารอบจ่ายแล้ว" : ""}
@@ -330,7 +332,7 @@ export async function PayrollSection({ systemId, parts }: { systemId: string; pa
               className="mb-2 rounded-lg border bg-[color:var(--color-surface-2)] px-3 py-2 text-xs"
             >
               <div className="font-medium">
-                งวด {x.periodKey}: ไม่รวม {x.list.length} คนในรอบนี้
+                งวด {pl(x.periodKey)}: {/* HR VIS-5a ◂ */}ไม่รวม {x.list.length} คนในรอบนี้
               </div>
               <ul className={`mt-1 flex flex-col gap-0.5 ${muted}`}>
                 {x.list.map((e) => (
@@ -350,7 +352,7 @@ export async function PayrollSection({ systemId, parts }: { systemId: string; pa
                 <div key={a.id} className="flex flex-wrap items-center justify-between gap-2">
                   <span className={muted}>
                     {nameByEmp.get(a.employeeId) ?? "—"} · {ADJUST_KIND_LABEL[a.kind] ?? a.kind} {ADJUST_ADD.has(a.kind) ? "+" : "−"}
-                    {formatBaht(a.amountSatang)} · งวด {a.periodKey} · {ADJUST_STATUS_LABEL[a.status] ?? a.status}
+                    {formatBaht(a.amountSatang)} · งวด {pl(a.periodKey)} · {/* HR VIS-5a ◂ */}{ADJUST_STATUS_LABEL[a.status] ?? a.status}
                   </span>
                   {a.crmCommissionId ? (
                     <span className={muted}>คอมมิชชันจาก CRM — ระบบ CRM ย้ายงวดให้เอง</span>
@@ -373,7 +375,7 @@ export async function PayrollSection({ systemId, parts }: { systemId: string; pa
             key: r.id,
             primary: (
               <span>
-                งวด {r.periodKey} · {formatBaht(fig.net)}{/* HR PRIV-2 ◂ */}
+                งวด {pl(r.periodKey)} · {formatBaht(fig.net)}{/* HR PRIV-2 ◂ */}{/* HR VIS-5a ▸ F9 ◂ */}
               </span>
             ),
             // H0.2 ▸ R1/R3: แถวที่มี flag — NEGATIVE_NET (แดง · อนุมัติไม่ได้) · PARTIAL_MONTH (ต้องตรวจ · ยังไม่คิดตามสัดส่วน) ◂
@@ -420,7 +422,7 @@ export async function PayrollSection({ systemId, parts }: { systemId: string; pa
                   <ConfirmDialog
                     triggerLabel="จ่ายแล้ว"
                     triggerClassName="rounded-full border px-3 py-1.5 text-xs hover:bg-[color:var(--color-surface-2)]"
-                    title={`บันทึกจ่ายเงินเดือนงวด ${r.periodKey}?`}
+                    title={`บันทึกจ่ายเงินเดือนงวด ${pl(r.periodKey)}?`} // HR VIS-5a ◂
                     detail={`ยืนยันว่าจ่ายเงินเดือนสุทธิ ${formatBaht(r.totalNetSatang)} เรียบร้อยแล้ว`}
                     confirmLabel="ยืนยันจ่ายแล้ว"
                     action={markPaidAction}
@@ -431,7 +433,7 @@ export async function PayrollSection({ systemId, parts }: { systemId: string; pa
                   <ConfirmDialog
                     triggerLabel="กลับรายการ"
                     triggerClassName="rounded-full border px-3 py-1.5 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
-                    title={`กลับรายการเงินเดือนงวด ${r.periodKey}?`}
+                    title={`กลับรายการเงินเดือนงวด ${pl(r.periodKey)}?`} // HR VIS-5a ◂
                     detail={`ระบบจะลงบัญชีกลับรายการ (JV ตรงข้าม) ของเงินเดือนงวดนี้ — เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · จ่ายสุทธิ ${formatBaht(r.totalNetSatang)} · ใช้เมื่อลงเงินเดือนผิดงวด/ผิดยอด (รายการเดิมยังอยู่ตามหลักบัญชี — ไม่ลบ)`}
                     confirmLabel="ยืนยันกลับรายการ"
                     danger
@@ -451,7 +453,7 @@ export async function PayrollSection({ systemId, parts }: { systemId: string; pa
         {runs.map((r) =>
           shownItems(r.items).length === 0 ? null : (
             <div key={r.id} className="mt-1 flex flex-wrap items-center gap-2">
-              <span className={`text-xs ${muted}`}>สลิปงวด {r.periodKey}:</span>
+              <span className={`text-xs ${muted}`}>สลิปงวด {pl(r.periodKey)}:</span>{/* HR VIS-5a ◂ */}
               {shownItems(r.items).map((it) => {
                 // H0.2 ▸ R3: แถวสุทธิติดลบ = ขอบ/ตัวอักษรแดง + "ติดลบ" · R1: เข้า/ออกกลางเดือน = "ต้องตรวจ" ◂
                 const f = flagsOf(it.snapshotJson);

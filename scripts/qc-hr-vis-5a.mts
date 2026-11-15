@@ -51,6 +51,11 @@ const BASE_ROOTS: Record<string, string[]> = { // recorded from the base page dc
  payU1: ["adjust", "attendance", "create", "profiles", "run2", "runs", "stock", "we"],
  mgr: ["noaccess", "run2", "stock", "stockForm", "we"],
 };
+const N1S: { n1: Record<string, boolean>; code: string[]; other: Set<string> } = { n1: {}, code: [], other: new Set() };
+/** Tailwind display at width w (base → sm 640 → md 768 → lg 1024 → xl 1280 → 2xl 1536) */
+const BP: Record<string, number> = { "": 0, sm: 640, md: 768, lg: 1024, xl: 1280, "2xl": 1536 };
+const shownAt = (cls: string, w: number) => { let on = true; for (const bp of Object.keys(BP)) { if (BP[bp]! > w) continue; for (const tk of cls.split(/\s+/)) { const [p, d] = tk.includes(":") ? [tk.slice(0, tk.indexOf(":")), tk.slice(tk.indexOf(":") + 1)] : ["", tk]; if (p !== bp) continue; if (d === "hidden") on = false; else if (/^(table-cell|block|flex|inline|inline-block|grid|inline-flex)$/.test(d)) on = true; } } return on; };
+const satOf = (t: string) => { const m = /(−|-)?฿([\d,]+\.\d{2})/.exec(t); return m ? Math.round(Number(m[2]!.replace(/,/g, "")) * 100) * (m[1] ? -1 : 1) : 0; };
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
 const CHECKS: Def[] = [
  D("S1", "§7 untouched", "CG", "payroll-rules sha · payroll-run-rules byte-identical · untouched files = base"),
@@ -88,7 +93,8 @@ const CHECKS: Def[] = [
  D("I1", "§7 msgs", "MG", "hr.run2 th=en · every key the run screen uses exists in th and en"),
  D("I2", "§3 §5 msgs", "MR", "hr.payview.* 7 views th+en · hr.run2.title without engine wording · page desc via messages"),
  D("I3", "Q5", "MG", "no Thai literal in added code lines (payroll-ui.tsx moved sections exempt)"),
- D("N1", "§7 inventory", "MR", "inventory rows for new ids · hr-run2-lines-* kind link"),
+ D("N1", "§7 inventory r3", "MR", "inventory rows for new ids · every id rendered on payroll has a payroll row (ids owned by another page: that page's row) · hr-run2-lines-* kind link"),
+ D("T1", "r3 add/OT", "MR", "run table add vs OT: ≥1280 add excl. OT + OT col · <1280 stored add + 'รวม OT' · each row/total sums to net · no-OT row equal · limited totals in-scope"),
  D("N2", "Q7", "mR", "walk matrix states for hours/adjust/profiles/docs/ytd/history"),
  D("Z1", "-", "CG", "residue · outbound · intl shim used · no missing message at render"),
 ];
@@ -181,8 +187,10 @@ const PV = await loadOpt(F.view, "@/lib/modules/hr/pay-run-view"), PL = await lo
  chk("I3", !i3.length, "", L(i3));
  const rows = ((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((x) => String(x.page) === "/app/sys/[id]/hr/payroll"), ids = new Set(rows.map((x) => String(x.testid)));
  const code = testidsOf(rd(F.runUi), "hr-run2-"), lines = rows.find((x) => x.testid === "hr-run2-lines-*");
- const n1 = { newRows: [...NEW_IDS, "hr-pay-view-*"].every((i) => [...ids].some((t) => t === i || idMatch(t, i.replace("*", "x")))), codeRows: [...code].every((c) => ids.has(c)), linesLink: lines?.kind === "link" };
- chk("N1", all(n1), "", `${fails(n1)} noRow=${L([...NEW_IDS, "hr-pay-view-*", ...code].filter((c) => !ids.has(c)))}`);
+ // r3 fix: N1 is decided after the renders — a code id with no payroll row is excused only when no payroll render shows it AND another page has its row (e.g. PayrollEngineCard on /hr/settings)
+ N1S.n1 = { newRows: [...NEW_IDS, "hr-pay-view-*"].every((i) => [...ids].some((t) => t === i || idMatch(t, i.replace("*", "x")))), linesLink: lines?.kind === "link" };
+ N1S.code = [...code].filter((c) => !ids.has(c));
+ N1S.other = new Set(((jsonOf(F.inv)?.rows ?? []) as Any[]).filter((x) => String(x.page) !== "/app/sys/[id]/hr/payroll").map((x) => String(x.testid)));
  const st = (jsonOf(F.mx)?.states ?? []) as Any[];
  const miss = VIEWS.filter((v) => v !== "run" && !st.some((s) => String(s.page) === "/app/sys/[id]/hr/payroll" && new RegExp(`[?&]view=${v}\\b`).test(String(s.path ?? ""))));
  chk("N2", !miss.length, "", `missing view=${miss.join(",") || "none"}`);
@@ -386,6 +394,46 @@ try {
   const en = textOfHtml(run2(await page(W.owner, runQ("DRAFT"), "en"))).replace(new RegExp(Object.values(E).map((e) => e.name).join("|"), "g"), "");
   const thai = en.split(" ").filter((w) => THAI.test(w));
   chk("R12", !!en && !thai.length, "", `${thai.slice(0, 5).join(" ")}`);
+ }
+ // ── T1 (r3): add column excludes OT where the OT column shows (xl ≥ 1280), stored additions + hint below it ──
+ {
+  const keyOf = (txt: string) => { let best = "", n = 0; for (const [k, v] of Object.entries(MSG.th.hr.run2 as Record<string, string>)) if (/^col_/.test(k) && txt.startsWith(v) && v.length > n) { best = k; n = v.length; } return best; };
+  const cellsOf = (tr: string) => [...tr.matchAll(/<(td|th)\b([^>]*)>([\s\S]*?)<\/\1>|<(td|th)\b([^>]*)\/>/g)].map((m) => ({ cls: /class="([^"]*)"/.exec(m[2] ?? m[5] ?? "")?.[1] ?? "", text: textOfHtml(m[3] ?? "").trim() }));
+  const readAt = (tb: string, w: number) => {
+   const hd = cellsOf(/<thead[\s\S]*?<\/thead>/.exec(tb)?.[0] ?? "").filter((c) => shownAt(c.cls, w)).map((c) => keyOf(c.text));
+   return [...tb.matchAll(/<tr\b[\s\S]*?<\/tr>/g)].slice(1).map((m) => { const cs = cellsOf(m[0]).filter((c) => shownAt(c.cls, w)), o: Record<string, { v: number; t: string }> = {}; cs.forEach((c, i) => { if (hd[i]) o[hd[i]!] = { v: satOf(c.text), t: c.text }; }); return { o, name: cs[0]?.text ?? "", n: cs.length, h: hd.length }; });
+  };
+  const t1: string[] = [];
+  for (const [vn, w] of [["owner", W.owner], ["payU1", W.payU1]] as const) {
+   const tb = elById(await page(w, `view=run&period=${PER.DRAFT}`), "hr-run2-table");
+   if (!tb) { t1.push(`${vn}: no table`); continue; }
+   const A = readAt(tb, 1440), B = readAt(tb, 1024);
+   if (!A.length || A.length !== B.length) { t1.push(`${vn}: rows ${A.length}/${B.length}`); continue; }
+   A.forEach((a, i) => {
+    const b = B[i]!, who = a.name.slice(0, 12) || `#${i}`, g = (o: Any, k: string) => o[k]?.v ?? 0;
+    if (a.n !== a.h || b.n !== b.h) t1.push(`${vn} ${who}: cells≠headers (${a.n}/${a.h} · ${b.n}/${b.h})`);
+    if (!a.o.col_ot) t1.push(`${vn} ${who}: no OT col ≥1280`);
+    if (b.o.col_ot) t1.push(`${vn} ${who}: OT col <1280`);
+    const net = g(a.o, "col_net"), wht = g(a.o, "col_wht");
+    if (g(a.o, "col_gross") + g(a.o, "col_add") + g(a.o, "col_ot") + g(a.o, "col_deduct") + g(a.o, "col_sso") + wht !== net) t1.push(`${vn} ${who}: ≥1280 sum≠net`);
+    if (g(b.o, "col_gross") + g(b.o, "col_add") + g(b.o, "col_deduct") + g(b.o, "col_sso") + wht !== g(b.o, "col_net")) t1.push(`${vn} ${who}: <1280 sum≠net`);
+    const ot = g(a.o, "col_ot");
+    if (ot && !/รวม OT/.test(b.o.col_add?.t ?? "")) t1.push(`${vn} ${who}: no "รวม OT" hint`);
+    if (!ot && g(a.o, "col_add") !== g(b.o, "col_add")) t1.push(`${vn} ${who}: no-OT add differs`);
+   });
+   if (vn === "owner" && (!A.some((a) => (a.o.col_ot?.v ?? 0) !== 0) || !A.slice(0, -1).some((a) => !(a.o.col_ot?.v ?? 0)))) t1.push(`${vn}: fixture lacks OT/no-OT row`);
+   const tot = A[A.length - 1]!, body = A.slice(0, -1);
+   for (const k of ["col_add", "col_ot", "col_net"]) if (body.reduce((x, r) => x + (r.o[k]?.v ?? 0), 0) !== (tot.o[k]?.v ?? 0)) t1.push(`${vn}: totals ${k}≠Σ rows`);
+   if (vn === "payU1" && body.some((r) => r.name.includes(E.cara!.name))) t1.push("payU1: out-of-scope row");
+  }
+  const hk = Object.entries(MSG.th.hr.run2 as Record<string, string>).find(([, v]) => /รวม OT/.test(v));
+  if (!hk || typeof MSG.en.hr.run2[hk[0]] !== "string") t1.push("hint key th/en");
+  chk("T1", !t1.length, "", L([...new Set(t1)], 6));
+ }
+ {
+  const rendered = [...cache.entries()].filter(([k]) => k.endsWith(`|${base}`)).flatMap(([, h]) => [...idsIn(h).keys()]);
+  const excused = N1S.code.filter((c) => !rendered.some((r) => idMatch(c, r)) && N1S.other.has(c)), noRow = N1S.code.filter((c) => !excused.includes(c));
+  chk("N1", all(N1S.n1) && !noRow.length, "", `${fails(N1S.n1)} noRow=${L(noRow)} excused=${excused.join(",") || "none"}`);
  }
  // ── 13b report ──
  {

@@ -6,6 +6,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { REPORT_CATALOG, reportTextFor, type ReportId } from "./reports-rules";
 import { getReportSettings, loadRegisterFields, type ReportDto, type ReportViewer } from "./reports";
 import { canManageHrSettings } from "./settings";
+import { dayLabel, periodLabel } from "./period-label"; // HR VIS-5a ▸ F9 ◂
 import { saveRegisterFieldsAction, saveReportSettingsAction } from "./reports-actions";
 
 const card = "flex flex-col gap-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4";
@@ -106,7 +107,7 @@ export async function HrReportsSection(p: ReportPageProps) {
       <section className={card} aria-labelledby="hrrep-title">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="hrrep-title" className="text-base font-semibold">
-            {tx[`title.${p.report}` as keyof typeof tx]} · {p.period}
+            {tx[`title.${p.report}` as keyof typeof tx]} · {/^\d{4}-\d{2}-\d{2}$/.test(p.period) ? dayLabel(p.period, locale) : periodLabel(p.period, locale)} {/* HR VIS-5a ▸ F9: no ISO period in the 13b title ◂ */}
           </h2>
           {dto && (
             <div className="flex flex-wrap gap-2">

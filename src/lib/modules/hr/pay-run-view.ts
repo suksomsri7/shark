@@ -44,6 +44,8 @@ export type RunRowFig = {
   /** Σ stored OT lines · null when the row's addition lines do not reconcile with its stored addSatang */
   otSatang: number | null;
   commissionSatang: number | null;
+  /** r3: additions excluding OT = stored addSatang − Σ stored OT lines (stored addSatang when the row does not reconcile — OT then shows "—") */
+  addNoOtSatang: number;
   /** distinct codes of the row's addition / deduction lines (labels only, no amounts) */
   addCodes: string[];
   outCodes: string[];
@@ -55,7 +57,7 @@ export type RunRowFig = {
   /** status of the row: review items or a negative-net flag ⇒ needs review */
   review: boolean;
 };
-export type RunFigures = { rows: Map<string, RunRowFig>; otSatang: number | null; commissionSatang: number | null; baseSatang: number | null; ready: number; review: number; payTypes: [string, number][] };
+export type RunFigures = { rows: Map<string, RunRowFig>; otRowsSatang: number; addNoOtSatang: number; otSatang: number | null; commissionSatang: number | null; baseSatang: number | null; ready: number; review: number; payTypes: [string, number][] };
 
 /** figures of the visible rows (the caller passes previewPayrollRunV2 rows — already scoped to the viewer) */
 export function runFigures(rows: FigRow[]): RunFigures {
@@ -76,6 +78,7 @@ export function runFigures(rows: FigRow[]): RunFigures {
     out.set(r.employeeId, {
       otSatang: ok ? sum(adds.filter((l) => l.code === "OT")) : null,
       commissionSatang: ok ? sum(adds.filter((l) => l.code === "COMMISSION")) : null,
+      addNoOtSatang: ok ? r.addSatang - sum(adds.filter((l) => l.code === "OT")) : r.addSatang,
       addCodes: [...new Set(adds.map((l) => l.code))],
       outCodes: [...new Set(outs.map((l) => l.code))],
       income,
@@ -90,6 +93,8 @@ export function runFigures(rows: FigRow[]): RunFigures {
   for (const r of rows) types.set(r.payType, (types.get(r.payType) ?? 0) + 1);
   return {
     rows: out,
+    otRowsSatang: all.reduce((a, f) => a + (f.otSatang ?? 0), 0),
+    addNoOtSatang: all.reduce((a, f) => a + f.addNoOtSatang, 0),
     otSatang: reconciled ? all.reduce((a, f) => a + (f.otSatang ?? 0), 0) : null,
     commissionSatang: reconciled ? all.reduce((a, f) => a + (f.commissionSatang ?? 0), 0) : null,
     baseSatang: baseOk ? base : null,
