@@ -77,17 +77,17 @@ async function namesOf(userIds: string[]): Promise<Map<string, string>> {
 
 type RoomHead = { id: string; conversationId: string; startedById: string; closedAt: Date | null; contextJson?: Prisma.JsonValue | null; members: { userId: string }[] };
 
-/** ห้องของร้านนี้ + ผู้ดูเห็นไหม (R-K1: ผู้เปิด · สมาชิก · OWNER) — ไม่เห็น/ไม่มี/ร้านอื่น = null */
+/** ห้องของร้านนี้ + ผู้ดูเห็นไหม (R-K1: ผู้เปิด · สมาชิก · Lekaa FAB: ถอด OWNER) — ไม่เห็น/ไม่มี/ร้านอื่น/ปัดลบแล้ว = null */
 async function visibleRoom(ctx: ConvCtx, roomId: string): Promise<{ actor: AiMemberActor; room: RoomHead } | null> {
   const actor = memberActorOf(ctx);
   const id = cleanId(roomId);
   if (!actor || !id) return null;
   const room = await tenantDb({ tenantId: ctx.tenantId }).aiRoom.findFirst({
-    where: { id },
+    where: { id, hiddenAt: null },
     select: { id: true, conversationId: true, startedById: true, closedAt: true, contextJson: true, members: { select: { userId: true } } },
   });
   if (!room) return null;
-  const sees = actor.membership.role === "OWNER" || room.startedById === actor.userId || room.members.some((m) => m.userId === actor.userId);
+  const sees = room.startedById === actor.userId || room.members.some((m) => m.userId === actor.userId);
   return sees ? { actor, room } : null;
 }
 
@@ -98,7 +98,11 @@ function chatContextOf(v: Prisma.JsonValue | null | undefined): string | null {
   return id || null;
 }
 
-const canManage = (actor: AiMemberActor, room: { startedById: string }) => actor.membership.role === "OWNER" || room.startedById === actor.userId;
+// Lekaa FAB: ผู้ดูแลห้อง = ผู้เปิดห้องเท่านั้น (OWNER ไม่เห็นห้องคนอื่นแล้ว)
+const canManage = (actor: AiMemberActor, room: { startedById: string }) => room.startedById === actor.userId;
+/** Lekaa FAB (15 พ.ย. เจ้าของสั่ง "งานของใครของมัน") ▸ ปิดการชวนคนเข้าห้องใหม่ — แถวสมาชิกเดิมยังอยู่ (เห็นห้อง/ออกเองได้ตามเดิม) */
+export const ADD_MEMBER_DISABLED = true;
+const MSG_ADD_DISABLED = "ชวนคนเข้าห้องงานของเลขาไม่ได้แล้ว — งานของเลขาเป็นของแต่ละคน (คุยกับทีมได้ที่แชททีม)";
 
 const asRole = (r: Role | null | undefined): RoomMemberRow["role"] => (r === "OWNER" || r === "MANAGER" ? r : "STAFF");
 
@@ -178,6 +182,7 @@ export async function addMember(
   if (!v) return fail("not_found");
   const { actor, room } = v;
   if (!canManage(actor, room)) return fail("forbidden");
+  if (ADD_MEMBER_DISABLED) return fail("forbidden", MSG_ADD_DISABLED); // Lekaa FAB: ไม่รับคนเพิ่ม (ข้อมูลเดิมคงไว้)
   if (room.closedAt) return fail("closed");
   const userId = cleanId(input?.userId);
   if (userId && userId === actor.userId && actor.membership.role === "OWNER" && userId !== room.startedById) return fail("self", MSG_OWNER_SELF); // R-S1.6d

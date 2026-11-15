@@ -103,6 +103,8 @@ export const light = {
   btnOff: { bg: "rgba(150,150,185,0.25)", fg: "#8e8e93" }, // .btn1.off
   dim: "rgba(40,40,60,0.28)",
   sheet: { from: "rgba(255,255,255,0.95)", to: "rgba(248,248,253,0.9)", grab: "#d1d1d6" },
+  // Lekaa FAB (15 พ.ย. · แบบ fab6): ปุ่มลอยวงกลมขาว + วงแหวน/เงาม่วงอ่อน · ชิป 📍 อ้างอิงหน้า
+  lekaa: { fabBg: "#ffffff", ring: "rgba(124,102,234,0.15)", shadow: "0px 8px 24px rgba(124,102,234,0.35)", refBg: "#eef2ff", refFg: "#2a3a8f", logoRing: "0px 2px 8px rgba(124,102,234,0.25)" },
   divider: "rgba(150,150,185,0.2)",
   // ลูกแก้ว .ao.o1
   orb: {

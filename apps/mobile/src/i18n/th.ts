@@ -1290,6 +1290,26 @@ const th = {
   "bizset.del.undoTitle": "ยกเลิกการลบกิจการ?",
   "bizset.del.undoBody": "{name} จะกลับมาใช้งานตามปกติ และจะไม่ถูกลบ",
   "bizset.del.back": "กลับ",
+  // Lekaa FAB (15 พ.ย. · แบบ fab6/fab4) — ปุ่มลอย + แผ่น Lekaa + การ์ดถามหน้าที่เปิดอยู่
+  "lekaa.title": "Lekaa",
+  "lekaa.open": "เปิด Lekaa",
+  "lekaa.close": "ปิด",
+  "lekaa.back": "กลับรายการงาน",
+  "lekaa.new": "สั่งงานใหม่",
+  "lekaa.newTitle": "งานใหม่",
+  "lekaa.input": "สั่งงาน…",
+  "lekaa.empty": "ยังไม่มีงานที่สั่ง — กด + เพื่อสั่งงานแรก",
+  "lekaa.delete": "ลบ",
+  "lekaa.deleteAsk.title": "ลบงานนี้?",
+  "lekaa.deleteAsk.body": "“{title}” จะหายจากรายการ และรายการที่ยังรออนุมัติในงานนี้จะถูกยกเลิก",
+  "lekaa.deleteAsk.ok": "ลบงาน",
+  "lekaa.deleteAsk.cancel": "ไม่ลบ",
+  "lekaa.deleteErr": "ลบงานไม่สำเร็จ ลองใหม่อีกครั้ง",
+  "sec.ctx.yes": "ใช่ {label}",
+  "sec.ctx.no": "ไม่ใช่",
+  "sec.ctx.ref": "📍 อ้างอิง: {label}",
+  "sec.ctx.err": "ส่งคำตอบไม่สำเร็จ ลองใหม่อีกครั้ง",
+  "sec.inbox.notYours": "งานนี้เป็นของคนอื่น — อนุมัติหรือตีกลับจากรายการนี้ได้เลย",
 } as const;
 
 export type I18nKey = keyof typeof th;

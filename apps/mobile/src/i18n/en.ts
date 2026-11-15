@@ -1289,6 +1289,26 @@ const en: Record<I18nKey, string> = {
   "bizset.del.undoTitle": "Cancel the deletion?",
   "bizset.del.undoBody": "{name} will go back to normal and will not be deleted",
   "bizset.del.back": "Back",
+  // Lekaa FAB (15 พ.ย. · แบบ fab6/fab4) — ปุ่มลอย + แผ่น Lekaa + การ์ดถามหน้าที่เปิดอยู่
+  "lekaa.title": "Lekaa",
+  "lekaa.open": "Open Lekaa",
+  "lekaa.close": "Close",
+  "lekaa.back": "Back to tasks",
+  "lekaa.new": "New task",
+  "lekaa.newTitle": "New task",
+  "lekaa.input": "Give a task…",
+  "lekaa.empty": "No tasks yet — tap + to give the first one",
+  "lekaa.delete": "Delete",
+  "lekaa.deleteAsk.title": "Delete this task?",
+  "lekaa.deleteAsk.body": "“{title}” will disappear from your list, and anything still waiting for approval in it will be cancelled",
+  "lekaa.deleteAsk.ok": "Delete task",
+  "lekaa.deleteAsk.cancel": "Keep",
+  "lekaa.deleteErr": "Couldn't delete the task — try again",
+  "sec.ctx.yes": "Yes, {label}",
+  "sec.ctx.no": "No",
+  "sec.ctx.ref": "📍 Ref: {label}",
+  "sec.ctx.err": "Couldn't send your answer — try again",
+  "sec.inbox.notYours": "This task belongs to someone else — approve or send it back from this list",
 };
 
 export default en;

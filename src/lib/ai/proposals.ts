@@ -41,7 +41,7 @@ import type { ConvCtx } from "./conversation-owner";
 import { CHAT_SEND_BODY_MAX, CHAT_SEND_SENDER_NAME, CHAT_SEND_SIGNATURE, chatSendClientMessageId } from "./secretary/chat-send"; // SEC S1.12 (pure) ◂
 import type { DispatchOut } from "./secretary/actions"; // SEC S1.8 (type เท่านั้น — ไม่มีวงโหลด) ◂
 import { logOps } from "@/lib/core/ops";
-import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
+import { canActOnApproval, canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
 import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
 import {
   accountDestructiveKinds,
@@ -291,7 +291,7 @@ export async function rejectProposal(ctx: ConvCtx, id: string): Promise<boolean>
   const row = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.findFirst({ where: { id }, select: { kind: true, payload: true, conversationId: true, createdAt: true } });
   if (!row) return false;
   if (crmSvc.aiBridges.isCrmDoorKind(row.kind, row.payload)) return false; // CRM C3.4 ◂
-  if (!(await canSeeConversationById(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
+  if (!(await canActOnApproval(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
   if (!withinSight(await visibleSinceFor(ctx, row.conversationId), row.createdAt)) return false; // S1.6 R-S1.6a
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiProposal.updateMany({
     where: { id, status: "PENDING" },

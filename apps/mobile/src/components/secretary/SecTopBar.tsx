@@ -24,20 +24,20 @@ import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme, type ZoneKey } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
 import { useBusinessSwitcher } from "./BusinessSwitcherSheet";
+// 15 พ.ย. (เจ้าของอนุมัติแบบ fab6 · Lekaa FAB): ถอดไอคอนเลขา (คน) ⇒ แถบ = [กิจการ][ทีม][ปฏิทิน][?] · สั่งงานใหม่/รายการงาน = ปุ่มลอย Lekaa (ไม่มี + ของโซนเลขาแล้ว)
 import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
 
 export type SecZone = ZoneKey | "systems" | "calendar"; // "secretary" | "customers" | "team" | "systems" (หน้าระบบ WebView · ไม่มีปุ่มโซนใดทึบ) | "calendar" (CAL2.1)
 export type ZoneBadges = { secretary?: number; customers?: number; team?: number; calendar?: number };
 
 const ZONES: { zone: ZoneKey | "calendar"; icon: IconName; path: string; label: I18nKey }[] = [
-  { zone: "secretary", icon: "user", path: "/secretary", label: "sec.zone.secretary" },
   { zone: "team", icon: "users", path: "/secretary/staff", label: "sec.zone.team" },
   { zone: "calendar", icon: "calendar", path: "/secretary/calendar", label: "cal.zone" },
 ];
 
 /** ปุ่ม + ของแต่ละโซน (ลูกค้า/ระบบ = ไม่มี) */
 const PLUS: Record<SecZone, { path: string; label: I18nKey } | null> = {
-  secretary: { path: "/secretary/new", label: "sec.top.new" },
+  secretary: null, // Lekaa FAB: งานใหม่เข้าจากแผ่น Lekaa
   customers: null,
   systems: null,
   calendar: { path: "/secretary/calendar", label: "cal.plus.cal" },

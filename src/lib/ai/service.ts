@@ -2,6 +2,7 @@
 // scope: AiConversation/AiMessage/AiUsage เป็น tenant-scoped → tenantDb({ tenantId })
 // 14 พ.ย. 2026 ▸ sendMessage รับ `documents` (PDF แนบของห้องเลขา) คู่กับ `imageUrls` · ประวัติที่มีไฟล์แนบ = ป้าย "[แนบ: …]" (ไม่ส่งไบต์ซ้ำ) ◂
 
+import { randomUUID } from "node:crypto";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { approvedPromptTweaksText } from "@/lib/platform/ai-tuning";
@@ -29,6 +30,7 @@ import { getAccess } from "./secretary/access";
 import { NOT_SYSTEM_MESSAGE, visibleMessagesWhere } from "./secretary/members";
 import { digestBlockFor } from "./secretary/digest";
 import { customerBlock, customerContextOf } from "./secretary/customer-context";
+import { applyPageMarkers, pageContextPromptBlock, toJson as pageContextJson } from "./secretary/page-context"; // Lekaa FAB ◂
 
 export type Ctx = { tenantId: string };
 /**
@@ -318,11 +320,13 @@ export async function sendMessage(
     roomCustomerConvId && ctx.actor.kind === "member"
       ? await customerContextOf(ctx.tenantId, { chatConversationId: roomCustomerConvId }, ctx.actor).then((c) => (c ? customerBlock(c) : "")).catch(() => "")
       : "";
+  // Lekaa FAB ▸ หน้าที่ผู้ใช้เปิดอยู่ตอนสั่ง (AiRoom.pageContext · ตรวจสิทธิ์แล้วตอน startRoom) — ห้องเลขาที่มีเท่านั้น · อื่น = prompt เดิมทุกไบต์ ◂
+  const pageContext = conv?.room?.pageContext ? pageContextPromptBlock(conv.room.pageContext) : "";
   const messages: AiChatMessage[] = [
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(lessons ? { lessons } : {}), ...(customerChatOffered ? { customerChat: true } : {}), ...(calendarRoom ? { calendar: true } : {}) }), // SEC S1.12 R-S1.12d ◂ · calendar_b ▸ กติกาปฏิทินเมื่อยื่นเครื่องมือปฏิทิน ◂
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(lessons ? { lessons } : {}), ...(pageContext ? { pageContext } : {}), ...(customerChatOffered ? { customerChat: true } : {}), ...(calendarRoom ? { calendar: true } : {}) }), // SEC S1.12 R-S1.12d ◂ · calendar_b ▸ กติกาปฏิทินเมื่อยื่นเครื่องมือปฏิทิน ◂
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },
@@ -455,6 +459,11 @@ export async function sendMessage(
   // R-Z52 (ค): ชนเพดานรอบ ⇒ สรุปสิ่งที่ทำไปแล้ว (ไม่ใช่ข้อความขอโทษเฉย ๆ) · คำตอบว่างทั่วไป = FALLBACK_REPLY เดิม
   if (hitCap && !finalText.trim()) finalText = roundCapReply(usedTools.map((t) => t.name));
   if (!finalText.trim()) finalText = FALLBACK_REPLY;
+  // Lekaa FAB ▸ เครื่องหมายอ้าง/ถามหน้าที่เปิดอยู่ (⟦ref⟧ ⟦ask⟧) — ตัดออกจากข้อความเสมอ · ห้องที่มี pageContext ⇒ สถานะใหม่เขียนใน tx เดียวกับคำตอบ ◂
+  const assistantId = randomUUID();
+  const page = applyPageMarkers(finalText, conv?.room?.pageContext ?? null, assistantId);
+  finalText = page.text || FALLBACK_REPLY;
+  const pageNext = conv?.room && page.next ? page.next : null;
 
   // persist คู่ข้อความ + ยอดใช้ อะตอมมิก (ผ่าน prisma ตรง — ใส่ tenantId เองให้ตรง type)
   // SEC S1.5 ▸ มี userMessageId = แถว USER มีอยู่แล้ว (ไม่สร้างซ้ำ) ◂
@@ -470,6 +479,7 @@ export async function sendMessage(
         ]),
     db.aiMessage.create({
       data: {
+        id: assistantId,
         tenantId: ctx.tenantId,
         conversationId: conversation.id,
         role: "ASSISTANT",
@@ -479,6 +489,7 @@ export async function sendMessage(
       },
     }),
     db.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
+    ...(pageNext && conv?.room ? [db.aiRoom.updateMany({ where: { id: conv.room.id, tenantId: ctx.tenantId }, data: { pageContext: pageContextJson(pageNext) } })] : []),
     db.aiUsage.upsert({
       where: { tenantId_day: { tenantId: ctx.tenantId, day } },
       create: { tenantId: ctx.tenantId, day, requests: 1, tokensIn: tokensIn + cacheWrite + cacheRead, tokensOut },

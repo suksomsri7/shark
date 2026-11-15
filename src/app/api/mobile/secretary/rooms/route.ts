@@ -3,6 +3,9 @@
 //   (R-K8 · R-Z5: `jobIds:[jobId]` + deadline 240 วิ จากต้นคำขอ · ที่ไม่ทัน = ตัวเก็บตกรายนาที)
 // 14 พ.ย. ▸ `attachments:[{id,name}]` (≤ 5 · รหัสจาก POST secretary/attachments) — ตรวจกับ FileAsset ของร้าน (`resolveAttachmentRefs`) ก่อน claim
 //   ไม่ผ่าน = 400 `attachment` · มีไฟล์แนบ ⇒ ไม่ใช้ R-Z32 (คำสั่งเดียวกันแต่ไฟล์ต่างกัน ≠ ซ้ำ — กันซ้ำด้วย clientMessageId อย่างเดียว) ◂
+// Lekaa FAB (15 พ.ย.) ▸ POST รับ `pageContext` (หน้าที่ผู้ใช้เปิดอยู่ตอนเปิดแผ่น Lekaa — {system?, systemId?, path?, title?, route?, entity?:{type,id,label?}})
+//   รูปผิด = 400 · ค่าที่ผ่านรูปแต่อ่านไม่ได้ด้วยสิทธิ์ผู้สั่ง = ทิ้งเงียบ ๆ (page-context.ts · ไม่เชื่อ label ของแอป) ·
+//   GET ไม่มีขอบเขต "tenant" แล้ว (`scope` ที่ส่งมาถูกเมิน — ทุกบทบาทได้ห้องของตัวเอง ∪ ห้องที่เป็นสมาชิก) ◂
 import { z } from "zod";
 import { listRooms, recentDuplicateRoom, startRoom, type RoomStatus } from "@/lib/ai/secretary/rooms";
 import { tenantDb } from "@/lib/core/db";
@@ -25,6 +28,17 @@ const PostBody = z
     context: z.object({ chatConversationId: Id.optional(), contactId: Id.optional() }).strict().optional(),
     clientMessageId: Id.refine((v) => !v.includes(":"), "clientMessageId ห้ามมี :").optional(),
     attachments: z.array(z.object({ id: Id, name: z.string().max(200).optional() }).strict()).max(SEC_ATTACH_MAX_FILES).optional(),
+    pageContext: z
+      .object({
+        system: z.string().max(40).optional(),
+        systemId: Id.optional(),
+        path: z.string().max(300).optional(),
+        title: z.string().max(200).optional(),
+        route: z.string().max(120).optional(),
+        entity: z.object({ type: z.string().max(40), id: z.string().trim().min(1).max(ID_MAX), label: z.string().max(200).optional() }).strict().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict();
 
@@ -38,7 +52,7 @@ async function GET_(req: Request) {
   if (before === null) return fail(400, "invalid", "cursor ต้องเป็น <iso>|<id>", { field: "before" });
   const take = takeOf(q.get("take"), 50, 100);
   const rows = await listRooms(a.c.conv, {
-    scope: q.get("scope") === "tenant" ? "tenant" : "mine",
+    scope: "mine", // Lekaa FAB: งานของใครของมัน
     ...(status ? { status: status as RoomStatus } : {}),
     ...(q.get("q") ? { q: q.get("q")! } : {}),
     take,

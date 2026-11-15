@@ -99,6 +99,8 @@ export const dark: Palette = {
   btnOff: { bg: "rgba(255,255,255,0.12)", fg: "#8e8e9c" },
   dim: "rgba(0,0,0,0.55)",
   sheet: { from: "rgba(40,40,52,0.98)", to: "rgba(26,26,34,0.97)", grab: "#5a5a68" },
+  // Lekaa FAB (15 พ.ย. · แบบ fab6): ปุ่มลอย (พื้นเข้มของธีม) + วงแหวน/เงาม่วง · ชิป 📍 อ้างอิงหน้า
+  lekaa: { fabBg: "#24242e", ring: "rgba(160,140,255,0.28)", shadow: "0px 8px 24px rgba(124,102,234,0.45)", refBg: "rgba(120,140,255,0.16)", refFg: "#b8c4ff", logoRing: "0px 2px 8px rgba(124,102,234,0.35)" },
   divider: "rgba(255,255,255,0.14)",
   orb: {
     hi: "rgba(255,255,255,0.95)",
