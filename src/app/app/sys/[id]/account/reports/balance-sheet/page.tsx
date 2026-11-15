@@ -3,7 +3,7 @@ import { balanceSheet, type BSRow } from "@/lib/modules/account/reports";
 import { ledgerDrillHref, shiftPeriod } from "@/lib/modules/account/report-drill";
 import { fiscalYearEndMonth, fiscalYearOf } from "@/lib/modules/account/policy";
 import { MoneyText } from "@/components/ui/MoneyText";
-import { loadReportWithPolicy, currentPeriodKey, ReportHeader, TableWrap, WarnBanner } from "../_shared";
+import { loadReportWithPolicy, currentPeriodKey, ReportHeader, TableWrap, WarnBanner, STATEMENT_CSV_PREAMBLE } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
 export default async function BalanceSheetPage({
@@ -52,6 +52,7 @@ export default async function BalanceSheetPage({
       </tr>
     ));
   const csv = {
+    preamble: STATEMENT_CSV_PREAMBLE, // ACC T4.6 ▸ ป้ายร่างบรรทัดแรกของไฟล์ ◂
     headers: ["หมวด", "รหัส", "ชื่อบัญชี", "จำนวน (บาท)"],
     rows: [
       ...bs.assets.rows.map((r) => ["สินทรัพย์", r.code, r.name, r.amount / 100] as (string | number)[]),
@@ -65,7 +66,7 @@ export default async function BalanceSheetPage({
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
-        <ReportHeader
+        <ReportHeader draft
           base={base}
           title="งบแสดงฐานะการเงิน"
           subtitle={`ณ สิ้นเดือน ${asOf} · ${fy.label}${compare ? ` · เทียบ ณ สิ้นเดือน ${prevAsOf}` : ""}`}

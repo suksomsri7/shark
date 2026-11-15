@@ -573,6 +573,11 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
         page({ label: "รายงานสินค้าและวัตถุดิบ", href: `${base}/reports/goods`, status: "ready", icon: "report", testId: "GOODS_REPORT" }),
         page({ label: "รายได้รับล่วงหน้าทยอยรับรู้", href: `${base}/reports/deferrals`, status: "ready", icon: "report", testId: "DEFERRALS" }),
         page({ label: "สาขาและรายงานภาษีแยกสาขา", href: `${base}/reports/branch-tax`, status: "ready", icon: "pct", testId: "BRANCH_TAX" }),
+        // ACC T5 (เลน 2) ▸ หน้าใหม่เข้าจากหน้ารายงาน/อายุหนี้ (breadcrumb) — ไม่เพิ่มเมนูหลัก ◂
+        page({ label: "ปฏิทินภาษีของร้าน", href: `${base}/tax/calendar`, status: "ready", icon: "clock", testId: "TAX_CALENDAR" }),
+        page({ label: "รายงานเงินสดรับ-จ่าย", href: `${base}/reports/cash-book`, status: "ready", icon: "report", testId: "CASH_BOOK" }),
+        page({ label: "รายจ่ายที่อาจต้องบวกกลับทางภาษี", href: `${base}/reports/tax-add-back`, status: "ready", icon: "report", testId: "TAX_ADD_BACK" }),
+        page({ label: "หนี้สูญและค่าเผื่อหนี้สงสัยจะสูญ", href: `${base}/aging/bad-debt`, status: "ready", icon: "clock", testId: "BAD_DEBT" }),
       ],
     },
 

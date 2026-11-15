@@ -448,6 +448,8 @@ export async function ensureAccounting(ctx: GlCtx, tx?: Tx): Promise<void> {
 
 type SaleDoc = {
   id: string;
+  /** ACC T4.2 ▸ ผู้ติดต่อของเอกสาร — ติดบนบรรทัดลูกหนี้/เจ้าหนี้ (บัญชีย่อยรายตัวจาก GL) ◂ */
+  contactId?: string | null;
   docType: string;
   direction: string;
   status: string;
@@ -779,6 +781,7 @@ export async function postDocument(
         inputVatStatus: true,
         inputVatClaimDate: true,
         refType: true, // ACC T2.4 ◂
+        contactId: true, // ACC T4.2 ◂
       },
     })) as SaleDoc | null;
     if (!doc) throw new Error("ไม่พบเอกสาร");
@@ -836,7 +839,7 @@ export async function postDocument(
         // ACC T1.2 ▸ แยกตามชนิดบรรทัด (ม.78 สินค้า · ม.78/1 บริการ): VAT สินค้า → 2205 · VAT บริการ → 2210
         //   ยอดรวมพัก = vatAmount − VAT ส่วนมัดจำ (เท่าเดิม) · แบ่งตาม VAT ต่อบรรทัด (largest remainder · ผลรวมเป๊ะ)
         //   บรรทัดเดิมที่ไม่มีชนิด = ชนิดตามจุดรับรู้ของทั้งใบ ⇒ ใบเดิม JV เหมือนเดิมทุกสตางค์ ◂
-        b.dr(await b.id("AR"), doc.grandTotal);
+        b.dr(await b.id("AR"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         if (dep.base > 0) b.dr(await b.id("DEPOSIT_RECEIVED"), dep.base, "หักมัดจำ");
         await creditIncome(await b.id(incomeKey, doc.docType));
         if (rate > 0) {
@@ -924,14 +927,14 @@ export async function postDocument(
         // Dr รายได้ + Dr 2200 · Cr 1100 AR
         b.dr(await b.id(incomeKey, doc.docType), afterDiscount);
         if (rate > 0) b.dr(await b.id("VAT_OUTPUT"), doc.vatAmount);
-        b.cr(await b.id("AR"), doc.grandTotal);
+        b.cr(await b.id("AR"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         book = "SALES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ใบลดหนี้" };
         break;
       }
       case "DEBIT_NOTE": {
         // Dr 1100 AR · Cr รายได้ + Cr 2200
-        b.dr(await b.id("AR"), doc.grandTotal);
+        b.dr(await b.id("AR"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         await creditIncome(await b.id(incomeKey, doc.docType));
         if (rate > 0) b.cr(await b.id("VAT_OUTPUT"), doc.vatAmount);
         book = "SALES";
@@ -972,7 +975,7 @@ export async function postDocument(
           if (doc.discountAmount > 0) b.cr(await b.id("DISCOUNT_RECEIVED"), doc.discountAmount, "ส่วนลดรับ");
           for (const k of BUCKETS) if (agg[k] !== 0) b.dr(await bucketLedger(b, k, doc.docType), agg[k], k === "CLAIM" || k === "PENDING" ? undefined : "ภาษีซื้อไม่ขอคืน");
           if (dep.base > 0) b.cr(await b.id("DEPOSIT_PAID"), dep.base, "หักมัดจำจ่าย");
-          b.cr(await b.id("AP"), doc.grandTotal);
+          b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
           book = "PURCHASES";
           opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "บันทึกซื้อ/ค่าใช้จ่าย" };
           break;
@@ -996,7 +999,7 @@ export async function postDocument(
         //   (VAT ของมัดจำถูกเคลมไปแล้วตอนออกใบมัดจำ — เคลมซ้ำที่นี่ = ภาษีซื้อเกิน)
         if (rate > 0) b.dr(await b.id(vatInKey), doc.vatAmount - dep.vat);
         if (dep.base > 0) b.cr(await b.id("DEPOSIT_PAID"), dep.base, "หักมัดจำจ่าย");
-        b.cr(await b.id("AP"), doc.grandTotal);
+        b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "บันทึกซื้อ/ค่าใช้จ่าย" };
         break;
@@ -1019,14 +1022,14 @@ export async function postDocument(
           b.dr(assetAcct, afterDiscount + cost, "ราคาทุนสินทรัพย์");
           b.dr(await b.id("VAT_INPUT"), claim);
           b.dr(await b.id("VAT_INPUT_UNDUE"), pending);
-          b.cr(await b.id("AP"), doc.grandTotal);
+          b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
           book = "PURCHASES";
           opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ซื้อสินทรัพย์" };
           break;
         }
         b.dr(assetAcct, afterDiscount, "ราคาทุนสินทรัพย์");
         if (rate > 0) b.dr(await b.id("VAT_INPUT"), doc.vatAmount);
-        b.cr(await b.id("AP"), doc.grandTotal);
+        b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "ซื้อสินทรัพย์" };
         break;
@@ -1084,7 +1087,7 @@ export async function postDocument(
       }
       case "CREDIT_NOTE_RECEIVED": {
         // รับใบลดหนี้จากผู้ขาย: Dr 2100 เจ้าหนี้ · Cr ต้นทุน/ค่าใช้จ่าย + Cr 1150 (กลับภาษีซื้อ)
-        b.dr(await b.id("AP"), doc.grandTotal);
+        b.dr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         // ACC T1.5 §5: VAT ตามสถานะปัจจุบันของใบเดิม (เคลม 1150 · รอ 1155 · ไม่ขอคืน 6950/6960 หรือต้นทุน) · ไม่อ้างใบเดิม = 1150 (เดิม)
         await adjustPurchaseVat(ctx, db, b, doc, rate, afterDiscount, "CR");
         book = "PURCHASES";
@@ -1094,7 +1097,7 @@ export async function postDocument(
       case "DEBIT_NOTE_RECEIVED": {
         // รับใบเพิ่มหนี้จากผู้ขาย: Dr ต้นทุน/ค่าใช้จ่าย + Dr 1150 · Cr 2100 เจ้าหนี้
         await adjustPurchaseVat(ctx, db, b, doc, rate, afterDiscount, "DR");
-        b.cr(await b.id("AP"), doc.grandTotal);
+        b.cr(await b.id("AP"), doc.grandTotal, undefined, doc.contactId ?? undefined); // ACC T4.2 ▸ ผู้ติดต่อบนบรรทัดลูกหนี้/เจ้าหนี้ ◂
         book = "PURCHASES";
         opts = { book, journal: "DOC", date: doc.issueDate, refType: "AccountDocument", refId: docId, event, memo: "รับใบเพิ่มหนี้" };
         break;
@@ -1162,6 +1165,39 @@ export async function postPayment(
         b.dr(await b.id("AR"), p.amount, "จากเครดิตคงเหลือ", contactId);
         b.cr(await b.id("AR"), p.amount, "หักเครดิตลูกหนี้", contactId);
       }
+    } else if (p.channel === "BAD_DEBT") {
+      // ACC T5.7 (เลน 2) ▸ ตัดหนี้สูญ — ไม่แตะบัญชีรายได้ (NPAEs 18.10 [V]) · ไม่มีเงินเข้า
+      //   ① VAT บริการที่ยังพักใน "ภาษีขายยังไม่ถึงกำหนด" (ไม่ได้รับเงิน = ยังไม่ถึงจุดรับผิด) ส่วนของยอดที่ตัด: JV แยกที่อ้าง "ตัวใบ"
+      //      (refType AccountDocument · event BADDEBT_VAT:<payment>) ⇒ parkedVatOf/รายงานภาษีขายค้างพักเห็นยอดลดเอง · ยกเลิก = reverseBadDebtVat
+      //   ② ส่วนที่เหลือ: ใช้ค่าเผื่อหนี้สงสัยจะสูญคงเหลือ ณ วันที่ตัดก่อน แล้ว Dr หนี้สูญ · Cr ลูกหนี้ (ผู้ติดต่อ) ◂
+      if (isPayable) throw new Error("ตัดหนี้สูญได้เฉพาะลูกหนี้ (เอกสารขาย)");
+      const [docRow, parked] = await Promise.all([
+        db.accountDocument.findFirst({ where: { id: p.documentId, systemId: ctx.systemId }, select: { grandTotal: true, paidTotal: true } }),
+        parkedVatOf(ctx, [p.documentId], db as Tx),
+      ]);
+      const pv = parked.get(p.documentId);
+      const left = Math.max(0, pv?.service ?? 0);
+      // ใบปิดยอดด้วยรายการนี้ = ปล่อย VAT ที่ยังพักทั้งหมด (กันเศษปัด) · ไม่ปิด = ตามสัดส่วนยอดที่ตัดต่อยอดใบ (เหมือนตอนรับเงิน T1.2)
+      const closes = !!docRow && docRow.paidTotal >= docRow.grandTotal;
+      const vatShare = Math.min(p.amount, closes ? left : docRow && docRow.grandTotal > 0 ? Math.min(left, Math.round(((pv?.serviceAtIssue ?? 0) * p.amount) / docRow.grandTotal)) : 0);
+      if (vatShare > 0 && !(await alreadyPosted(ctx, `AccountDocument#${p.documentId}#BADDEBT_VAT:${p.id}`, db))) {
+        const v = new Book(ctx, db);
+        v.dr(await v.id("VAT_OUTPUT_UNDUE"), vatShare, "ภาษีขายที่ยังไม่ถึงกำหนดของหนี้ที่ตัด", contactId);
+        v.cr(await v.id("AR"), vatShare, "ตัดหนี้สูญ (ส่วนภาษีขายที่ยังไม่ถึงกำหนด)", contactId);
+        await commitEntry(ctx, { book: "GENERAL", journal: "ADJUST", date: p.paidAt, refType: "AccountDocument", refId: p.documentId, event: `BADDEBT_VAT:${p.id}`, memo: "ตัดหนี้สูญ — ภาษีขายที่ยังไม่ถึงกำหนด" }, v, db);
+      }
+      const rest = p.amount - vatShare;
+      if (rest > 0) {
+        const allowanceId = await b.id("DOUBTFUL_ALLOWANCE");
+        // ยอดค่าเผื่อ ณ "สิ้นวัน" (เวลาไทย) ของวันที่ตัด — รายการวันเดียวกันนับครบไม่ว่าลงกี่โมง
+        const allow = await db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: allowanceId, entry: { date: { lt: bkkDayEndExclusive(p.paidAt) } } }, _sum: { debit: true, credit: true } });
+        const useAllow = Math.min(Math.max(0, (allow._sum.credit ?? 0) - (allow._sum.debit ?? 0)), rest);
+        if (useAllow > 0) b.dr(allowanceId, useAllow, "ตัดหนี้สูญจากค่าเผื่อ", contactId);
+        b.dr(await b.id("BAD_DEBT_EXPENSE"), rest - useAllow, "หนี้สูญ", contactId);
+        b.cr(await b.id("AR"), rest, "ตัดหนี้สูญ", contactId);
+      } else {
+        return { skipped: true };
+      }
     } else if (isPayable) {
       // จ่ายชำระเจ้าหนี้: Dr 2100 (amount+WHT) + Dr 6500 fee · Cr เงิน (amount+fee) · Cr 2130 WHT ค้างนำส่ง
       const cashId = await financeLedgerId(ctx, p.financeAccountId, p.channel, db, true);
@@ -1186,13 +1222,13 @@ export async function postPayment(
     const entry = await commitEntry(
       ctx,
       {
-        book: isPayable ? "PAYMENTS" : "RECEIPTS",
-        journal: "PAYMENT",
+        book: p.channel === "BAD_DEBT" ? "GENERAL" : isPayable ? "PAYMENTS" : "RECEIPTS", // ACC T5.7 ▸ ตัดหนี้สูญ = สมุดทั่วไป ◂
+        journal: p.channel === "BAD_DEBT" ? "ADJUST" : "PAYMENT",
         date: p.paidAt,
         refType: "AccountDocumentPayment",
         refId: paymentId,
         event,
-        memo: isPayable ? "จ่ายชำระเงิน" : "รับชำระเงิน",
+        memo: p.channel === "BAD_DEBT" ? "ตัดหนี้สูญ" : isPayable ? "จ่ายชำระเงิน" : "รับชำระเงิน",
       },
       b,
       db,
@@ -2785,3 +2821,67 @@ export async function dormDepositHeldMany(tenantId: string, unitId: string, leas
   return out;
 }
 // ◂ SVC D.13
+
+// ─────────────────── ACC T5.7 (เลน 2) ▸ ค่าเผื่อหนี้สงสัยจะสูญ ───────────────────
+/**
+ * ตั้ง/ปรับค่าเผื่อหนี้สงสัยจะสูญ — delta > 0: Dr หนี้สงสัยจะสูญ / Cr ค่าเผื่อ · delta < 0: กลับข้าง (ลดค่าเผื่อ)
+ *   ใบสำคัญ refType "AccountDoubtfulAllowance" (refId = คีย์ของการตั้งครั้งนั้น) · ไม่แก้แถวเดิม (ปรับครั้งใหม่ = ใบใหม่)
+ */
+export async function postDoubtfulAllowance(ctx: GlCtx, o: { key: string; date: Date; delta: number; memo?: string; postedById?: string }, tx?: Tx): Promise<{ entryId: string } | { skipped: true }> {
+  if (o.delta === 0) return { skipped: true };
+  return withTx(tx, async (db) => {
+    if (await alreadyPosted(ctx, `AccountDoubtfulAllowance#${o.key}#ALLOWANCE`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    b.dr(await b.id("DOUBTFUL_EXPENSE"), o.delta, "หนี้สงสัยจะสูญ");
+    b.cr(await b.id("DOUBTFUL_ALLOWANCE"), o.delta, "ค่าเผื่อหนี้สงสัยจะสูญ");
+    const entry = await commitEntry(ctx, { book: "GENERAL", journal: "ADJUST", date: o.date, refType: "AccountDoubtfulAllowance", refId: o.key, event: "ALLOWANCE", memo: o.memo ?? "ตั้งค่าเผื่อหนี้สงสัยจะสูญ", postedById: o.postedById }, b, db);
+    return { entryId: entry.id };
+  });
+}
+
+/** เที่ยงคืนต้นวันถัดไปตามเวลาไทยของวันที่ (ขอบบนแบบไม่รวม) */
+export function bkkDayEndExclusive(d: Date): Date {
+  const b = new Date(d.getTime() + 7 * 3_600_000);
+  return new Date(Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate() + 1) - 7 * 3_600_000);
+}
+
+/** ยอดค่าเผื่อหนี้สงสัยจะสูญคงเหลือ (เครดิต) ณ สิ้นวัน (เวลาไทย) ของวันที่ */
+export async function doubtfulAllowanceBalance(ctx: GlCtx, at: Date, tx?: Tx): Promise<number> {
+  const db = tx ?? prisma;
+  const m = await db.accountMapping.findFirst({ where: { systemId: ctx.systemId, key: "DOUBTFUL_ALLOWANCE" }, select: { accountId: true } });
+  if (!m) return 0;
+  const a = await db.accountJournalLine.aggregate({ where: { systemId: ctx.systemId, accountId: m.accountId, entry: { date: { lt: bkkDayEndExclusive(at) } } }, _sum: { debit: true, credit: true } });
+  return (a._sum.credit ?? 0) - (a._sum.debit ?? 0);
+}
+
+/** ACC T5.7 ▸ ยกเลิกการตัดหนี้สูญ: กลับ JV ส่วน VAT ที่พัก (ref ตัวใบ) ของรายการนั้น — JV ของรายการเองกลับด้วย reverseFor ตามเดิม */
+export async function reverseBadDebtVat(ctx: GlCtx, documentId: string, paymentId: string, reason: string, tx?: Tx): Promise<void> {
+  const db = tx ?? prisma;
+  const e = await db.accountJournalEntry.findFirst({ where: { systemId: ctx.systemId, idempotencyKey: `AccountDocument#${documentId}#BADDEBT_VAT:${paymentId}` }, select: { id: true } });
+  if (e) await reverseEntry(ctx, e.id, reason, tx);
+}
+
+/**
+ * ACC T5c (เลน 2) ▸ หนี้สูญได้รับคืน — Dr เงิน (บัญชีที่รับจริง) / Cr หนี้สูญได้รับคืน (รายได้) · ไม่แตะลูกหนี้ (ใบเดิมปิดไปแล้วด้วยการตัดหนี้สูญ)
+ *   ใบสำคัญ refType "AccountBadDebtRecovery" · ยกเลิก = reverseFor (กลับรายการ ไม่แก้แถว)
+ */
+export async function postBadDebtRecovery(ctx: GlCtx, recoveryId: string, tx?: Tx): Promise<{ entryId: string } | { skipped: true }> {
+  return withTx(tx, async (db) => {
+    const r = await db.accountBadDebtRecovery.findFirst({ where: { id: recoveryId, systemId: ctx.systemId }, select: { id: true, date: true, amount: true, channel: true, financeAccountId: true, voidedAt: true, document: { select: { contactId: true, docNo: true } } } });
+    if (!r) throw new Error("ไม่พบรายการรับคืนหนี้สูญ");
+    if (r.voidedAt) return { skipped: true };
+    if (await alreadyPosted(ctx, `AccountBadDebtRecovery#${r.id}#RECOVERY`, db)) return { skipped: true };
+    const b = new Book(ctx, db);
+    const cashId = await financeLedgerId(ctx, r.financeAccountId, r.channel, db);
+    b.dr(cashId, r.amount, "รับเงินหนี้สูญได้รับคืน");
+    b.cr(await b.id("BAD_DEBT_RECOVERED"), r.amount, `หนี้สูญได้รับคืน ${r.document?.docNo ?? ""}`.trim(), r.document?.contactId ?? undefined);
+    const entry = await commitEntry(ctx, { book: "RECEIPTS", journal: "PAYMENT", date: r.date, refType: "AccountBadDebtRecovery", refId: r.id, event: "RECOVERY", memo: "หนี้สูญได้รับคืน" }, b, db);
+    await db.accountBadDebtRecovery.update({ where: { id: r.id }, data: { entryId: entry.id } });
+    return { entryId: entry.id };
+  });
+}
+
+/** ACC T5.7 ▸ ธุรกรรมของโมดูลบัญชีที่ต้องเขียนเอกสาร + ลงบัญชีพร้อมกัน (ผู้เรียกไม่ต้องลาก prisma ดิบ — fitness F5.1) */
+export function runAccountTx<T>(fn: (tx: Tx) => Promise<T>): Promise<T> {
+  return prisma.$transaction(fn);
+}

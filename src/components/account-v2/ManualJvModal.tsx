@@ -1,6 +1,7 @@
 "use client";
 
 import { legalWarning } from "@/lib/core/settings/legal/warnings";
+import { jvContentWarnings, jvLateWarnings, type JvEntityKind, type JvLateRules } from "@/lib/modules/account/jv-rules";
 import { LegalWarnings } from "./LegalWarnings";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -47,6 +48,7 @@ export function ManualJvModal({
   taxAccounts = [],
   filedVatMonths = [],
   filedPndMonths = [],
+  lateCtx,
 }: {
   /** เส้นทางหน้าสมุดรายวัน — ปิด modal = กลับไปหน้านี้ (แบบเดียวกับ LedgerModal ของ WO 6.1) */
   journalPath: string;
@@ -63,6 +65,8 @@ export function ManualJvModal({
   taxAccounts?: { id: string; key: string; code: string; name: string }[];
   filedVatMonths?: string[];
   filedPndMonths?: string[];
+  /** ACC T4.1 ▸ กติกาลงรายการช้าของสมุด (จากตารางค่ากฎหมาย) + วันนี้ (เวลาไทย) — แสดงคำเตือนล่วงหน้า ◂ */
+  lateCtx?: { rules: JvLateRules; entityKind: JvEntityKind; vatRegistered: boolean; todayYmd: string };
 }) {
   const router = useRouter();
   const [lines, setLines] = useState<LineState[]>(() => [blank(), blank()]);
@@ -83,11 +87,22 @@ export function ManualJvModal({
 
   // ACC T1.7/T1.9 — คำเตือนล่วงหน้า (ทะเบียนกลาง · ด่านจริงอยู่ชั้นลงบัญชี): แตะบัญชีภาษี = รายการปรับปรุงมือ · ลงเดือนที่ยื่นแล้ว = ต้องติ๊กยืนยัน
   const [dateKey, setDateKey] = useState(defaultDate);
+  // ACC T4.1 ▸ คำอธิบาย (ต้องยืนยันเมื่อว่าง) · ไฟล์แนบ (เอกสารประกอบ) · ลงช้า — ตัวเดียวกับ server (jv-rules) ◂
+  const [memo, setMemo] = useState("");
+  const [fileCount, setFileCount] = useState(0);
+  // ACC T5 Job 0 ▸ ฟอร์มว่างเพิ่งเปิด = ยังไม่ตะโกนเรื่องคำอธิบาย/เอกสารประกอบ — แสดงเมื่อเริ่มกรอกบรรทัด/คำอธิบาย/แนบไฟล์ หรือกดบันทึกแล้ว ◂
+  const [attempted, setAttempted] = useState(false);
+  const started = attempted || !!error || memo !== "" || fileCount > 0 || lines.some((l) => l.accountId || l.debit > 0 || l.credit > 0);
+  const bookRules = useMemo(() => {
+    const ws = started ? jvContentWarnings({ memo, hasSupportingDoc: fileCount > 0 }) : [];
+    if (lateCtx) ws.push(...jvLateWarnings({ dateYmd: dateKey, recordedYmd: lateCtx.todayYmd, entityKind: lateCtx.entityKind, vatRegistered: lateCtx.vatRegistered, rules: lateCtx.rules }));
+    return ws;
+  }, [started, memo, fileCount, dateKey, lateCtx]);
   const legal = useMemo(() => {
     const used = lines.filter((l) => l.accountId && (l.debit > 0 || l.credit > 0));
     const taxOf = (id: string) => taxAccounts.find((a) => a.id === id);
     const touched = used.map((l) => ({ l, a: taxOf(l.accountId) })).filter((x) => x.a);
-    if (touched.length === 0) return [];
+    if (touched.length === 0) return bookRules;
     const net = (key: string, sign: 1 | -1) => touched.filter((x) => x.a!.key === key).reduce((n, x) => n + sign * (x.l.credit - x.l.debit), 0);
     const baht = (v: number) => `${v < 0 ? "−" : v > 0 ? "+" : ""}${(Math.abs(v) / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
     const ws = [legalWarning("MANUAL_JV_VAT_ACCOUNT", { accounts: [...new Set(touched.map((x) => `${x.a!.code} ${x.a!.name}`))].join(", ") })];
@@ -97,13 +112,13 @@ export function ManualJvModal({
       ws.push(legalWarning("FILED_PERIOD_VAT_CHANGE", { period: month, ref: "รายการบัญชีที่บันทึกเอง", output: baht(net("VAT_OUTPUT", 1)), input: baht(net("VAT_INPUT", -1)) }));
     if (touched.some((x) => x.a!.key === "WHT_PAYABLE") && filedPndMonths.includes(month))
       ws.push(legalWarning("FILED_PERIOD_PND_CHANGE", { period: month, forms: "ภ.ง.ด.", ref: "รายการบัญชีที่บันทึกเอง", what: "ลงภาษีหัก ณ ที่จ่ายค้างนำส่งเข้าเดือนนั้น", amount: `${baht(net("WHT_PAYABLE", 1))} บาท` }));
-    return ws;
-  }, [lines, dateKey, taxAccounts, filedVatMonths, filedPndMonths]);
+    return [...ws, ...bookRules];
+  }, [lines, dateKey, taxAccounts, filedVatMonths, filedPndMonths, bookRules]);
 
   // size xl (896px) ไม่ใช่ lg — g16-journal-modal.png กว้าง ~940/1440 · lg (672px) ทำให้ชื่อบัญชีในบรรทัดถูกตัด
   return (
     <Modal open onClose={close} title="สร้างสมุดรายวัน" size="xl" testId="jv-modal" sheetOnMobile>
-      <form action={submit} className="flex flex-col gap-4">
+      <form action={submit} onSubmitCapture={() => setAttempted(true)} encType="multipart/form-data" className="flex flex-col gap-4">
         <input type="hidden" name="systemId" value={systemId} />
         {lines.map((l) => (
           <input key={`h-${l.key}`} type="hidden" name="lineKey" value={l.key} />
@@ -143,8 +158,8 @@ export function ManualJvModal({
         </div>
 
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
-          คำอธิบาย
-          <input name="memo" className="input" placeholder="ระบุคำอธิบายรายการ" data-testid="jv-memo" />
+          คำอธิบาย <span className="text-[11px]">(บัญชีรายวันทั่วไปต้องมีคำอธิบายรายการ)</span>
+          <input name="memo" className="input" placeholder="ระบุคำอธิบายรายการ" value={memo} onChange={(e) => setMemo(e.target.value)} maxLength={300} data-testid="jv-memo" />
         </label>
 
         {/* กล่องบรรทัดรายการ */}
@@ -290,13 +305,14 @@ export function ManualJvModal({
             style={{ borderColor: "var(--color-line)" }}
           >
             <AccountIcon name="upload" className="h-4 w-4 shrink-0" />
-            <span>ลากไฟล์มาวาง หรือเลือกไฟล์แนบ</span>
+            <span data-testid="jv-files-label">{fileCount > 0 ? `เลือกแล้ว ${fileCount} ไฟล์` : "ลากไฟล์มาวาง หรือเลือกไฟล์แนบ (ใบเสร็จ · ใบสำคัญ · เอกสารประกอบ)"}</span>
             <input
               type="file"
               name="files"
               multiple
               accept="image/*,application/pdf"
               className="sr-only"
+              onChange={(e) => setFileCount(e.target.files?.length ?? 0)}
               data-testid="jv-files"
               aria-label="ลากไฟล์มาวาง หรือเลือกไฟล์แนบ"
             />

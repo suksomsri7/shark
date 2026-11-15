@@ -27,6 +27,7 @@ import { inboxEmailAddressOf, inboxStats } from "../../inbox";
 import { getPolicy } from "../../policy";
 import { getSettings } from "../../service";
 import { bookTaxView, upcomingDeadlines } from "../../legal-values";
+import { taxCalendar } from "../../tax-calendar"; // ACC T5.1 ◂
 import { defineOp, type ApiOp } from "../op";
 import { paged, withExtra, type PagedInfo } from "../respond";
 import {
@@ -35,9 +36,9 @@ import {
   fileRowView,
   inboxItemView,
   linkCardView,
-  policyView,
   settingsView,
 } from "../serialize-gl";
+import { policyViewWithRules } from "../policy-view"; // ACC T4.6 ◂
 
 const YMD = /^\d{4}-\d{2}-\d{2}$/;
 const ymdField = (what: string) =>
@@ -111,12 +112,13 @@ const settingsPolicy = defineOp({
   path: "/settings/policy",
   kind: "read",
   action: "account.settings.manage",
-  summary: "Accounting policy: fiscal year, VAT timing, withholding tax defaults, date lock, duplicate rules and report emails.",
+  summary: "Accounting policy: fiscal year, day bookkeeping started (with the first fiscal period and a warning when it is shorter than 12 months), VAT timing, withholding tax defaults, date lock, duplicate rules and report emails.",
   label: "นโยบายบัญชี",
   test: "B4-G6.5",
   async handler({ actor }) {
-    const p = await getPolicy({ tenantId: actor.tenantId, systemId: actor.systemId });
-    return policyView(p);
+    const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    // ACC T4.6 ▸ + รอบบัญชีแรก (วันเริ่มทำบัญชี) และคำเตือนรอบแรกสั้น ◂
+    return policyViewWithRules(ctx, await getPolicy(ctx));
   },
 });
 
@@ -191,17 +193,19 @@ const taxDeadlines = defineOp({
   kind: "read",
   action: "account.doc.view",
   summary:
-    "Upcoming filing deadlines of this book (VAT return PP30 and withholding tax returns PND1/2/3/53/54) for the tax month that is due next: paper and online dates and days left, computed from the effective-dated filing deadline table (the online extension stops by itself when its row expires).",
+    "Upcoming filing deadlines of this book (VAT return PP30 and withholding tax returns PND1/2/3/53/54) for the tax month that is due next: paper and online dates and days left, computed from the effective-dated filing deadline table (the online extension stops by itself when its row expires). `calendar` is the shop's tax calendar: the monthly returns that apply (PP30 only when VAT registered) plus the next annual ones by entity kind: PND50/PND51 and the financial statement filing for juristic persons, PND90/PND94 for individuals and ordinary partnerships - with the rule text, source and tag of each date. Reminders only; the system does not file.",
   label: "กำหนดยื่นแบบที่กำลังจะถึง",
   input: settingsTaxInput,
   tool: {
     name: "account_tax_deadlines",
-    hint: "Use to answer when the next VAT/withholding tax return is due. Quote the dates and the table source; online dates exist only while the extension row is in effect.",
+    hint: "Use to answer when the next VAT/withholding tax return or annual income tax / financial statement filing is due. Quote the dates and the table source; online dates exist only while the extension row is in effect.",
   },
   test: "T3-API.2",
   async handler({ actor, input }) {
     const at = input.asOf ? dayStart(input.asOf) : new Date();
-    return { asOf: at.toISOString().slice(0, 10), deadlines: await upcomingDeadlines({ tenantId: actor.tenantId, systemId: actor.systemId }, at) };
+    const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
+    const [deadlines, calendar] = await Promise.all([upcomingDeadlines(ctx, at), taxCalendar(ctx, at)]);
+    return { asOf: at.toISOString().slice(0, 10), deadlines, calendar };
   },
 });
 

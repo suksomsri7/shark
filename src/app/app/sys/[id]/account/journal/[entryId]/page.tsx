@@ -2,12 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan, accountCan } from "@/lib/modules/account/access";
-import { journalEntryDetail, JOURNAL_TYPE_LABEL } from "@/lib/modules/account/journal-v2";
+import { journalEntryDetail, journalEntryLegal, JOURNAL_TYPE_LABEL } from "@/lib/modules/account/journal-v2";
+import { LegalWarnings } from "@/components/account-v2/LegalWarnings";
 import { formatDateTh } from "@/lib/ui/date";
 import { MoneyText } from "@/components/ui/MoneyText";
 import ConfirmDialog from "@/components/ui/ConfirmDialog";
 import { AccountIcon } from "@/components/account-v2/AccountIcon";
-import { reverseJvAction, toggleFlagAction } from "../actions";
+import { approveJvAction, reverseJvAction, toggleFlagAction } from "../actions";
 
 // รายละเอียดใบสำคัญ — ชั้นที่ 3 ของ drill-down (รายงาน → แยกประเภท → **JV** → เอกสาร)
 // §11.2: กลับรายการ (reversal) + ธง ⚑ ต้องตรวจ อยู่ที่นี่ (ตารางหน้ารายการมีที่ไม่พอตามเฟรม g16)
@@ -28,6 +29,9 @@ export default async function JournalEntryPage({
   const e = await journalEntryDetail({ tenantId, systemId }, entryId);
   if (!e) notFound();
   const base = `/app/sys/${id}/account`;
+  // ACC T4.1 ▸ คำเตือนของ JV มือ: คำอธิบาย · เอกสารประกอบ · ผู้อนุมัติ · ลงช้า (วันที่รายการ เทียบ วันที่บันทึกจริง) ◂
+  const legal = await journalEntryLegal({ tenantId, systemId }, e);
+  const canApprove = canAdjust && e.source === "MANUAL" && !e.approvedAt && e.status === "POSTED" && !e.reversed;
 
   return (
     <div className="flex max-w-3xl flex-col gap-5">
@@ -48,9 +52,36 @@ export default async function JournalEntryPage({
             {formatDateTh(e.date)} · สมุด{e.bookLabel} · {JOURNAL_TYPE_LABEL[e.journal] ?? e.journal} ·{" "}
             {e.source === "MANUAL" ? "บันทึกด้วยมือ" : "ระบบลงให้อัตโนมัติ"} · ผู้บันทึก {e.postedByName ?? "ระบบ"}
           </p>
+          <p className="text-xs text-[color:var(--color-muted)]" data-testid="jv-detail-recorded">
+            บันทึกเมื่อ {formatDateTh(e.createdAt)}
+            {e.source === "MANUAL" && (
+              <>
+                {" · "}
+                {e.approvedAt ? (
+                  <span data-testid="jv-detail-approved">
+                    อนุมัติโดย {e.approvedByName ?? "-"} เมื่อ {formatDateTh(e.approvedAt)}
+                  </span>
+                ) : (
+                  <span data-testid="jv-detail-unapproved">ยังไม่อนุมัติ</span>
+                )}
+              </>
+            )}
+          </p>
         </div>
         {canAdjust && (
           <div className="flex flex-wrap gap-2">
+            {canApprove && (
+              <ConfirmDialog
+                action={approveJvAction}
+                fields={{ systemId, entryId: e.id }}
+                triggerLabel="อนุมัติ"
+                triggerClassName="btn btn-primary text-sm"
+                title={`อนุมัติ ${e.docNo}?`}
+                detail="ระบบจะบันทึกชื่อคุณเป็นผู้อนุมัติพร้อมเวลา (เอกสารภายในต้องมีผู้อนุมัติ) · ถ้าใบนี้บันทึกเป็นร่างไว้ ธงร่างจะถูกปลด"
+                confirmLabel="ยืนยันอนุมัติ"
+                testId="jv-approve"
+              />
+            )}
             <ConfirmDialog
               action={toggleFlagAction}
               fields={{ systemId, entryId: e.id }}
@@ -88,6 +119,8 @@ export default async function JournalEntryPage({
       {sp.ok && <p className="text-sm font-medium">{sp.ok}</p>}
 
       {e.memo && <p className="text-sm">{e.memo}</p>}
+
+      <LegalWarnings warnings={legal} testId="jv-detail-legal" />
 
       {/* ความสัมพันธ์กับใบอื่น + เอกสารต้นทาง (ชั้นที่ 4 ของ drill-down) */}
       <div className="flex flex-wrap gap-x-6 gap-y-1 text-sm">

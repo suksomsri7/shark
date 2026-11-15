@@ -10,6 +10,7 @@ import {
 } from "@/lib/modules/account/asset";
 import { previewDepreciation, ASSET_STATUS_LABEL } from "@/lib/modules/account/asset-v2";
 import { registerAssetAction, runDepreciationAction } from "./actions";
+import { ASSET_TAX_CLASSES, ASSET_TAX_CLASS_LABEL_TH } from "@/lib/modules/account/asset-tax";
 import { formatBaht } from "@/lib/ui/money";
 import { formatDateTh } from "@/lib/ui/date";
 import FormField from "@/components/ui/FormField";
@@ -268,6 +269,16 @@ export default async function AssetsPage({
             <FormField label="หมวด" hint="เช่น อุปกรณ์สำนักงาน">
               <input name="category" className="input" />
             </FormField>
+            {/* ACC T4.3 ▸ ประเภททางภาษี: ที่ดินไม่คิดค่าเสื่อม · ประเภทอื่นเทียบเพดานค่าเสื่อมทางภาษี (คำเตือน ไม่บล็อก) ◂ */}
+            <FormField label="ประเภททางภาษี" hint="ที่ดินไม่คิดค่าเสื่อม · ใช้เทียบเพดานค่าเสื่อมทางภาษี (เตือน ไม่บล็อก)">
+              <select name="taxClass" defaultValue="OTHER" className="input" data-testid="asset-register-tax-class">
+                {ASSET_TAX_CLASSES.map((c) => (
+                  <option key={c} value={c}>
+                    {ASSET_TAX_CLASS_LABEL_TH[c]}
+                  </option>
+                ))}
+              </select>
+            </FormField>
             <FormField label="ต้นทุน (บาท)" required>
               <input name="cost" type="number" step="0.01" min="0.01" required className="input" />
             </FormField>
@@ -280,7 +291,7 @@ export default async function AssetsPage({
             <FormField label="วันที่ได้มา" required>
               <DateInput name="acquiredDate" defaultValue={today} required testId="asset-acquired-date" />
             </FormField>
-            <FormField label="วันเริ่มคิดค่าเสื่อม" required>
+            <FormField label="วันเริ่มคิดค่าเสื่อม" hint="วันที่พร้อมใช้งาน · เริ่มกลางเดือน = เดือนแรกคิดตามส่วนของวัน" required>
               <DateInput name="startDepDate" defaultValue={today} required testId="asset-startdep-date" />
             </FormField>
             <FormField label="บัญชีสินทรัพย์ (16xx)" required>

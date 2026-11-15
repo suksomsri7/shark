@@ -16,6 +16,11 @@ import { safeReason } from "./errors";
 import { tenantDb } from "@/lib/core/db";
 import { formatDateTh, THAI_MONTH_SHORT } from "@/lib/ui/date";
 import { vatRateBpAt } from "./legal-values";
+import { legalAmbient, notePendingLegal } from "@/lib/core/legal-ambient";
+import { recordLegalAckInTx } from "@/lib/core/legal-ack";
+import { LegalAckRequiredError, unacknowledged, type LegalWarning } from "@/lib/core/settings/legal/warnings";
+import { fiscalYearChangeWarnings, firstFiscalPeriod, firstPeriodWarnings } from "./fiscal-rules";
+import { bookRuleAt } from "./legal-values";
 // ป้ายไทย + ชนิดข้อมูลที่ฝั่ง client ต้องใช้ อยู่แยกไฟล์ (ห้ามลาก prisma เข้าบันเดิลเบราว์เซอร์)
 export {
   DUP_POLICY_LABEL,
@@ -52,6 +57,8 @@ export type RegularCustomerRule = {
 export type AccountPolicy = {
   /** เดือนเริ่มปีบัญชี 1–12 */
   fiscalYearStartMonth: number;
+  /** ACC T4.6 ▸ วันเริ่มทำบัญชี (ม.10 รอบแรก) · null = ไม่ระบุ ◂ */
+  booksStartDate: Date | null;
   /** วันปิดงวด 1–28 · null = ไม่กำหนด */
   periodCloseDay: number | null;
   vatRegistered: boolean;
@@ -91,6 +98,7 @@ export const DEFAULT_REGULAR_CUSTOMER: RegularCustomerRule = {
 export function defaultPolicy(vatRateBp: number): AccountPolicy {
   return {
     fiscalYearStartMonth: 1,
+    booksStartDate: null,
     periodCloseDay: null,
     vatRegistered: true,
     vatRateBp,
@@ -298,6 +306,7 @@ export function parseRecipients(v: unknown): string[] {
 /** แถว AccountSettings ที่ policy ต้องใช้ (เขียนเป็น type เองเพื่อไม่ผูกกับ Prisma model ทั้งก้อน) */
 export type PolicyRow = {
   fiscalYearStartMonth: number;
+  booksStartDate?: Date | null;
   periodCloseDay: number | null;
   vatRegistered: boolean;
   vatRateBp: number;
@@ -324,6 +333,7 @@ export type PolicyRow = {
 
 export const POLICY_SELECT = {
   fiscalYearStartMonth: true,
+  booksStartDate: true,
   periodCloseDay: true,
   vatRegistered: true,
   vatRateBp: true,
@@ -365,6 +375,7 @@ export function parsePolicy(row: PolicyRow | null | undefined, vatRateBp: number
   };
   return {
     fiscalYearStartMonth: normalizeStartMonth(row.fiscalYearStartMonth),
+    booksStartDate: row.booksStartDate ?? null,
     periodCloseDay:
       typeof row.periodCloseDay === "number" && row.periodCloseDay >= 1 && row.periodCloseDay <= 28
         ? row.periodCloseDay
@@ -483,6 +494,7 @@ export type PolicyPatch = Partial<
   Pick<
     AccountPolicy,
     | "fiscalYearStartMonth"
+    | "booksStartDate"
     | "periodCloseDay"
     | "vatRegistered"
     | "vatRateBp"
@@ -512,7 +524,7 @@ export type PolicyPatch = Partial<
 export const VAT_RATE_VIA_TABLE_TH =
   "อัตรา VAT แก้ที่ ตั้งค่า › ข้อมูลกิจการ › อัตราภาษีและกำหนดยื่น (ตารางค่ากฎหมายมีวันที่มีผล) — ช่องนี้รับเฉพาะค่าที่ตรงกับตาราง";
 
-export type PolicySaveResult = { ok: true } | { ok: false; reason: string };
+export type PolicySaveResult = { ok: true; /** ACC T4.6 ▸ คำเตือนที่ยืนยันผ่านแล้ว (เปลี่ยนรอบบัญชี) ◂ */ warnings?: LegalWarning[] } | { ok: false; reason: string };
 
 /** ตรวจค่าก่อนบันทึก — คืนข้อความไทยของช่องแรกที่ผิด (null = ผ่าน) */
 export function validatePolicyPatch(patch: PolicyPatch): string | null {
@@ -575,8 +587,24 @@ export async function savePolicy(ctx: Ctx, patch: PolicyPatch): Promise<PolicySa
   const db = dbOf(ctx);
   const existing = await db.accountSettings.findFirst({
     where: { systemId: ctx.systemId },
-    select: { id: true, docConfig: true },
+    select: { id: true, docConfig: true, fiscalYearStartMonth: true },
   });
+
+  // ACC T4.6 ▸ เปลี่ยนเดือนเริ่มปีบัญชีของสมุดที่มีรายการแล้ว = คำเตือนต้องกดยืนยัน (ม.10 [V]) — ด่านก่อนเขียน · ไม่มีบริบท (งานเบื้องหลัง) = ไม่ถาม ◂
+  let ackRecorder: ((targetId: string) => Promise<void>) | null = null;
+  let fyWarnings: LegalWarning[] = [];
+  if (patch.fiscalYearStartMonth !== undefined && existing && normalizeStartMonth(existing.fiscalYearStartMonth) !== patch.fiscalYearStartMonth) {
+    const hasEntries = !!(await db.accountJournalEntry.findFirst({ where: { systemId: ctx.systemId }, select: { id: true } }));
+    fyWarnings = fiscalYearChangeWarnings(normalizeStartMonth(existing.fiscalYearStartMonth), patch.fiscalYearStartMonth, hasEntries);
+    const amb = fyWarnings.length ? legalAmbient() : null;
+    if (amb) {
+      if (unacknowledged(fyWarnings, amb.ack.codes).length > 0) {
+        notePendingLegal(fyWarnings);
+        throw new LegalAckRequiredError(fyWarnings);
+      }
+      ackRecorder = (targetId) => recordLegalAckInTx(db as unknown as Prisma.TransactionClient, { tenantId: ctx.tenantId, ack: amb.ack, op: "account.policy.fiscal-year", targetType: "AccountSettings", targetId, warnings: fyWarnings });
+    }
+  }
 
   const data: Record<string, unknown> = {};
   const copy = <K extends keyof PolicyPatch>(k: K) => {
@@ -585,6 +613,7 @@ export async function savePolicy(ctx: Ctx, patch: PolicyPatch): Promise<PolicySa
   (
     [
       "fiscalYearStartMonth",
+      "booksStartDate",
       "periodCloseDay",
       "vatRegistered",
       "vatTiming",
@@ -623,7 +652,8 @@ export async function savePolicy(ctx: Ctx, patch: PolicyPatch): Promise<PolicySa
   } catch (e) {
     return { ok: false, reason: safeReason(e, "บันทึกนโยบายบัญชีไม่สำเร็จ") };
   }
-  return { ok: true };
+  if (ackRecorder && existing) await ackRecorder(existing.id);
+  return { ok: true, ...(fyWarnings.length ? { warnings: fyWarnings } : {}) };
 }
 
 /**
@@ -647,4 +677,32 @@ export function policyAuditDiff(
     a[k] = mask(k, after[k]);
   }
   return { changed, before: b, after: a };
+}
+
+
+// ─────────────────────────── ACC T4.6 ▸ รอบบัญชีแรก ───────────────────────────
+
+export type FiscalInfo = {
+  /** ปีบัญชีแรก (จากวันเริ่มทำบัญชี) · null = ยังไม่ระบุวันเริ่ม */
+  firstPeriod: { start: string; end: string; months: number; fullMonths: number } | null;
+  /** เพดานเดือนของรอบแรก (ตาราง "สมุดบัญชี" FIRST_PERIOD_MAX_MONTHS) */
+  firstPeriodMaxMonths: number | null;
+  warnings: LegalWarning[];
+  /** สมุดมีรายการบัญชีแล้วไหม (เปลี่ยนเดือนเริ่มปีบัญชี = ต้องยืนยัน) */
+  hasEntries: boolean;
+};
+
+/** รอบแรก + คำเตือน (FIRST_PERIOD_SHORT) ของนโยบายนี้ — 2 คิวรี (ค่าตั้งตาราง · มีรายการไหม) */
+export async function fiscalInfoOf(ctx: Ctx, policy: Pick<AccountPolicy, "booksStartDate" | "fiscalYearStartMonth">): Promise<FiscalInfo> {
+  const [rule, entry] = await Promise.all([
+    bookRuleAt(ctx, "FIRST_PERIOD_MAX_MONTHS", policy.booksStartDate ?? accountNow()),
+    dbOf(ctx).accountJournalEntry.findFirst({ where: { systemId: ctx.systemId }, select: { id: true } }),
+  ]);
+  const ymd = policy.booksStartDate ? new Date(policy.booksStartDate.getTime() + 7 * 3600_000).toISOString().slice(0, 10) : null;
+  return {
+    firstPeriod: ymd ? firstFiscalPeriod(ymd, policy.fiscalYearStartMonth) : null,
+    firstPeriodMaxMonths: rule.value,
+    warnings: firstPeriodWarnings(ymd, policy.fiscalYearStartMonth, rule.value, rule.row?.source),
+    hasEntries: !!entry,
+  };
 }

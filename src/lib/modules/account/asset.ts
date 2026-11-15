@@ -9,6 +9,9 @@ import { safeReason } from "./errors";
 import type { Prisma, AccountAssetStatus } from "@prisma/client";
 import { postDepreciation, postManualJV, resolveMapping, type GlCtx } from "./gl";
 import { emitAssetDepreciated, emitAssetDisposed } from "./events";
+import { assetTaxClassOf, assetTaxWarnings, depreciationAmountFor, isAssetTaxClass, isFullyDepreciated, type AssetTaxClass, type AssetTaxRules } from "./asset-tax";
+import { bookRuleFrom, loadBookLegal } from "./legal-values";
+import type { LegalWarning } from "@/lib/core/settings/legal/warnings";
 
 type Tx = Prisma.TransactionClient;
 type Db = Tx | typeof prisma;
@@ -135,6 +138,8 @@ export type AssetRow = {
   netBookValue: number; // cost − accum
   disposalAmount: number | null;
   disposedAt: Date | null;
+  /** ACC T4.3 ▸ ประเภททางภาษี (LAND = ไม่คิดค่าเสื่อม) ◂ */
+  taxClass: AssetTaxClass;
   /** WO B4 additive — บัญชีที่ผูก (สินทรัพย์ · ค่าเสื่อมสะสม · ค่าใช้จ่าย) ชุดเดียวกับ `assetDetail` */
   accounts: { asset: LedgerOption | null; accum: LedgerOption | null; expense: LedgerOption | null };
 };
@@ -181,6 +186,7 @@ export async function listAssets(ctx: AssetCtx): Promise<AssetRow[]> {
       netBookValue: a.cost - accum,
       disposalAmount: a.disposalAmount,
       disposedAt: a.disposedAt,
+      taxClass: assetTaxClassOf(a.taxClass),
       accounts: {
         asset: ledgerById.get(a.assetAccountId) ?? null,
         accum: ledgerById.get(a.accumAccountId) ?? null,
@@ -212,9 +218,43 @@ export type RegisterInput = {
   expenseAccountId: string; // 6800
   sourceDocumentId?: string | null;
   note?: string | null;
+  /** ACC T4.3 ▸ ประเภททางภาษี (ไม่ส่ง = ทรัพย์สินอื่น) ◂ */
+  taxClass?: AssetTaxClass | null;
 };
 
-export type RegisterResult = { ok: true; id: string; code: string } | { ok: false; reason: string };
+export type RegisterResult = { ok: true; id: string; code: string; /** ACC T4.3 ▸ คำเตือนทางภาษี (ไม่บล็อก) ◂ */ warnings: LegalWarning[] } | { ok: false; reason: string };
+
+/** ACC T4.3 ▸ เพดานค่าเสื่อมทางภาษีของสมุด ณ วันที่ (ตาราง "สมุดบัญชี" · ร้านทับได้) — 1 คิวรีค่าตั้ง ◂ */
+export async function assetTaxRulesOf(ctx: AssetCtx, date: Date): Promise<AssetTaxRules> {
+  const legal = await loadBookLegal(ctx);
+  const r = (rule: Parameters<typeof bookRuleFrom>[1]) => bookRuleFrom(legal, rule, date);
+  const b = r("DEP_MAX_RATE_BUILDING"), t = r("DEP_MAX_RATE_TEMP_BUILDING"), i = r("DEP_MAX_RATE_INTANGIBLE"), o = r("DEP_MAX_RATE_OTHER"), c = r("DEP_COMPUTER_MIN_PERIODS"), car = r("DEP_PASSENGER_CAR_COST_CAP");
+  return {
+    buildingBp: b.value,
+    tempBuildingBp: t.value,
+    intangibleBp: i.value,
+    otherBp: o.value,
+    computerPeriods: c.value,
+    carCapSatang: car.value,
+    sources: { building: b.row?.source, tempBuilding: t.row?.source, intangible: i.row?.source, other: o.row?.source, computer: c.row?.source, carCap: car.row?.source },
+  };
+}
+
+/** ACC T4.3 ▸ เปลี่ยนประเภททางภาษีของสินทรัพย์ (เช่น ทำเครื่องหมายว่าเป็นที่ดิน) — คืนคำเตือนของประเภทใหม่ ◂ */
+export async function setAssetTaxClass(
+  ctx: AssetCtx,
+  assetId: string,
+  taxClass: string,
+): Promise<{ ok: true; taxClass: AssetTaxClass; warnings: LegalWarning[]; depreciatedBefore: number } | { ok: false; reason: string }> {
+  if (!isAssetTaxClass(taxClass)) return { ok: false, reason: "ประเภททางภาษีไม่ถูกต้อง" };
+  const a = await prisma.accountFixedAsset.findFirst({ where: { id: assetId, systemId: ctx.systemId }, select: { id: true, name: true, cost: true, usefulLifeMonths: true, status: true } });
+  if (!a) return { ok: false, reason: "ไม่พบสินทรัพย์" };
+  if (a.status === "DISPOSED" || a.status === "WRITTEN_OFF") return { ok: false, reason: "สินทรัพย์นี้จำหน่าย/ตัดบัญชีไปแล้ว — เปลี่ยนประเภทไม่ได้" };
+  const dep = await prisma.accountDepreciation.aggregate({ where: { assetId: a.id }, _sum: { amount: true } });
+  await prisma.accountFixedAsset.update({ where: { id: a.id }, data: { taxClass } });
+  const rules = await assetTaxRulesOf(ctx, new Date());
+  return { ok: true, taxClass, warnings: assetTaxWarnings({ name: a.name, taxClass, cost: a.cost, usefulLifeMonths: a.usefulLifeMonths }, rules), depreciatedBefore: dep._sum.amount ?? 0 };
+}
 
 export async function registerAsset(ctx: AssetCtx, input: RegisterInput): Promise<RegisterResult> {
   const name = input.name.trim();
@@ -275,6 +315,7 @@ export async function registerAsset(ctx: AssetCtx, input: RegisterInput): Promis
           expenseAccountId: input.expenseAccountId,
           sourceDocumentId: input.sourceDocumentId || null,
           note: input.note?.trim() || null,
+          taxClass: input.taxClass && isAssetTaxClass(input.taxClass) && input.taxClass !== "OTHER" ? input.taxClass : null,
         },
         select: { id: true, code: true },
       });
@@ -288,7 +329,9 @@ export async function registerAsset(ctx: AssetCtx, input: RegisterInput): Promis
       }
       return asset;
     });
-    return { ok: true, id: res.id, code: res.code };
+    const rules = await assetTaxRulesOf(ctx, input.acquiredDate);
+    const warnings = assetTaxWarnings({ name, taxClass: input.taxClass ?? null, cost: Math.round(input.cost), usefulLifeMonths: input.usefulLifeMonths }, rules);
+    return { ok: true, id: res.id, code: res.code, warnings };
   } catch (e) {
     return { ok: false, reason: safeReason(e, "ขึ้นทะเบียนไม่สำเร็จ") };
   }
@@ -302,21 +345,19 @@ async function nextAssetCode(ctx: AssetCtx, db: Db): Promise<string> {
 // ─────────────────── ค่าเสื่อมรายเดือน (เส้นตรง) ───────────────────
 
 /** จำนวนค่าเสื่อมของงวดถัดไปสำหรับสินทรัพย์ 1 ตัว (0 = ไม่ต้องคิด/ครบแล้ว)
- *  amount = round((cost − salvage)/usefulLifeMonths) · เดือนสุดท้ายเก็บเศษให้ net book = salvage */
+ *  amount = round((cost − salvage)/usefulLifeMonths) · เดือนสุดท้ายเก็บเศษให้ net book = salvage
+ *  ACC T4.3 ▸ สูตรย้ายไป `asset-tax.depreciationAmountFor` (ตัวเดียวทั้งระบบ): เดือนแรกตามส่วนของวันเมื่อส่ง startDepDate ·
+ *  ที่ดิน (taxClass LAND) = 0 · ไม่ส่ง startDepDate = เต็มเดือนแบบเดิม ◂ */
 export function nextDepreciationAmount(a: {
   cost: number;
   salvageValue: number;
   usefulLifeMonths: number;
   monthsDepreciated: number;
   accumDepreciation: number;
+  startDepDate?: Date | string | null;
+  taxClass?: string | null;
 }): number {
-  const depreciableBase = a.cost - a.salvageValue;
-  const remaining = depreciableBase - a.accumDepreciation;
-  if (remaining <= 0 || a.monthsDepreciated >= a.usefulLifeMonths) return 0;
-  const monthly = Math.round(depreciableBase / a.usefulLifeMonths);
-  const isLast = a.monthsDepreciated + 1 >= a.usefulLifeMonths;
-  const amount = isLast ? remaining : Math.min(monthly, remaining);
-  return amount > 0 ? amount : 0;
+  return depreciationAmountFor(a);
 }
 
 export type DepreciationRunResult = {
@@ -343,6 +384,11 @@ export async function runDepreciation(
   });
 
   for (const a of assets) {
+    // ACC T4.3 ▸ ที่ดินไม่คิดค่าเสื่อม (NPAEs 10.25 · พ.ร.ฎ.145 ม.4) ◂
+    if (assetTaxClassOf(a.taxClass) === "LAND") {
+      out.skipped.push({ assetId: a.id, code: a.code, reason: "ที่ดินไม่คิดค่าเสื่อม" });
+      continue;
+    }
     // เริ่มคิดค่าเสื่อมเมื่อถึงงวด startDepDate
     if (!periodStarted(a.startDepDate, periodKey)) {
       out.skipped.push({ assetId: a.id, code: a.code, reason: "ยังไม่ถึงงวดเริ่มคิดค่าเสื่อม" });
@@ -372,6 +418,8 @@ export async function runDepreciation(
           usefulLifeMonths: a.usefulLifeMonths,
           monthsDepreciated,
           accumDepreciation,
+          startDepDate: a.startDepDate,
+          taxClass: a.taxClass,
         });
         if (amount <= 0) {
           // ไม่มีค่าเสื่อมเหลือ → mark FULLY_DEPRECIATED
@@ -411,9 +459,9 @@ export async function runDepreciation(
         await tx.accountDepreciation.update({ where: { id: dep.id }, data: { entryId } });
 
         // 4) ครบอายุ → FULLY_DEPRECIATED
-        const nowMonths = monthsDepreciated + 1;
+        // ACC T4.3 ▸ ครบ = ฐานถูกคิดหมด (เดือนแรกเฉลี่ยตามวัน ⇒ งวดทั้งหมด = อายุ + 1 — นับเดือนอย่างเดียวจะค้างเศษ) ◂
         const nowAccum = accumDepreciation + amount;
-        const fully = nowMonths >= a.usefulLifeMonths || a.cost - nowAccum <= a.salvageValue;
+        const fully = isFullyDepreciated({ cost: a.cost, salvageValue: a.salvageValue, accumDepreciation: nowAccum, taxClass: a.taxClass });
         if (fully) {
           await tx.accountFixedAsset.update({
             where: { id: a.id },

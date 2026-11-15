@@ -11,7 +11,8 @@ import { csvRow } from "@/lib/core/csv";
 // 🔴 PDF = "พิมพ์เป็น PDF" ของเบราว์เซอร์ (window.print + @media print) — ไม่ลงไลบรารีใหม่ (WO ห้ามเพิ่ม dep)
 // 🔴 Excel = CSV + BOM (U+FEFF) — Excel ไทยเปิดแล้วไม่เป็นตัวยึกยือ (บทเรียนเดิม §10.10)
 
-export type CsvData = { headers: string[]; rows: (string | number)[][] };
+/** preamble = บรรทัดก่อนหัวตาราง (ACC T4.6 ▸ ป้าย "ร่างสำหรับผู้ทำบัญชี/ผู้สอบบัญชี" ของงบ) ◂ */
+export type CsvData = { headers: string[]; rows: (string | number)[][]; preamble?: string[] };
 
 /** โหมดช่วงเวลาของรายงาน: `range` = ตั้งแต่–ถึง (เดือน) · `asof` = ณ สิ้นเดือน · `none` = ไม่มีตัวเลือกเวลา */
 export type RangeMode = "range" | "asof" | "none";
@@ -19,7 +20,7 @@ export type RangeMode = "range" | "asof" | "none";
 // 🔴 WO 9.2 ข้อ 7: ทุกช่องผ่าน `csvRow`/`csvCell` กลาง (core/csv.ts) — กัน CSV injection
 //    (ชื่อบัญชี/ชื่อคู่ค้าในรายงานมาจากผู้ใช้ · เดิมหนีแค่ quote ไม่ได้กันสูตร)
 function toCsv(data: CsvData): string {
-  const lines = [csvRow(data.headers)];
+  const lines = [...(data.preamble ?? []).map((p) => csvRow([p])), csvRow(data.headers)];
   for (const r of data.rows) lines.push(csvRow(r));
   return lines.join("\r\n");
 }

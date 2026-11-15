@@ -10,6 +10,7 @@
 
 import { tenantDb } from "@/lib/core/db";
 import { nextDepreciationAmount, currentPeriodKey } from "./asset";
+import { assetTaxClassOf, firstMonthProration, type AssetTaxClass } from "./asset-tax";
 
 export type AssetCtx = { tenantId: string; systemId: string };
 
@@ -67,6 +68,9 @@ export type AssetDetail = {
   /** ค่าเสื่อมที่จะคิดในงวดถัดไป (0 = ครบแล้ว / ยังไม่ถึงงวด) */
   nextAmount: number;
   rows: DepreciationRow[];
+  /** ACC T4.3 ▸ ประเภททางภาษี · เดือนแรกเฉลี่ยตามวัน ◂ */
+  taxClass: AssetTaxClass;
+  firstMonth: { prorated: boolean; daysUsed: number; daysInMonth: number };
 };
 
 type LedgerRef = { id: string; code: string; name: string };
@@ -144,9 +148,13 @@ export async function assetDetail(ctx: AssetCtx, assetId: string): Promise<Asset
             usefulLifeMonths: a.usefulLifeMonths,
             monthsDepreciated: a.depreciations.length,
             accumDepreciation: accum,
+            startDepDate: a.startDepDate,
+            taxClass: a.taxClass,
           })
         : 0,
     rows,
+    taxClass: assetTaxClassOf(a.taxClass),
+    firstMonth: firstMonthProration(a.startDepDate),
   };
 }
 
@@ -215,10 +223,15 @@ export async function previewDepreciation(
       usefulLifeMonths: a.usefulLifeMonths,
       monthsDepreciated: months,
       accumDepreciation: accum,
+      startDepDate: a.startDepDate,
+      taxClass: a.taxClass,
     });
+    const land = assetTaxClassOf(a.taxClass) === "LAND";
     const skipReason = alreadyPosted
       ? "ลงบัญชีงวดนี้แล้ว"
-      : notStarted
+      : land
+        ? "ที่ดินไม่คิดค่าเสื่อม"
+        : notStarted
         ? "ยังไม่ถึงงวดเริ่มคิดค่าเสื่อม"
         : amount === 0
           ? "ค่าเสื่อมครบแล้ว"

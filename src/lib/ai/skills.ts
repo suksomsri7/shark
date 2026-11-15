@@ -91,6 +91,7 @@ export const SKILLS: Skill[] = [
       "account_pos_unposted", "account_pos_daily_recon", "account_pos_shift_variances", // ACC T4.7 ▸ บิลยังไม่ลง · กระทบยอดรายวัน · เงินขาด/เกิน (อ่าน) ◂
       "account_stock_issue_reasons", "account_dorm_deposit_check", "account_points_outstanding", // ACC T4.8 ▸ สาเหตุเบิก · เงินประกันหอ · แต้มคงค้าง (อ่าน) ◂
       "account_equity_statement", "account_goods_report", "account_waste_log", "account_deemed_sales", "account_deferrals", "account_branches", "account_branch_tax_report", // ACC T5.8–T5.11 ▸ งบส่วนของเจ้าของ · สินค้า · ของเสีย · ถือเป็นขาย · รายได้รับล่วงหน้า · สาขา (อ่าน) ◂
+      "account_vat_threshold", "account_tax_add_back", "account_tax_checks", "account_bad_debt", "account_etax_status", // ACC T5.4 ▸ สถานะ e-Tax ประทับเวลาของเอกสาร (อ่าน) ◂ // ACC T5.3 T5.5 T5.6 T5.7 ▸ เกณฑ์จด VAT · บวกกลับ · ตรวจภาษีประจำเดือน · หนี้สูญ (อ่าน) ◂ // ACC T3.4 ▸ ภ.ง.ด. แยกแบบ 1/2/3/53/54 · T3.5 ▸ ค้างรับ 50 ทวิ จากลูกค้า (อ่าน) ◂
       // เขียน (ผ่านการยืนยันของเจ้าของ)
       "account_create_document", "account_issue_document", "account_convert_document",
       "account_approve_document", "account_record_payment", "account_create_payment_link",
@@ -104,10 +105,16 @@ export const SKILLS: Skill[] = [
       "account_release_parked_vat", // ACC T1.2 ▸ ออกใบกำกับปล่อยภาษีขายที่ค้างพัก (ข้อเสนอ · ร้านเลือกวันที่) ◂
       "account_replace_tax_invoice", // ACC T2.2 ▸ ยกเลิกและออกใบกำกับภาษีแทน (ข้อเสนอ · เลขใหม่ วันที่เดิม) ◂
       "account_input_vat_not_claimable", // ACC T1.4 ▸ ใบกำกับภาษีซื้อไม่มา → ภาษีซื้อไม่ขอคืน (ข้อเสนอ) ◂
+      "account_approve_journal", // ACC T4.1 ▸ อนุมัติ JV มือ (ข้อเสนอ) ◂
+      "account_set_asset_tax_class", // ACC T4.3 ▸ ประเภททางภาษีของสินทรัพย์ — ที่ดินไม่คิดค่าเสื่อม (ข้อเสนอ) ◂
+      "account_set_tax_add_back", "account_set_stamp_duty_ref", "account_write_off_bad_debt", "account_set_doubtful_allowance", // ACC T5.5 T5.6 T5.7 ▸ ธงบวกกลับ · รหัสอากร · ตัดหนี้สูญ · ค่าเผื่อ (ข้อเสนอ) ◂
+      "account_recover_bad_debt", "account_set_statement_meeting", // ACC T5c ▸ หนี้สูญได้รับคืน (รายได้) · วันประชุมใหญ่อนุมัติงบ (ข้อเสนอ) ◂
+      "account_etax_send", "account_etax_record_stamped", "account_update_etax_settings", // ACC T5.4 ▸ ส่ง e-Tax ประทับเวลา · บันทึกไฟล์ประทับเวลา · ค่าตั้ง e-Tax (ข้อเสนอ) ◂
       "account_wht_replace_cert", "account_wht_additional_filing", "account_wht_mark_received", "account_wht_unmark_received", // ACC T3.3 ▸ ออก 50 ทวิ แทน · T3.4 ▸ แบบเพิ่มเติม ภ.ง.ด. · T3.5 ▸ ได้รับ 50 ทวิ แล้ว/ยกเลิก (ข้อเสนอ) ◂
       "account_update_compliance_values", "account_post_shift_variances", // ACC T4.5/T4.7 ▸ แก้ค่ากฎหมายอื่น/วิธีลงทิป · ลงบัญชีเงินขาด/เกินปิดกะ (ข้อเสนอ) ◂
       // อันตราย (ยืนยัน 2 ชั้น)
       "account_void_document", "account_void_payment", "account_merge_contacts", "account_reopen_period",
+      "account_void_bad_debt_recovery", // ACC T5c ▸ ยกเลิกรายการหนี้สูญได้รับคืน (กลับรายการ) ◂
       "account_refund_deposit", "account_forfeit_deposit", // ACC T2.4 ▸ คืนมัดจำ (ใบลดหนี้เมื่อมีใบกำกับ) · ริบมัดจำ (ค่าตั้ง [U]) ◂
     ],
     systems: ["ACCOUNT"],

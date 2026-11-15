@@ -36,6 +36,7 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["1150", "ASSET", "ภาษีซื้อ", "Input VAT"],
   ["1155", "ASSET", "ภาษีซื้อยังไม่ถึงกำหนด (รอใบกำกับ)", "Input VAT (Undue)"],
   ["1160", "ASSET", "ภาษีถูกหัก ณ ที่จ่าย", "Withholding Tax Asset"],
+  ["1109", "ASSET", "ค่าเผื่อหนี้สงสัยจะสูญ", "Allowance for Doubtful Accounts"], // ACC T5.7 — บัญชีปรับลดลูกหนี้ (ยอดเครดิต)
   // 1200 สินค้าคงเหลือ
   ["1200", "ASSET", "สินค้าคงเหลือ", "Inventory"],
   // 1600-1699 สินทรัพย์ถาวร (INVESTING)
@@ -67,6 +68,7 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["4910", "INCOME", "ดอกเบี้ยรับ", "Interest Income"], // V2 (WO 5.3): ดอกเบี้ยเงินฝากจากแถว statement
   ["4040", "INCOME", "รายได้ทิป", "Tip Revenue"], // ACC T4.7 — ทิปที่ร้านเลือกลงเป็นรายได้ (คิด VAT)
   ["4920", "INCOME", "เงินเกินจากการนับเงินสด", "Cash Over"], // ACC T4.7 — ผลต่างปิดกะ (domain-shark-accounting-cases §1.9)
+  ["4930", "INCOME", "หนี้สูญได้รับคืน", "Bad Debts Recovered"], // ACC T5c (เลน 2): เงินที่ได้รับจากหนี้ที่ตัดเป็นหนี้สูญไปแล้ว = รายได้ (merge T4+T5: 4920 = เงินเกินของเลน 1 ⇒ ย้ายมา 4930)
   // 5000-5999 ต้นทุน
   ["5000", "COGS", "ซื้อสินค้า/ต้นทุนขาย", "Purchases / COGS"],
   // V2 (WO 4.3 · SPEC §8.4) — เอกสารปรับปรุงสต็อก/ต้นทุน
@@ -95,6 +97,12 @@ const CHART: [string, AccountLedgerType, string, string][] = [
   ["6960", "EXPENSE", "ภาษีซื้อไม่ขอคืน (รายจ่ายต้องห้าม)", "Non-claimable Input VAT (non-deductible)"],
   // ACC T3.6 ▸ ภาษีเงินได้หัก ณ ที่จ่ายที่ร้านออกแทนผู้รับ (ออกภาษีให้) — แยกบัญชีไว้ เพราะเป็นรายจ่ายต้องห้ามหรือไม่ยังไม่ยืนยัน (skill common-withholding-tax §13 [U]) ◂
   ["6970", "EXPENSE", "ภาษีหัก ณ ที่จ่ายที่ออกแทนผู้รับ", "Withholding Tax Borne for Payee"],
+  // ACC T5.5/T5.7 (เลน 2) ▸ หนี้สูญ/ค่าเผื่อ (NPAEs 7.5 18.10) · หมวดที่ ม.65 ตรี ระบุ (ธง "อาจต้องบวกกลับ" ค่าเริ่ม — th-tax-2569 TAX_ADD_BACK_DEFAULT_BY_CODE) ◂
+  ["6710", "EXPENSE", "หนี้สงสัยจะสูญ", "Doubtful Accounts Expense"],
+  ["6720", "EXPENSE", "หนี้สูญ", "Bad Debt Expense"],
+  ["6980", "EXPENSE", "เงินบริจาค", "Donations"],
+  ["6985", "EXPENSE", "ค่าปรับ เงินเพิ่ม และเบี้ยปรับ", "Fines, Surcharges and Penalties"],
+  ["6990", "EXPENSE", "ภาษีเงินได้นิติบุคคล", "Corporate Income Tax"],
   // 9999 พักรายการ
   ["9999", "ASSET", "พักรายการ (Suspense)", "Suspense"],
 ];
@@ -146,6 +154,10 @@ const MAPPINGS: [string, string][] = [
   ["STAFF_WELFARE", "6050"],
   ["PROMO_GOODS", "6310"],
   ["GOODS_WASTE", "5330"],
+  ["DOUBTFUL_ALLOWANCE", "1109"], // ACC T5.7
+  ["DOUBTFUL_EXPENSE", "6710"], // ACC T5.7
+  ["BAD_DEBT_EXPENSE", "6720"], // ACC T5.7
+  ["BAD_DEBT_RECOVERED", "4930"], // ACC T5c (เลน 2) · merge: 4920 = CASH_OVER
 ];
 
 /** ACC T1.4 — ธง `vatTreatment` ของบัญชีระบบที่เป็นหมวดภาษีซื้อต้องห้าม (common-vat-invoice.md §17 · checklist C2) */
@@ -248,6 +260,10 @@ export const MAPPING_KEY_LABEL: Record<string, string> = {
   CASH: "เงินสด (บัญชีเริ่มต้น)",
   BANK: "เงินฝากธนาคาร (บัญชีเริ่มต้น)",
   SUSPENSE: "บัญชีพักรายการ (9999)",
+  DOUBTFUL_ALLOWANCE: "ค่าเผื่อหนี้สงสัยจะสูญ",
+  DOUBTFUL_EXPENSE: "หนี้สงสัยจะสูญ (ตั้งค่าเผื่อ)",
+  BAD_DEBT_EXPENSE: "หนี้สูญ",
+  BAD_DEBT_RECOVERED: "หนี้สูญได้รับคืน",
 };
 
 /** ป้ายไทยของ mapping key — คีย์ "DOC:<docType>" (override ใบกำกับภาษีอัตโนมัติต่อชนิดเอกสาร) แปลด้วย docTypeLabel

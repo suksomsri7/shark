@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { LegalWarnings } from "./LegalWarnings";
+import { fiscalYearChangeWarnings, firstFiscalPeriod, firstPeriodWarnings } from "@/lib/modules/account/fiscal-rules";
 import { AccountIcon } from "./AccountIcon";
 import { DateInput } from "./DateInput";
 import { useSetBreadcrumbTail } from "./breadcrumb-tail";
@@ -27,6 +30,11 @@ export type LedgerOpt = { code: string; name: string };
 
 export type PolicyView = {
   fiscalYearStartMonth: number;
+  /** ACC T4.6 ▸ วันเริ่มทำบัญชี "YYYY-MM-DD" ("" = ไม่ระบุ) · สมุดมีรายการแล้วไหม · เพดานเดือนรอบแรก (ตาราง) + ที่มา ◂ */
+  booksStartDate: string;
+  hasEntries: boolean;
+  firstPeriodMaxMonths: number | null;
+  firstPeriodSource?: string;
   periodCloseDay: number | null;
   fiscalYearLabel: string;
   vatRegistered: boolean;
@@ -139,6 +147,7 @@ export function PolicyPanel(p: PolicyPanelProps) {
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const [dirty, setDirty] = useState(false);
+  const router = useRouter();
   const formId = "policy-form";
   useSetBreadcrumbTail(p.subLabel);
 
@@ -148,7 +157,10 @@ export function PolicyPanel(p: PolicyPanelProps) {
     start(async () => {
       const res = await p.save(fd);
       setMsg(res.ok ? { ok: true, text: "บันทึกแล้ว" } : { ok: false, text: res.reason });
-      if (res.ok) setDirty(false);
+      if (res.ok) {
+        setDirty(false);
+        router.refresh(); // ACC T4.6 ▸ รอบปัจจุบัน/คำเตือนรอบแรกอ่านค่าที่บันทึกใหม่ ◂
+      }
     });
   }
 
@@ -253,6 +265,14 @@ export function PolicyPanel(p: PolicyPanelProps) {
 // ═══════════════ ① ปีบัญชี ═══════════════
 
 function FiscalSection({ v }: { v: PolicyView }) {
+  // ACC T4.6 ▸ คำเตือนล่วงหน้า (ตัวเดียวกับ server — fiscal-rules): เปลี่ยนเดือนเริ่มปีบัญชีของสมุดที่มีรายการ = ต้องติ๊กยืนยัน · รอบแรกสั้น = แจ้ง ◂
+  const [month, setMonth] = useState(v.fiscalYearStartMonth);
+  const [start, setStart] = useState(v.booksStartDate);
+  const warnings = useMemo(
+    () => [...fiscalYearChangeWarnings(v.fiscalYearStartMonth, month, v.hasEntries), ...firstPeriodWarnings(start || null, month, v.firstPeriodMaxMonths, v.firstPeriodSource)],
+    [v.fiscalYearStartMonth, v.hasEntries, v.firstPeriodMaxMonths, v.firstPeriodSource, month, start],
+  );
+  const first = start ? firstFiscalPeriod(start, month) : null;
   return (
     <Card
       testId="policy-fiscal-card"
@@ -262,7 +282,13 @@ function FiscalSection({ v }: { v: PolicyView }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <label className={labelCls}>
           เดือนเริ่มปีบัญชี
-          <select name="fiscalYearStartMonth" defaultValue={String(v.fiscalYearStartMonth)} className="input" data-testid="policy-fy-month">
+          <select
+            name="fiscalYearStartMonth"
+            defaultValue={String(v.fiscalYearStartMonth)}
+            onChange={(e) => setMonth(Number(e.target.value))}
+            className="input"
+            data-testid="policy-fy-month"
+          >
             {MONTHS.map((m, i) => (
               <option key={m} value={i + 1}>
                 {m}
@@ -284,9 +310,21 @@ function FiscalSection({ v }: { v: PolicyView }) {
           />
         </label>
       </div>
+      <label className={labelCls}>
+        วันเริ่มทำบัญชี (ไม่บังคับ)
+        <DateInput name="booksStartDate" defaultValue={v.booksStartDate} onChange={(x: string) => setStart(x)} testId="policy-books-start" />
+        <span className={helpCls}>ใช้ดูว่ารอบบัญชีแรกยาวกี่เดือน — ปิดบัญชีครั้งแรกภายใน 12 เดือนนับแต่วันเริ่มทำบัญชี (พ.ร.บ.การบัญชี ม.10)</span>
+      </label>
       <p className={helpCls} data-testid="policy-fy-label">
         รอบปัจจุบัน: <span className="font-medium text-[color:var(--color-ink)]">{v.fiscalYearLabel}</span>
+        {first && (
+          <span data-testid="policy-first-period">
+            {" "}
+            · รอบแรก {first.start} ถึง {first.end} ({first.fullMonths === first.months ? `${first.months} เดือน` : `ไม่ถึง ${first.months} เดือน`})
+          </span>
+        )}
       </p>
+      <LegalWarnings warnings={warnings} ackName="ack" testId="policy-fiscal-warnings" />
       <p className={helpCls}>
         “วันปิดงวด” คือวันที่ทีมบัญชีตั้งใจปิดงวดของเดือนก่อนให้เสร็จ — ใช้เตือนและใช้กับการปิดงวดอัตโนมัติ
         เลือกได้ไม่เกินวันที่ 28 เพื่อให้ใช้กับเดือนกุมภาพันธ์ได้ด้วย

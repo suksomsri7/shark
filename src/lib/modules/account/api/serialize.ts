@@ -11,6 +11,7 @@
 //      ไม่ใช่ instant (ใช้ `dayKeyBkk` ตัวเดียวกับที่หน้าจอใช้ ⇒ ตัวเลขบนจอกับใน API ตรงกันเสมอ)
 
 import { depositSettlementView, type DepositSettlementView } from "../deposit-outcome"; // ACC T3 (A2) ◂
+import { badDebtStatusOf, type BadDebtStatusView } from "../bad-debt-shared"; // ACC T5c ◂
 import type { AccountDocStatus, AccountDocType } from "@prisma/client";
 import type { AttachmentView } from "@/components/account-v2/doc-editor-types";
 import type {
@@ -78,6 +79,8 @@ export type DocRowView = {
   source: string;
   /** ACC T3 (A2) ▸ ใบรับ/จ่ายมัดจำที่คืน/ริบแล้ว (ฟิลด์ที่คำนวณ · null = ไม่เกี่ยว) ◂ */
   depositSettlement: ReturnType<typeof depositSettlementApi>;
+  /** ACC T5c ▸ ตัดหนี้สูญ (ฟิลด์ที่คำนวณจากรายการชำระช่องทาง BAD_DEBT · status ในฐานยังเป็น PAID/PARTIAL) — null = ไม่เกี่ยว ◂ */
+  badDebt: ReturnType<typeof badDebtApi>;
   createdAt: string | null;
   updatedAt: string | null;
 };
@@ -85,6 +88,11 @@ export type DocRowView = {
 /** ACC T3 (A2) ▸ รูปเดียวทั้งรายการและรายละเอียด */
 export function depositSettlementApi(v: DepositSettlementView | null) {
   return v ? { kind: v.kind, partial: v.partial, refundedSatang: v.refundedSatang, forfeitedSatang: v.forfeitedSatang, label: v.labelTh } : null;
+}
+
+/** ACC T5c ▸ รูปเดียวทั้งรายการและรายละเอียด */
+export function badDebtApi(v: BadDebtStatusView | null) {
+  return v ? { state: v.state, writtenOffSatang: v.writtenOffSatang, label: v.labelTh } : null;
 }
 
 export function docRow(d: ListDocumentsPage["rows"][number]): DocRowView {
@@ -109,6 +117,7 @@ export function docRow(d: ListDocumentsPage["rows"][number]): DocRowView {
     tags: [...d.tags],
     source: d.source,
     depositSettlement: depositSettlementApi(depositSettlementView(d)),
+    badDebt: badDebtApi(badDebtStatusOf(d, d.payments)),
     createdAt: iso(d.createdAt),
     updatedAt: iso(d.updatedAt),
   };
@@ -246,6 +255,7 @@ export function docDetail(d: DocDetailData) {
     status: d.status,
     label: d.label,
     depositSettlement: depositSettlementApi(d.depositSettlement), // ACC T3 (A2) ◂
+    badDebt: badDebtApi(d.badDebt), // ACC T5c ◂
     createdAt: iso(d.createdAt),
     issueDate: ymd(d.issueDate),
     dueDate: ymd(d.dueDate),

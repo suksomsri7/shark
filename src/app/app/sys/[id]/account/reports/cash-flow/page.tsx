@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cashFlow, type CashFlowSection } from "@/lib/modules/account/reports";
 import { ledgerDrillHref, previousRange } from "@/lib/modules/account/report-drill";
 import { MoneyText } from "@/components/ui/MoneyText";
-import { loadReportWithPolicy, fiscalDefaultRange, ReportHeader, TableWrap, WarnBanner } from "../_shared";
+import { loadReportWithPolicy, fiscalDefaultRange, ReportHeader, TableWrap, WarnBanner, STATEMENT_CSV_PREAMBLE } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
 const ACT_LABEL: Record<string, string> = {
@@ -68,6 +68,7 @@ export default async function CashFlowPage({
   );
 
   const csv = {
+    preamble: STATEMENT_CSV_PREAMBLE, // ACC T4.6 ▸ ป้ายร่างบรรทัดแรกของไฟล์ ◂
     headers: ["กิจกรรม", "รหัส", "ชื่อ", "จำนวน (บาท)"],
     rows: sections.flatMap((s) =>
       s.lines.map((l) => [ACT_LABEL[s.activity], l.code, l.name, l.amount / 100] as (string | number)[]),
@@ -77,7 +78,7 @@ export default async function CashFlowPage({
   return (
     <div className="flex max-w-3xl flex-col gap-4">
       <div className="flex items-start justify-between gap-3">
-        <ReportHeader
+        <ReportHeader draft
           base={base}
           title="งบกระแสเงินสด (วิธีตรง)"
           subtitle={`${from} ถึง ${to}${compare ? ` · เทียบ ${prev.from} ถึง ${prev.to}` : ""}`}

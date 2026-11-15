@@ -521,6 +521,7 @@ model AccountLedger {
   defaultWhtRateBp Int? // อัตราหัก ณ ที่จ่ายเริ่มต้น (basis point: 300 = 3%) · null = ไม่ใช้กับบัญชีนี้
   defaultWhtType   String? // ประเภทเงินได้ตั้งต้นของ WHT (ค่าเดียวกับ AccountDocument.whtType)
   vatTreatment     String? // ประเภทภาษี (ฝั่งซื้อ): CLAIMABLE | NON_CLAIMABLE | PENDING_INVOICE · null = ไม่ระบุ
+  taxAddBack       String? // ACC T5.5: ธง "อาจต้องบวกกลับทางภาษี" = รหัสอนุมาตรา ม.65 ตรี (S65TRI_*) · "NONE" = ร้านปลดธง · null = ค่าเริ่มต้นตามรหัสบัญชี
   level            Int? // 1 หมวด · 2 หมวดรอง · 3 หมวดย่อย · 4 บัญชี — null = คิดจากความยาวรหัส/parent ตอนอ่าน
   sortOrder        Int? // ลำดับแสดงในผังบัญชี (null = เรียงตามรหัส)
   createdAt        DateTime                @default(now())
@@ -572,6 +573,9 @@ model AccountJournalEntry {
   reversalOf     AccountJournalEntry? @relation("AccountReversal", fields: [reversalOfId], references: [id])
   reversedBy     AccountJournalEntry? @relation("AccountReversal")
   postedById     String?
+  // ACC T4.1 (เลน 2) ▸ ผู้อนุมัติ JV มือ (ผู้ใช้ หรือคีย์ API) + เวลาอนุมัติ — ประกาศกรมทะเบียนการค้า 2544 ข้อ 11 ◂
+  approvedById   String?
+  approvedAt     DateTime?
   createdAt      DateTime             @default(now())
   updatedAt      DateTime             @updatedAt
 
@@ -650,6 +654,8 @@ model AccountFixedAsset {
   // V2 (WO 6.2 · §11.5): วิธีจำหน่าย "SELL" (ขาย) | "WRITE_OFF" (ตัดบัญชี) — เดิมรู้ได้แค่จาก status
   disposalMethod   String?
   disposalAmount   Int?
+  // ACC T4.3 (เลน 2) ▸ ประเภททางภาษี: LAND (ไม่คิดค่าเสื่อม) · BUILDING · TEMP_BUILDING · COMPUTER · PASSENGER_CAR · INTANGIBLE · OTHER (null = OTHER) ◂
+  taxClass         String?
   note             String?
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt

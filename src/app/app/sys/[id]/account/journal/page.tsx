@@ -10,6 +10,7 @@ import {
   JOURNAL_RANGE_PRESETS,
   JOURNAL_TABS,
   JOURNAL_PAGE_SIZE,
+  jvRulesOf,
   type JournalRangeKey,
 } from "@/lib/modules/account/journal-v2";
 import { peekJournalNo } from "@/lib/modules/account/gl";
@@ -81,6 +82,9 @@ export default async function JournalPage({
     : [[], []];
   // CRM C5.4-N ▸ ดูอย่างเดียว (ไม่กินเลข) — เปิดกล่องกี่ครั้งเลขก็ไม่ขยับ ◂
   const nextDocNo = openModal ? await peekJournalNo(ctx, "GENERAL", now) : "";
+  // ACC T4.1 ▸ กติกาลงรายการช้า (ตารางค่ากฎหมาย "สมุดบัญชี") สำหรับคำเตือนล่วงหน้าในฟอร์ม ◂
+  const lateRules = openModal ? await jvRulesOf(ctx, now) : null;
+  const todayYmd = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(now);
 
   return (
     <div className="flex flex-col gap-5">
@@ -181,7 +185,8 @@ export default async function JournalPage({
           systemId={systemId}
           accounts={accounts}
           contacts={contacts}
-          defaultDate={new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok" }).format(now)}
+          defaultDate={todayYmd}
+          lateCtx={lateRules ? { ...lateRules, todayYmd } : undefined}
           nextDocNo={nextDocNo}
           action={createJvAction}
           error={sp.err}

@@ -12,6 +12,7 @@
 import { revalidatePath } from "next/cache";
 import type { AccountPriceMode, AccountVatTiming, AccountWhtIncomeType } from "@prisma/client";
 import { loadAccountSystem } from "./guard";
+import { screenAck, withScreenLegal } from "./legal-gate";
 import { assertAccountCan, writeAudit } from "./access";
 import { listLedgers, setMapping } from "./coa";
 import {
@@ -113,6 +114,11 @@ export async function savePolicyAction(formData: FormData): Promise<PolicyAction
 
   // ① ปีบัญชี
   if (has(formData, "fiscalYearStartMonth")) patch.fiscalYearStartMonth = int(formData, "fiscalYearStartMonth", 1);
+  // ACC T4.6 ▸ วันเริ่มทำบัญชี (ม.10 รอบแรก) — ว่าง = ไม่ระบุ · เก็บเที่ยงวันเวลาไทย (กันวันเหลื่อม) ◂
+  if (has(formData, "booksStartDate")) {
+    const raw = s(formData, "booksStartDate");
+    patch.booksStartDate = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? new Date(`${raw}T12:00:00+07:00`) : null;
+  }
   if (has(formData, "periodCloseDay")) {
     const raw = s(formData, "periodCloseDay");
     patch.periodCloseDay = raw === "" ? null : int(formData, "periodCloseDay", 1);
@@ -179,8 +185,9 @@ export async function savePolicyAction(formData: FormData): Promise<PolicyAction
     patch.emailReportRecipients = readRecipients(formData);
   }
 
-  const saved = await savePolicy(ctx, patch);
-  if (!saved.ok) return saved;
+  // ACC T4.6 ▸ เปลี่ยนรอบบัญชีของสมุดที่มีรายการ = ต้องติ๊กยืนยัน (ack) — ไม่ติ๊ก = กลับมาพร้อมคำเตือน ◂
+  const saved = await withScreenLegal(screenAck(formData.getAll("ack"), userId), () => savePolicy(ctx, patch));
+  if (!saved.ok) return { ok: false, reason: saved.reason };
 
   // บัญชีเริ่มต้น = mapping key ที่ตัวโพสต์บัญชีใช้จริง — เขียนคู่กับคอลัมน์เสมอ
   // (คอลัมน์ไว้โชว์/ตรวจ · mapping คือของจริงที่ `gl.resolveLine` อ่าน)

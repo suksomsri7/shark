@@ -38,6 +38,12 @@ import {
   WHT_PAYER_LABEL_TH,
   WHT_RECIPIENT_LABEL_TH,
   WHT_GROSS_UP_FORMULAS,
+  BOOK_RULE_META,
+  bookRuleValueLabel,
+  deadlineValueLabelTh,
+  FILING_FORM_META,
+  type BookRule,
+  type BookRuleRow,
   type WhtGrossUpFormula,
   type EntityKind,
   type FilingChannel,
@@ -79,7 +85,7 @@ export type { LegalUiOptions };
 /** ค่ากฎหมายของสมุดหนึ่งเล่ม ณ ตอนโหลด — แถวของร้าน (แถวระบบอ่านจากโค้ด) + ประเภทผู้ประกอบการ */
 export type BookLegal = {
   entityKind: EntityKind;
-  shop: { vat: VatRateRow[]; wht: WhtRateRow[]; deadline: FilingDeadlineRow[] };
+  shop: { vat: VatRateRow[]; wht: WhtRateRow[]; deadline: FilingDeadlineRow[]; /** ACC T4 ▸ ตารางสมุดบัญชี/ค่าเสื่อม/รอบบัญชี ◂ */ book?: BookRuleRow[] };
   /** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่ายของสมุด (อ่านในคิวรีเดียวกัน) · ไม่มี = ค่าเริ่ม ◂ */
   wht?: BookWhtSettings;
   /** ACC T4.5 · T4.8 ▸ แถวค่ากฎหมายอื่นที่ร้านตั้ง (ระยะเก็บเอกสาร · เงินประกันหอ) · ไม่มี = [] ◂ */
@@ -93,16 +99,16 @@ export const DEFAULT_BOOK_WHT: BookWhtSettings = { ewhtEnabled: false, grossUpAl
 const isFormula = (v: unknown): v is WhtGrossUpFormula => typeof v === "string" && (WHT_GROSS_UP_FORMULAS as readonly string[]).includes(v);
 export const bookWhtOf = (legal: BookLegal): BookWhtSettings => legal.wht ?? DEFAULT_BOOK_WHT;
 
-const KEY_OF: Record<LegalTableKind, string> = { vat: ACCOUNT_SETTING_KEYS.vat, wht: ACCOUNT_SETTING_KEYS.wht, deadline: ACCOUNT_SETTING_KEYS.deadline };
+const KEY_OF: Record<LegalTableKind, string> = { vat: ACCOUNT_SETTING_KEYS.vat, wht: ACCOUNT_SETTING_KEYS.wht, deadline: ACCOUNT_SETTING_KEYS.deadline, book: ACCOUNT_SETTING_KEYS.bookRules };
 const arr = <T,>(v: unknown): T[] => (Array.isArray(v) ? (v as T[]) : []);
 
 /** ค่าเริ่ม (ไม่มีแถวร้าน · ยังไม่ระบุประเภทผู้ประกอบการ) — ใช้เมื่อยังไม่มีสมุด/ในข้อสอบ */
-export const EMPTY_BOOK_LEGAL: BookLegal = { entityKind: "UNSET", shop: { vat: [], wht: [], deadline: [] } };
+export const EMPTY_BOOK_LEGAL: BookLegal = { entityKind: "UNSET", shop: { vat: [], wht: [], deadline: [], book: [] } };
 
 /** อ่านค่าตั้งทั้ง 4 คีย์ของสมุดในคิวรีเดียว */
 export async function loadBookLegal(ctx: BookCtx): Promise<BookLegal> {
   const K = ACCOUNT_SETTING_KEYS;
-  const r = await resolveBookSettings({ tenantId: ctx.tenantId }, [K.entityKind, KEY_OF.vat, KEY_OF.wht, KEY_OF.deadline, K.ewhtEnabled, K.grossUpAlways, K.grossUpOnce, K.compliance, K.tipTreatment], ctx.systemId);
+  const r = await resolveBookSettings({ tenantId: ctx.tenantId }, [K.entityKind, KEY_OF.vat, KEY_OF.wht, KEY_OF.deadline, KEY_OF.book, K.ewhtEnabled, K.grossUpAlways, K.grossUpOnce, K.compliance, K.tipTreatment], ctx.systemId);
   const tip = r[K.tipTreatment]?.value;
   const ga = r[K.grossUpAlways]?.value;
   const go = r[K.grossUpOnce]?.value;
@@ -112,6 +118,7 @@ export async function loadBookLegal(ctx: BookCtx): Promise<BookLegal> {
       vat: arr<VatRateRow>(r[KEY_OF.vat]?.value),
       wht: arr<WhtRateRow>(r[KEY_OF.wht]?.value),
       deadline: arr<FilingDeadlineRow>(r[KEY_OF.deadline]?.value),
+      book: arr<BookRuleRow>(r[KEY_OF.book]?.value),
     },
     wht: {
       ewhtEnabled: r[K.ewhtEnabled]?.value === true,
@@ -172,16 +179,17 @@ export function bkkYmd(d: Date): string {
 
 // ═══════════════════ ตัวอ่านเดียว ═══════════════════
 
-export type LegalKey = "vat.rate" | "wht.rate" | "filing.deadline";
+export type LegalKey = "vat.rate" | "wht.rate" | "filing.deadline" | "book.rule";
 export type WhtQuery = { incomeType: string; payer?: WhtPayer; recipient?: WhtRecipient; channel?: WhtChannel };
 export type DeadlineQuery = { form: FilingForm; channel: FilingChannel };
-export type LegalQuery<K extends LegalKey> = K extends "wht.rate" ? WhtQuery : K extends "filing.deadline" ? DeadlineQuery : undefined;
+export type BookRuleQuery = { rule: BookRule };
+export type LegalQuery<K extends LegalKey> = K extends "wht.rate" ? WhtQuery : K extends "filing.deadline" ? DeadlineQuery : K extends "book.rule" ? BookRuleQuery : undefined;
 
 export type LegalValue = {
   /** อัตรา (bp) หรือ วันที่ของเดือน · null = ไม่มีอัตราคงที่ (ไม่หัก/อัตราก้าวหน้า/ไม่มีแถว) */
   value: number | null;
   method: WhtMethod;
-  row: VatRateRow | WhtRateRow | FilingDeadlineRow | null;
+  row: VatRateRow | WhtRateRow | FilingDeadlineRow | BookRuleRow | null;
   origin: "SHOP" | "SYSTEM" | null;
   /** วันที่ (ไทย) ที่ใช้เลือกแถว */
   ymd: string;
@@ -189,7 +197,7 @@ export type LegalValue = {
 };
 
 function pickFrom<K extends LegalTableKind>(kind: K, legal: BookLegal, query: Record<string, string>, ymd: string, allowNearest = true) {
-  const shop = legal.shop[kind] as unknown as LegalRowOf<K>[];
+  const shop = (legal.shop[kind] ?? []) as unknown as LegalRowOf<K>[];
   const sys = SYSTEM_ROWS[kind] as readonly LegalRowOf<K>[];
   const pick = pickLegalRow(kind, shop, sys, query, ymd, { allowNearest });
   // เทียบ "ต่างจากค่าเริ่มต้น" เฉพาะแถวระบบที่มีผลวันเดียวกันจริง (แถวร้านที่เติมช่วงที่ระบบไม่มีแถว ≠ ต่างจากค่าเริ่ม)
@@ -213,6 +221,11 @@ export function legalValueFrom<K extends LegalKey>(legal: BookLegal, key: K, dat
   const ymd = bkkYmd(date);
   if (key === "vat.rate") {
     const { pick, warnings } = pickFrom("vat", legal, {}, ymd);
+    return { value: pick.row?.value ?? null, method: "RATE", row: pick.row, origin: pick.origin, ymd, warnings };
+  }
+  if (key === "book.rule") {
+    const q = query as BookRuleQuery;
+    const { pick, warnings } = pickFrom("book", legal, { rule: q.rule }, ymd);
     return { value: pick.row?.value ?? null, method: "RATE", row: pick.row, origin: pick.origin, ymd, warnings };
   }
   if (key === "filing.deadline") {
@@ -417,6 +430,16 @@ export type LegalRowView = {
   warnings: LegalWarning[];
 };
 
+/** ACC T4 ▸ ค่ากฎของตาราง "สมุดบัญชี" ณ วันที่ (ตัวช่วยบนตัวอ่านเดียว) — value ตามหน่วยของกฎ · row มีที่มา/ป้าย ◂ */
+export function bookRuleFrom(legal: BookLegal, rule: BookRule, date: Date): { value: number | null; row: BookRuleRow | null; origin: "SHOP" | "SYSTEM" | null; warnings: LegalWarning[]; label: string } {
+  const v = legalValueFrom(legal, "book.rule", date, { rule });
+  return { value: v.value, row: v.row as BookRuleRow | null, origin: v.origin, warnings: v.warnings, label: bookRuleValueLabel(rule, v.value) };
+}
+
+export async function bookRuleAt(ctx: BookCtx, rule: BookRule, date: Date) {
+  return bookRuleFrom(await loadBookLegal(ctx), rule, date);
+}
+
 export type BookTaxView = {
   asOf: string;
   /** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่าย ◂ */
@@ -425,7 +448,7 @@ export type BookTaxView = {
   entityKindLabel: string;
   isJuristicPayer: boolean | null;
   vatRateBp: number;
-  tables: { vat: LegalRowView[]; wht: LegalRowView[]; deadline: LegalRowView[] };
+  tables: { vat: LegalRowView[]; wht: LegalRowView[]; deadline: LegalRowView[]; book: LegalRowView[] };
   warnings: LegalWarning[];
 };
 
@@ -438,19 +461,21 @@ function dimsLabelOf(kind: LegalTableKind, r: Record<string, unknown>): string {
     const d = r as unknown as FilingDeadlineRow;
     return `${FILING_FORM_LABEL_TH[d.form]} · ${FILING_CHANNEL_LABEL_TH[d.channel]}`;
   }
+  if (kind === "book") return BOOK_RULE_META[(r as unknown as BookRuleRow).rule]?.labelTh ?? String(r.rule);
   return "อัตรามาตรฐาน";
 }
 
-function valueLabelOf(kind: LegalTableKind, r: { value: number | null; method?: WhtMethod }): string {
-  if (kind === "deadline") return `ภายในวันที่ ${r.value} ของเดือนถัดไป`;
+function valueLabelOf(kind: LegalTableKind, r: { value: number | null; method?: WhtMethod; rule?: BookRule }): string {
+  if (kind === "deadline") return deadlineValueLabelTh((r as FilingDeadlineRow).form, (r as FilingDeadlineRow).channel, r.value); // ACC T5.1 ▸ แบบรายปี ◂
+  if (kind === "book") return r.rule ? bookRuleValueLabel(r.rule, r.value) : String(r.value);
   if (r.method && r.method !== "RATE") return WHT_METHOD_LABEL_TH[r.method];
   return r.value === null ? "-" : `${r.value / 100}%`;
 }
 
 function tableView<K extends LegalTableKind>(kind: K, legal: BookLegal, ymd: string): LegalRowView[] {
-  const shop = legal.shop[kind] as unknown as LegalRowOf<K>[];
+  const shop = (legal.shop[kind] ?? []) as unknown as LegalRowOf<K>[];
   const sys = SYSTEM_ROWS[kind] as readonly LegalRowOf<K>[];
-  const dimKeys = kind === "wht" ? ["incomeType", "payer", "recipient", "channel"] : kind === "deadline" ? ["form", "channel"] : [];
+  const dimKeys = kind === "wht" ? ["incomeType", "payer", "recipient", "channel"] : kind === "deadline" ? ["form", "channel"] : kind === "book" ? ["rule"] : [];
   const covers = (r: { from: string | null; to: string | null }) => (r.from === null || r.from <= ymd) && (r.to === null || ymd <= r.to);
   const view = (r: LegalRowOf<K>, origin: "SYSTEM" | "SHOP"): LegalRowView => {
     const rec = r as unknown as Record<string, unknown>;
@@ -462,7 +487,7 @@ function tableView<K extends LegalTableKind>(kind: K, legal: BookLegal, ymd: str
       inEffect: covers(r) && used?.id === r.id,
       value: r.value,
       method: (rec.method as WhtMethod | undefined) ?? "RATE",
-      valueLabel: valueLabelOf(kind, r as { value: number | null; method?: WhtMethod }),
+      valueLabel: valueLabelOf(kind, r as { value: number | null; method?: WhtMethod; rule?: BookRule }),
       from: r.from,
       to: r.to,
       source: r.source,
@@ -496,7 +521,7 @@ export function bookTaxViewFrom(legal: BookLegal, date: Date): BookTaxView {
     entityKindLabel: ENTITY_KIND_LABEL_TH[legal.entityKind],
     isJuristicPayer: isJuristicPayer(legal.entityKind),
     vatRateBp: vatRateBpFrom(legal, date),
-    tables: { vat: tableView("vat", legal, ymd), wht: tableView("wht", legal, ymd), deadline: tableView("deadline", legal, ymd) },
+    tables: { vat: tableView("vat", legal, ymd), wht: tableView("wht", legal, ymd), deadline: tableView("deadline", legal, ymd), book: tableView("book", legal, ymd) },
     warnings,
   };
 }
@@ -513,6 +538,8 @@ export type BookTaxPatch = {
   vatRows?: Omit<VatRateRow, "tag">[];
   whtRows?: Omit<WhtRateRow, "tag">[];
   deadlineRows?: Omit<FilingDeadlineRow, "tag">[];
+  /** ACC T4 ▸ แถวของร้านในตาราง "สมุดบัญชี/ค่าเสื่อม/รอบบัญชี" (แทนทั้งชุด) ◂ */
+  bookRows?: Omit<BookRuleRow, "tag">[];
   /** ACC T3.6/T3.7 ▸ ค่าตั้งหัก ณ ที่จ่าย (ส่งเฉพาะช่องที่เปลี่ยน) ◂ */
   ewhtEnabled?: boolean;
   grossUpAlways?: WhtGrossUpFormula;
@@ -549,6 +576,11 @@ export async function saveBookTax(actor: SettingsActor, ctx: BookCtx, patch: Boo
     const rows = shopify(patch.deadlineRows) as FilingDeadlineRow[];
     for (const r of rows) warnings.push(...shopRowWarnings("deadline", r));
     push(KEY_OF.deadline, rows);
+  }
+  if (patch.bookRows !== undefined) {
+    const rows = shopify(patch.bookRows) as BookRuleRow[];
+    for (const r of rows) warnings.push(...shopRowWarnings("book", r));
+    push(KEY_OF.book, rows);
   }
   if (patch.ewhtEnabled !== undefined) push(ACCOUNT_SETTING_KEYS.ewhtEnabled, patch.ewhtEnabled);
   if (patch.grossUpAlways !== undefined) push(ACCOUNT_SETTING_KEYS.grossUpAlways, patch.grossUpAlways);

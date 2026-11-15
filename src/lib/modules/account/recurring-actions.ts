@@ -221,7 +221,7 @@ export async function runRemindersNowAction(formData: FormData) {
   const { auth, tenantId } = await loadAccountSystem(systemId);
   assertAccountCan(auth, "account.payment.record");
   const res = await runAccountReminders(new Date(), { tenantId, systemId });
-  const sent = res.DUE_TOMORROW + res.OVERDUE_TODAY + res.PTX_AWAITING + res.CHEQUE_DUE + res.PP30_DUE + res.PND_DUE;
+  const sent = res.DUE_TOMORROW + res.OVERDUE_TODAY + res.PTX_AWAITING + res.CHEQUE_DUE + res.PP30_DUE + res.PND_DUE + res.TAX_CALENDAR_DUE;
   const base = `/app/sys/${systemId}/account/recurring`;
   revalidatePath(base);
   redirect(

@@ -25,7 +25,8 @@
 import { ackField } from "../ack-field";
 import type { AccountDocType } from "@prisma/client";
 import { z } from "zod";
-import { disposeAsset, getAsset, registerAsset, runDepreciation } from "../../asset";
+import { disposeAsset, getAsset, registerAsset, runDepreciation, setAssetTaxClass } from "../../asset";
+import { ASSET_TAX_CLASSES } from "../../asset-tax";
 import { assetDetail } from "../../asset-v2";
 import {
   MAPPING_KEYS,
@@ -43,6 +44,7 @@ import { docTypeLabel } from "../../dashboard";
 import { listDocTypeAccounts, setDocTypeAccount } from "../../doc-settings";
 import { ERR } from "../../errors";
 import {
+  approveJournalEntry,
   createManualEntry,
   journalEntryDetail,
   journalNumbersOf,
@@ -60,7 +62,7 @@ import {
 import { NUMBERED_DOC_TYPES } from "../../settings-schema";
 import { fileVatAdditional, setVatCreditCarry } from "../../pp30-filing";
 import { PP30_EXCESS_CHOICES } from "../../pp30-shared";
-import { actorAuditId, actorAuditType, actorCan, type ApiActor } from "../actor";
+import { actorAuditId, actorAuditType, actorCan, actorRefId, type ApiActor } from "../actor";
 import { defineOp, type ApiOp } from "../op";
 import { ApiError, type ApiErrorDetail } from "../respond";
 import {
@@ -187,7 +189,15 @@ const journalCreateInput = z
     acknowledge: ackField,
     date: ymdField("date"),
     book: z.enum(BOOKS).optional().describe("Journal book the entry belongs to. Default GENERAL."),
-    memo: z.string().max(300).nullish().describe("What the entry is for. Shown in the journal list."),
+    memo: z
+      .string()
+      .max(300)
+      .nullish()
+      .describe("What the entry is for. Shown in the journal list. Leaving it empty returns 409 legal_ack_required (JV_DESCRIPTION_MISSING): the general journal needs a description of each entry; resend with that code in acknowledge only if the owner really has none."),
+    approve: z
+      .boolean()
+      .optional()
+      .describe("true = record the caller as the approver of the entry at the same time. Default false: the entry is posted unapproved and approved later with journal.approve."),
     lines: z
       .array(journalLineInput)
       .min(2, "ต้องมีบรรทัดรายการอย่างน้อย 2 บรรทัด")
@@ -225,7 +235,7 @@ const journalCreate = defineOp({
   kind: "write",
   action: "account.journal.adjust",
   summary:
-    "Post a manual journal entry. Total debit must equal total credit and the entry must fall in a period that is still open. The entry is posted straight away, it is not a draft.",
+    "Post a manual journal entry. Total debit must equal total credit and the entry must fall in a period that is still open. The entry is posted straight away, it is not a draft. The response carries warnings that never block: entry recorded later than the bookkeeping deadline for this kind of business (JV_LATE_ENTRY), no supporting document attached (JV_NO_SUPPORTING_DOC), not yet approved (JV_UNAPPROVED).",
   label: "บันทึกใบสำคัญด้วยมือ",
   tool: { name: "account_post_journal", hint: "Debit must equal credit; get account ids from account_chart_of_accounts first. Proposed for confirmation." },
   input: journalCreateInput,
@@ -244,12 +254,39 @@ const journalCreate = defineOp({
         note: l.memo ?? null,
       })),
       attachmentIds: input.attachmentIds,
+      approvedById: input.approve ? actorRefId(actor) : null,
     });
     if (!res.ok) failWith(res.reason);
     const detail = await journalEntryDetail(ctx, res.entryId);
     if (!detail) throw notFound(ERR.JOURNAL_ENTRY_NOT_FOUND);
     // ACC T1.9 ▸ คำเตือนแจ้งให้ทราบ (JV แตะบัญชีภาษี = รายการปรับปรุงมือในรายงานภาษี) ◂
     return { ...journalDetail(detail), warnings: res.warnings };
+  },
+});
+
+// ACC T4.1 ▸ อนุมัติ JV มือ (ข้อ 11 — เอกสารภายในต้องมีผู้อนุมัติ) ◂
+const journalApprove = defineOp({
+  id: "journal.approve",
+  method: "POST",
+  path: "/journal/{id}/approve",
+  kind: "write",
+  action: "account.journal.adjust",
+  summary:
+    "Approve a manual journal entry: the caller is stored as the approver with the time. A review flag that was set by saving the entry as a draft is cleared. Entries the system posted from documents, reversed entries and entries already approved are refused with 409.",
+  label: "อนุมัติใบสำคัญที่บันทึกด้วยมือ",
+  tool: { name: "account_approve_journal", hint: "Use when the owner says a manual journal entry has been checked; read it with account_list_journal first. Proposed for confirmation." },
+  input: z.object({}).strict(),
+  test: "T4.1-API",
+  async handler({ actor, params }) {
+    const ctx = ctxOf(actor);
+    const res = await approveJournalEntry(ctx, params.id ?? "", actorRefId(actor));
+    if (!res.ok) {
+      if (res.reason.startsWith("ไม่พบ")) throw notFound(res.reason);
+      throw stateConflict(res.reason);
+    }
+    const detail = await journalEntryDetail(ctx, res.entryId);
+    if (!detail) throw notFound(ERR.JOURNAL_ENTRY_NOT_FOUND);
+    return { ...journalDetail(detail), flagCleared: res.flagCleared };
   },
 });
 
@@ -680,6 +717,10 @@ const assetsRegisterInput = z
     expenseAccountId: idField("Ledger account of the depreciation expense, usually 6800."),
     sourceDocumentId: idField("Id of the asset purchase document this asset came from, if there is one.").nullish(),
     note: z.string().max(500).nullish().describe("Free note kept with the asset."),
+    taxClass: z
+      .enum(ASSET_TAX_CLASSES)
+      .optional()
+      .describe("Tax class: LAND is never depreciated; BUILDING, TEMP_BUILDING, COMPUTER, PASSENGER_CAR (10 seats or fewer), INTANGIBLE and OTHER (default) are compared with the tax depreciation ceilings and returned as warnings, never blocked."),
   })
   .strict()
   .superRefine((v, ctx) => {
@@ -695,7 +736,7 @@ const assetsRegister = defineOp({
   kind: "write",
   action: "account.asset.register",
   summary:
-    "Put a fixed asset on the register so monthly depreciation can be run on it. Depreciation is straight line: the cost minus the residual value spread over the useful life, with the last month taking the rounding.",
+    "Put a fixed asset on the register so monthly depreciation can be run on it. Depreciation is straight line: the cost minus the residual value spread over the useful life. When depreciation starts after the 1st of a month the first month is prorated by days and one extra month at the end takes what is left; the last month always takes the rounding. Land is never depreciated. Warnings (tax depreciation ceiling, passenger car cost cap) come back in `warnings` and never block.",
   label: "ขึ้นทะเบียนสินทรัพย์",
   input: assetsRegisterInput,
   test: "D2-G3.1",
@@ -714,6 +755,7 @@ const assetsRegister = defineOp({
       expenseAccountId: input.expenseAccountId,
       sourceDocumentId: input.sourceDocumentId ?? null,
       note: input.note ?? null,
+      taxClass: input.taxClass ?? null,
     });
     if (!res.ok) {
       if (res.reason.includes("ขึ้นทะเบียนสินทรัพย์ไปแล้ว")) {
@@ -723,7 +765,34 @@ const assetsRegister = defineOp({
     }
     const detail = await assetDetail(ctx, res.id);
     if (!detail) throw notFound(ERR.ASSET_NOT_FOUND);
-    return assetDetailView(detail);
+    return { ...assetDetailView(detail), warnings: res.warnings };
+  },
+});
+
+// ACC T4.3 ▸ ประเภททางภาษีของสินทรัพย์ (ที่ดิน = ไม่คิดค่าเสื่อม · เพดานทางภาษี = คำเตือน) ◂
+const assetsSetTaxClass = defineOp({
+  id: "assets.set-tax-class",
+  method: "POST",
+  path: "/assets/{id}/tax-class",
+  kind: "write",
+  action: "account.asset.manage",
+  summary:
+    "Set the tax class of a fixed asset. LAND stops depreciation from the next run (what was already posted stays). The other classes are compared with the tax depreciation ceilings and the passenger car cost cap; differences come back as warnings and never change the accounting depreciation. Disposed assets are refused with 409.",
+  label: "ตั้งประเภททางภาษีของสินทรัพย์",
+  tool: { name: "account_set_asset_tax_class", hint: "Use when the owner says an asset is land, a building, a computer or a passenger car; read account_assets first. Proposed for confirmation." },
+  input: z.object({ taxClass: z.enum(ASSET_TAX_CLASSES).describe("New tax class of the asset.") }).strict(),
+  test: "T4.3-API",
+  async handler({ actor, params, input }) {
+    const ctx = ctxOf(actor);
+    const res = await setAssetTaxClass(ctx, params.id ?? "", input.taxClass);
+    if (!res.ok) {
+      if (res.reason.startsWith("ไม่พบ")) throw notFound(res.reason);
+      if (res.reason.includes("ไปแล้ว")) throw stateConflict(res.reason);
+      failWith(res.reason);
+    }
+    const detail = await assetDetail(ctx, params.id ?? "");
+    if (!detail) throw notFound(ERR.ASSET_NOT_FOUND);
+    return { ...assetDetailView(detail), warnings: res.warnings, depreciatedBeforeSatang: res.depreciatedBefore };
   },
 });
 
@@ -834,6 +903,7 @@ const assetsDispose = defineOp({
 
 export const GL_WRITE_OPS: ApiOp[] = [
   journalCreate,
+  journalApprove,
   journalReverse,
   journalFlag,
   chartCreate,
@@ -848,6 +918,7 @@ export const GL_WRITE_OPS: ApiOp[] = [
   periodsVatCreditCarry,
   periodsVatUnfiled,
   assetsRegister,
+  assetsSetTaxClass,
   assetsDepreciationRun,
   assetsDispose,
 ];

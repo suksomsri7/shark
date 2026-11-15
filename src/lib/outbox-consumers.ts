@@ -999,7 +999,13 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // WO C4 — เหตุการณ์บัญชีชุดที่ 2 (ยิงจาก service ใน tx เดียวกับงานหลัก · ดู modules/account/events.ts)
   //   🔴 ทุกตัวต้องมีบรรทัดตรงนี้ **และ** ป้ายไทยใน webhooks/labels.ts
   //      ขาดตรงนี้ = event ค้าง PENDING ตลอดกาล และ **คิวทั้งระบบตันตามไปด้วย** (บทเรียน 30 ส.ค. 2026)
-  "account.document.issued": withAutomation(compose(async () => {}, crmBridge("onDocumentIssued"))), // CRM C1.8 ▸ ใบแจ้งหนี้จากใบเสนอราคาของดีล → invoiceDocId ◂
+  "account.document.issued": withAutomation(
+    compose(
+      compose(async () => {}, crmBridge("onDocumentIssued")), // CRM C1.8 ▸ ใบแจ้งหนี้จากใบเสนอราคาของดีล → invoiceDocId ◂
+      // ACC T5.4 ▸ ส่ง e-Tax แบบประทับเวลาอัตโนมัติ (เฉพาะร้านที่เปิดค่าตั้ง + ยืนยันสิทธิแล้ว · กันซ้ำด้วยคีย์ต่อเอกสาร) — ของแถม ล้มไม่กระทบงานเดิม ◂
+      async (evt) => void (await (await import("@/lib/modules/account/etax-ts")).onDocumentIssuedEtax(evt)),
+    ),
+  ),
   "account.document.voided": withAutomation(compose(async () => {}, crmBridge("onDocumentVoided"))), // CRM C2.7 ▸ ธง "เอกสารถูกยกเลิก" ของดีล + ถอนคืนเงินของสายเอกสารนั้น ◂
   "account.quotation.responded": withAutomation(compose(async () => {}, crmBridge("onQuotationResponded"))), // CRM C1.8 ▸ ดีลย้ายขั้นตาม pipeline ◂
   "account.payment.voided": withAutomation(compose(async () => {}, crmBridge("onPaymentVoided"))), // CRM C2.7 ▸ ถอนคืนเฉพาะยอดที่เคยนับ (M10) ◂

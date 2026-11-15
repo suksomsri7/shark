@@ -2,6 +2,8 @@ import Link from "next/link";
 import { loadAccountSystem, accountPageGate } from "@/lib/modules/account/guard";
 import { assertAccountCan } from "@/lib/modules/account/access";
 import { fiscalYearOf, getPolicy, type AccountPolicy, type FiscalYear } from "@/lib/modules/account/policy";
+import { STATEMENT_DRAFT_LABEL_TH, statementDraft } from "@/lib/modules/account/fiscal-rules";
+import { legalWarningRefTh } from "@/lib/core/settings/legal/warnings"; // merge T4+T5 ▸ อ้างอิงที่ผู้ใช้เห็น (ACC T4 Job 0) ◂
 
 // helper ร่วมของหน้ารายงาน (server) — โหลดระบบ + ตรวจสิทธิ์ report.view (§9)
 export async function loadReport(id: string) {
@@ -64,21 +66,43 @@ export function ReportHeader({
   base,
   title,
   subtitle,
+  draft = false,
 }: {
   base: string;
   title: string;
   subtitle?: string;
+  /** ACC T4.6 ▸ งบการเงิน = ป้าย "ร่างสำหรับผู้ทำบัญชี/ผู้สอบบัญชี" (จอ + ใบพิมพ์) ◂ */
+  draft?: boolean;
 }) {
+  const d = draft ? statementDraft() : null;
   return (
     <div className="print:mb-4">
       <Link href={`${base}/reports`} className="text-sm text-[color:var(--color-muted)] print:hidden">
         ← งบการเงิน
       </Link>
-      <h1 className="mt-1 text-2xl font-semibold">{title}</h1>
+      <h1 className="mt-1 flex flex-wrap items-center gap-2 text-2xl font-semibold">
+        {title}
+        {d && (
+          <span
+            className="rounded-md border-2 border-[color:var(--color-ink)] px-2 py-0.5 text-sm font-semibold tracking-wide print:border-black print:text-black"
+            data-testid="statement-draft-label"
+          >
+            {STATEMENT_DRAFT_LABEL_TH}
+          </span>
+        )}
+      </h1>
       {subtitle && <p className="text-sm text-[color:var(--color-muted)]">{subtitle}</p>}
+      {d && (
+        <p className="mt-1 text-xs text-[color:var(--color-muted)] print:text-black" data-testid="statement-draft-note">
+          {d.warning.messageTh}{legalWarningRefTh(d.warning) ? ` (${legalWarningRefTh(d.warning)})` : ""}
+        </p>
+      )}
     </div>
   );
 }
+
+/** ACC T4.6 ▸ บรรทัดแรกของไฟล์ส่งออกงบ (CSV) — ป้ายร่าง ◂ */
+export const STATEMENT_CSV_PREAMBLE: string[] = [STATEMENT_DRAFT_LABEL_TH];
 
 /** banner เตือนเมื่อไม่สมดุล/ไม่ reconcile → ลิงก์ไปงบทดลองตรวจ */
 export function WarnBanner({ base, children }: { base: string; children: React.ReactNode }) {
