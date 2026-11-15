@@ -137,13 +137,13 @@ It is called right after the existing key and branch gates, which are pure (no d
 |---|---|---|
 | `setSalaryProfileAction` | system + employee | `return` (void, like empty input) |
 | `createPayrollRunAction` | system | `{ ok:false, reason: "คำสั่งไม่ถูกต้อง" }` (same as a missing systemId) |
-| `markPaidAction` | system + run | `return` (no audit) |
-| `reverseRunAction` | system + run | `return` (no audit) |
-| `reverseRunV2Action` | system + run | `{ ok:false, reason: "คำสั่งไม่ถูกต้อง" }` |
+| `markPaidAction` | system (controller correction: an unknown run in our OWN system keeps its existing audit row) | `return` (no audit) |
+| `reverseRunAction` | system (same correction: the `…refused` NOT_FOUND audit row in our own system is kept) | `return` (no audit) |
+| `reverseRunV2Action` | system | `{ ok:false, reason: "คำสั่งไม่ถูกต้อง" }` |
 
 The other 48 actions in the 8 payroll action files are unchanged. Oracle 3b X3 pins that they already give the same outcome for our ids as for an unknown system, with nothing written.
 
-Side effect: in the caller's own tenant, an unknown run id on reverse/markPaid is now a silent no-op. Before, it wrote a `…refused` audit with code NOT_FOUND.
+Controller correction: in the caller's own system, an unknown run on reverse/markPaid keeps its existing refused-audit row. Only a foreign or non-existent SYSTEM writes nothing. No oracle check needed the silent no-op.
 
 ### R7 — form paths give one fixed text
 The services gained an opt-in option, `hideForeign`, and only the form actions pass it, so the service defaults are unchanged. h2.3 S2.3, h2.9 S3.3 and h2.6 pin the old texts through direct service calls, and those still pass.
@@ -191,3 +191,19 @@ The form actions that pass `hideForeign`: `cancelLeaveAction`, `cancelOtAction`,
 2. Authorised ORACLE-EDITs `qc-hr-h0.6` S2.4 and `qc-hr-h1.3` S1.10: expect the new index name and definition.
 3. `pnpm drift` clean for HrSalaryProfile/HrPayrollRun.
 4. Rerun priv-3b; X6 is expected to turn green, with X7/X8 still green.
+
+### Migration applied (controller go-ahead after lane 2 finished)
+- `prisma migrate deploy` (lane 5 wrapper) applied `20270112000000_hr_tenant_scoped_unique_keys`. pg_indexes now shows:
+  - `HrSalaryProfile_tenantId_systemId_employeeId_key`
+  - `HrPayrollRun_tenantId_systemId_periodKey_live_key` (partial)
+- `pnpm drift` (exit 2). The full diff list is a single entry: **`DormUtilityRate`** — "Removed unique index on columns (unitId, buildingId, kind, periodKey)". That is a non-HR raw index on the shared DB, not from PRIV-3. HrSalaryProfile and HrPayrollRun show no diff.
+- ORACLE-EDITs `(HR PRIV-3 · controller)`:
+  - `qc-hr-h0.6` S2.4: the live index is the new name on (tenantId, systemId, periodKey).
+  - `qc-hr-h1.3` S1.10: `FROZEN_IDX_LIVE` is the new byte-equal indexdef, and the lookup uses the new name.
+  - Both files are added to the priv-2 `P3_FILES` and h4.3-lib `P3_ALLOW` allowlists.
+- Runs after migrate:
+  - priv-3 28/28 ×4 (forced ×3 + unforced)
+  - priv-3b **13/13 ×4** (X6 green · X7/X8 green)
+  - h0.6 55/55 · h1.3 63/63 · h3.3 51/51 · h3.4 85/85 · h3.7 68/68
+  - qc-payroll 19/19 · payroll-reverse 14/14 · priv-2 47/47 · h4.3 45/45
+  - fitness-hr 9/9 · fitness 54/54 (both modes)
