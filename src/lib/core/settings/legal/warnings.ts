@@ -1215,8 +1215,8 @@ export const LEGAL_WARNINGS: { readonly [K in LegalWarningCode]: LegalWarningDef
   STOCK_DEEMED_SALE_OFF: {
     code: "STOCK_DEEMED_SALE_OFF",
     titleTh: "ร้านปิดการแสดงยอดถือเป็นขาย",
-    messageTh: (p) =>
-      `ร้านตั้งไม่ให้แสดงยอดภาษีขายของสินค้าที่ใช้ส่วนตัว/ขาด แต่กฎยังถือเป็นการขายที่ราคาตลาด (ประมาณ ${s(p, "vat")} บาท) — ตรวจกับนักบัญชีของร้านก่อนยื่นแบบ`,
+    messageTh: () =>
+      "ร้านตั้งไม่ให้แสดงยอดภาษีขายของสินค้าที่ใช้ส่วนตัว/ขาด แต่กฎยังถือเป็นการขายที่ราคาตลาด — ตรวจกับนักบัญชีของร้านก่อนยื่นแบบ",
     citation: "references/domain-shark-accounting-cases.md §5.3–5.4 — ประมวลรัษฎากร ม.77/1(8)(ง) · ม.79/3",
     lawTh: "ประมวลรัษฎากร ม.77/1(8)(ง), ม.79/3",
     tag: "V",

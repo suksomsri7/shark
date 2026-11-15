@@ -159,7 +159,7 @@ try {
   console.log("\nV3 รายได้รับล่วงหน้า");
   {
     const { page, status, t, errs } = await both(T510.id, `/app/sys/${S510}/account/reports/deferrals`, "v3-deferrals");
-    chk("V3.1", "เปิดได้ · 2 ตาราง (DONE + ยกเลิก) · คำเตือนจุดรับผิดภาษี", status === 200 && (await page.$$("[data-testid=def-row]")).length === 2 && /ไม่เปลี่ยนจุดรับผิดภาษี/.test(t) && !FORBID.test(t) && errs.length === 0, { status, errs, bad: t.match(FORBID)?.[0] });
+    chk("V3.1", "เปิดได้ · 2 ตาราง (DONE + ยกเลิก) · คำเตือนจุดรับผิดภาษี", status === 200 && (await page.$$("[data-testid=def-row]")).length === 2 && /ไม่เลื่อนตาม/.test(t) && !FORBID.test(t) && errs.length === 0, { status, errs, bad: t.match(FORBID)?.[0] });
     await page.type("[data-testid=def-desc]", "ค่าสมาชิกบนจอ");
     await page.type("[data-testid=def-amount]", "1200");
     await page.$eval("[data-testid=def-start]", (e: Element) => ((e as HTMLInputElement).value = "2026-01"));

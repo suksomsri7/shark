@@ -568,6 +568,11 @@ export function ACCOUNT_NAV(base: string, vatRegistered: boolean): AccountNavGro
       hiddenPages: [
         page({ label: "ภาษีขายที่ค้างพัก", href: `${base}/tax/parked-vat`, status: "ready", icon: "pct", testId: "PARKED_VAT" }),
         page({ label: "ใบกำกับภาษีซื้อรอรับ", href: `${base}/tax/pending-input-vat`, status: "ready", icon: "pct", testId: "PENDING_INPUT_VAT" }),
+        // ACC T5.8–T5.11 ▸ หน้ารายงานใหม่ (เข้าจากดัชนีรายงาน) — breadcrumb ขึ้นชื่อหน้า ไม่ใช่ "หน้าหลัก" ◂
+        page({ label: "งบแสดงการเปลี่ยนแปลงส่วนของเจ้าของ", href: `${base}/reports/equity`, status: "ready", icon: "report", testId: "EQUITY_STATEMENT" }),
+        page({ label: "รายงานสินค้าและวัตถุดิบ", href: `${base}/reports/goods`, status: "ready", icon: "report", testId: "GOODS_REPORT" }),
+        page({ label: "รายได้รับล่วงหน้าทยอยรับรู้", href: `${base}/reports/deferrals`, status: "ready", icon: "report", testId: "DEFERRALS" }),
+        page({ label: "สาขาและรายงานภาษีแยกสาขา", href: `${base}/reports/branch-tax`, status: "ready", icon: "pct", testId: "BRANCH_TAX" }),
       ],
     },
 

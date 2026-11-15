@@ -66,7 +66,9 @@ export async function saveBranches(
     if (!(VAT_FILING_MODES as readonly string[]).includes(patch.vatFilingMode)) return { ok: false, reason: "วิธียื่นไม่ถูกต้อง" };
     if (patch.vatFilingMode === "COMBINED") {
       const w = legalWarning("BRANCH_COMBINED_FILING");
-      if (!(opts.ack ?? []).includes(w.code)) return { ok: false, reason: "LEGAL_ACK_REQUIRED", warnings: [w] };
+      // ยืนยันครั้งเดียวตอนเปลี่ยนเป็นยื่นรวม — ค่าที่เป็นยื่นรวมอยู่แล้ว (บันทึกรายชื่อสาขาซ้ำ) ไม่ต้องยืนยันอีก
+      const already = (await loadBranches(ctx)).vatFilingMode === "COMBINED";
+      if (!already && !(opts.ack ?? []).includes(w.code)) return { ok: false, reason: "LEGAL_ACK_REQUIRED", warnings: [w] };
       warnings.push(w);
     }
     changes.push({ key: ACCOUNT_SETTING_KEYS.vatFilingMode, scope: "ACCOUNT_BOOK", scopeId: ctx.systemId, value: patch.vatFilingMode, ...(opts.reason ? { reason: opts.reason } : {}) });

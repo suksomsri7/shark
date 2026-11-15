@@ -35,6 +35,7 @@ export default function ReportToolbar({
   asOfParam,
   resetOnPeriodChange = [],
   extraExports,
+  hideBranch = false,
 }: {
   filename: string;
   csv: CsvData;
@@ -53,6 +54,8 @@ export default function ReportToolbar({
   resetOnPeriodChange?: string[];
   /** ACCOUNT-FIX B5 — ปุ่มส่งออกเฉพาะรายงาน (เช่น CSV ยื่นแบบ) อยู่ชุดเดียวกับ Excel ของแถบนี้ */
   extraExports?: React.ReactNode;
+  /** ACC T5.11 ▸ หน้าที่มีตัวเลือกสาขาของตัวเอง (รายงานภาษีแยกสาขา) ซ่อนช่องสาขาที่ปิดใช้ของแถบนี้ ◂ */
+  hideBranch?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname() ?? "";
@@ -138,7 +141,7 @@ export default function ReportToolbar({
 
       {/* สาขา — ระบบบัญชียังไม่มีมิติสาขาในสมุดรายวัน (ดู wo-notes/6.2.md) จึงแสดงแบบปิดใช้พร้อมเหตุผล
           ไม่ซ่อนเงียบ ๆ เพราะ §11.3 ระบุไว้ในแถบเครื่องมือ */}
-      <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
+      {!hideBranch && <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">
         สาขา
         <select
           disabled
@@ -149,7 +152,7 @@ export default function ReportToolbar({
         >
           <option>ทุกสาขา</option>
         </select>
-      </label>
+      </label>}
 
       <div className="flex gap-2 self-end">
         {/* ACCOUNT-FIX B5 — "พิมพ์" กับ "PDF" เป็นคำสั่งเดียวกัน (กล่องพิมพ์ของเบราว์เซอร์ · เลือกบันทึกเป็น PDF ได้) ⇒ เหลือปุ่มเดียว */}

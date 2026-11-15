@@ -43,7 +43,7 @@ export default async function BranchTaxPage({ params, searchParams }: { params: 
         <label className="flex flex-col gap-1 text-xs text-[color:var(--color-muted)]">เดือนภาษี<input type="month" name="month" defaultValue={month} className="rounded-lg border px-2 py-1.5 text-sm" data-testid="br-month" /></label>
         <button type="submit" className="btn btn-primary btn-sm h-9" data-testid="br-apply">แสดง</button>
       </form>
-      <ReportToolbar filename={`ภาษีแยกสาขา-${branch.code}-${month}`} csv={csv} mode="none" showCompare={false} />
+      <ReportToolbar filename={`ภาษีแยกสาขา-${branch.code}-${month}`} csv={csv} mode="none" showCompare={false} hideBranch />
       <LegalWarnings warnings={sales.branchWarnings} compact collapsible testId="br-warnings" />
       <section>
         <h2 className="mb-1 text-base font-semibold">รายงานภาษีขาย — {sales.header.orgName} · เลขประจำตัวผู้เสียภาษี {sales.header.taxId || "-"} · {sales.header.branchLabel}</h2>

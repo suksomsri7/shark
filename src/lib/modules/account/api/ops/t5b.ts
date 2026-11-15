@@ -7,6 +7,7 @@ import { ApiError, legalAckApiError } from "../respond";
 import { actorRefId } from "../actor";
 import { accountNow } from "../../clock";
 import { getPolicy } from "../../policy";
+import { vatRateBpAt } from "../../legal-values";
 import { equityStatement } from "../../equity-statement";
 import { giveawayDeemedSales, goodsPeriodReport, saveStockEvidence, wasteLog } from "../../goods-report";
 import { cancelDeferral, createDeferral, DEPOSIT_KINDS, DISCOUNT_FUNDERS, listDeferrals, recognizeDeferrals, setDiscountFunder, setProductDepositKind } from "../../deferral";
@@ -121,11 +122,11 @@ const deemedSales = defineOp({
     const ctx = { tenantId: actor.tenantId, systemId: actor.systemId };
     const r = rangeOf(input);
     const [st, set] = await Promise.all([
-      tenantDb(ctx).accountSettings.findFirst({ where: { systemId: ctx.systemId }, select: { vatRegistered: true, vatRateBp: true } }),
+      tenantDb(ctx).accountSettings.findFirst({ where: { systemId: ctx.systemId }, select: { vatRegistered: true } }),
       resolveBookSettings({ tenantId: ctx.tenantId }, [ACCOUNT_SETTING_KEYS.deemedSale], ctx.systemId),
     ]);
     const mode = set[ACCOUNT_SETTING_KEYS.deemedSale]?.value === "OFF" ? "OFF" : "WARN";
-    return giveawayDeemedSales(ctx, r.from, r.to, { setting: mode, vatRateBp: st?.vatRateBp ?? 700, vatRegistered: st?.vatRegistered ?? true });
+    return giveawayDeemedSales(ctx, r.from, r.to, { setting: mode, vatRateBp: await vatRateBpAt(ctx, new Date(`${r.to}T12:00:00+07:00`)), vatRegistered: st?.vatRegistered ?? true });
   },
 });
 

@@ -7,6 +7,7 @@ import { resolveBookSettings } from "@/lib/core/settings";
 import { ACCOUNT_SETTING_KEYS, DEEMED_SALE_MODE_LABEL_TH } from "@/lib/core/settings/defs/account";
 import { GOODS_OUT_KINDS, GOODS_OUT_LABEL_TH, giveawayDeemedSales, goodsPeriodReport, wasteLog } from "@/lib/modules/account/goods-report";
 import { saveDeemedSaleAction, saveWasteEvidenceAction } from "@/lib/modules/account/t5b-actions";
+import { vatRateBpAt } from "@/lib/modules/account/legal-values";
 import { loadReport, ReportHeader, TableWrap } from "../_shared";
 import ReportToolbar from "../ReportToolbar";
 
@@ -124,11 +125,11 @@ export default async function GoodsReportPage({ params, searchParams }: { params
     );
   } else {
     const [st, set] = await Promise.all([
-      prisma.accountSettings.findFirst({ where: { systemId }, select: { vatRegistered: true, vatRateBp: true } }),
+      prisma.accountSettings.findFirst({ where: { systemId }, select: { vatRegistered: true } }),
       resolveBookSettings({ tenantId }, [ACCOUNT_SETTING_KEYS.deemedSale], systemId),
     ]);
     const mode = set[ACCOUNT_SETTING_KEYS.deemedSale]?.value === "OFF" ? "OFF" : "WARN";
-    const g = await giveawayDeemedSales(ctx, from, to, { setting: mode, vatRateBp: st?.vatRateBp ?? 700, vatRegistered: st?.vatRegistered ?? true });
+    const g = await giveawayDeemedSales(ctx, from, to, { setting: mode, vatRateBp: await vatRateBpAt(ctx, new Date(`${to}T12:00:00+07:00`)), vatRegistered: st?.vatRegistered ?? true });
     csv = { headers: ["ชนิด", "วันที่", "เลขที่", "สาเหตุ", "ต้นทุน (บาท)", "ราคาตลาดโดยประมาณ (บาท)", "ภาษีขายโดยประมาณ (บาท)"], rows: [...g.giveaways.map((r) => ["ของแถม", r.date, r.docNo ?? "", r.reasonLabel, r.costSatang / 100, "", ""]), ...g.deemed.map((r) => ["ถือเป็นขาย", r.date, r.docNo ?? "", r.reasonLabel, r.costSatang / 100, mode === "OFF" ? "" : r.marketValueSatang / 100, mode === "OFF" ? "" : r.vatSatang / 100])] };
     body = (
       <div className="flex flex-col gap-4" data-testid="deemed-tab">
