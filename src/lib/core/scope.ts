@@ -238,6 +238,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Support Desk (WO-0021) — ฝั่งร้าน tenant-scoped · ฝั่ง platform อ่านข้ามร้านผ่าน src/lib/platform
   SupportCase: tenant,
   SupportMessage: tenant,
+  SupportStageEvent: tenant, // help-cases: ประวัติขั้นของเคส
   PlatformAuditLog: { axis: "platform", why: "audit การกระทำฝั่งแพลตฟอร์ม — tenantDb ห้ามแตะ" },
   // การเงิน (WO-0023) + storage (WO-0024)
   PaymentProfile: tenant,

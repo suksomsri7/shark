@@ -7,11 +7,16 @@ import { Prisma } from "@prisma/client";
 import type { Role, SupportCase, SupportMessage } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { currentToolCallKey, toolCallRowId } from "@/lib/ai/tool-call-key"; // SEC S3a.1-S1 R-Z7
+import type { SecAttachment } from "@/lib/ai/secretary/attachments-shared";
+import { shopReplyStage, stageStep, type CaseStage } from "./stage";
 
 type Ctx = { tenantId: string };
 
 // ไฟล์แนบในข้อความ (รูป/ไฟล์) — เก็บใน SupportMessage.attachmentsJson
 export type Attachment = { name: string; url: string; kind: "image" | "file" };
+// help-cases ▸ ไฟล์แนบแบบส่วนตัว (รูป · PDF · Excel · CSV) — ตรวจกับ FileAsset แล้ว (resolveAttachmentRefs ของ secretary/attachments.ts)
+//   เก็บใน attachmentsJson เป็น {fileId,name,mimeType,size,kind:"image"|"pdf"|"sheet"} — ไม่มี URL ถาวร (โหลดผ่าน route ที่ตรวจสิทธิ์เคส)
+export type CaseFile = SecAttachment;
 
 // การ์ดเคส + meta สำหรับ HelpSheet (เลขเคส + สถานะ + จำนวนยังไม่อ่าน)
 export type CaseMeta = {
@@ -21,6 +26,8 @@ export type CaseMeta = {
   status: SupportCase["status"];
   updatedAt: Date;
   unreadCount: number;
+  stage?: CaseStage; // help-cases
+  stageStep?: number; // 1..5 บนแถบความคืบหน้า
 };
 
 // ── กติกาไฟล์แนบ (บังคับฝั่ง server — UI จำกัดไว้แล้วแต่ client แก้ได้) ──
@@ -59,16 +66,25 @@ function cleanAttachments(attachments?: Attachment[]): Attachment[] {
     }));
 }
 
+/** ไฟล์แนบรวม (ลิงก์/รูปแบบเดิม + ไฟล์ส่วนตัว) ≤ MAX_ATTACHMENTS */
+function mergeAttachments(attachments?: Attachment[], files?: CaseFile[]): Prisma.InputJsonValue {
+  const legacy = cleanAttachments(attachments);
+  const priv = (Array.isArray(files) ? files : [])
+    .filter((f) => f && typeof f.fileId === "string" && f.fileId)
+    .map((f) => ({ fileId: f.fileId, name: String(f.name ?? "file").slice(0, 200), mimeType: String(f.mimeType ?? ""), size: Number(f.size) || 0, kind: f.kind }));
+  return [...legacy, ...priv].slice(0, MAX_ATTACHMENTS) as Prisma.InputJsonValue;
+}
+
 // เปิดเคสใหม่ (สถานะ OPEN) + ข้อความแรกฝั่งร้าน (SHOP) + ไฟล์แนบ (ถ้ามี)
 //   caseNo = running ต่อ tenant เริ่ม 1 — race-safe: นับ count+1 แล้วสร้าง
 //   ถ้าชน @@unique[tenantId, caseNo] (P2002 คนอื่นเพิ่งเปิดเคสพร้อมกัน) → นับใหม่ retry
 //   (ไม่ใช้ counter table / upsert — กติกาเดียวกับ createPo ใน procurement.ts)
 export async function createCase(
   ctx: Ctx,
-  input: { userId: string; subject: string; body: string; attachments?: Attachment[]; id?: string },
+  input: { userId: string; subject: string; body: string; attachments?: Attachment[]; files?: CaseFile[]; id?: string },
 ): Promise<{ id: string; caseNo: number }> {
   const db = tenantDb(ctx);
-  const attachments = cleanAttachments(input.attachments);
+  const attachments = mergeAttachments(input.attachments, input.files);
 
   for (let attempt = 0; attempt < 6; attempt++) {
     const count = await db.supportCase.count();
@@ -93,6 +109,10 @@ export async function createCase(
             body: input.body,
             attachmentsJson: attachments,
           },
+        });
+        // help-cases: ประวัติขั้นแถวแรก (เปิดเคส → รับเรื่อง)
+        await tx.supportStageEvent.create({
+          data: { tenantId: ctx.tenantId, caseId: created.id, fromStage: null, toStage: "RECEIVED", actorSide: "SHOP", actorId: input.userId },
         });
         return created;
       });
@@ -166,13 +186,13 @@ async function visibleRoomFor(ctx: Ctx, userId: string, roomId: unknown): Promis
  */
 export async function openCaseFromApp(
   ctx: Ctx,
-  input: { userId: string; subject: string; body: string; attachments?: Attachment[]; category?: string; roomId?: string | null },
+  input: { userId: string; subject: string; body: string; attachments?: Attachment[]; files?: CaseFile[]; category?: string; roomId?: string | null },
 ): Promise<{ id: string; caseNo: number }> {
   const category: CaseCategory = (CASE_CATEGORIES as readonly string[]).includes(String(input.category ?? ""))
     ? (input.category as CaseCategory)
     : "other";
   const room = await visibleRoomFor(ctx, input.userId, input.roomId);
-  const c = await createCase(ctx, { userId: input.userId, subject: input.subject, body: input.body, attachments: input.attachments });
+  const c = await createCase(ctx, { userId: input.userId, subject: input.subject, body: input.body, attachments: input.attachments, files: input.files });
   await tenantDb(ctx).supportCase.update({
     where: { id: c.id },
     data: { source: "APP", category, roomId: room?.id ?? null },
@@ -219,7 +239,7 @@ async function unreadByCaseOf(ctx: Ctx, cases: { id: string; shopLastReadAt: Dat
 export async function listCasesForUser(ctx: Ctx, userId: string, role: Role, take = 50): Promise<CaseMeta[]> {
   const n = Math.min(Math.max(Math.floor(Number(take) || 50), 1), 200);
   const cases = await tenantDb(ctx).supportCase.findMany({ where: caseScope(userId, role), orderBy: { updatedAt: "desc" }, take: n });
-  const unread = await unreadByCaseOf(ctx, cases);
+  const [unread, prevOfNeedInfo] = await Promise.all([unreadByCaseOf(ctx, cases), needInfoPrevOf(ctx, cases)]);
   return cases.map((c) => ({
     id: c.id,
     caseNo: c.caseNo,
@@ -227,7 +247,34 @@ export async function listCasesForUser(ctx: Ctx, userId: string, role: Role, tak
     status: c.status,
     updatedAt: c.updatedAt,
     unreadCount: unread.get(c.id) ?? 0,
+    stage: c.stage,
+    stageStep: stageStep(c.stage, prevOfNeedInfo.get(c.id)),
   }));
+}
+
+/** เคสที่อยู่ขั้น NEED_INFO → ขั้นก่อนหน้า (ช่องบนแถบ 5 ขั้น) · 1 query เฉพาะเมื่อมีเคส NEED_INFO */
+async function needInfoPrevOf(ctx: Ctx, cases: { id: string; stage: CaseStage }[]): Promise<Map<string, CaseStage>> {
+  const out = new Map<string, CaseStage>();
+  const ids = cases.filter((c) => c.stage === "NEED_INFO").map((c) => c.id);
+  if (ids.length === 0) return out;
+  const evs = await tenantDb(ctx).supportStageEvent.findMany({
+    where: { caseId: { in: ids }, toStage: "NEED_INFO" },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    select: { caseId: true, fromStage: true },
+  });
+  for (const e of evs) if (!out.has(e.caseId) && e.fromStage) out.set(e.caseId, e.fromStage);
+  return out;
+}
+
+/** ประวัติขั้นของเคส (เก่า→ใหม่) · เคสข้ามร้าน = [] */
+export async function listCaseStageEvents(ctx: Ctx, caseId: string) {
+  return tenantDb(ctx).supportStageEvent.findMany({ where: { caseId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] });
+}
+
+/** ขั้นก่อน NEED_INFO จากประวัติที่โหลดแล้ว (หน้าเคส) */
+export function prevStageBeforeNeedInfo(events: { fromStage: CaseStage | null; toStage: CaseStage }[]): CaseStage | null {
+  for (let i = events.length - 1; i >= 0; i--) if (events[i]!.toStage === "NEED_INFO") return events[i]!.fromStage;
+  return null;
 }
 
 /** ข้อความทีมงานที่ยังไม่อ่านรวมของเรื่องที่ผู้ใช้นี้เห็น (badge) — 2 query */
@@ -243,9 +290,17 @@ export async function setResolvedByShop(ctx: Ctx, userId: string, role: Role, ca
   const db = tenantDb(ctx);
   const id = typeof caseId === "string" ? caseId.trim() : "";
   if (!id) return false;
-  const found = await db.supportCase.findFirst({ where: { id, ...caseScope(userId, role) }, select: { id: true } });
+  const found = await db.supportCase.findFirst({ where: { id, ...caseScope(userId, role) }, select: { id: true, stage: true } });
   if (!found) return false;
-  await db.supportCase.update({ where: { id: found.id }, data: { status: "RESOLVED" } });
+  // help-cases: "แก้แล้ว" ⇒ ปิดเคส (CLOSED) + ประวัติขั้น
+  await db.$transaction(async (tx) => {
+    await tx.supportCase.update({ where: { id: found.id }, data: { status: "RESOLVED", stage: "CLOSED" } });
+    if (found.stage !== "CLOSED") {
+      await tx.supportStageEvent.create({
+        data: { tenantId: ctx.tenantId, caseId: found.id, fromStage: found.stage, toStage: "CLOSED", actorSide: "SHOP", actorId: userId || "shop" },
+      });
+    }
+  });
   return true;
 }
 
@@ -323,26 +378,36 @@ export async function listCaseMessages(ctx: Ctx, caseId: string): Promise<Suppor
 // - เคสไม่ใช่ของ tenant นี้ → false (findUnique คืน null เพราะ kernel guard)
 // - เคสปิดแล้ว (RESOLVED) → เปิดใหม่เป็น OPEN
 // - ทุกข้อความจากร้าน = ดันสถานะเป็น OPEN (รอแพลตฟอร์มตอบ)
+// - help-cases: ขั้นตาม shopReplyStage (NEED_INFO ⇒ CHECKING · AWAITING_CONFIRM ⇒ FIXING · CLOSED ⇒ RECEIVED) + ประวัติขั้น
 export async function addShopMessage(
   ctx: Ctx,
   caseId: string,
   userId: string,
   body: string,
   attachments?: Attachment[],
+  files?: CaseFile[],
 ): Promise<boolean> {
   const db = tenantDb(ctx);
   const existing = await db.supportCase.findUnique({ where: { id: caseId } });
   if (!existing) return false;
-  await db.supportCase.update({ where: { id: caseId }, data: { status: "OPEN" } });
-  await db.supportMessage.create({
-    data: {
-      tenantId: ctx.tenantId,
-      caseId,
-      authorSide: "SHOP",
-      authorId: userId,
-      body,
-      attachmentsJson: cleanAttachments(attachments),
-    },
+  const next = shopReplyStage(existing.stage);
+  await db.$transaction(async (tx) => {
+    await tx.supportCase.update({ where: { id: caseId }, data: { status: "OPEN", ...(next ? { stage: next } : {}) } });
+    await tx.supportMessage.create({
+      data: {
+        tenantId: ctx.tenantId,
+        caseId,
+        authorSide: "SHOP",
+        authorId: userId,
+        body,
+        attachmentsJson: mergeAttachments(attachments, files),
+      },
+    });
+    if (next) {
+      await tx.supportStageEvent.create({
+        data: { tenantId: ctx.tenantId, caseId, fromStage: existing.stage, toStage: next, actorSide: "SHOP", actorId: userId },
+      });
+    }
   });
   return true;
 }
