@@ -12,6 +12,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { AnimatedOrb } from "@/src/components/ui/orb";
+import { LekaaLoader } from "@/src/components/brand/LekaaLoader";
 import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -197,7 +198,7 @@ export default function DashboardScreen() {
 
         {loading && !error && (
           <View style={styles.overlay}>
-            <AnimatedOrb size={72} />
+            <LekaaLoader size={72} testID="home-loading" />
           </View>
         )}
 

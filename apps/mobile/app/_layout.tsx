@@ -8,6 +8,11 @@ import { AuthProvider, useAuth } from "@/src/lib/auth-context";
 import { useAppFonts } from "@/src/lib/fonts";
 import { clearSignedUp, isFreshSignup } from "@/src/lib/post-signup";
 import { C } from "@/src/theme";
+import * as SplashScreen from "expo-splash-screen";
+import { LaunchOverlay } from "@/src/components/brand/LaunchOverlay";
+
+// เปิดแอป (15 พ.ย. เจ้าของสั่ง): คง splash ของเครื่องไว้จนจอเปิดแอป (LaunchOverlay · โลโก้เคลื่อนไหวใหญ่) วาดทับตำแหน่งเดียวกันแล้วค่อยซ่อน
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 
 function Gate({ children }: { children: React.ReactNode }) {
@@ -56,23 +61,30 @@ function Gate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const fontsReady = useAppFonts();
-  // ยังโหลดฟอนต์ไม่เสร็จ — คง splash ไว้ (อย่าเพิ่งวาด UI ด้วยฟอนต์ระบบ)
-  if (!fontsReady) return null;
-
+  // ยังโหลดฟอนต์ไม่เสร็จ — ยังไม่วาด UI (ฟอนต์ระบบ) · จอเปิดแอปทับอยู่จนฟอนต์ + auth พร้อม และวิ่งครบ 1 รอบ
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
       <AuthProvider>
-        <Gate>
-          <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: C.bg },
-              animation: "fade",
-            }}
-          />
-        </Gate>
+        {fontsReady ? (
+          <Gate>
+            <StatusBar style="dark" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: C.bg },
+                animation: "fade",
+              }}
+            />
+          </Gate>
+        ) : null}
+        <LaunchGate fontsReady={fontsReady} />
       </AuthProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** จอเปิดแอปรอ auth (bootstrap token/me) + ฟอนต์ */
+function LaunchGate({ fontsReady }: { fontsReady: boolean }) {
+  const { ready } = useAuth();
+  return <LaunchOverlay ready={fontsReady && ready} />;
 }

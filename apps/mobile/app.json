@@ -40,9 +40,14 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash.png",
-          "resizeMode": "cover",
-          "backgroundColor": "#ffffff"
+          "image": "./assets/brand/logo-transparent-1024.png",
+          "imageWidth": 146,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/brand/logo-transparent-1024.png",
+            "backgroundColor": "#0e0e15"
+          }
         }
       ],
       "expo-notifications",
