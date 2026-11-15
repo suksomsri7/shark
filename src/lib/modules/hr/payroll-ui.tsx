@@ -22,7 +22,7 @@ import {
   reverseRunAction,
   setSalaryProfileAction,
 } from "./payroll-actions";
-import { periodLabel } from "./period-label"; // HR VIS-5a ▸ F9 ◂
+import { dayLabel, periodLabel } from "./period-label"; // HR VIS-5a ▸ F9 · P3 ◂
 import { HrSalaryOtRateField } from "./ui"; // HR H2.9 ▸ #18 ช่องอัตรา OT ต่อชั่วโมง (ui.tsx) ◂
 
 const muted = "text-[color:var(--color-muted)]";
@@ -279,11 +279,11 @@ export async function PayrollSection({ systemId, parts, locale = "th" }: { syste
                     {a.sourceType === "INVENTORY_ISSUE" && (
                       <span
                         data-testid="hr-pay-src-stock"
-                        title={stockConsent.get(a.id) ? `หนังสือยินยอม ${stockConsent.get(a.id)!.ref} ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบหนังสือยินยอม — ตรวจก่อนอนุมัติ"}
+                        title={stockConsent.get(a.id) ? `หนังสือยินยอม ${stockConsent.get(a.id)!.ref} ลงนาม ${dayLabel(stockConsent.get(a.id)!.at, locale)}` : "ไม่พบหนังสือยินยอม — ตรวจก่อนอนุมัติ"} // HR VIS-5a ▸ P3 ◂
                         className="mt-0.5 inline-block rounded-full border border-[color:var(--color-line)] px-2 py-0.5 text-xs"
                       >
                         เบิกของ/ค่าเสียหาย · หนังสือยินยอม (ม.76/77):{" "}
-                        {stockConsent.get(a.id) ? `${stockConsent.get(a.id)!.ref} · ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบ — ตรวจก่อนอนุมัติ"}
+                        {stockConsent.get(a.id) ? `${stockConsent.get(a.id)!.ref} · ลงนาม ${dayLabel(stockConsent.get(a.id)!.at, locale)}` : "ไม่พบ — ตรวจก่อนอนุมัติ"} {/* HR VIS-5a ▸ P3 ◂ */}
                         {stockConsent.get(a.id)?.employeeEnded && a.status === "PENDING" ? " · พนักงานสิ้นสุดการจ้างแล้ว — ตรวจก่อนอนุมัติ (ทวงจากค่าจ้างงวดสุดท้ายหรือตัดหนี้ = นักบัญชี)" : ""}
                       </span>
                     )}

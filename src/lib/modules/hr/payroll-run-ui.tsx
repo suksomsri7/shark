@@ -120,7 +120,9 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
   const md = "hidden md:table-cell";
   const xl = sel ? "hidden 2xl:table-cell" : "hidden xl:table-cell";
   const mdUntilXl = sel ? "hidden md:table-cell 2xl:hidden" : "hidden md:table-cell xl:hidden"; // HR VIS-5a ▸ r3: stored-additions variant where the OT column is hidden ◂
-  const num = "whitespace-nowrap px-3 py-2.5 text-right tabular-nums"; // HR VIS-5a ▸ F7: money never wraps ◂
+  const num = "whitespace-nowrap px-2 py-2.5 text-right tabular-nums xl:px-3"; // HR VIS-5a ▸ F7: money never wraps · P2: tighter cells below xl so the status badge always fits the card ◂
+  const sub = "block whitespace-normal text-xs text-[color:var(--color-muted)]"; // HR VIS-5a ▸ P2: code labels under amounts wrap (they must not widen the column) ◂
+  const reasonCls = sel ? "hidden" : "hidden pt-1 text-xs text-[color:var(--color-muted)] xl:block"; // HR VIS-5a ▸ P2: the short reason shows only where the badge has room (≥1280, drawer closed) ◂
   const top = "max-md:-order-2"; // HR VIS-5a ▸ F6: at 390 the header · chips · banner · step line come first, then the action bar (in flow, nothing overlaps) ◂
   const amt = (v: number | null) => (v === null ? "—" : baht(v));
   const tone = (v: number) => (v < 0 ? "text-[color:var(--color-danger)]" : "");
@@ -186,7 +188,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
           {canMoney && run && Number(run.excludedHeadcount ?? 0) > 0 && <p className={muted} data-testid="hr-run2-excluded">{PAY_SCOPE_EXCLUDED_TEXT.replace("{n}", String(Number(run.excludedHeadcount)))}</p>}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {act.sync && !frozen && (
+          {act.sync && !frozen && (!run || draft) && (
             <form action={act.sync}>
               {hidden({ periodKey })}
               <button type="submit" className={ghost} data-testid="hr-run2-sync" title={t("syncHint")}>
@@ -299,7 +301,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                   {tableOf(
                     <thead className={headCls}>
                       <tr className="text-left">
-                        <th className="px-3 py-2.5">{t("col_name")}</th>
+                        <th className="px-2 py-2.5 xl:px-3">{t("col_name")}</th>
                         <th className={`${md} ${num}`}>{t("col_gross")}</th>
                         <th className={`${xl} ${num}`}>{t("col_days")}</th>
                         <th className={`${xl} ${num}`}>{t("col_ot")}</th>
@@ -309,7 +311,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                         <th className={`${md} ${num}`}>{t("col_sso")}</th>
                         <th className={`${xl} ${num}`}>{t("col_wht")}</th>
                         <th className={num}>{t("col_net")}</th>
-                        <th className={`${md} px-3 py-2.5`}>{t("col_status")}</th>
+                        <th className={`${md} px-2 py-2.5 xl:px-3`}>{t("col_status")}</th>
                       </tr>
                     </thead>,
                     <tbody>
@@ -319,7 +321,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                         const on = sel?.employeeId === r.employeeId;
                         return (
                           <tr key={r.employeeId} className={`border-t border-[color:var(--color-line)] align-top ${on ? "bg-[color:var(--color-accent-soft)] shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}>
-                            <td className="px-3 py-1">
+                            <td className="px-2 py-1 xl:px-3">
                               <Link href={`${runQs}&emp=${encodeURIComponent(r.employeeId)}#hr-run2-drawer`} data-testid={`hr-run2-lines-${r.employeeId}`} aria-current={on ? "true" : undefined} className="flex min-h-[44px] flex-col justify-center underline-offset-2 hover:underline">
                                 <span className="font-medium">{r.name}</span>
                                 <span className="text-xs text-[color:var(--color-muted)]">{t(`pt_${r.payType}`)}</span>
@@ -331,23 +333,23 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                             <td className={`${xl} ${num}`}>{f?.otSatang ? baht(f.otSatang) : "—"}</td>
                             <td className={`${xl} ${num}`}>
                               {baht(f?.addNoOtSatang ?? r.addSatang)}
-                              {f?.addCodes.some((k) => k !== "OT" || f.otSatang === null) ? <span className="block text-xs text-[color:var(--color-muted)]">{f.addCodes.filter((k) => k !== "OT" || f.otSatang === null).map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
+                              {f?.addCodes.some((k) => k !== "OT" || f.otSatang === null) ? <span className={sub}>{f.addCodes.filter((k) => k !== "OT" || f.otSatang === null).map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
                             </td>
                             <td className={`${mdUntilXl} ${num}`}>
                               {baht(r.addSatang)}
-                              {f?.otSatang ? <span className="block text-xs text-[color:var(--color-muted)]">{t("addInclOt")}</span> : null}
-                              {f?.addCodes.length ? <span className="block text-xs text-[color:var(--color-muted)]">{f.addCodes.map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
+                              {f?.otSatang ? <span className={sub}>{t("addInclOt")}</span> : null}
+                              {f?.addCodes.length ? <span className={sub}>{f.addCodes.map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
                             </td>
                             <td className={`${md} ${num}`}>
                               {baht(c.deduct)}
-                              {f?.outCodes.length ? <span className="block text-xs text-[color:var(--color-muted)]">{f.outCodes.map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
+                              {f?.outCodes.length ? <span className={sub}>{f.outCodes.map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
                             </td>
                             <td className={`${md} ${num}`}>{baht(c.sso)}</td>
                             <td className={`${xl} ${num}`}>{baht(c.wht)}</td>
                             <td className={`${num} font-semibold`}>{baht(r.netSatang)}</td>
-                            <td className={`${md} px-3 py-2.5`}>
+                            <td className={`${md} px-2 py-2.5 xl:px-3`}>
                               {statusChip(!!f?.review)}
-                              {draft && f?.review ? <span className="block whitespace-nowrap pt-1 text-xs text-[color:var(--color-muted)]">{reasonOf(r)}</span> : null}
+                              {draft && f?.review ? <span className={reasonCls}>{reasonOf(r)}</span> : null}
                             </td>
                           </tr>
                         );
@@ -355,7 +357,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                     </tbody>,
                     <tfoot>
                       <tr data-testid="hr-run2-totals" className="border-t-2 border-[color:var(--color-line)] bg-[color:var(--color-stage)] font-semibold">
-                        <th scope="row" className="whitespace-nowrap px-3 py-2.5 text-left">{t("totalsRow", { n: pv.rows.length })}</th>
+                        <th scope="row" className="whitespace-nowrap px-2 py-2.5 text-left xl:px-3">{t("totalsRow", { n: pv.rows.length })}</th>
                         <td className={`${md} ${num}`}>{amt(fig.baseSatang)}</td>
                         <td className={`${xl} ${num}`} />
                         <td className={`${xl} ${num}`}>{fig.otRowsSatang ? baht(fig.otRowsSatang) : "—"}</td>
@@ -446,6 +448,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                   );
                 })()}
               </div>
+              {draft && (
               <details data-testid="hr-run2-review" className="rounded-2xl border border-[color:var(--color-line)]"> {/* HR VIS-5a ◂ */}
                 <summary className="flex min-h-[44px] cursor-pointer items-center px-4 text-sm font-semibold">{reviewN === 0 ? t("reviewNone") : t("review", { n: reviewN })}</summary>
                 <div className="flex flex-col gap-3 px-4 pb-4">
@@ -461,6 +464,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                   ))}
                 </div>
               </details>
+              )}{/* HR VIS-5a ▸ P1: the review box belongs to a draft only ◂ */}
             </>
           )}
           {canMgr && pv && pv.ok && !("review" in pv) && (
@@ -491,7 +495,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
             </div>
           )}
           {v2run && <BranchConfirm systemId={systemId} runId={String(run.id)} status={status} steps={run.stepsJson} act={act.confirm} t={t} unitIds={[...new Set(((pv && pv.ok ? pv.rows : []) as { unitId: string | null }[]).map((r) => r.unitId).filter((x): x is string => !!x))]} />}
-          {canMoney && v2run && (
+          {canMoney && v2run && ((status === "DRAFT" && allRun && !!act.approve) || (status === "APPROVED" && allRun && !!act.pay) || ((status === "APPROVED" || status === "PAID") && allRun && !!act.reverse) || docLinks.length > 0) && ( // HR VIS-5a ▸ P5: no empty action row ◂
             <div className="flex flex-wrap items-end gap-2 max-md:contents">
               <div data-testid="hr-run2-bar" className="flex flex-wrap items-end gap-2 max-md:-order-1">
                 {status === "DRAFT" && allRun && act.approve && (
@@ -537,6 +541,14 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
             <div className="flex flex-col gap-2 rounded-2xl border border-[color:var(--color-line)] p-4">
               <h3 className="text-base font-semibold">{t("createAgainTitle", { period: label(periodKey) })}</h3>
               <p className={muted}>{t("createAgainNote")}</p>
+              {act.sync && !frozen && (
+                <form action={act.sync}>
+                  {hidden({ periodKey })}
+                  <button type="submit" className={ghost} data-testid="hr-run2-sync" title={t("syncHint")}>
+                    {t("sync")}
+                  </button>
+                </form>
+              )}{/* HR VIS-5a ▸ P1: after a reversal, pulling hours belongs to the new run (the action allows it: period not frozen) ◂ */}
               {createForm}
             </div>
           )}
