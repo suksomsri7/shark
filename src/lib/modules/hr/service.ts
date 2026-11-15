@@ -818,7 +818,9 @@ export async function cancelLeave(ctx: Ctx, leaveId: string, opts: { actorUserId
     });
     const linked = leave.employee.linkedUserId;
     const ownsAny = linked === actor || chains.some((c) => c.requestedById === actor);
-    const NOT_MINE = opts.hideForeign === true && !ownsAny && !(!!leave.filedById && actor === leave.filedById) ? CANCEL_NOT_FOUND : CANCEL_NOT_MINE; // HR PRIV-3 ▸ R7 ◂
+    const foreign = opts.hideForeign === true && !ownsAny && !(!!leave.filedById && actor === leave.filedById); // HR PRIV-3 ▸ R7: ทางฟอร์ม · ไม่ใช่คู่กรณี ◂
+    const NOT_MINE = foreign ? CANCEL_NOT_FOUND : CANCEL_NOT_MINE; // HR PRIV-3 ▸ R7 ◂
+    if (foreign) return { ok: false, reason: CANCEL_NOT_FOUND }; // HR PRIV-3 ▸ R13: ผู้ไม่ใช่คู่กรณีได้ "ไม่พบ" ก่อนทุกสาขาสถานะ (ไม่บอกว่าสายตัดสินแล้ว) ◂
     let requestId: string | null = null;
     if (leave.status === "PENDING") {
       const pendingReq = chains.find((c) => c.status === "PENDING");

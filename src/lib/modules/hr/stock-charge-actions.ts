@@ -5,7 +5,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { tenantDb } from "@/lib/core/db";
+import { hrTargetOwned } from "./hr-target"; // HR PRIV-3 ▸ R11 ◂
 import { assertCan } from "@/lib/core/rbac";
 import { hrViewerOf } from "./privacy";
 import { STOCK_MSG, markStockRefundRepaid, requestStockCharge, stockMsgCode, withdrawStockCharge } from "./stock-charge";
@@ -18,8 +18,7 @@ const field = (fd: FormData, k: string) => {
 async function ctxOf(auth: Auth, fd: FormData): Promise<{ tenantId: string; systemId: string } | null> {
   const systemId = field(fd, "systemId");
   if (!systemId) return null;
-  const sys = await tenantDb({ tenantId: auth.active.tenantId }).appSystem.findFirst({ where: { id: systemId, type: "HR" }, select: { id: true } });
-  return sys ? { tenantId: auth.active.tenantId, systemId: sys.id } : null;
+  return (await hrTargetOwned({ tenantId: auth.active.tenantId, systemId })) ? { tenantId: auth.active.tenantId, systemId } : null; // HR PRIV-3 ▸ R11: resolver เดียว ◂
 }
 /** "1,234.50" → 123450 สตางค์ (จำนวนเต็มล้วน ไม่ผ่านทศนิยมลอยตัว) · ว่าง = undefined · รูปแบบผิด = NaN (service ตอบข้อความยอดหัก) */
 function bahtToSatang(raw: string): number | undefined {

@@ -276,7 +276,9 @@ function runStatic(): void {
       if (x === y) return true;
       if (!IN_BASE || !x || !y) return false;
       const hs = blockHunks(y.split("\n"), x.split("\n"));
-      return hs.length > 0 && hs.every((h) => h.added.some((l) => blockLaterMark(l) || (name === "HrSalaryProfile" && l.includes("HR PRIV-3")))); // ORACLE-EDIT (HR PRIV-3 · controller merge) S1.2: explicit — HrSalaryProfile block may differ by the R10 @@unique swap when the hunk adds "HR PRIV-3" ◂
+      // ORACLE-EDIT (HR PRIV-3 · controller r3 R15) S1.2: exactly the R10 key swap in HrSalaryProfile — removed @@unique([systemId, employeeId]) · added @@unique([tenantId, systemId, employeeId]) · plus comment lines; nothing else ◂
+      const cmt = (l: string) => /^\s*(\/\/.*)?$/.test(l), r10 = (h: { added: string[]; removed: string[] }) => name === "HrSalaryProfile" && h.removed.every((l) => cmt(l) || /^\s*@@unique\(\[systemId, employeeId\]\)\s*$/.test(l)) && h.added.every((l) => cmt(l) || /^\s*@@unique\(\[tenantId, systemId, employeeId\]\)\s*$/.test(l)) && h.added.some((l) => !cmt(l)); // ORACLE-EDIT (HR PRIV-3 · controller r3 R15) ◂
+      return hs.length > 0 && hs.every((h) => h.added.some(blockLaterMark) || r10(h)); // ORACLE-EDIT (HR PRIV-3 · controller r3 R15): r10 replaces the "any hunk marked HR PRIV-3" acceptance ◂
     };
     const mig = rd(F.mig);
     const hrCur = rd(F.hrSchema);

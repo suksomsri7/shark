@@ -29,9 +29,10 @@ import {
 } from "./service";
 import { kioskClock } from "./clock"; // HR H2.4 ▸ R9 kiosk · r2 ▸ R1 ชื่อ + PIN ◂
 import { canRunKiosk, KIOSK_REFUSED_TEXT } from "./clock-settings"; // VIS-1 C ▸ ด่านจอลงเวลา ◂
-import { offboardEmployee } from "./lifecycle"; // HR H4.4 ▸ R9 ลบ/สถานะสิ้นสุด = สิ้นสุดการจ้างทางเดียว (PIN · สิทธิ์แอป · คำขอค้าง ในธุรกรรมเดียว) ◂
+import { LIFE_TEXT, offboardEmployee } from "./lifecycle"; // HR PRIV-3 ▸ + LIFE_TEXT (R12) ◂ // HR H4.4 ▸ R9 ลบ/สถานะสิ้นสุด = สิ้นสุดการจ้างทางเดียว (PIN · สิทธิ์แอป · คำขอค้าง ในธุรกรรมเดียว) ◂
 import { thaiDateKey } from "@/lib/ui/date"; // HR H4.4 ◂
 import { employeeProfileInputFromForm, hrPageAccessOf, hrViewerOf } from "./privacy"; // HR PRIV-3 ▸ + hrPageAccessOf (ยื่นใบลาแทน) ◂
+import { hrTargetOwned } from "./hr-target"; // HR PRIV-3 ▸ R12 ◂
 import { activeLeavePolicies, attachLeaveFile, leaveAttachmentLink } from "./leave"; // HR H2.7 ▸ R10 ไฟล์แนบใบลา ◂
 // HR H1.1 ▸ R5 ขอบเขตสาขาของผู้กด — สาขาของเป้าหมายอ่านจากแถวใน DB เสมอ (ไม่เชื่อฟอร์ม) ◂
 import {
@@ -101,6 +102,7 @@ export async function createEmployeeAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !name) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR PRIV-3 ▸ R12: ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสระบบที่ไม่มี (ไม่สร้าง/แก้อะไร) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   // HR H1.1 ▸ R5: สาขาประจำต้องอยู่ในสาขาของผู้กด (ไม่ระบุ = ผู้ดูแลทุกสาขาเท่านั้น) · นอกสาขา = HrBranchError ข้อความไทยคงที่ ◂
   const home = await hrHomeTarget(auth, ctx, String(formData.get("unitId") ?? ""));
@@ -169,6 +171,7 @@ export async function updateEmployeeAction(formData: FormData) {
   const employeeId = String(formData.get("employeeId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !employeeId || !name) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR PRIV-3 ▸ R12: ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสระบบที่ไม่มี (ไม่สร้าง/แก้อะไร) ◂
   const t = await hrTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId); // HR H1.1 ▸ สาขาประจำ ◂
   assertHrCan(auth, "hr.employee.create", t.unitId);
   await updateEmployee({ tenantId: auth.active.tenantId, systemId }, employeeId, {
@@ -187,6 +190,7 @@ export async function removeEmployeeAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const employeeId = String(formData.get("employeeId") ?? "");
   if (!systemId || !employeeId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) throw new HrBranchError(LIFE_TEXT.noAccess); // HR PRIV-3 ▸ R12: ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสระบบที่ไม่มี (ไม่สร้าง/แก้อะไร) ◂
   const t = await hrTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId); // HR H1.1 ▸ สาขาประจำ ◂
   assertHrCan(auth, "hr.employee.create", t.unitId);
   // HR H4.4 ▸ R9: ลบออกจากทะเบียน = สิ้นสุดการจ้าง (เหตุผล "อื่น ๆ") — วันสิ้นสุด = วันที่บันทึกไว้แล้วถ้าไม่เกินวันนี้ ไม่งั้นวันนี้ ·
@@ -215,6 +219,7 @@ export async function restoreEmployeeAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const employeeId = String(formData.get("employeeId") ?? "");
   if (!systemId || !employeeId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR PRIV-3 ▸ R12: ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสระบบที่ไม่มี (ไม่สร้าง/แก้อะไร) ◂
   const t = await hrTarget(auth, { tenantId: auth.active.tenantId, systemId }, employeeId); // HR H1.1 ▸ สาขาประจำ ◂
   assertHrCan(auth, "hr.employee.create", t.unitId);
   // HR H1.1 R12 ▸ R12.4: สถานะยังเป็น "สิ้นสุด" ⇒ ไม่กู้คืน (เปลี่ยนสถานะที่โปรไฟล์ก่อน) · ทางนี้ทางเดียว — service คงเดิม (S7.3) ◂
