@@ -965,7 +965,8 @@ try {
     eq(ch.filter((f) => !OWNED.has(f)), [], "ไฟล์นอกขอบเขต");
     // ORACLE-EDIT S-6 (ข้อสอบหลัง r2): positive control ของตัวตรึง — ไฟล์ที่เปลี่ยนหลัง c25f03185 (ไฟล์ข้อสอบนี้) ตัวตรวจ diff ต้องเห็น · ไฟล์ของผู้คุมทั้งสองยังตรง pin
     ok(hasRef(SUPERVISOR_PIN) && !gitOk(["diff", "--quiet", SUPERVISOR_PIN, "--", ORACLE_FILE]), "ตัวตรวจ diff เทียบ pin ไม่เห็นไฟล์ที่เปลี่ยน (positive control)");
-    eq([...SUPERVISOR_FILES].filter((f) => !supervisorPinned(f)), [], "ไฟล์ของผู้คุมเปลี่ยนหลัง pin");
+    // ORACLE-EDIT S-6 (ผู้คุม 15 พ.ย.): หลังใบนี้รับแล้ว ใบถัดไปแก้ไฟล์ข้อสอบเหล่านี้ได้ (W1.2a มติ R15 แก้ qc-trips-t0.1.mts) — ไฟล์ที่ตรงกับ session/trips ถือว่ารับแล้ว · ในเลน ไฟล์ที่ต่างทั้งจาก pin และจาก session/trips ยังถูกจับ
+    eq([...SUPERVISOR_FILES].filter((f) => !supervisorPinned(f) && !sameAsSession(f)), [], "ไฟล์ของผู้คุมเปลี่ยนหลัง pin");
   });
   await st("S-7", "ไม่แตะไฟล์ต้องห้าม: modules/{trips,ticket,pos,hotel,rooms,dorm,booking,queue,account,party,crm,member} · agency/{entry,identity-core,accounts,accounts-core,tokens,agent-side} · platform/agent-auth · core/settings · core/{db,scope,audit,outbox,session,rbac} · prisma · app · components · messages · scripts", () => {
     needBuilt();
