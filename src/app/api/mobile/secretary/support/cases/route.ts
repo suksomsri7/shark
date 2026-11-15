@@ -3,7 +3,8 @@
 import { z } from "zod";
 import { CASE_CATEGORIES, listCasesForUser, openCaseFromApp, unreadCaseTotalForUser } from "@/lib/support/service";
 import { gate, ID_MAX, ok, readBody, thrown, withRateLimit, withErrors } from "../../_shared";
-import { AttachmentsSchema } from "../_case";
+import { caseNoText } from "@/lib/support/stage";
+import { AttachmentsSchema, FilesSchema, resolveCaseFiles } from "../_case";
 
 const Body = z
   .object({
@@ -12,6 +13,7 @@ const Body = z
     category: z.enum(CASE_CATEGORIES).optional(),
     roomId: z.string().trim().min(1).max(ID_MAX).optional(),
     attachments: AttachmentsSchema.optional(),
+    files: FilesSchema.optional(), // help-cases: ไฟล์ส่วนตัว (support/attachments)
   })
   .strict();
 
@@ -20,7 +22,8 @@ async function GET_(req: Request) {
   if (!a.ok) return a.res;
   const ctx = { tenantId: a.c.tenantId };
   const [items, unread] = await Promise.all([listCasesForUser(ctx, a.c.userId, a.c.m.role), unreadCaseTotalForUser(ctx, a.c.userId, a.c.m.role)]);
-  return ok({ items, unread, categories: CASE_CATEGORIES });
+  // help-cases: + stage · stageStep (1..5) · caseNoText (SHARK-000124)
+  return ok({ items: items.map((x) => ({ ...x, caseNoText: caseNoText(x.caseNo) })), unread, categories: CASE_CATEGORIES });
 }
 
 async function POST_(req: Request) {
@@ -30,9 +33,13 @@ async function POST_(req: Request) {
   if (rl) return rl;
   const b = await readBody(req, Body);
   if (!b.ok) return b.res;
+  const f = await resolveCaseFiles(a.c.tenantId, b.v.files, b.v.attachments?.length ?? 0);
+  if (!f.ok) return f.res;
   try {
-    const r = await openCaseFromApp({ tenantId: a.c.tenantId }, { userId: a.c.userId, ...b.v, roomId: b.v.roomId ?? null });
-    return ok({ id: r.id, caseNo: r.caseNo });
+    const { files: _refs, ...rest } = b.v;
+    void _refs;
+    const r = await openCaseFromApp({ tenantId: a.c.tenantId }, { userId: a.c.userId, ...rest, files: f.files, roomId: b.v.roomId ?? null });
+    return ok({ id: r.id, caseNo: r.caseNo, caseNoText: caseNoText(r.caseNo) });
   } catch (e) {
     return thrown(e, "support.open");
   }

@@ -57,6 +57,8 @@ export function SecTopBar({
   testID = "sec-top",
   showPlus = true,
   helpOn = false,
+  onPlus,
+  plusLabel,
 }: {
   zone: SecZone;
   /** ใส่มา = ใช้ค่านี้ (ไม่ดึงเอง) */
@@ -68,6 +70,9 @@ export function SecTopBar({
   showPlus?: boolean;
   /** S2.15 จอช่วยเหลือ (H1): ปุ่ม ? ทึบ · ไม่มีปุ่มโซนใดทึบ (แบบ sec-h.jpg หน้า 1) */
   helpOn?: boolean;
+  /** help-cases (15 พ.ย.): ปุ่ม + ของจอนั้นเอง (จอช่วยเหลือ = แจ้งปัญหาใหม่) — ใส่มา = แทนเส้นทางของโซน */
+  onPlus?: () => void;
+  plusLabel?: I18nKey;
 }) {
   const { c } = useTheme();
   const t = useT();
@@ -78,7 +83,7 @@ export function SecTopBar({
   const counts = badges ?? shared;
   // CAL2.1: 6 ปุ่มซ้าย × 44 + ช่อง 5 ช่อง + ปุ่ม + ขวา 44: ช่อง 6 = 338 ≤ 390 − 36 · จอแคบกว่า 360 ช่อง 2 (iPhone รุ่นเล็กสุดที่รองรับ = 375)
   const narrow = useWindowDimensions().width < 360;
-  const plus = showPlus ? PLUS[zone] : null;
+  const plus = !showPlus ? null : onPlus ? { path: "", label: plusLabel ?? PLUS[zone]?.label ?? "sec.top.new" } : PLUS[zone];
   // S2.17: ไม่มีสิทธิ์ดูแชทลูกค้า (inbox 403) ⇒ ไม่มีไอคอน "ลูกค้า" ทุกโซน (จอ /customers แสดง "ไม่มีสิทธิ์" เอง)
   const custOk = useCustomersAccess();
   const zones = custOk ? ZONES : ZONES.filter((z) => z.zone !== "customers");
@@ -133,7 +138,8 @@ export function SecTopBar({
             icon="plus"
             label={t(plus.label)}
             onPress={() => {
-              if (calSheet && zone === "secretary") calSheet.openPlus();
+              if (onPlus) onPlus();
+              else if (calSheet && zone === "secretary") calSheet.openPlus();
               else if (calSheet && zone === "calendar") calSheet.openAdd();
               else if (zone !== "calendar") router.push(plus.path);
             }}

@@ -56,8 +56,8 @@ type Picked = { uri: string; name: string; mimeType: string; size: number; file?
 
 let seq = 0;
 
-/** สถานะไฟล์แนบรอส่งของจอหนึ่ง — เลือก/อัป/ถอด/คืน */
-export function useSecAttach() {
+/** สถานะไฟล์แนบรอส่งของจอหนึ่ง — เลือก/อัป/ถอด/คืน · `path` = เส้นอัป (ห้องเลขา · เรื่องช่วยเหลือ help-cases 15 พ.ย.) */
+export function useSecAttach(path: "secretary/attachments" | "secretary/support/attachments" = "secretary/attachments") {
   const [items, setItems] = useState<PendingAttach[]>([]);
   const [note, setNote] = useState<AttachNote | null>(null);
   const itemsRef = useRef(items);
@@ -72,14 +72,14 @@ export function useSecAttach() {
       } else {
         form.append("file", { uri: p.uri, name: p.name, type: p.mimeType } as unknown as Blob);
       }
-      const up = await secUpload("secretary/attachments", form);
+      const up = await secUpload(path, form);
       setItems((cur) => cur.map((x) => (x.key === key ? { ...x, status: "done", id: up.id, name: up.name || x.name, mimeType: up.mimeType || x.mimeType, kind: up.kind ?? x.kind } : x)));
     } catch (e) {
       setItems((cur) => cur.map((x) => (x.key === key ? { ...x, status: "error" } : x)));
       const s = serverNote(e);
       setNote(s ? { text: s } : { key: "sec.attach.fail" });
     }
-  }, []);
+  }, [path]);
 
   /** รับไฟล์ที่เลือก → ตรวจเพดาน/ชนิดฝั่งแอป → ใส่ถาด + อัปทันที */
   const add = useCallback(
