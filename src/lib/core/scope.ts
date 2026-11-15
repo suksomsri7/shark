@@ -227,6 +227,10 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   CalItem: tenant,
   CalPref: tenant,
   CalShopPolicy: tenant, // calendar_c ▸ นโยบายปฏิทินของร้าน (ส่งนัดลูกค้าเข้า Google ส่วนตัว) ◂
+  // B27 แชททีม (prisma/schema/team_chat.prisma · ผู้เขียนเดียว src/lib/team-chat/service.ts) — ทุกคำสั่งกรอง tenantId + สมาชิกห้อง ◂
+  TeamThread: tenant,
+  TeamThreadMember: tenant,
+  TeamMessage: tenant,
   CalRoomCard: tenant, // calendar_b ▸ การ์ด agenda ในห้องเลขา (ส่วนตัว · review b B1) ◂
   CalLink: g("ปฏิทิน Google ของ \"คน\" (1 แถว/user/provider) ใช้ข้ามทุกร้าน — ส่วนตัว M4"),
   CalExternalEvent: g("แคชอีเวนต์ Google ของคน — ผูก CalLink ไม่ผูกร้าน"),

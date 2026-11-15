@@ -48,6 +48,8 @@ const PATH = {
   "secretary/support/attachments": "/api/mobile/secretary/support/attachments",
   // 14 พ.ย. ไฟล์แนบของคำสั่ง (ปุ่ม + · รูปภาพ/ถ่ายรูป/ไฟล์) — multipart `file` → {id,name,mimeType,size,kind}
   "secretary/attachments": "/api/mobile/secretary/attachments",
+  // B27 แชททีม ▸ ไฟล์แนบของแชททีม (สมาชิก "คุยอย่างเดียว" แนบได้) — multipart `file` → {id,name,mimeType,size,kind} ◂
+  "secretary/team/attachments": "/api/mobile/secretary/team/attachments",
   // S2.21/S2.22 กิจการ · เชิญพนักงาน · บัญชีของฉัน (ชื่อตาม S1.14 docs/api/SECRETARY-API.md)
   "secretary/tenants/create": "/api/mobile/secretary/tenants/create",
   "secretary/staff/invite": "/api/mobile/secretary/staff/invite",
@@ -153,7 +155,7 @@ export type Frequent = { title: string; instruction: string };
 export type AccessItem = { module: string; level: "OFF" | "READ" | "DRAFT" | "AUTO" | string };
 export type InboxCount = { total: number; canApprove: number };
 /** GET secretary/badges (S1.14c) — approvals = รออนุมัติของกิจการนี้ · customers = ห้องลูกค้าที่ยังไม่อ่าน · team = คำเชิญ + ขอให้ช่วย + เรื่องช่วยเหลือ */
-export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number }; total: number; /** CAL (R-CAL-19 · สัญญา 32 §8.1): เรื่องวันนี้ที่ยังไม่เสร็จ · ไม่รวมใน total · เซิร์ฟเวอร์เก่าไม่ส่ง = 0 */ calendar?: number };
+export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number; /** B27 ข้อความแชททีมที่ยังไม่อ่าน · เซิร์ฟเวอร์เก่าไม่ส่ง = 0 */ messages?: number }; total: number; /** CAL (R-CAL-19 · สัญญา 32 §8.1): เรื่องวันนี้ที่ยังไม่เสร็จ · ไม่รวมใน total · เซิร์ฟเวอร์เก่าไม่ส่ง = 0 */ calendar?: number };
 
 /** GET secretary/systems — 1 แถว = 1 ระบบในเมนูเว็บ (ลำดับเดียวกัน) · href ขึ้นต้น /app (เปิดใน WebView หน้าระบบ) · badge = แชทลูกค้าที่ยังไม่อ่าน (ระบบแชท) */
 export type NavSystemRow = { key: string; kind: "unit" | "system" | "fixed"; code: string; href: string; label: string; badge: number };
@@ -745,7 +747,12 @@ const nonNeg = (v: unknown) => Math.max(0, Math.floor(Number(v ?? 0) || 0));
 export function zoneCountsOf(r: Partial<ZoneBadgesRes> | null | undefined): ZoneCounts {
   if (!r) return ZERO;
   const team = r.team ?? { invites: 0, help: 0, support: 0 };
-  return { secretary: nonNeg(r.approvals), customers: nonNeg(r.customers), team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support), calendar: nonNeg(r.calendar) };
+  return {
+    secretary: nonNeg(r.approvals),
+    customers: nonNeg(r.customers),
+    team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support) + nonNeg((team as { messages?: number }).messages), // B27 + ข้อความทีมยังไม่อ่าน
+    calendar: nonNeg(r.calendar),
+  };
 }
 export async function refreshZoneBadges(): Promise<void> {
   const seq = ++badgeSeq;
@@ -922,6 +929,8 @@ export type StaffRow = {
   units?: string[];
   levels?: Record<string, string>;
   chat?: string;
+  /** B27: STAFF ไม่มีสิทธิ์ระบบใด = "คุยอย่างเดียว" */
+  chatOnly?: boolean;
   inviteId?: string;
   phoneMasked?: string | null;
   expiresAt?: string;
@@ -930,7 +939,7 @@ export type StaffRow = {
 /** ระดับแชทลูกค้าของพนักงาน (staffViewOf.chat · R-S1.25h) */
 export type ChatLevel = "NONE" | "VIEW" | "REPLY";
 export const CHAT_LEVELS: readonly ChatLevel[] = ["NONE", "VIEW", "REPLY"];
-export type StaffPerson = { membershipId: string; userId: string; name: string; role: string; active: boolean; me: boolean; units: string[]; levels: Record<string, string>; chat: ChatLevel; joinedAt?: string | null };
+export type StaffPerson = { membershipId: string; userId: string; name: string; role: string; active: boolean; me: boolean; units: string[]; levels: Record<string, string>; chat: ChatLevel; joinedAt?: string | null; /** B27 คุยอย่างเดียว */ chatOnly?: boolean };
 export type StaffInvite = { inviteId: string; name: string; phoneMasked: string; role: string; expiresAt: string; expired: boolean };
 export function chatLevelOf(v: unknown): ChatLevel {
   return v === "REPLY" || v === "VIEW" ? v : "NONE";
@@ -959,6 +968,7 @@ export function normalizeStaff(v: unknown): { people: StaffPerson[]; invites: St
       levels: Object.fromEntries(Object.entries(lv).filter(([, l]) => typeof l === "string")) as Record<string, string>,
       chat: chatLevelOf(o.chat),
       joinedAt: isoOrNull(o.joinedAt),
+      chatOnly: o.chatOnly === true,
     });
   }
   return { people, invites };
@@ -1345,8 +1355,8 @@ export async function secAuthHeaders(): Promise<Record<string, string>> {
 
 /** POST secretary/support/upload · secretary/attachments (multipart `file`) — api() ของ client.ts ส่ง JSON เท่านั้น จึงแยกตัวเรียก */
 export async function secUpload(path: "secretary/support/upload", form: FormData): Promise<HelpUpload>;
-export async function secUpload(path: "secretary/attachments" | "secretary/support/attachments", form: FormData): Promise<SecAttachUpload>;
-export async function secUpload(path: "secretary/support/upload" | "secretary/attachments" | "secretary/support/attachments", form: FormData): Promise<HelpUpload | SecAttachUpload> {
+export async function secUpload(path: "secretary/attachments" | "secretary/support/attachments" | "secretary/team/attachments", form: FormData): Promise<SecAttachUpload>;
+export async function secUpload(path: "secretary/support/upload" | "secretary/attachments" | "secretary/support/attachments" | "secretary/team/attachments", form: FormData): Promise<HelpUpload | SecAttachUpload> {
   const headers = await secAuthHeaders();
   const res = await fetch(`${BASE_URL}${PATH[path]}`, { method: "POST", headers, body: form });
   if (!res.ok) {

@@ -57,7 +57,7 @@ type Picked = { uri: string; name: string; mimeType: string; size: number; file?
 let seq = 0;
 
 /** สถานะไฟล์แนบรอส่งของจอหนึ่ง — เลือก/อัป/ถอด/คืน · `path` = เส้นอัป (ห้องเลขา · เรื่องช่วยเหลือ help-cases 15 พ.ย.) */
-export function useSecAttach(path: "secretary/attachments" | "secretary/support/attachments" = "secretary/attachments") {
+export function useSecAttach(path: "secretary/attachments" | "secretary/support/attachments" | "secretary/team/attachments" = "secretary/attachments") {
   const [items, setItems] = useState<PendingAttach[]>([]);
   const [note, setNote] = useState<AttachNote | null>(null);
   const itemsRef = useRef(items);

@@ -41,7 +41,7 @@ const PLUS: Record<SecZone, { path: string; label: I18nKey } | null> = {
   customers: null,
   systems: null,
   calendar: { path: "/secretary/calendar", label: "cal.plus.cal" },
-  team: { path: "/secretary/staff/invite", label: "sec.top.invite" },
+  team: { path: "/secretary/team/add", label: "sec.top.invite" }, // B27: เพิ่มคนด้วยเบอร์ (จอเชิญ SMS เดิมถอดแล้ว)
 };
 
 /** ตัวเลขบน badge: 0 = ไม่แสดง · เกิน 99 = "99+" */

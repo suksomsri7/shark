@@ -1,114 +1,88 @@
-// ทุกคนในกิจการ (ใบ S2.10 · แบบ D1 sec-d.jpg หน้า 1 + sec-dark-d.jpg หน้า 1) — โซนทีม
-//   ข้อมูล: GET secretary/staff (listStaffAccess includeInvites + staffViewOf · แถว pending = คำเชิญค้าง) ·
-//           GET secretary/rooms (สถานะงานต่อคน: กำลังทำ/รออนุมัติ/ห้องร่วมกับคุณ · OWNER = scope tenant) · GET inbox/staff (onDuty = เข้าเวรอยู่ · พลาด = ไม่แสดง)
-//   ป้ายแชทลูกค้า = ระดับ NONE/VIEW/REPLY (ไม่เห็น/ดูได้/ตอบได้) · หน่วย = unitAccess (ว่าง = ทุกหน่วย)
-//   OWNER/MANAGER: แตะแถว → /secretary/staff/[membershipId] (S2.22) · เพิ่มพนักงาน = ปุ่ม + บนแถบ → /secretary/staff/invite (S2.21 · 14 พ.ย. ตัดปุ่มล่าง+หัวข้อตามเจ้าของสั่ง) · คำเชิญค้าง: ส่งอีกครั้ง / ยกเลิก (ยืนยัน)
-//   STAFF: อ่านอย่างเดียว ไม่มีปุ่ม (เซิร์ฟเวอร์ตอบ 403 ⇒ จอ "เฉพาะเจ้าของ/ผู้จัดการ")
-// ข้อความผ่าน i18n (sec.staff.*) · สีจากธีม · สเกล R-UI1
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+// ทีม = รายชื่อแชท (B27 · มติเจ้าของ 15 พ.ย. 2026 · แบบ /root/mockups/team-invite/team2.png จอ 1 + team4.png จอ 1) — โซนทีม (ไอคอนคนบนแถบ)
+//   แทนรายชื่อพนักงานเดิม (S2.10 D1): ทุกคนในร้านเห็นทีม (สมาชิก "คุยอย่างเดียว" ด้วย) · แตะคน = แชท 1:1 · แตะกลุ่ม = แชทกลุ่ม
+//   ข้อมูล: GET secretary/team (threads + people + pending) · poll 15 วิ ขณะจออยู่ · badge ทีมรวมข้อความยังไม่อ่าน (secretary/badges team.messages)
+//   ลำดับ: แชทที่มีข้อความ (ใหม่→เก่า) → คนที่ยังไม่เคยคุย → รอยอมรับคำเชิญ (จาง · OWNER/MANAGER แตะ = ยกเลิกคำเชิญ)
+//   ช่องค้นหา "ค้นหาคนในทีม" + ปุ่มกลมดำ + ท้ายแถว (OWNER/MANAGER) → เพิ่มคนด้วยเบอร์ (/secretary/team/add)
+//     TODO(b27-group): + = เมนูเล็ก 2 ทาง "เพิ่มคนเข้าทีม" / "สร้างกลุ่ม" (team4.png จอ 2) — รอเจ้าของอนุมัติแบบก่อนสร้าง
+//   คำเชิญถึงตัวเรา (ผู้ใช้เดิม) = การ์ด ReceivedInvites บนสุด (รับแล้วเข้าร้านนั้น)
+//   ปุ่ม Lekaa มุมขวาล่าง = โฮสต์กลางของเลน b27-fab — จอนี้เว้นท้ายรายการไว้ (TEAM_LIST_FAB_CLEARANCE · TODO(b27-fab))
+//   ปุ่ม + ของแถบบน (SecTopBar) ปิดในโซนนี้ — + อยู่ท้ายช่องค้นหาตามแบบ
+// ข้อความผ่าน i18n (team.*) · สีจากธีม (c.team) · สเกล R-UI1
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, Glass, Icon, LoadError, Loading, Sheet } from "@/src/components/airy";
+import { AiryScreen, Icon, LoadError, Loading, Sheet } from "@/src/components/airy";
 import { SecTopBar } from "@/src/components/secretary/SecTopBar";
-import { PendingRow, StaffRow, type StaffRowIds, type StaffWork } from "@/src/components/secretary/StaffRow";
-import { dateBkk } from "@/src/components/secretary/bkk";
-import {
-  isDenied,
-  normalizeRoom,
-  normalizeStaff,
-  secDeleteId,
-  secGet,
-  secPostId,
-  serverNote,
-  useActiveRole,
-  type RoomRaw,
-  type ChatLevel,
-  type StaffInvite,
-  type StaffPerson,
-} from "@/src/api/secretary";
+import { ReceivedInvites } from "@/src/components/secretary/InviteRow";
+import { TeamRow } from "@/src/components/team/TeamRow";
+import { TEAM_LIST_FAB_CLEARANCE } from "@/src/components/team/layout";
+import { scheduleZoneBadges, secDeleteId, serverNote } from "@/src/api/secretary";
+import { getTeam, listTimeOf, openDirect, previewOf, type TeamList, type TeamPending, type TeamPerson, type TeamThread } from "@/src/api/team";
 import { useAuth } from "@/src/lib/auth-context";
-import { useT, type I18nKey } from "@/src/i18n";
+import { useLang, useT } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
 import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
+const POLL_MS = 15_000;
+const SEARCH_H = 52;
+const DAY = 86_400_000;
 
-/** testID ของแถว (spec s2.10) — ป้ายแชท = "sec-staff-chat-badge" · ระดับที่แสดง NONE|VIEW|REPLY */
-const ROW_IDS: StaffRowIds = { row: "sec-staff-row", chat: "sec-staff-chat-badge", pending: "sec-staff-pending", resend: "sec-staff-pending-resend", cancel: "sec-staff-pending-cancel" };
-const SEARCH_H = 48;
-const NO_WORK: StaffWork = { running: 0, waiting: 0, shared: 0, onDuty: false };
-/** ป้ายแชทลูกค้าตามระดับ (staffViewOf.chat · R-S1.25h): NONE ไม่เห็น · VIEW ดูได้ · REPLY ตอบได้ */
-const CHAT_LABEL: Record<ChatLevel, I18nKey> = { NONE: "sec.staff.chat.NONE", VIEW: "sec.staff.chat.VIEW", REPLY: "sec.staff.chat.REPLY" };
+type Row =
+  | { kind: "thread"; key: string; th: TeamThread }
+  | { kind: "person"; key: string; p: TeamPerson }
+  | { kind: "pending"; key: string; inv: TeamPending };
 
-export default function SecretaryStaffScreen() {
+export default function TeamListScreen() {
   const { c } = useTheme();
   const t = useT();
+  const lang = useLang();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { activeTenantId, user } = useAuth();
-  const myId = user?.id ?? null;
-  const role = useActiveRole();
-  const manage = role === "OWNER" || role === "MANAGER";
+  const { activeTenantId } = useAuth();
 
-  const [people, setPeople] = useState<StaffPerson[] | null>(null);
-  const [invites, setInvites] = useState<StaffInvite[]>([]);
-  const [rooms, setRooms] = useState<RoomRaw[]>([]);
-  const [onDuty, setOnDuty] = useState<Set<string>>(new Set());
-  const [denied, setDenied] = useState(false);
+  const [data, setData] = useState<TeamList | null>(null);
   const [failed, setFailed] = useState(false);
   const [query, setQuery] = useState("");
   const [refreshing, setRefreshing] = useState(false);
   const [note, setNote] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState<TeamPending | null>(null);
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
-  const [cancelling, setCancelling] = useState<StaffInvite | null>(null);
   const tenantRef = useRef(activeTenantId);
+  const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
     tenantRef.current = activeTenantId;
-    setPeople(null);
-    setInvites([]);
-    setRooms([]);
-    setDenied(false);
+    setData(null);
     setFailed(false);
   }, [activeTenantId]);
 
   const load = useCallback(async () => {
     const tenant = activeTenantId;
     if (!tenant) return;
-    const [s, r, d] = await Promise.allSettled([
-      secGet("secretary/staff"),
-      secGet("secretary/rooms", { scope: role === "OWNER" ? "tenant" : "mine", take: 100 }),
-      secGet("inbox/staff"),
-    ]);
-    if (tenantRef.current !== tenant) return;
-    if (s.status === "rejected") {
-      if (isDenied(s.reason)) {
-        setDenied(true);
-        setPeople([]);
-      } else setFailed(true); // S2.14: คงรายการเดิม · ยังไม่เคยได้ = LoadError (ไม่ใช่ "ยังไม่มีพนักงาน")
-    } else {
-      const v = normalizeStaff(s.value);
-      setDenied(false);
+    try {
+      const r = await getTeam();
+      if (tenantRef.current !== tenant) return;
+      setData(r);
       setFailed(false);
-      setPeople(v.people);
-      setInvites(v.invites);
+      setNow(Date.now());
+    } catch {
+      if (tenantRef.current === tenant) setFailed(true); // คงรายการเดิม · ยังไม่เคยได้ = LoadError
     }
-    if (r.status === "fulfilled") setRooms(r.value.items ?? []);
-    if (d.status === "fulfilled") setOnDuty(new Set((d.value.items ?? []).filter((x) => x.onDuty === true).map((x) => x.userId)));
-  }, [activeTenantId, role]);
+  }, [activeTenantId]);
 
   useFocusEffect(
     useCallback(() => {
       void load();
+      scheduleZoneBadges();
+      const timer = setInterval(() => {
+        if (AppState.currentState === "active") void load();
+      }, POLL_MS);
+      return () => clearInterval(timer);
     }, [load]),
   );
-
-  const retry = useCallback(() => {
-    setFailed(false);
-    void load();
-  }, [load]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -116,35 +90,46 @@ export default function SecretaryStaffScreen() {
     setRefreshing(false);
   }, [load]);
 
-  // สถานะงานต่อคน: ห้องที่คนนั้นเปิดหรือเป็นสมาชิก (สถานะ RoomStatus จริงของ S1.14)
-  const work = useMemo(() => {
-    const out = new Map<string, StaffWork>();
-    const cards = rooms.map((x) => ({ card: normalizeRoom(x, myId), ids: new Set([x.startedById ?? x.startedBy?.id ?? "", ...(x.memberIds ?? [])].filter(Boolean)) }));
-    for (const p of people ?? []) {
-      const mine = cards.filter((r) => r.ids.has(p.userId));
-      out.set(p.userId, {
-        running: mine.filter((r) => r.card.status === "RUNNING").length,
-        waiting: mine.filter((r) => r.card.status === "WAITING").length,
-        shared: p.me || !myId ? 0 : mine.filter((r) => r.card.status !== "DONE" && r.ids.has(myId)).length,
-        onDuty: onDuty.has(p.userId),
-      });
-    }
-    return out;
-  }, [rooms, people, onDuty, myId]);
-
+  const manage = data?.me.canManage === true;
   const q = query.trim().toLowerCase();
-  // ตัวเราไว้ท้าย (แบบ D1 = รายชื่อทีม) · ที่เหลือตามลำดับของเซิร์ฟเวอร์
-  const shownPeople = (people ?? []).filter((p) => !q || p.name.toLowerCase().includes(q)).sort((a, b) => Number(a.me) - Number(b.me));
-  const shownInvites = invites.filter((i) => !q || i.name.toLowerCase().includes(q));
+  const hit = (name: string) => !q || name.toLowerCase().includes(q);
+  const rows: Row[] = [];
+  if (data) {
+    for (const th of data.threads) if (hit(th.name)) rows.push({ kind: "thread", key: `t-${th.id}`, th });
+    const talked = new Set(data.threads.filter((x) => x.kind === "DIRECT" && x.peer).map((x) => x.peer!.userId));
+    for (const p of data.people) if (!p.me && !talked.has(p.userId) && hit(p.name)) rows.push({ kind: "person", key: `p-${p.userId}`, p });
+    for (const inv of data.pending) if (hit(inv.name)) rows.push({ kind: "pending", key: `i-${inv.inviteId}`, inv });
+  }
 
-  const run = async (fn: () => Promise<unknown>, ok: string) => {
+  const openPerson = async (p: TeamPerson) => {
     if (busyRef.current) return;
+    if (p.directThreadId) {
+      router.push(`/secretary/team/${p.directThreadId}`);
+      return;
+    }
     busyRef.current = true;
     setBusy(true);
     setNote(null);
     try {
-      await fn();
-      setNote(ok);
+      const r = await openDirect(p.userId);
+      router.push(`/secretary/team/${r.threadId}`);
+    } catch (e) {
+      setNote(serverNote(e) ?? t("team.openErr"));
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  };
+
+  const cancel = async () => {
+    const i = cancelling;
+    setCancelling(null);
+    if (!i || busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    try {
+      await secDeleteId("secretary/staff/invites/[id]", i.inviteId);
+      setNote(t("sec.staff.cancelled"));
       void load();
     } catch (e) {
       setNote(serverNote(e) ?? t("sec.staff.actionErr"));
@@ -153,93 +138,111 @@ export default function SecretaryStaffScreen() {
       setBusy(false);
     }
   };
-  const resend = (i: StaffInvite) => void run(() => secPostId("secretary/staff/invites/[id]/resend", i.inviteId, {}), t("sec.staff.resent"));
-  const cancel = async () => {
-    const i = cancelling;
-    setCancelling(null);
-    if (i) await run(() => secDeleteId("secretary/staff/invites/[id]", i.inviteId), t("sec.staff.cancelled"));
-  };
-  const dateText = (iso: string) => {
-    const d = dateBkk(iso);
-    return d ? t("sec.staff.date", { d: d.date, m: d.month }) : "";
-  };
+
+  const tag = (th: TeamThread) => (th.kind === "GROUP" ? "GROUP" : (th.peer?.tag ?? null));
 
   return (
-    <AiryScreen testID="sec-staff">
+    <AiryScreen testID="team">
       <ScrollView
-        contentContainerStyle={[styles.page, { paddingBottom: 40 + insets.bottom }]}
+        contentContainerStyle={[styles.page, { paddingBottom: TEAM_LIST_FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={c.textMuted} />}
       >
-        <SecTopBar zone="team" center="none" showPlus={manage} />
+        <SecTopBar zone="team" center="none" showPlus={false} />
 
-        {denied ? (
-          <Glass testID="sec-staff-denied" style={styles.denied}>
-            <Icon name="lock" size={22} color={c.textMuted} />
-            <Text style={[styles.deniedT, { color: c.text }]}>{t("sec.staff.denied")}</Text>
-          </Glass>
-        ) : people === null ? (
-          failed ? <LoadError testID="sec-staff-error" onRetry={retry} /> : <Loading testID="sec-staff-loading" />
+        <View style={styles.searchRow}>
+          <View style={[glassStyle(c, SEARCH_H / 2), styles.search]}>
+            <TextInput
+              testID="team-search"
+              value={query}
+              onChangeText={setQuery}
+              placeholder={t("team.search")}
+              placeholderTextColor={c.placeholder}
+              returnKeyType="search"
+              style={[styles.searchField, { color: c.text }]}
+            />
+          </View>
+          {manage ? (
+            <Pressable testID="team-plus" accessibilityRole="button" accessibilityLabel={t("team.add")} onPress={() => router.push("/secretary/team/add")} style={[styles.plus, { backgroundColor: c.accent }]}>
+              <Icon name="plus" size={22} color={c.onAccent} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        <ReceivedInvites testID="team-received" />
+
+        {note ? (
+          <Text testID="team-note" style={[styles.note, { color: c.text, backgroundColor: c.chip.bg }]}>
+            {note}
+          </Text>
+        ) : null}
+
+        {data === null ? (
+          failed ? (
+            <LoadError testID="team-error" onRetry={() => void load()} />
+          ) : (
+            <Loading testID="team-loading" />
+          )
         ) : (
           <>
-            <View style={[glassStyle(c, SEARCH_H / 2), styles.search]}>
-              <Icon name="search" size={17} color={c.iconDim} />
-              <TextInput
-                testID="sec-staff-search"
-                value={query}
-                onChangeText={setQuery}
-                placeholder={t("sec.staff.search")}
-                placeholderTextColor={c.placeholder}
-                returnKeyType="search"
-                style={[styles.searchField, { color: c.text }]}
-              />
-            </View>
-            {note ? (
-              <Text testID="sec-staff-note" style={[styles.note, { color: c.text, backgroundColor: c.chip.bg }]}>
-                {note}
-              </Text>
-            ) : null}
-            {shownPeople.map((p) => (
-              <StaffRow
-                key={p.userId}
-                person={p}
-                work={work.get(p.userId) ?? NO_WORK}
-                ids={ROW_IDS}
-                chatText={t(CHAT_LABEL[p.chat])}
-                onPress={manage && p.membershipId ? () => router.push(`/secretary/staff/${p.membershipId}`) : undefined}
-              />
-            ))}
-            {shownInvites.length > 0 ? <Text style={[styles.sec, { color: c.textFaint }]}>{t("sec.staff.pendingTitle", { n: shownInvites.length })}</Text> : null}
-            {shownInvites.map((i) => (
-              <PendingRow
-                key={i.inviteId}
-                invite={i}
-                ids={ROW_IDS}
-                busy={busy}
-                dateText={dateText(i.expiresAt)}
-                onResend={manage ? () => resend(i) : undefined}
-                onCancel={manage && !i.expired ? () => setCancelling(i) : undefined}
-              />
-            ))}
-            {people !== null && shownPeople.length === 0 && shownInvites.length === 0 ? (
-              <Text testID="sec-staff-empty" style={[styles.none, { color: c.textMuted }]}>
-                {q ? t("sec.staff.noMatch") : t("sec.staff.empty")}
+            {rows.map((r) =>
+              r.kind === "thread" ? (
+                <TeamRow
+                  key={r.key}
+                  testID="team-row"
+                  name={r.th.name || t("sec.room.someone")}
+                  seed={r.th.peer?.userId ?? r.th.id}
+                  group={r.th.kind === "GROUP"}
+                  tag={tag(r.th)}
+                  tagLabel={r.th.kind === "GROUP" ? t("team.group", { n: r.th.memberCount }) : undefined}
+                  preview={previewOf(r.th.last, r.th.kind, t)}
+                  time={r.th.last ? listTimeOf(r.th.last.at, now, lang) : ""}
+                  unread={r.th.muted ? 0 : r.th.unread}
+                  muted={r.th.muted}
+                  onPress={() => router.push(`/secretary/team/${r.th.id}`)}
+                />
+              ) : r.kind === "person" ? (
+                <TeamRow
+                  key={r.key}
+                  testID="team-person"
+                  name={r.p.name || t("sec.room.someone")}
+                  seed={r.p.userId}
+                  tag={r.p.tag}
+                  preview={t("team.startChat")}
+                  time=""
+                  onPress={busy ? undefined : () => void openPerson(r.p)}
+                />
+              ) : (
+                <TeamRow
+                  key={r.key}
+                  testID="team-pending"
+                  name={r.inv.name}
+                  seed={r.inv.inviteId}
+                  tag={null}
+                  pending
+                  preview={t("team.pending")}
+                  time={t("team.days", { n: Math.max(0, Math.floor((now - (Date.parse(r.inv.at) || now)) / DAY)) })}
+                  onPress={manage ? () => setCancelling(r.inv) : undefined}
+                />
+              ),
+            )}
+            {rows.length === 0 ? (
+              <Text testID="team-empty" style={[styles.none, { color: c.textMuted }]}>
+                {q ? t("team.noMatch") : manage ? t("team.empty") : t("team.emptyRead")}
               </Text>
             ) : null}
           </>
         )}
       </ScrollView>
 
-
-      <Sheet visible={!!cancelling} onClose={() => setCancelling(null)} testID="sec-staff-cancel-sheet" top={520}>
+      <Sheet visible={!!cancelling} onClose={() => setCancelling(null)} testID="team-cancel-sheet" top={520}>
         <Text style={[styles.sh, { color: c.text }]}>{t("sec.staff.cancelTitle", { name: cancelling?.name || t("sec.staff.invitee") })}</Text>
-        <Text style={[styles.sb, { color: c.textMuted }]}>{t("sec.staff.cancelBody")}</Text>
         <View style={styles.acts}>
-          <Pressable testID="sec-staff-cancel-sheet-no" accessibilityRole="button" onPress={() => setCancelling(null)} style={[glassStyle(c, size.iconBtn / 2), styles.btn]}>
+          <Pressable testID="team-cancel-no" accessibilityRole="button" onPress={() => setCancelling(null)} style={[glassStyle(c, size.iconBtn / 2), styles.btn]}>
             <Text style={[styles.btnT, { color: c.text }]}>{t("sec.staff.keep")}</Text>
           </Pressable>
-          <Pressable testID="sec-staff-cancel-sheet-ok" accessibilityRole="button" disabled={busy} onPress={() => void cancel()} style={[styles.btn, styles.main, { backgroundColor: c.accent }]}>
+          <Pressable testID="team-cancel-ok" accessibilityRole="button" disabled={busy} onPress={() => void cancel()} style={[styles.btn, styles.main, { backgroundColor: c.accent }]}>
             <Text style={[styles.btnT, { color: c.onAccent }]}>{t("sec.staff.cancelOk")}</Text>
           </Pressable>
         </View>
@@ -250,18 +253,13 @@ export default function SecretaryStaffScreen() {
 
 const styles = StyleSheet.create({
   page: { paddingHorizontal: spacing.page, paddingTop: 14 },
-  tenant: { marginTop: 14 },
-  sub: { fontSize: F.sub, marginTop: 4, lineHeight: 20 },
-  search: { height: SEARCH_H, flexDirection: "row", alignItems: "center", gap: spacing.sm, paddingHorizontal: 16, marginTop: F.v(22), marginBottom: 2 },
-  searchField: { flex: 1, minWidth: 0, fontSize: T.sub, paddingVertical: 0, outlineWidth: 0 },
+  searchRow: { flexDirection: "row", alignItems: "center", gap: 12, marginTop: F.v(22), marginBottom: 4 },
+  search: { flex: 1, height: SEARCH_H, flexDirection: "row", alignItems: "center", paddingHorizontal: 18 },
+  searchField: { flex: 1, minWidth: 0, fontSize: T.sub + 0.5, paddingVertical: 0, outlineWidth: 0 },
+  plus: { width: SEARCH_H, height: SEARCH_H, borderRadius: SEARCH_H / 2, alignItems: "center", justifyContent: "center" },
   note: { fontSize: 13, lineHeight: 19, borderRadius: radii.k + 2, paddingVertical: 8, paddingHorizontal: 12, marginTop: 10, overflow: "hidden", textAlign: "center" },
-  sec: { fontSize: 12, fontWeight: "600", letterSpacing: 1, marginTop: spacing.lg, marginLeft: 6 },
   none: { fontSize: T.sub, textAlign: "center", marginTop: F.v(40) },
-  denied: { marginTop: F.v(40), alignItems: "center", gap: spacing.sm },
-  deniedT: { fontSize: T.body, fontWeight: "600", lineHeight: 23, textAlign: "center" },
-  cta: { position: "absolute", left: spacing.page, right: spacing.page },
   sh: { fontSize: T.h + 1, fontWeight: "700", lineHeight: 26 },
-  sb: { fontSize: T.sub, lineHeight: 21, marginTop: 6 },
   acts: { flexDirection: "row", gap: 10, marginTop: spacing.lg },
   btn: { flex: 1, height: size.iconBtn, borderRadius: size.iconBtn / 2, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
   main: { flex: 1.6 },

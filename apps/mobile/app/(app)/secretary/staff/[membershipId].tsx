@@ -7,6 +7,8 @@
 //     extraPermissions = {} (เซิร์ฟเวอร์ยังไม่บอกคีย์รายตัวที่ให้ได้ → ยังไม่มีช่องรายคีย์ · DTO-REQ ใน wo-notes)
 //   ระงับชั่วคราว / เอาออกจากกิจการ = ยืนยัน 2 ขั้น (ชีต) ⇒ POST …/suspend | …/remove ⇒ กลับรายชื่อ
 //   ตัวเอง / เจ้าของ / (MANAGER ดูคนที่ไม่ใช่พนักงาน) = อ่านอย่างเดียว ไม่มีปุ่ม
+//   B27 แชททีม ▸ เปิดจาก ⚙ ในห้องแชท 1:1 · บทบาท 3 ทาง: คุยอย่างเดียว / พนักงาน / ผู้จัดการ (MANAGER ตั้งได้ 2 ทางแรก)
+//     คุยอย่างเดียว = STAFF ไม่มีสิทธิ์ระบบ/สาขา (staff DTO `chatOnly`) · บันทึก = PUT secretary/team/members/[id]/chat-only · ซ่อนสาขา/กริดสิทธิ์ ◂
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -30,13 +32,15 @@ import {
   type StaffPerson,
   type UnitOpt,
 } from "@/src/api/secretary";
+import { setChatOnly } from "@/src/api/team";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
 import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 const ALL = "*";
-type Role = "STAFF" | "MANAGER";
+type Role = "CHAT_ONLY" | "STAFF" | "MANAGER";
+const CHAT_ONLY = "CHAT_ONLY";
 type Form = { role: string; units: string[]; levels: Record<string, string>; chat: ChatLevel };
 const sameUnits = (a: string[], b: string[]) => [...a].sort().join(",") === [...b].sort().join(",");
 /** R-S2.21a: เฉพาะ ["*"] = ทุกสาขา · [] = ยังไม่มีสาขา */
@@ -87,7 +91,7 @@ export default function StaffPermissionScreen() {
     if (a.status === "fulfilled") setAccess((a.value.items ?? []).map((x) => x.module));
     if (d.status === "fulfilled" && p) setOnDuty((d.value.items ?? []).some((x) => x.userId === p.userId && x.onDuty === true));
     if (p) {
-      const f: Form = { role: p.role, units: p.units, levels: { ...p.levels }, chat: p.chat }; // ระดับดิบของ server (โมดูล OFF-only ที่มีคีย์รายตัว = ป้าย "ให้รายคีย์ไว้")
+      const f: Form = { role: p.chatOnly ? CHAT_ONLY : p.role, units: p.units, levels: { ...p.levels }, chat: p.chat }; // ระดับดิบของ server (โมดูล OFF-only ที่มีคีย์รายตัว = ป้าย "ให้รายคีย์ไว้")
       setSaved(f);
       setForm(f);
     }
@@ -102,7 +106,9 @@ export default function StaffPermissionScreen() {
   const modules = useMemo(() => gridModules(access, person?.levels ?? {}), [access, person]);
   // ใครแก้ได้: OWNER แก้ทุกคนยกเว้นเจ้าของ/ตัวเอง · MANAGER แก้ได้เฉพาะพนักงาน (เซิร์ฟเวอร์ตรวจซ้ำ)
   const editable = !!person && !person.me && person.role !== "OWNER" && (owner || (actorRole === "MANAGER" && person.role === "STAFF"));
-  const roleOptions: Role[] = owner ? ["STAFF", "MANAGER"] : ["STAFF"];
+  const roleOptions: Role[] = owner ? ["CHAT_ONLY", "STAFF", "MANAGER"] : ["CHAT_ONLY", "STAFF"];
+  const chatOnlyForm = form?.role === CHAT_ONLY;
+  const roleText = (r: string) => (r === CHAT_ONLY ? t("perm.role.CHAT_ONLY") : roleLabel(t, r));
   const managerForm = form?.role === "MANAGER";
 
   // R-S2.21c: ลดผู้จัดการ → พนักงาน — ระดับที่แสดงของผู้จัดการคือค่าเต็มจาก staffViewOf (ไม่ใช่คีย์ที่เก็บจริง) ⇒ ส่งทุกโมดูลในกริด + แชท ตามที่เจ้าของเลือก
@@ -133,6 +139,7 @@ export default function StaffPermissionScreen() {
   const pickRole = (k: string) =>
     setForm((f) => {
       if (!f || !saved) return f;
+      if (k === CHAT_ONLY) return { ...f, role: k, units: [], levels: {}, chat: "NONE" };
       if (k === "STAFF" && saved.role === "MANAGER") return { ...f, role: k, levels: {}, chat: "NONE" };
       if (k === saved.role) return { ...f, role: k, levels: saved.levels, chat: saved.chat };
       return { ...f, role: k };
@@ -144,6 +151,13 @@ export default function StaffPermissionScreen() {
     setBusy(true);
     setNote(null);
     try {
+      // B27: คุยอย่างเดียว = เส้นเดียวจบ (STAFF + ไม่มีสาขา + ไม่มีคีย์สิทธิ์)
+      if (form.role === CHAT_ONLY) {
+        await setChatOnly(membershipId);
+        setNote({ text: t("perm.saved"), warn: false });
+        await load();
+        return;
+      }
       // R-S2.21c: role / unitIds ส่งเฉพาะเมื่อเปลี่ยน
       await putStaff(membershipId, {
         ...(form.role !== saved.role ? { role: form.role === "MANAGER" ? "MANAGER" : "STAFF" } : {}),
@@ -193,7 +207,7 @@ export default function StaffPermissionScreen() {
   const sub = person
     ? [
         unitNames(person.units),
-        roleLabel(t, person.role),
+        person.chatOnly ? t("perm.role.CHAT_ONLY") : roleLabel(t, person.role),
         ...(onDuty ? [t("sec.staff.onDuty")] : []),
         ...(!person.active ? [t("sec.staff.suspended")] : []),
         ...(jd ? [t("perm.joined", { d: jd.date, month: t(`sec.month.${jd.month}` as I18nKey) })] : []),
@@ -230,9 +244,15 @@ export default function StaffPermissionScreen() {
               testID="perm-role"
               value={form.role}
               onChange={(k) => editable && pickRole(k)}
-              options={(editable ? roleOptions : [person.role]).map((r) => ({ key: r, label: roleLabel(t, r) }))}
+              options={(editable ? roleOptions : [person.chatOnly ? CHAT_ONLY : person.role]).map((r) => ({ key: r, label: roleText(r) }))}
             />
 
+            {chatOnlyForm ? (
+              <Note testID="perm-chat-only" style={styles.leftNote}>
+                {t("perm.chatOnlyNote")}
+              </Note>
+            ) : (
+              <>
             <Text style={[styles.label, { color: c.textDim }]}>{t("perm.units")}</Text>
             <View testID="perm-unit" style={styles.chips}>
               <Chip testID="perm-unit-all" active={allUnits(form.units)} label={t("perm.unitAll")} onPress={editable ? () => toggleUnit(ALL) : undefined} />
@@ -258,6 +278,8 @@ export default function StaffPermissionScreen() {
               />
             </View>
             <Text style={[styles.foot, { color: c.textMuted }]}>{t("perm.foot", { name })}</Text>
+              </>
+            )}
 
             {note ? (
               <Note warn={note.warn} testID="perm-note">
