@@ -148,7 +148,10 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | `/secretary/scheduled` | `secretary/scheduled.tsx` | เลขา | `sec-secretary-scheduled` | A7 | S2.5 |
 | `/secretary/staff` | `secretary/staff/index.tsx` | ทีม | `sec-secretary-staff` | D1 | S2.10 |
 | `/secretary/staff/[membershipId]` | `secretary/staff/[membershipId].tsx` | ทีม | `sec-secretary-staff-member` | G3 | S2.22 |
-| `/secretary/staff/invite` | `secretary/staff/invite.tsx` | ทีม | `sec-secretary-staff-invite` | G2 | S2.21 |
+| `/secretary/team/add` | `secretary/team/add.tsx` | ทีม | `team-add` | team2.png จอ 2 (แทน G2 · B27 17 พ.ย. 2026 — จอเชิญ SMS `staff/invite` ถอดแล้ว) | B27 |
+| `/secretary/team/new-group` | `secretary/team/new-group.tsx` | ทีม | `team-new-group` | team4.png จอ 3 | B27 |
+| `/secretary/team/[id]` | `secretary/team/[id]/index.tsx` | ทีม | `team-room` | team2.png จอ 3 · team4.png จอ 4 | B27 |
+| `/secretary/team/[id]/settings` | `secretary/team/[id]/settings.tsx` | ทีม | `team-group-settings` | team4.png จอ 5 | B27 |
 | `/secretary/settings` | `secretary/settings/index.tsx` | เลขา | `sec-secretary-settings` | B1 | S2.7 |
 | `/secretary/settings/secretary` | `secretary/settings/secretary.tsx` | เลขา | `sec-secretary-settings-secretary` | B2 | S2.7 |
 | `/secretary/settings/access` | `secretary/settings/access.tsx` | เลขา | `sec-secretary-settings-access` | B3 | S2.8 |
@@ -184,7 +187,8 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | /secretary/scheduled | `secretary/scheduled.tsx` | A7 | GET secretary/scheduled | POST secretary/scheduled · PUT/DELETE secretary/scheduled/[id] | sec-sched-loading · sec-sched-empty · sec-sched-retry |
 | /secretary/staff | `secretary/staff/index.tsx` | D1 | GET secretary/staff?includeInvites · inbox/staff (เวร) · secretary/rooms (งานต่อคน) | แตะคน → /secretary/staff/[membershipId] · เพิ่มพนักงาน → /secretary/staff/invite · POST invites/[id]/resend · DELETE invites/[id] | sec-staff-loading · sec-staff-empty · sec-staff-error · sec-staff-denied |
 | /secretary/staff/[membershipId] | `secretary/staff/[membershipId].tsx` | G3 | GET secretary/staff · secretary/access · inbox/staff | PUT secretary/staff/[id] {role?, unitIds?, levels, chat} · POST staff/[id]/suspend · staff/[id]/remove | perm-loading · perm-missing (ไม่อยู่ในกิจการ) · perm-error |
-| /secretary/staff/invite | `secretary/staff/invite.tsx` | G2 | GET secretary/staff (สาขา) · secretary/access (โมดูล) · secretary/staff/invites | POST secretary/staff/invite {name, phone, role, unitIds, levels, chat} (S2.14 · server แปลงคีย์) · resend/DELETE คำเชิญ | inv-denied · inv-note (เหตุผลไทย) |
+| /secretary/team/add | `secretary/team/add.tsx` | team2 จอ 2 (B27 · แทนจอเชิญ SMS ที่ถอดแล้ว — เส้น `secretary/staff/invite` เดิมคงไว้ให้แอปรุ่นเก่า) | – | POST secretary/team/lookup {phone} · POST secretary/team/members {phone} · เลือกจากรายชื่อในเครื่อง (expo-contacts · build ถัดไป) | team-add-note |
+| /secretary/team/new-group · /secretary/team/[id] · /secretary/team/[id]/settings | `secretary/team/new-group.tsx` · `team/[id]/index.tsx` · `team/[id]/settings.tsx` | team4 จอ 3–5 (B27) | GET secretary/team · team/threads/[id] · team/threads/[id]/messages (poll after=) | POST team/threads · team/threads/[id]/messages · read · members · leave · PUT/DELETE members/[userId] · PATCH team/threads/[id] | team-new-group-error · team-room-error · team-gs-error |
 | /secretary/settings | `secretary/settings/index.tsx` | B1 (หน้ารวม) | GET secretary/quota | แถวตั้งค่า → B2–B8 · G4 | – |
 | /secretary/settings/secretary | `secretary/settings/secretary.tsx` | B2 | GET secretary/secretary (ตัวตน) · secretary/quota · secretary/rooms · secretary/inbox/count | PUT secretary/secretary {name, tone, suffix, languages} | sec-me-note (ล้ม) |
 | /secretary/settings/access | `secretary/settings/access.tsx` | B3 | GET secretary/access | PUT secretary/access {module, level} (OWNER) | sec-access-loading · sec-access-note |

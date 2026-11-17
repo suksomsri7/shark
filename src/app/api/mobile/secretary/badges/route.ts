@@ -5,7 +5,8 @@
 //   team.invites = คำเชิญที่ยังไม่รับและยังไม่หมดอายุของร้าน — เฉพาะ OWNER/MANAGER (STAFF = 0)
 //   team.help = ห้องแชทลูกค้าสถานะ OPEN ที่ผู้เรียกถูกเรียกมาช่วย (ChatConversationHelper.userId = ฉัน)
 //   team.support = `unreadCaseTotalForUser` (เรื่องที่ทีม SHARK ตอบแล้วยังไม่อ่าน)
-//   total = approvals + customers + invites + help + support
+//   B27 ▸ team.messages = ข้อความแชททีมที่ยังไม่อ่าน (`teamUnreadTotal` · ห้องที่ปิดเสียงไม่นับ) — รวมใน total และตัวเลขไอคอนทีม ◂
+//   total = approvals + customers + invites + help + support + messages
 //   CAL1.6 ▸ calendar = `todayOpenCount` (เรื่องวันนี้ที่ยังไม่เสร็จ · ไอคอนปฏิทินแถบบน M1 · R-CAL-19) — **ไม่รวม** ใน total (มติ Q3) · ล้ม = 0 + logOps WARN ◂
 // ด่าน = สมาชิกร้าน (gate null) · 60/นาที ต่อ Membership · count/aggregate ล้วน ไม่ดึงรายการ (ยกเว้น approvals ที่ใช้ชุดเดียวกับกล่องรวม · เพดาน 100)
 import { tenantDb } from "@/lib/core/db";
@@ -14,6 +15,7 @@ import { unreadCaseTotalForUser } from "@/lib/support/service";
 import { READ, can, unreadFor, type InboxCtx } from "../../inbox/_shared";
 import { errDetail, logOps } from "@/lib/core/ops";
 import { todayOpenCount } from "@/lib/modules/calendar/agenda";
+import { teamUnreadTotal } from "@/lib/team-chat/service";
 import { gate, ok, thrown, withRateLimit, withErrors } from "../_shared";
 
 /** เพดานเดียวกับกล่องรวม (TAKE_MAX ของ inbox.ts) */
@@ -52,20 +54,29 @@ async function GET_(req: Request) {
         return 0;
       }
     };
-    const [inbox, cust, inv, hlp, support, cal] = await Promise.all([
+    const messages = async (): Promise<number> => {
+      try {
+        return await teamUnreadTotal(tenantId, userId);
+      } catch (e) {
+        await logOps("WARN", "team-chat", "badges: นับข้อความทีมล้ม", { tenantId, detail: errDetail(e) }).catch(() => undefined);
+        return 0;
+      }
+    };
+    const [inbox, cust, inv, hlp, support, cal, msgs] = await Promise.all([
       inboxForUser(userId, { tenantId, take: INBOX_TAKE }),
       customers(),
       invites(),
       help(),
       unreadCaseTotalForUser({ tenantId }, userId, m.role),
       calendar(),
+      messages(),
     ]);
     const approvals = inbox.filter((i) => i.canApprove).length;
     return ok({
       approvals,
       customers: cust,
-      team: { invites: inv, help: hlp, support },
-      total: approvals + cust + inv + hlp + support,
+      team: { invites: inv, help: hlp, support, messages: msgs },
+      total: approvals + cust + inv + hlp + support + msgs,
       calendar: cal,
     });
   } catch (e) {

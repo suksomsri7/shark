@@ -78,6 +78,7 @@ export const light = {
   calTagAlpha: "1f", // พื้นป้ายระบบ = สีระบบ + alpha (แบบ 12%)
   // help-cases (15 พ.ย. · แบบ /root/mockups/secretary-help/help.html): สีขั้นของเคส · ร่องแถบความคืบหน้า · ตัวเลขยังไม่อ่าน (แดง) · วงรอบขั้นปัจจุบัน
   helpStage: { RECEIVED: "#5a64d8", CHECKING: "#3a7bd5", FIXING: "#e07a1f", NEED_INFO: "#c2456b", AWAITING_CONFIRM: "#2f9e5b", CLOSED: "#8e8e9c", track: "#e4e4ea", unread: "#e5484d", onStage: "#ffffff", haloAlpha: "33" },
+  team: { tagBg: "rgba(58,123,213,0.1)", tagFg: "#3a6fc4", unreadBg: "#2f9e5b", unreadFg: "#ffffff", read: "#8e8e93", pendingAlpha: 0.55 }, // B27 แชททีม (team2.png): ป้ายบทบาทฟ้า · ตัวเลขยังไม่อ่านเขียว · แถวรอรับคำเชิญจาง
   sysTag: { bg: "rgba(150,150,185,0.14)", fg: "#55556a" }, // .sysp
   // สีโซนของไอคอนซ้ายบนตอน active (มติ 16) — เลขา = accent · ลูกค้า = เขียว · พนักงาน = คราม (เหมือนกันทั้งสองโหมด)
   zone: {

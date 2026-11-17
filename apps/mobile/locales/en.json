@@ -1,0 +1,13 @@
+{
+  "ios": {
+    "NSContactsUsageDescription": "Lekaa uses your contacts only when you tap to pick a number to add someone to your team — contacts never leave your phone",
+    "NSPhotoLibraryUsageDescription": "The app needs access to your photos to send pictures for the AI assistant to see",
+    "NSCameraUsageDescription": "The app needs the camera to take photos (e.g. payment slips, receipts, products) for the AI assistant to see",
+    "NSMicrophoneUsageDescription": "Allow Lekaa to access your microphone",
+    "NSCalendarsUsageDescription": "Lekaa uses your phone's calendar to show your appointments alongside shop work and to save personal appointments you create — data never leaves your phone",
+    "NSCalendarsFullAccessUsageDescription": "Lekaa uses your phone's calendar to show your appointments alongside shop work and to save personal appointments you create — data never leaves your phone",
+    "NSRemindersUsageDescription": "Lekaa does not use your phone's Reminders — data never leaves your phone",
+    "NSRemindersFullAccessUsageDescription": "Lekaa does not use your phone's Reminders — data never leaves your phone",
+    "NSFaceIDUsageDescription": "Allow Lekaa to use Face ID"
+  }
+}

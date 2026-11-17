@@ -13,6 +13,7 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true,
         "UISupportedInterfaceOrientations~ipad": [
           "UIInterfaceOrientationPortrait",
           "UIInterfaceOrientationPortraitUpsideDown",
@@ -29,7 +30,10 @@
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.WRITE_CONTACTS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -65,6 +69,12 @@
           "cameraPermission": "แอปขอใช้กล้องเพื่อถ่ายรูป (เช่น สลิป ใบเสร็จ สินค้า) ส่งให้ผู้ช่วย AI ดู"
         }
       ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Lekaa ใช้รายชื่อในเครื่องเฉพาะตอนคุณกดเลือกเบอร์เพื่อเพิ่มคนเข้าทีม — รายชื่อไม่ถูกส่งออกจากเครื่อง"
+        }
+      ],
       "expo-font",
       "expo-apple-authentication",
       [
@@ -92,6 +102,10 @@
         }
       ]
     ],
+    "locales": {
+      "th": "./locales/th.json",
+      "en": "./locales/en.json"
+    },
     "scheme": "sharkai",
     "backgroundColor": "#ffffff",
     "extra": {

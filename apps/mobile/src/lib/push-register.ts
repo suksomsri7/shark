@@ -67,7 +67,7 @@ export function conversationIdFromNotification(resp: Notifications.NotificationR
 // ───────── S2.6 แตะแจ้งเตือนของเลขา → deep link (data.link + data.tenantId) ─────────
 // 4 แบบของเซิร์ฟเวอร์ (รออนุมัติ · งานเสร็จ · โควตา · งานประจำ) ต่างกันแค่ link/ข้อความ — แอปอ่าน path อย่างเดียว (ตัด ?e=… / #… ทิ้ง · RESOLUTIONS §N)
 // link ที่รับ (สัมพัทธ์ของเราเท่านั้น · id ตัวอักษร/ตัวเลข/_- ≤ 80):
-//   /secretary/room/<id> · /secretary/inbox · /secretary/scheduled · /secretary/help/<id> (+ /help/<id> ของเซิร์ฟเวอร์ = ห้องแจ้งปัญหา) · /customers/<id>
+//   /secretary/room/<id> · /secretary/team/<id> · /secretary/staff (B27) · /secretary/inbox · /secretary/scheduled · /secretary/help/<id> (+ /help/<id> ของเซิร์ฟเวอร์ = ห้องแจ้งปัญหา) · /customers/<id>
 //   S2.20 ห้องลูกค้า: /customers/<id> และ /inbox/<id> (ลิงก์ที่ chat/routing.ts ของเซิร์ฟเวอร์ส่งจริงวันนี้) ⇒ /customers/<id>
 //     + `?s=<data.systemId>` (ระบบแชทของห้อง) + `&e=<เหตุ>` เมื่อ ?e= ของลิงก์ ∈ helper|handoff|sla|assigned (K2 แสดงข้อความตามเหตุ)
 //     🔴 3 แชทไม่ปน: ลิงก์แชทลูกค้าไม่ตกไปตัวจัดการเดิม (data.conversationId → /chat ของ 1.0 = ห้อง AI คนละชนิด)
@@ -80,6 +80,9 @@ const SEC_LINKS: { re: RegExp; to: (id: string) => string }[] = [
   { re: /^\/secretary\/scheduled$/, to: () => "/secretary/scheduled" },
   { re: new RegExp(`^/(?:secretary/)?help/${SEC_ID}$`), to: (id) => `/secretary/help/${id}` },
   { re: new RegExp(`^/(?:customers|inbox)/${SEC_ID}$`), to: (id) => `/customers/${id}` },
+  // B27 แชททีม ▸ ข้อความใหม่ = ห้องแชททีม · คำเชิญเข้าทีม = รายชื่อทีม (การ์ด "คุณได้รับคำเชิญ") ◂
+  { re: new RegExp(`^/secretary/team/${SEC_ID}$`), to: (id) => `/secretary/team/${id}` },
+  { re: /^\/secretary\/staff$/, to: () => "/secretary/staff" },
 ];
 /** เหตุของแจ้งเตือนห้องลูกค้า (?e= ของเซิร์ฟเวอร์) ที่ K2 รู้จัก */
 export const CUSTOMER_PUSH_REASONS = ["helper", "handoff", "sla", "assigned"] as const;

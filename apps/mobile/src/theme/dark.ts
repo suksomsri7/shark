@@ -76,6 +76,7 @@ export const dark: Palette = {
   calTagAlpha: "2b", // พื้นป้ายระบบบนมืด (แบบ 17%)
   // help-cases (15 พ.ย.): สีขั้นของเคสบนมืด (hue เดิมยกความสว่าง แบบ cal)
   helpStage: { RECEIVED: "#8a91ee", CHECKING: "#6599e2", FIXING: "#ec9f5a", NEED_INFO: "#d47290", AWAITING_CONFIRM: "#6fd798", CLOSED: "#8e8e9c", track: "rgba(255,255,255,0.14)", unread: "#ff5c61", onStage: "#16161c", haloAlpha: "40" },
+  team: { tagBg: "rgba(101,153,226,0.16)", tagFg: "#8fb4ee", unreadBg: "#3cc47f", unreadFg: "#0f1a13", read: "#9a9aa8", pendingAlpha: 0.5 }, // B27 แชททีม
   sysTag: { bg: "rgba(255,255,255,0.1)", fg: "#c2c2d0" },
   zone: {
     secretary: "#f2f2f7",

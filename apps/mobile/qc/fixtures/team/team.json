@@ -1,0 +1,509 @@
+{
+ "_about": "QC fixture แชททีม B27 (team4.png จอ 1–5 + team2.png จอ 2) สำหรับ qc/shoot-team.mjs — นาฬิกาปัก 18 พ.ย. 2569 11:00 (พุธ)",
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "suk@qc.invalid",
+    "name": "สมชาย ใจดี",
+    "phone": "+66800000101",
+    "appleLinked": true
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "SIAM DIVE CENTER",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "OWNER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "Shark",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 3,
+    "approvedClean": 3,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 0,
+   "canApprove": 0
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 40
+  },
+  "GET /api/mobile/secretary/systems": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [
+    {
+     "module": "booking",
+     "level": "READ"
+    },
+    {
+     "module": "account",
+     "level": "READ"
+    },
+    {
+     "module": "crm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "kanban",
+     "level": "DRAFT"
+    }
+   ]
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 0,
+   "customers": 0,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 0,
+    "messages": 2
+   },
+   "total": 2,
+   "calendar": 0
+  },
+  "GET /api/mobile/secretary/invites/pending": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/team": {
+   "me": {
+    "userId": "u-qc-owner",
+    "tag": "OWNER",
+    "canManage": true
+   },
+   "threads": [
+    {
+     "id": "g1",
+     "kind": "GROUP",
+     "name": "ทีมครูสอนดำน้ำ",
+     "peer": null,
+     "hasPhoto": false,
+     "photoFileId": null,
+     "memberCount": 5,
+     "muted": false,
+     "unread": 4,
+     "last": {
+      "body": "พรุ่งนี้เจอกัน 7 โมง",
+      "mine": false,
+      "senderName": "ครูนิว",
+      "kind": "TEXT",
+      "attachments": 0,
+      "at": "2026-11-18T02:15:00Z"
+     },
+     "updatedAt": "2026-11-18T02:15:00Z"
+    },
+    {
+     "id": "d1",
+     "kind": "DIRECT",
+     "name": "ครูนิว",
+     "peer": {
+      "userId": "u-new",
+      "membershipId": "m-new",
+      "tag": "STAFF"
+     },
+     "hasPhoto": false,
+     "photoFileId": null,
+     "memberCount": 2,
+     "muted": false,
+     "unread": 2,
+     "last": {
+      "body": "พรุ่งนี้ลูกค้า 3 คนนะครับ",
+      "mine": false,
+      "senderName": null,
+      "kind": "TEXT",
+      "attachments": 0,
+      "at": "2026-11-18T03:42:00Z"
+     },
+     "updatedAt": "2026-11-18T03:42:00Z"
+    },
+    {
+     "id": "d2",
+     "kind": "DIRECT",
+     "name": "ครูบอส",
+     "peer": {
+      "userId": "u-boss",
+      "membershipId": "m-boss",
+      "tag": "MANAGER"
+     },
+     "hasPhoto": false,
+     "photoFileId": null,
+     "memberCount": 2,
+     "muted": false,
+     "unread": 0,
+     "last": {
+      "body": "โอเคครับ",
+      "mine": true,
+      "senderName": null,
+      "kind": "TEXT",
+      "attachments": 0,
+      "at": "2026-11-17T08:00:00Z"
+     },
+     "updatedAt": "2026-11-17T08:00:00Z"
+    },
+    {
+     "id": "d3",
+     "kind": "DIRECT",
+     "name": "พี่ต้น",
+     "peer": {
+      "userId": "u-ton",
+      "membershipId": "m-ton",
+      "tag": "CHAT_ONLY"
+     },
+     "hasPhoto": false,
+     "photoFileId": null,
+     "memberCount": 2,
+     "muted": false,
+     "unread": 0,
+     "last": {
+      "body": "ส่งรูปเรือให้แล้วนะ",
+      "mine": false,
+      "senderName": null,
+      "kind": "TEXT",
+      "attachments": 0,
+      "at": "2026-11-16T07:02:00Z"
+     },
+     "updatedAt": "2026-11-16T07:02:00Z"
+    }
+   ],
+   "people": [
+    {
+     "userId": "u-qc-owner",
+     "membershipId": "m-me",
+     "name": "สมชาย ใจดี",
+     "tag": "OWNER",
+     "me": true,
+     "directThreadId": null
+    },
+    {
+     "userId": "u-new",
+     "membershipId": "m-new",
+     "name": "ครูนิว",
+     "tag": "STAFF",
+     "me": false,
+     "directThreadId": "d1"
+    },
+    {
+     "userId": "u-boss",
+     "membershipId": "m-boss",
+     "name": "ครูบอส",
+     "tag": "MANAGER",
+     "me": false,
+     "directThreadId": "d2"
+    },
+    {
+     "userId": "u-ton",
+     "membershipId": "m-ton",
+     "name": "พี่ต้น",
+     "tag": "CHAT_ONLY",
+     "me": false,
+     "directThreadId": "d3"
+    },
+    {
+     "userId": "u-ann",
+     "membershipId": "m-ann",
+     "name": "น้องแอน",
+     "tag": "STAFF",
+     "me": false,
+     "directThreadId": null
+    }
+   ],
+   "pending": [
+    {
+     "inviteId": "i-max",
+     "name": "แม็ก",
+     "expiresAt": "2026-11-21T02:00:00Z",
+     "at": "2026-11-16T02:00:00Z"
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/team/threads/g1": {
+   "thread": {
+    "id": "g1",
+    "kind": "GROUP",
+    "name": "ทีมครูสอนดำน้ำ",
+    "photoFileId": null,
+    "createdById": "u-qc-owner",
+    "myRole": "ADMIN",
+    "muted": false,
+    "peer": null,
+    "members": [
+     {
+      "userId": "u-qc-owner",
+      "membershipId": "m-me",
+      "name": "สมชาย ใจดี",
+      "tag": "OWNER",
+      "admin": true,
+      "me": true,
+      "lastReadAt": "2026-11-18T02:20:00Z"
+     },
+     {
+      "userId": "u-new",
+      "membershipId": "m-new",
+      "name": "ครูนิว",
+      "tag": "STAFF",
+      "admin": false,
+      "me": false,
+      "lastReadAt": "2026-11-18T02:25:00Z"
+     },
+     {
+      "userId": "u-boss",
+      "membershipId": "m-boss",
+      "name": "ครูบอส",
+      "tag": "MANAGER",
+      "admin": true,
+      "me": false,
+      "lastReadAt": "2026-11-18T02:25:00Z"
+     },
+     {
+      "userId": "u-ton",
+      "membershipId": "m-ton",
+      "name": "พี่ต้น",
+      "tag": "CHAT_ONLY",
+      "admin": false,
+      "me": false,
+      "lastReadAt": "2026-11-18T02:25:00Z"
+     },
+     {
+      "userId": "u-ann",
+      "membershipId": "m-ann",
+      "name": "น้องแอน",
+      "tag": "STAFF",
+      "admin": false,
+      "me": false,
+      "lastReadAt": null
+     }
+    ]
+   }
+  },
+  "GET /api/mobile/secretary/team/threads/g1/messages": {
+   "items": [
+    {
+     "id": "m1",
+     "kind": "TEXT",
+     "body": "พรุ่งนี้เจอกัน 7 โมงที่ท่าเรือนะครับ",
+     "attachments": [],
+     "senderUserId": "u-new",
+     "senderName": "ครูนิว",
+     "mine": false,
+     "at": "2026-11-18T02:10:00Z",
+     "deleted": false,
+     "read": false,
+     "readBy": 0
+    },
+    {
+     "id": "m2",
+     "kind": "TEXT",
+     "body": "รับทราบ เตรียมถังให้ 12 ใบ",
+     "attachments": [],
+     "senderUserId": "u-boss",
+     "senderName": "ครูบอส",
+     "mine": false,
+     "at": "2026-11-18T02:15:00Z",
+     "deleted": false,
+     "read": false,
+     "readBy": 0
+    },
+    {
+     "id": "m3",
+     "kind": "TEXT",
+     "body": "โอเค ขอบคุณทุกคน 🙏",
+     "attachments": [],
+     "senderUserId": "u-qc-owner",
+     "senderName": "สมชาย ใจดี",
+     "mine": true,
+     "at": "2026-11-18T02:20:00Z",
+     "deleted": false,
+     "read": false,
+     "readBy": 3
+    }
+   ],
+   "hasMore": false,
+   "reads": [
+    {
+     "userId": "u-new",
+     "lastReadAt": "2026-11-18T02:25:00Z"
+    },
+    {
+     "userId": "u-boss",
+     "lastReadAt": "2026-11-18T02:25:00Z"
+    },
+    {
+     "userId": "u-ton",
+     "lastReadAt": "2026-11-18T02:25:00Z"
+    },
+    {
+     "userId": "u-ann",
+     "lastReadAt": null
+    }
+   ],
+   "memberCount": 5
+  },
+  "POST /api/mobile/secretary/team/threads/g1/read": {
+   "ok": true
+  },
+  "POST /api/mobile/secretary/team/lookup": {
+   "found": true,
+   "name": "พี่ต้น",
+   "member": false,
+   "invited": false
+  }
+ },
+ "shots": [
+  {
+   "name": "team-list",
+   "route": "/secretary/staff",
+   "steps": [
+    {
+     "wait": "team-row"
+    },
+    {
+     "sleep": 800
+    }
+   ],
+   "mock": [
+    "team4.html",
+    1
+   ]
+  },
+  {
+   "name": "team-plus",
+   "route": "/secretary/staff",
+   "steps": [
+    {
+     "wait": "team-row"
+    },
+    {
+     "tap": "team-plus"
+    },
+    {
+     "wait": "team-menu-group"
+    },
+    {
+     "sleep": 600
+    }
+   ],
+   "mock": [
+    "team4.html",
+    2
+   ]
+  },
+  {
+   "name": "team-new-group",
+   "route": "/secretary/team/new-group",
+   "steps": [
+    {
+     "wait": "team-new-group-person"
+    },
+    {
+     "type": [
+      "team-new-group-name",
+      "ทีมครูสอนดำน้ำ"
+     ]
+    },
+    {
+     "tapNth": [
+      "team-new-group-person",
+      0
+     ]
+    },
+    {
+     "tapNth": [
+      "team-new-group-person",
+      1
+     ]
+    },
+    {
+     "tapNth": [
+      "team-new-group-person",
+      2
+     ]
+    },
+    {
+     "sleep": 600
+    }
+   ],
+   "mock": [
+    "team4.html",
+    3
+   ]
+  },
+  {
+   "name": "team-group-room",
+   "route": "/secretary/team/g1",
+   "steps": [
+    {
+     "wait": "team-msg"
+    },
+    {
+     "sleep": 1000
+    }
+   ],
+   "mock": [
+    "team4.html",
+    4
+   ]
+  },
+  {
+   "name": "team-group-settings",
+   "route": "/secretary/team/g1/settings",
+   "steps": [
+    {
+     "wait": "team-gs-member"
+    },
+    {
+     "sleep": 800
+    }
+   ],
+   "mock": [
+    "team4.html",
+    5
+   ]
+  },
+  {
+   "name": "team-add",
+   "route": "/secretary/team/add",
+   "steps": [
+    {
+     "wait": "team-add-phone"
+    },
+    {
+     "type": [
+      "team-add-phone",
+      "0812345678"
+     ]
+    },
+    {
+     "wait": "team-add-found"
+    },
+    {
+     "sleep": 600
+    }
+   ],
+   "mock": [
+    "team2.html",
+    2
+   ]
+  }
+ ]
+}
