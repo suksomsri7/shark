@@ -8,7 +8,7 @@
 //     "อ่านแล้ว" ของเรา = จาก reads ทุกรอบ poll (1:1 = อ่านแล้ว · กลุ่ม = อ่านแล้ว N)
 //   ส่ง: ข้อความ/รูป/ไฟล์ (+ หน้าช่องพิมพ์ = AttachSheet · POST team/attachments · ส่วนตัว) · ฟองชั่วคราวระหว่างส่ง · clientMessageId กันซ้ำ
 //   กดค้างข้อความของเรา = ลบ (soft) · ไม่ใช่สมาชิก/ไม่มีห้อง = 404 ⇒ จอ "ไม่พบห้องแชทนี้"
-//   ปุ่ม Lekaa = โหมด inline-with-composer ของโฮสต์กลาง (เลน b27-fab) — ช่องพิมพ์สูง 52 เว้นขวา 82 จากขอบ (TEAM_COMPOSER · TODO(b27-fab))
+//   ปุ่ม Lekaa = โหมด inline-with-composer ของโฮสต์กลาง (เลน b27-fab) — ช่องพิมพ์สูง 52 เว้นขวา 82 จากขอบ (TEAM_COMPOSER · <LekaaFabSlot/>)
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
@@ -19,6 +19,7 @@ import { AttachSheet, AttachTray, localAttachments, useSecAttach, type PendingAt
 import { GroupAvatar } from "@/src/components/team/TeamRow";
 import { TeamBubble } from "@/src/components/team/TeamBubble";
 import { TEAM_COMPOSER } from "@/src/components/team/layout";
+import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
 import { ApiError } from "@/src/api/client";
 import { clientMessageId, serverNote, useActiveRole } from "@/src/api/secretary";
 import {
@@ -314,7 +315,8 @@ export default function TeamRoomScreen() {
         {gone ? null : (
           <>
             <AttachTray items={att.items} note={att.note} onRemove={att.remove} testID="team-room-attached" />
-            {/* TODO(b27-fab): ปุ่ม Lekaa (โหมด inline-with-composer) วางขวาของช่องนี้ แถวเดียวกัน สูงเท่ากัน — TEAM_COMPOSER */}
+            {/* Lekaa FAB (17 พ.ย. · รวมเลน b27-fab) ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ ขวา สูงเท่ากัน (แบบ team4 จอ 4) — ปุ่มลอยซ่อนเองบนจอนี้ */}
+            <View style={styles.inputRow}>
             <InputBar
               testID="team-input"
               sendTestID="team-send"
@@ -332,6 +334,8 @@ export default function TeamRoomScreen() {
               maxLength={4000}
               style={styles.input}
             />
+            <LekaaFabSlot size={TEAM_COMPOSER.fabSize} />
+            </View>
           </>
         )}
       </KeyboardAvoidingView>
@@ -370,8 +374,9 @@ const styles = StyleSheet.create({
   goneBtn: { marginTop: spacing.sm, height: size.iconBtn, borderRadius: size.iconBtn / 2, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center" },
   goneBtnT: { fontSize: T.sub, fontWeight: "600" },
   flash: { marginHorizontal: spacing.page, marginBottom: spacing.sm, fontSize: 13, lineHeight: 19, borderRadius: radii.k + 2, paddingVertical: 8, paddingHorizontal: 12, overflow: "hidden", textAlign: "center" },
-  // ช่องพิมพ์สูง 52 · เว้นขวาให้ปุ่ม Lekaa (inline) — TEAM_COMPOSER
-  input: { height: TEAM_COMPOSER.height, marginLeft: spacing.page, marginRight: TEAM_COMPOSER.rightInset, marginBottom: TEAM_COMPOSER.bottom },
+  // ช่องพิมพ์สูง 52 · ปุ่ม Lekaa (inline) อยู่ขวาในแถวเดียวกัน — TEAM_COMPOSER
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: LEKAA_SLOT_GAP, marginHorizontal: spacing.page, marginBottom: TEAM_COMPOSER.bottom },
+  input: { flex: 1, height: TEAM_COMPOSER.height },
   menuH: { fontSize: T.h + 1, fontWeight: "700", lineHeight: 26, marginBottom: 4 },
   menuSub: { fontSize: T.cap, lineHeight: 18, marginBottom: 6 },
   menuRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: size.iconBtn + 8, borderBottomWidth: StyleSheet.hairlineWidth },
