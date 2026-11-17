@@ -578,7 +578,7 @@ const en: Record<I18nKey, string> = {
   "sec.staff.add.removeBody": "They will no longer see this room or new messages. You can add them back later.",
   "sec.staff.add.removeOk": "Remove",
   "sec.staff.add.removeErr": "Could not remove — please try again",
-  // B27 แชททีม (team2.png)
+  // B27 team chat (team2.png / team4.png)
   "team.search": "Search your team",
   "team.add": "Add person",
   "team.tag.OWNER": "Owner",

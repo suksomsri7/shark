@@ -1,9 +1,35 @@
-# B27 TEAM CHAT — handoff (checkpoint, stopped for quota · 15 Nov 2026)
+# B27 TEAM CHAT — handoff (15 Nov 2026 · continued 17 Nov 2026)
 
-Branch `wip/b27-team` (from `wip/build27`) · worktree `/root/projects/shark-b27-team` · not merged, not pushed.
-Owner-approved mockup: `/root/mockups/team-invite/team2.png` (screens 1–3). `team4.png` (+ menu, group create, group chat, group settings, Lekaa FAB): **group UI and + menu are ON HOLD until the owner approves team4.png**. Group support exists in the data model and API only.
+## ▶ 17 Nov 2026 session (read this first — supersedes the 15 Nov status below)
+- Owner approved **all 5 screens of team4.png** — the "ON HOLD" notes below no longer apply; the + menu, group create, group settings are built.
+- Commits on `wip/b27-team` (not pushed, not merged): `e398dc758` push guard + QC · `05c542f49` group UI + contacts · `3f82a7d65` qc/docs ·
+  `a6ac9d528` parity renders + render fixes · last commit = s2.1 fixture/shots + this file (see `git log`).
+- Verified 17 Nov (all through `scripts/iso.sh`):
+  - server `pnpm typecheck` (14000M, gate lock) — **EXIT 0** (final run after every server change)
+  - mobile `npx tsc --noEmit` in apps/mobile — **EXIT 0** (run twice; last after all UI + expo-contacts)
+  - `qc-team-chat.mts` — run 1 85/86 (X-1 false positive: `secret` matched "secretary" in file URLs → regex fixed), runs 2 and 3 **86/86**
+    (now covers groups G-1..13, group photo F-7, push guard P-1..5, group screens S-6..10)
+  - `qc-sec-s1.25` 19/19 · `qc-sec-s1.14b` 24/24 · `qc-sec-s1.14c` 12/12 (first run: only D-1/D-2 red = fitness F7.1 dead doc ref, fixed in `3f82a7d65`;
+    s1.14c does not assert exact badge keys, so `team.messages` needed no suite change)
+  - `qc-sec-s2.1` **9/14** — reds T-1, I-1, I-2, E-1, U-1(U7.1) are all **pre-existing on the base commit f37b1757c** (checked file by file:
+    SecTopBar has no `"inbox"` icon string anymore · en.ts has Thai comments from other lanes · calendar/index.tsx has Thai strings ·
+    (app)/index.tsx has no `home-open-secretary` · hex/rgba in BusinessSwitcherSheet/SecTopBar/SecAttach). All team routes pass U4/U5 after
+    adding them to `qc/fixtures/secretary/s2.1.json` and shooting them with shoot-sec (`/secretary/staff` expect now uses the team testIDs).
+  - `pnpm fitness` passes (pre-commit hook ran on every commit).
+- Parity renders (MOCKUP|RENDER, light + dark): `/root/qc/b27-team/pair-team-{list,plus,new-group,group-room,group-settings,add}[-dark].png`
+  (`apps/mobile/qc/shoot-team.mjs` + `qc/fixtures/team/team.json`; node_modules = `/root/qc/b27-team/nm/node_modules` = symlinks to
+  /root/qc-cal-nm + a copy of expo-contacts; the worktree's own node_modules has no react-native-web). Looked at each; fixed: + menu dim
+  now full-screen, ⋯ per member is plain dots. Remaining small differences: web focus ring on the phone field (web only), found-card border is
+  the stronger green token, avatar colours come from the seed not the mockup.
+- 🔴 expo-contacts `~57.0.9` is a **native module** → works only from the next EAS build (on build 26, tapping shows "เปิดรายชื่อในเครื่องไม่ได้", no crash).
+  iOS usage string is Thai only, like the existing photo/camera/calendar strings (app.json has no locale files). Android: READ_CONTACTS (plugin) · WRITE_CONTACTS blocked.
+- Lekaa FAB: not on this branch. Rooms (DM + group = same file) keep `TEAM_COMPOSER` + `TODO(b27-fab)`; list keeps `TEAM_LIST_FAB_CLEARANCE`.
+- Push guard: `notifyTeamMessage` sends at most 1 push per (recipient, thread) per 30 s (`TEAM_PUSH_WINDOW_MS`), per process, like secretary `notifyUser`.
+- Raw SQL in `team-chat/service.ts`: reviewed — tagged `$queryRaw` only (bound params), tenant on both join sides; added `leftAt IS NULL` to the last-message join.
+- Not done / not verified: App Store link `LEKAA_APP_URL` (owner) · `qc-sec-s2.14` / `click-sec.mjs` click run not re-run (buttons-sec.json was
+  regenerated, so `clicks-sec.json` is now stale vs the registry) · no new migration in this session.
 
-## 🔴 Status: NOT VERIFIED
+## (15 Nov) Status: NOT VERIFIED — superseded by the 17 Nov block above
 - **No typecheck has finished** (server typecheck was started, then stopped on the lead's quota order). Mobile `tsc` has not been run.
 - **The QC suite `scripts/qc-team-chat.mts` was written but never run.** Parity renders were not done.
 - Expect some type errors on the first run. Likely spots: `$queryRaw` with `ANY(${ids})` in `src/lib/team-chat/service.ts`, Prisma relation filter `thread: { tenantId }`, `TeamRow` theme token `c.team.*`, the `I18nKey` cast in `previewOf`, and `[membershipId].tsx` JSX nesting after the CHAT_ONLY edit.
