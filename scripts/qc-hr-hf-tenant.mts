@@ -32,10 +32,11 @@ const CHECKS: readonly [string, string][] = [
   ["T4", "request / decide / cancel adjustment ข้ามร้าน ไม่เขียน/ไม่ลบ · คำตอบของ SA = คำตอบของ U"],
   ["T5", "พนักงาน 4 ปุ่ม (create / update / remove / restore) ข้ามร้าน ไม่มี HrEmployee / Party"],
   ["T6", "ทุกปุ่ม: ผลของ SA = U = SN (คำตอบ + ชุดตารางที่เปลี่ยน) ต่อผู้กด/ฟอร์มเดียวกัน"],
-  ["T7", "[static] 22 ปุ่มเรียก hrTargetOwned ก่อน await อื่น (ยกเว้น requireTenant) + ids/คำปฏิเสธตาม §1 + R-F1/R-F2 · kiosk ตรวจก่อนนับถัง PIN · hr-target.ts ไม่มี \"use server\" · blob = V2 · ไม่ re-export"],
+  ["T7", "[static] 5 ปุ่มอาร์กิวเมนต์ตรงตรวจ typeof เป็นคำสั่งแรกหลัง requireTenant · 22 ปุ่มเรียก hrTargetOwned ก่อน await อื่น (ยกเว้น requireTenant) + ids/คำปฏิเสธตาม §1 + R-F1/R-F2 · kiosk ตรวจก่อนนับถัง PIN · hr-target.ts ไม่มี \"use server\" · blob = V2 · ไม่ re-export"],
   ["T8", "clock + requestLeave บน SA / U / SN ไม่เขียน HrAttendance / HrLeave / outbox"],
   ["T9", "R-F1: XO/XP บนระบบของตัวเอง SB + พนักงานของ A (eA1/eA2) → clock/requestLeave ไม่เขียนอะไร = ผลเดียวกับรหัสพนักงานที่ไม่มี · ท้ายชุด: ไม่มีแถวของ B ที่อ้างพนักงานของ A (นอกจากโปรไฟล์ตกค้างที่ลงเอง)"],
   ["T10", "R-F2: 8 ปุ่มที่เหลือ (save profile · add/remove doc · set PIN · kiosk · decide/bulk-decide leave · schedule) บน SA ด้วยแถวตกค้างของ B ไม่เขียนอะไร · ผล = ผลเมื่อไม่มีแถวตกค้าง"],
+  ["T11", "R-R2-1: 5 ปุ่มที่รับ systemId (และ employeeId) เป็นอาร์กิวเมนต์ตรง — ค่าไม่ใช่สตริง ({ not } · { startsWith }) กับแถวตกค้าง → ไม่เขียน/ไม่ audit · ไม่ throw · คำตอบ = ของรหัสที่ไม่มี"],
   ["C1", "เจ้าของ A + พนักงานเงินเดือน A ขับ 14 ปุ่มด้วยฟอร์มครบ ถึงการเขียนจริงทุกปุ่ม"],
   ["C4", "R-F2 control: เจ้าของ A + พนักงาน A ขับ 8 ปุ่มที่เหลือกับพนักงาน/ใบลา/เอกสารของ A เอง ถึงการเขียนจริงทุกปุ่ม"],
   ["C2", "ระบบตัวเอง + runId ไม่มีจริง: approve / reverse / markPaid ยังเขียน audit การปฏิเสธ 1 แถว/ครั้ง ไม่เขียนอื่น"],
@@ -93,6 +94,15 @@ const ACTIONS: readonly [string, string, string, string][] = [
   [EMP, "bulkDecideLeaveAction", "", `return { status: "error", message: "ไม่พบระบบ" };`],
   [EMP, "setWorkScheduleAction", ", { employeeId }", "return;"],
 ];
+/** R-R2-1: ปุ่มที่รับ id เป็นอาร์กิวเมนต์ตรง (ไม่ผ่าน String(formData…)) — [ไฟล์, ปุ่ม, เงื่อนไข typeof, คำปฏิเสธ = คำปฏิเสธของ guard ความเป็นเจ้าของ] */
+const TS = `typeof systemId !== "string"`, TE = `typeof employeeId !== "string"`;
+const TYPED: readonly [string, string, string, string][] = [
+  [PAY, "requestAdjustmentAction", TS, `return { status: "error", message: "ไม่พบพนักงาน" };`],
+  [EMP, "saveEmployeeProfileAction", `${TS} || ${TE}`, `return { status: "error", message: "ไม่พบพนักงาน" };`],
+  [EMP, "setPinAction", `${TS} || ${TE}`, `return { status: "error", message: "ไม่พบพนักงาน" };`],
+  [EMP, "kioskClockAction", TS, `return { status: "error", message: "ไม่พบพนักงาน" };`],
+  [EMP, "bulkDecideLeaveAction", TS, `return { status: "error", message: "ไม่พบระบบ" };`],
+];
 function fnBody(src: string, name: string): string {
   const i = src.indexOf(`export async function ${name}(`);
   if (i < 0) return "";
@@ -112,6 +122,11 @@ function runStatic(): void {
     if (!body.includes(want)) bad.push(`${name}: ไม่พบ "${want}"`);
     // R-F2: kiosk — ตรวจระบบ/พนักงานก่อนนับถัง PIN (ร้านอื่นเผาถังของพนักงานเราไม่ได้)
     if (name === "kioskClockAction" && !(body.indexOf(GUARD) >= 0 && body.indexOf(GUARD) < body.indexOf("checkRateLimit("))) bad.push(`${name}: guard ต้องมาก่อน checkRateLimit`);
+  }
+  for (const [f, name, cond, refusal] of TYPED) {
+    const body = noComments(fnBody(rd(f), name)).replace(/\s+/g, " ");
+    const want = `const auth = await requireTenant(); if (${cond}) ${refusal}`;
+    if (!body.includes(want)) bad.push(`${name}: คำสั่งแรกหลัง requireTenant ไม่ใช่ "if (${cond}) ${refusal}"`);
   }
   const tsrc = rd(TARGET);
   let blob = "";
@@ -554,6 +569,34 @@ async function runT(fx: Fx): Promise<void> {
     else if (norm(r.res) !== norm(g.res)) t10.push(`${nm}: residue ${r.res} ≠ ghost ${g.res}`);
   }
   chk("T10", t10.length === 0, show(t10));
+
+  // ── T11 (R-R2-1): ค่าไม่ใช่สตริงในอาร์กิวเมนต์ตรง (ไปถึง where ของ Prisma เป็นตัวกรอง) ──
+  const t11: string[] = [];
+  const OPS: [string, Any][] = [["not", { not: "zzz" }], ["startsWith", { startsWith: "" }]];
+  const lvForm = (id: string) => { const f = fd({ status: "REJECTED" }); f.append("leaveIds", id); return f; };
+  const T11_CASES: [string, () => () => Promise<unknown>, [string, () => Promise<unknown>][]][] = [
+    ["requestAdj", () => () => PA.requestAdjustmentAction(fx.SA, idle, fd({ employeeId: gh(), periodKey: "2031-08", kind: "BONUS", amountBaht: "5000", hours: "", note: "QC HFT T11" })),
+      OPS.map(([o, v]) => [`sys=${o}`, () => PA.requestAdjustmentAction(v, idle, fd({ employeeId: fx.fB, periodKey: "2031-08", kind: "BONUS", amountBaht: "5000", hours: "", note: "QC HFT T11" }))])],
+    ["saveProfile", () => () => EA.saveEmployeeProfileAction(fx.SA, gh(), idle, profileForm("QC HFT T11")),
+      OPS.flatMap(([o, v]) => [[`sys=${o}`, () => EA.saveEmployeeProfileAction(v, fx.fB, idle, profileForm("QC HFT T11"))], [`sys=${o},emp=${o}`, () => EA.saveEmployeeProfileAction(v, v, idle, profileForm("QC HFT T11"))], [`emp=${o}`, () => EA.saveEmployeeProfileAction(fx.SA, v, idle, profileForm("QC HFT T11"))]] as [string, () => Promise<unknown>][])],
+    ["setPin", () => () => EA.setPinAction(fx.SA, gh(), idle, fd({ pin: "24680" })),
+      OPS.flatMap(([o, v]) => [[`sys=${o}`, () => EA.setPinAction(v, fx.fB, idle, fd({ pin: "24680" }))], [`sys=${o},emp=${o}`, () => EA.setPinAction(v, v, idle, fd({ pin: "24680" }))], [`emp=${o}`, () => EA.setPinAction(fx.SA, v, idle, fd({ pin: "24680" }))]] as [string, () => Promise<unknown>][])],
+    ["kioskClock", () => () => EA.kioskClockAction(fx.SA, idle, fd({ employeeId: gh(), pin: RES_PIN })),
+      OPS.map(([o, v]) => [`sys=${o}`, () => EA.kioskClockAction(v, idle, fd({ employeeId: fx.fB, pin: RES_PIN }))])],
+    ["bulkDecideLeave", () => () => EA.bulkDecideLeaveAction(fx.SA, idle, lvForm(gh())),
+      OPS.map(([o, v]) => [`sys=${o}`, () => EA.bulkDecideLeaveAction(v, idle, lvForm(fx.resLv2))])],
+  ];
+  for (const [nm, ghostFn, variants] of T11_CASES) {
+    const g = await drive(fx, fx.XO, ghostFn());
+    if (g.d.length) t11.push(`${nm}|ghost@SA: Δ=${g.d.join(",")} ${g.res}`);
+    for (const [vl, fn] of variants) {
+      const r = await drive(fx, fx.XO, fn);
+      if (r.d.length) t11.push(`${nm}|${vl}: Δ=${r.d.join(",")} ${r.res}`);
+      else if (r.res.startsWith("X:")) t11.push(`${nm}|${vl}: throw ${r.res}`);
+      else if (norm(r.res) !== norm(g.res)) t11.push(`${nm}|${vl}: ${r.res} ≠ ghost ${g.res}`);
+    }
+  }
+  chk("T11", t11.length === 0, `${t11.length} จุด: ${t11.join(" | ")}`);
 }
 
 // ═════════════ กวาด + Z1 ═════════════

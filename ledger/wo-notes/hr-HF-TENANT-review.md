@@ -79,3 +79,75 @@ Path: `hr.createEmployee` + `hr.requestLeave` (service.ts) → `tools.runTool("p
 - Prisma's single-transaction execution of the migration file by failure injection (inferred; consistent with the builder's `_prisma_migrations` row).
 - Migration on a real V2 database (reasoned from the SQL only).
 - That Next delivers bound server-action arguments unvalidated in production for F3 (shown at function level only).
+
+---
+
+# Round 2 — delta review of `a6878cfd7..59e6184a1` (18 Nov 2026)
+
+Oracle d33cee12c (T9, T10, C4, T7 → 22 actions, non-payroll attacker XM) + fix 59e6184a1 (10 edits in `src/lib/modules/hr/actions.ts` only; `hr-target.ts` blob unchanged).
+Evidence: code reading · oracle at HEAD **20/20**, exit 0 · second throw-away probe on `hf_tenant` through the wrappers
+(`/tmp/claude-0/-root/59156a1f-9c0e-594d-9643-d1896f46b191/scratchpad/hf-review/probe2.mts`, swept to 0) · migration rehearsal on the lane-5 QC database inside `BEGIN … ROLLBACK`.
+Nothing edited except this section; tree otherwise clean at 59e6184a1.
+
+## Verdict: MERGE WITH NOTES
+F1 and F2 are closed for every string `systemId`. No legitimate-user regression found. One residual path (R2-1) is the already-recorded F3 debt, now the only remaining way to reach F2; one data note (R2-2).
+
+## Findings
+
+### R2-1 — LOW · F2 is still reachable through the F3 debt on three bound-argument actions
+`actions.ts:187` (`setPinAction`), `:138` (`saveEmployeeProfileAction`), `:297` (`bulkDecideLeaveAction`) take `systemId` as a bound server-action argument. With `systemId = { not: "zzz" }` the resolver matches the caller's own HR system and then finds the residue employee/leave through the same filter object. Probe (attacker owner of B, residue employee `fB` and leave on A's system SA):
+- `setPinAction({ not: "zzz" }, fB, …)` → `ตั้ง PIN แล้ว`, `HrEmployee` changed.
+- `saveEmployeeProfileAction({ not: "zzz" }, fB, …)` → `บันทึกแล้ว`, `HrEmployee` + `Party` changed.
+- `bulkDecideLeaveAction({ not: "zzz" }, [residue leave])` → `done: 1`, `HrLeave` + `AuditLog` changed.
+- `kioskClockAction({ not: "zzz" }, …)` passes the guard and dies in Prisma validation at `service.ts:305` (no write).
+- With A's own ids (`eA1`, A's leave) the same calls refuse — `tenantId` is from the session.
+Reach = rows of the caller's own tenant that sit on a foreign system id (residue only); shop A unaffected. Not covered by T10 (string ids only). Can be closed without touching `hr-target.ts`: `if (typeof systemId !== "string") <refusal>` at the top of the five bound-argument actions (incl. `requestAdjustmentAction`), or by deleting residue rows. Function-level proof only; delivery of a non-string bound argument through Next in production not demonstrated.
+
+### R2-2 — NOTE · rows already created through F1 stay and still show the victim's name
+A pre-existing `HrLeave` / `HrAttendance` of tenant B on B's own system that references A's employee is B's row: B's leave list still returned A's employee name and B can still decide it (probe). The hotfix deletes nothing. The brief's evidence query §3-D does not find these (the system is B's own). Add before deploy, for `HrAttendance`, `HrLeave`, `HrEmployeeDoc`, `HrWorkSchedule`, `HrSalaryProfile`, `HrPayAdjustment`, `HrPayrollItem`:
+`SELECT x.id, x."tenantId", e."tenantId" AS employee_tenant FROM "<table>" x JOIN "HrEmployee" e ON e.id = x."employeeId" WHERE e."tenantId" <> x."tenantId";`
+
+### R2-3 — NOTE · oracle
+T9, T10, C4 are sound: each attacker drive is compared against a ghost-id drive on a 12-table fingerprint for both tenants; T9 ends with a cross-reference query "rows of B pointing at employees of A"; C4 reaches the real write of all 8 with A's own rows; T7 pins ids, refusal text, first-await position for 22 actions and "guard before `checkRateLimit`". A missing guard on any of the 10 goes red twice (T7 + T9/T10). Gaps: non-string `systemId` (R2-1); T10 drives SA only (U / SN rely on the shared resolver, already covered by T6 for the first 14); foreign leave/doc ids on the attacker's own system are not driven (probed here: safe).
+
+## (1) F1 / F2 closure — probe at HEAD
+| drive (attacker = owner of B) | result | rows changed |
+|---|---|---|
+| own system SB + A's employee: clock · requestLeave · addDoc · schedule | `null` | none |
+| own system SB + A's employee: kiosk · setPin · saveProfile | `ไม่พบพนักงาน` | none |
+| A's system SA + residue employee: kiosk · setPin · saveProfile | `ไม่พบพนักงาน` | none |
+| SA + residue: addDoc · removeDoc (residue doc) · schedule · decideLeave (residue leave) | `null` | none |
+| SA + residue: bulkDecideLeave | `ไม่พบระบบ` | none |
+| SB + A's leave id: decideLeave | throws `ไม่พบใบลา หรืออยู่นอกร้านนี้` (service, as before) | none |
+| SB + A's leave ids: bulkDecideLeave | `done 0`, 2 failed | none |
+| SB + A's doc id: removeDoc | `null` | none |
+| SA + A's leave / doc ids: decideLeave · bulk · removeDoc | `null` / `ไม่พบระบบ` / `null` | none |
+Victim rows after all drives: leaves PENDING, doc present, employee name/PIN unchanged.
+Kiosk limiter: 14 wrong-PIN attempts by B against A's employee id (7 on SB, 7 on SA) all answered `ไม่พบพนักงาน` and did not consume the bucket — A's kiosk clock-in for that employee then succeeded. The round-1 side note (cross-tenant burn of `hr-kiosk:<employeeId>`) is closed by the guard sitting before `checkRateLimit` (`actions.ts:212-213`).
+
+## (2) Legitimate users — probe as owner of A on A's system
+- Kiosk: correct PIN clocks in; wrong PIN ×4 → `PIN ไม่ถูกต้อง`, then `ลองใหม่ในอีก 60 วินาที` (limit 5 incl. the earlier success) — limiter still counts real employees.
+- Inactive employee: kiosk → `ไม่พบพนักงาน` (service rule, unchanged); clock, requestLeave, setPin, saveProfile, setSchedule still work (resolver has no `active` filter — same as before).
+- setPin: bad format still `PIN ต้องเป็นตัวเลข 4-6 หลัก`; empty still clears. Only order change: for a non-existent employee the answer is now `ไม่พบพนักงาน` before the format message.
+- Bulk leave: own leave + another tenant's leave + unknown id → `done 1`, 2 failed with the old reason text. Single decide works; unknown leave id on own system still throws as before (foreign system now returns silently — own/not-own difference only).
+- removeDoc on own doc works. Inactive (`active=false`) HR system still passes.
+- Home unit / branch: `HrEmployee` has no unit column on main (`prisma/schema/hr.prisma`) — not applicable until V2 H1.1.
+- Internal callers: AI proposals (`ai/proposals.ts:633`, `:736`), `approval-effects.ts:186`, POS `clockSelf` (`hr/pos-seam.ts:103`), booking and CRM call the **services** or tables, never these actions, and resolve the HR system from the tenant — untouched by the diff. UI callers of the 8 actions (`ui.tsx:370`, `employees/[employeeId]/page.tsx:92,101`, `BulkLeaveApprovals.tsx:12`, `EmployeeProfileForm.tsx:34`, `PinField.tsx:18`, `KioskClock.tsx:13`) are all mounted under a page that already resolved the caller's own HR system; refusal values match each action's state type. `decideLeaveAction` has no UI caller in `src`.
+Not driven in a browser.
+
+## (4) Widened scope
+Nothing newly broken found. Each added guard costs one or two indexed reads before the action; `kioskClockAction` now does them before the in-memory rate limit (requires a signed-in session with `hr.attendance.clock`, so not an anonymous amplification).
+
+## Migration rehearsal on a database with the HR V2 indexes
+Target: lane-5 QC database from `/root/projects/shark-hr-l5/.env.qc-hr` (direct URL; host `ep-orange-dust-aotwbyc7.c-2.ap-southeast-1.aws.neon.tech`, database `neondb`; production/QC1/QC4 marks refused; `HrPayrollRun.reversedAt` present = V2 schema; 0 other active sessions). One psql session: `BEGIN; SET LOCAL lock_timeout='5s'; <list>; <migration.sql verbatim>; <list>; ROLLBACK;` — exit 0.
+Index list on `HrSalaryProfile` / `HrPayrollRun`, **before and after inside the transaction — identical (7 rows)**:
+- `HrPayrollRun_pkey` (id)
+- `HrPayrollRun_systemId_periodKey_idx` — plain index ("systemId", "periodKey")
+- `HrPayrollRun_tenantId_status_idx` — plain index ("tenantId", status)
+- `HrPayrollRun_tenantId_systemId_periodKey_live_key` — UNIQUE ("tenantId", "systemId", "periodKey") WHERE status <> 'REVERSED'
+- `HrSalaryProfile_pkey` (id)
+- `HrSalaryProfile_tenantId_idx` — plain index ("tenantId")
+- `HrSalaryProfile_tenantId_systemId_employeeId_key` — UNIQUE ("tenantId", "systemId", "employeeId")
+Server notices: `relation "HrSalaryProfile_tenantId_systemId_employeeId_key" already exists, skipping` · `index "HrSalaryProfile_systemId_employeeId_key" does not exist, skipping`; the `DO` block did nothing (old full unique absent → no full unique created, the live partial unique is kept).
+After ROLLBACK the list outside the transaction is byte-identical to the list taken before; no `_prisma_migrations` row for the hotfix exists on that database.
+Result: **full no-op, equal to the V2 end state** — the round-1 "not verified" item is now verified. Still unverified: failure injection for Prisma's single-transaction execution.
