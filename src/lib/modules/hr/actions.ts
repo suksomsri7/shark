@@ -68,7 +68,7 @@ export async function clockAction(formData: FormData) {
   const employeeId = String(formData.get("employeeId") ?? "");
   const rawKind = String(formData.get("kind") ?? "");
   if (!systemId || !employeeId || !KINDS.has(rawKind as HrAttendanceKind)) return;
-  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await clock(ctx, { employeeId, kind: rawKind as HrAttendanceKind });
   revalidate(systemId);
@@ -135,6 +135,7 @@ export async function saveEmployeeProfileAction(
 ): Promise<ProfileState> {
   const auth = await requireTenant();
   assertHrCan(auth, "hr.employee.create");
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   // HF-HR-0: ช่องอ่อนไหวผ่านเข้า service เฉพาะผู้ดูเงินเดือน — ตัวกรองกลางอยู่ที่ privacy.ts (oracle เรียกตัวเดียวกัน)
   const res = await saveEmployeeProfile(
     { tenantId: auth.active.tenantId, systemId },
@@ -154,6 +155,7 @@ export async function addEmployeeDocAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const employeeId = String(formData.get("employeeId") ?? "");
   if (!systemId || !employeeId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   await addEmployeeDoc({ tenantId: auth.active.tenantId, systemId }, employeeId, {
     kind: String(formData.get("kind") ?? "OTHER"),
     title: String(formData.get("title") ?? ""),
@@ -171,6 +173,7 @@ export async function removeEmployeeDocAction(formData: FormData) {
   const employeeId = String(formData.get("employeeId") ?? "");
   const docId = String(formData.get("docId") ?? "");
   if (!systemId || !docId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ (เอกสารหาด้วย docId ภายในระบบ) = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   await removeEmployeeDoc({ tenantId: auth.active.tenantId, systemId }, docId);
   revalidatePath(`/app/sys/${systemId}/hr/employees/${employeeId}`);
 }
@@ -181,6 +184,7 @@ export type PinState = { status: "idle" } | { status: "ok"; message: string } | 
 export async function setPinAction(systemId: string, employeeId: string, _prev: PinState, formData: FormData): Promise<PinState> {
   const auth = await requireTenant();
   assertHrCan(auth, "hr.employee.create");
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const pin = String(formData.get("pin") ?? "");
   const res = await setPin({ tenantId: auth.active.tenantId, systemId }, employeeId, pin);
   if (!res.ok) return { status: "error", message: res.reason ?? "บันทึกไม่ได้" };
@@ -205,6 +209,7 @@ export async function kioskClockAction(systemId: string, _prev: KioskState, form
   const pin = String(formData.get("pin") ?? "");
   if (!employeeId) return { status: "error", message: "เลือกชื่อของคุณก่อน" };
   if (!/^\d{4,6}$/.test(pin.trim())) return { status: "error", message: "ใส่ PIN 4-6 หลัก" };
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ — ก่อนนับโควตา PIN = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const gate = checkRateLimit(`hr-kiosk:${employeeId}`, { limit: 5, windowMs: 60_000 });
   if (!gate.ok) return { status: "error", message: `ลองใหม่ในอีก ${gate.retryAfterSec} วินาที` };
 
@@ -240,7 +245,7 @@ export async function requestLeaveAction(formData: FormData) {
   const fromDate = String(formData.get("fromDate") ?? "").trim();
   const toDate = String(formData.get("toDate") ?? "").trim();
   if (!systemId || !employeeId || !fromDate || !toDate) return;
-  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await requestLeave(ctx, {
     employeeId,
@@ -260,6 +265,7 @@ export async function decideLeaveAction(formData: FormData) {
   const leaveId = String(formData.get("leaveId") ?? "");
   const rawStatus = String(formData.get("status") ?? "");
   if (!systemId || !leaveId || (rawStatus !== "APPROVED" && rawStatus !== "REJECTED")) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ (ใบลาหาด้วย leaveId ภายในระบบ) = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   // HF-HR-0: สถานะที่ผู้ใช้เห็นบนจอ (ไม่ส่ง = รายการรออนุมัติ) — จอค้างแล้วสถานะเปลี่ยน = ปฏิเสธ ไม่เปลี่ยนผลเงียบ ๆ
   const from = String(formData.get("from") ?? "") === "APPROVED" ? "APPROVED" : "PENDING";
@@ -288,6 +294,7 @@ export async function bulkDecideLeaveAction(
     return { status: "error", message: "การตัดสินไม่ถูกต้อง" };
   }
   if (leaveIds.length === 0) return { status: "error", message: "กรุณาเลือกอย่างน้อย 1 ใบลา" };
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return { status: "error", message: "ไม่พบระบบ" }; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ (ใบลาหาด้วย leaveId ภายในระบบ) = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   // HF-HR-0: ปุ่มนี้อยู่บนรายการ "รออนุมัติ" ⇒ ตัดสินเฉพาะใบที่ยังรอ (ไม่ถอนใบที่มีคนอนุมัติไปก่อนแบบเงียบ ๆ)
   const res = await bulkDecideLeave(ctx, leaveIds, rawStatus, auth.active.userId, { from: "PENDING" });
@@ -303,6 +310,7 @@ export async function setWorkScheduleAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const employeeId = String(formData.get("employeeId") ?? "");
   if (!systemId || !employeeId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const toMin = (v: FormDataEntryValue | null): number | null => {
     const m = /^([01]\d|2[0-3]):([0-5]\d)$/.exec(String(v ?? ""));
     return m ? Number(m[1]) * 60 + Number(m[2]) : null;
