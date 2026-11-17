@@ -55,6 +55,7 @@ const CHECKS: Def[] = [
  D("F1", "R-F5-1", "MR", "[db] hub card \"ลงเวลา\" iff hrTabsFor(viewer) has /hr/attendance (O M MB P PB K N + linked staff SL) · no /hr/attendance link at all otherwise · [control] tabs ⇔ attendance page not 404"),
  D("F2", "R-F5-2", "CR", "[db] hub render runs listEmployees' SQL only for viewers with hrPageAccessOf.register (N · SL · K none) · [control] O does run it"),
  D("F3", "R-F5-2", "MR", "[db] hub render runs pendingLeaves' SQL only for viewers with hrPageAccessOf.leave · [control] O does run it"),
+ D("F5", "R-F5-1", "MR", "[db] month card hr-hub-month: per talk row a calendar link to /hr/attendance?view=month iff the viewer's tabs have /hr/attendance · premise P/PB have the card with talk rows · [control] O M MB one link per row"), // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ controller follow-up 17 Nov ◂
  D("F4", "R-F5-2", "MR", "[static] HrHub: pageOk = hrPageAccessOf(..) before the reads · every listEmployees( sits under pageOk.register ?/&& · every pendingLeaves( under pageOk.leave ?/&&"),
  D("Z1", "-", "CG", "residue · outbound"),
 ];
@@ -293,7 +294,7 @@ try {
   const sqlOf = (qs: string[], table: string) => qs.filter((q) => new RegExp(`FROM "(?:public"\\.")?${table}"`).test(q)).at(-1) ?? "";
   const VW: [string, Any, boolean][] = [["O", W.owner, false], ["M", W.mgr, false], ["MB", W.mgrU1, false], ["P", W.pay, false], ["PB", W.payU1, false], ["K", W.kiosk, false], ["N", W.member, false], ["SL", W.staffL, true]];
   const WANT_ATT: Record<string, boolean> = { O: true, M: true, MB: true, P: false, PB: false, K: false, N: false, SL: true }; // premise = nav.ts:47-48 (roster || linked) on this fixture
-  const f1: string[] = [], f2: string[] = [], f3: string[] = [], info: string[] = [];
+  const f1: string[] = [], f2: string[] = [], f3: string[] = [], f5: string[] = [], info: string[] = []; // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ + f5 ◂
   let ctlE = false, ctlL = false;
   for (const [k, w, linked] of VW) {
    const tabs = ((await M.ui.hrTabsFor?.(X.HRS, own(w), linked)) ?? []) as { href: string }[], tabAtt = tabs.some((t) => isAtt(t.href));
@@ -315,10 +316,17 @@ try {
    if (gate.register !== true && readE) f2.push(`${k}:listEmployees read (register=false)`);
    if (gate.leave !== true && readL) f3.push(`${k}:pendingLeaves read (leave=false)`);
    if (k === "O") { ctlE = readE; ctlL = readL; }
+   { // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ F5 month-card calendar links (the link N2/F1 did not name) ◂
+    const mEl = elOf(hub.html, "hr-hub-month"), rows = idsWith(mEl, "hr-hub-month-talk-").length, cal = anchors(mEl).filter((a) => isAtt(a.href)).length;
+    if (["P", "PB", "O", "M", "MB"].includes(k) && (!mEl || rows < 1)) f5.push(`${k}:premise card=${!!mEl} rows=${rows}`);
+    if (tabAtt ? cal !== rows : cal > 0) f5.push(`${k}:rows=${rows} calendar links=${cal} tab=${tabAtt}`);
+    info.push(`${k}:month rows=${rows} cal=${cal}`);
+   }
   }
   console.log(`  ℹ F5 ${info.join(" · ")}`);
   chk("F1", !f1.length, "card iff tab · no 404 link", L(f1));
   chk("F2", ctlE && !f2.length, "only register viewers", `${L(f2)} control(O read)=${ctlE}`);
+  chk("F5", !f5.length, "calendar link iff tab", L(f5)); // ORACLE-EDIT (HR VIS-5b F5 · controller) ◂
   chk("F3", ctlL && !f3.length, "only leave viewers", `${L(f3)} control(O read)=${ctlL}`);
  }
 } catch (e) {

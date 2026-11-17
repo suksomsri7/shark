@@ -370,6 +370,9 @@ try {
   gold.nav = navG;
   chk("N1", !n1.length, "iff gate", L(n1));
   const n2: string[] = [], n3: string[] = [], hubG: Record<string, string> = {};
+  // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N3: hub links are hashed after normalising today-dependent / per-run values — dates (VIS-5b ?day= pickers) → D, cuids (fixture ids) → # · the system id → * · day independence = same digest for ?day=D0−9 and D0+9 ◂
+  const normHub = (x: string) => x.split(HRS).join("*").replace(/\d{4}-\d{2}(-\d{2})?/g, "D").replace(/[a-z0-9]{20,}/g, "#"); // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N3 ◂
+  const hubDigest = (r: Rendered) => sha16(hrefsIn(r.html).map(normHub).sort().join(",")); // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N3 ◂
   const nAll = await P.hrEmployee.count({ where: { tenantId: X.T, active: true } });
   for (const k of VKS) {
    mute();
@@ -379,9 +382,22 @@ try {
    const head = /(\d+) คน/.exec(textOfHtml(r.html))?.[1] ?? "";
    if (!T[0]) { if (dead.length) n2.push(`${k}:links ${dead.map((x) => x.replace(/.*\/hr\//, "")).join("/")}`); const hc = /พนักงาน\s*(\d+)\s*คน/.exec(textOfHtml(r.html))?.[1]; if (hc) n2.push(`${k}:count ${hc}`); }
    else if (dead.length) n2.push(`${k}:dead ${dead.join("/")}`);
-   const c = `${sha16(links.map((x) => x.replace(HRS, "*")).sort().join(","))}|${head}`;
+   const c = `${hubDigest(r)}|${head}`; // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N3: normalised digest (was raw hrefs with the system id replaced) ◂
    hubG[k] = c;
    if (["O", "M", "MB", "P", "PB"].includes(k) && (GOLD.hub?.[k] !== c || kind(r) !== "ok")) n3.push(`${k}:${kind(r)} ${c}≠${GOLD.hub?.[k]}`);
+   if (MEASURE) console.log(`MEASURE hubLinks ${k} ${JSON.stringify(links.map(normHub).sort())}`); // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N3 ◂
+   if (["O", "M", "MB", "P", "PB"].includes(k)) { // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N3: date independence — the same hub state (a past day ≠ today) on two different dates gives one digest · no date survives normalisation ◂
+    const other: string[] = [];
+    for (const dd of [-9, -23]) {
+     const day = new Date(Date.parse(`${D0}T00:00:00Z`) + dd * 86_400_000).toISOString().slice(0, 10);
+     mute();
+     const rd2 = await renderEl(W[k].cookie, `/app/sys/${HRS}`, () => h(M.ui.HrHub, { systemId: HRS, day })).finally(unmute);
+     other.push(hubDigest(rd2));
+     if (MEASURE) console.log(`MEASURE hubLinks ${k}@day${dd} ${JSON.stringify(hrefsIn(rd2.html).map(normHub).sort())}`);
+    }
+    if (other[0] !== other[1]) n3.push(`${k}:date-dependent ${other.join("≠")}`);
+    if (links.map(normHub).some((x) => /\d{4}-\d{2}/.test(x))) n3.push(`${k}:date left after normalising`);
+   }
   }
   gold.hub = hubG;
   chk("N2", !n2.length, "no gated link · no count", L(n2));

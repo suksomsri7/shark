@@ -80,3 +80,58 @@ Nothing outside ui.tsx is needed.
 2. F2/F3 match on Prisma's SQL text. If the builder replaced `listEmployees` with a count query, the O control in F2 would go red. The ruling says to keep `listEmployees`, so that is fine, but any such change would need an ORACLE-EDIT.
 3. `gatedOf` was not changed, and the new `gatedHubOf` was added instead (reason above). Please confirm this meets "extend N2's gated set".
 4. Marker form in the priv-3 files: `ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 …`. It includes "HR PRIV-3" on purpose, so that p3Ok accepts the hunks and the priv-2/h4.3 allowlists stay unchanged.
+
+---
+# Follow-up (controller rulings Q1 and Q3 · builder head fa624010f · 17 Nov)
+Rulings: Q3 `gatedHubOf` accepted. Q1: normalise N3, re-measure it, and cover the month-card calendar link.
+
+## priv-3 N3 (`scripts/qc-hr-priv-3.mts:373-399` · golden `scripts/qc-hr-priv-3-lib.mts:235`)
+- **Normalisation.** Hub hrefs are normalised before hashing:
+  - every occurrence of the system id → `*` (the old code replaced only the first);
+  - `YYYY-MM(-DD)` → `D`;
+  - cuids (`[a-z0-9]{20,}`, e.g. `unit=<id>` on the branch picker) → `#`.
+  - The headcount part (`|n`) is unchanged.
+  - Pre-VIS-5b links have no dates and no cuids except the system id, so the old goldens are still valid in the new form. The reconstruction below proves this.
+- **Date independence (no clock hook in the oracle, so a substitute test).** For each entitled viewer, N3 renders HrHub twice more: with `day = D0−9` and `day = D0−23`.
+  - These are the same hub state (a past day) on two different dates.
+  - The two digests must be equal, and no normalised link may still contain a date.
+  - Both conditions hold for O, M, MB, P and PB.
+  - Today's state has one `?day=` link fewer than a past day, because today shows no "next" link. That is a difference of state, not of the date, which is why the two probes compare past days with each other and not with today.
+- **Re-measured with `QC_PRIV3_MEASURE=1` on fa624010f + this oracle.** Two runs gave identical goldens:
+  - O/M `2849f29d4dbd5f17|6`
+  - MB `25fc2a318b7b4c5c|4`
+  - P `62f47059deb22fd0|6`
+  - PB `62f47059deb22fd0|1`
+  - The non-entitled rows were recorded too; N3 does not judge them.
+
+### Link set before VIS-5b vs now (entitled viewers; normalised; ×n = count)
+Method: start from today's measured lists (MEASURE hubLinks) and change the counts of the links present now (plus attendance/reports/requests) until sha16(sorted list) equals the **old PRIV-3 golden**. A hash match means this is exactly the old multiset. Script: `/tmp/claude-0/-root/59156a1f-9c0e-594d-9643-d1896f46b191/scratchpad/f5/bf/bf2.js`.
+
+| viewer | before (sha = old golden) | now | difference | source |
+|---|---|---|---|---|
+| O / M | `/app/sys/*` · attendance×4 · employees×3 · kiosk · leave×2 · payroll×2 · reports×2 · requests×3 · roster · settings×2 · settings/law (= ac4dfe0d…) | before + the changes on the right (= 2849f29d…) | **+** `?day=D`×3 (day prev/next + board-header day link) · **+** `?day=D&unit=#`×2 (branch picker) · **+** `/hr/roster` (จัดกะ, `hr-hub-roster-link`) · **+** `/hr/employees?add=1` (`hr-hub-add-employee`) · **−** `/hr/requests`×1 | all VIS-5b hub header/approval changes. The −1 requests is my inference, not checked: the old approvals header and the old inbox tile seem to have become one header link (`hr-overview-inbox`). |
+| MB | same as O before (= ac4dfe0d…) | (= 25fc2a31…) | **+** `?day=D`×2 · **+** roster · **+** `?add=1` · **−** requests×1. No `unit` picker, because MB is limited to one branch. | VIS-5b |
+| P | `/app/sys/*` · attendance · employees×2 · leave×2 · payroll×2 · reports×2 · requests×3 (= 6369a381…) | (= 62f47059…) | **−** `/hr/attendance` (the "ลงเวลา" card) · **−** `/hr/requests`×1 | F5 removal · VIS-5b approvals header |
+| PB | `/app/sys/*` · attendance · employees×2 · leave×2 · payroll×2 · reports×2 · requests×2 (= ef71fdc3…) | (= 62f47059…) | **−** `/hr/attendance` (card) | F5 removal |
+
+Nothing else differs. P and PB now share one link digest. Before, they differed by one requests link: P had the inbox tile and the header link, PB had only the header link. VIS-5b merged them into one.
+
+## Month-card calendar link: new check vis-5b **F5** (`scripts/qc-hr-vis-5b.mts:58, 318-329`)
+- Covers the `/hr/attendance?view=month&employee=…` link on each "ควรคุย" row of `hr-hub-month`.
+- For every viewer: the number of calendar links must equal the number of talk rows if the viewer's tabs contain `/hr/attendance`, and must be 0 otherwise.
+- Premise: O, M, MB, P and PB all have the card with ≥1 talk row. This fixture gives each of them 1 row; a3 is late on several days.
+- Control: O, M and MB each have 1 link for 1 row.
+- I chose a vis-5b check over priv-3 N2 because priv-3's fixture produces no talk rows. N2 cannot see the link there, which is why N2 was green before the builder's (b) fix.
+- **RED evidence:** this check fails if P or PB have a calendar link while their tab has no attendance. At d9f540a47 (before the builder's hub-ui fix), that exact link made F1 red with `P:link to 404 | PB:link to 404`. The builder note records card=false and the link coming from HrMonthCard. On fa624010f the info line is `P:month rows=1 cal=0 · PB:month rows=1 cal=0 · O/M/MB rows=1 cal=1`, so it is green.
+- I did not re-run the old head: I had no clean way to run it without another tree or a src edit.
+
+## Runs (forced, lane DB, through the wrappers; logs in `/tmp/claude-0/-root/59156a1f-9c0e-594d-9643-d1896f46b191/scratchpad/f5/`)
+| suite | result |
+|---|---|
+| qc-hr-vis-5b | **34/34** (33 + new F5) · residue none |
+| qc-hr-priv-3 | **27/28**. Only S4 is red (lane-scope static, as expected). N1, N2 and N3 are ✅; S6 is ✅ in in-base mode. Residue none. Run with MEASURE; the goldens matched on both runs. |
+| qc-hr-priv-2 | 47/47 · residue none |
+| qc-hr-h4.3 | 45/45 · residue none |
+| typecheck (iso, ISO_MEM=14000M, heap 12288) | see the last line |
+
+Typecheck (follow-up): `NODE_OPTIONS=--max-old-space-size=12288 ISO_MEM=14000M iso.sh with-gate-lock.sh pnpm typecheck` → **exit 0 · 0 errors**.
