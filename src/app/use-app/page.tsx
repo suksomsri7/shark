@@ -5,14 +5,14 @@ import type { Metadata } from "next";
 // 17 พ.ย. (เจ้าของสั่ง): ชื่อแอป/ผู้ช่วยในข้อความไทย = "เลขา" · อังกฤษ = "Lekaa" · "SHARK" = แบรนด์แพลตฟอร์ม คงไว้
 
 export const metadata: Metadata = {
-  title: "ใช้งาน SHARK ผ่านแอป",
+  title: "ใช้งานเลขาผ่านแอป",
   robots: { index: false, follow: false },
 };
 
 export default function UseAppPage() {
   return (
     <div className="mx-auto flex min-h-screen max-w-md flex-col items-center justify-center gap-4 px-6 text-center">
-      <h1 className="text-2xl font-semibold">ใช้งาน SHARK ผ่านแอปเลขา</h1>
+      <h1 className="text-2xl font-semibold">ใช้งานเลขาผ่านแอป</h1>
       <p className="text-sm text-[color:var(--color-muted)]">
         ตอนนี้หลังบ้านร้านเปิดใช้งานได้ทางแอปเลขาบน iPhone และ iPad เท่านั้น
         เข้าสู่ระบบในแอปด้วยบัญชีเดิมได้เลย ข้อมูลร้านทั้งหมดยังอยู่ครบ

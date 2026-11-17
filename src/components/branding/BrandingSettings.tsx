@@ -424,7 +424,7 @@ export function BrandingSettings({ tenantName, canWrite, initial }: BrandingSett
             />
             <ToggleRow
               testId="branding-toggle-mobile"
-              title="ใช้ธีมนี้กับแอปมือถือ SHARK HUB"
+              title="ใช้ธีมนี้กับแอปมือถือเลขา"
               desc="แอปดึงโลโก้+สีตอนล็อกอิน — จอแชท AI/รายการแชท/ปุ่มหลักเปลี่ยนตาม"
               checked={applyMobile}
               onChange={setApplyMobile}

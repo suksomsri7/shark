@@ -12,7 +12,7 @@ export function JobsList({ jobs }: { jobs: JobRow[] }) {
   return (
     <section data-testid="crm-integrations-jobs" className="card flex min-w-0 flex-col gap-2 p-3 sm:p-4">
       <h2 className="text-sm font-semibold">
-        งานเบื้องหลังของระบบ <span className={`text-xs font-normal ${muted}`}>งานตามเวลาที่ SHARK รันให้ทุกร้าน (สะพาน · ลำดับการติดตาม · อีเมล · รายงาน …) — ถ้าไม่ปกติ ทีมดูแลระบบได้รับแจ้งอัตโนมัติ</span>
+        งานเบื้องหลังของระบบ <span className={`text-xs font-normal ${muted}`}>งานตามเวลาที่เลขารันให้ทุกร้าน (สะพาน · ลำดับการติดตาม · อีเมล · รายงาน …) — ถ้าไม่ปกติ ทีมดูแลระบบได้รับแจ้งอัตโนมัติ</span>
       </h2>
       {jobs.length === 0 ? (
         <p className={`text-xs ${muted}`}>ยังไม่มีงานเบื้องหลังที่ลงทะเบียน</p>

@@ -27,7 +27,7 @@ export default async function OnboardingPage({
           </Link>
         ) : (
           <div className="text-sm font-semibold tracking-widest text-[color:var(--color-muted)]">
-            SHARK
+            Lekaa
           </div>
         )}
         <h1 className="text-2xl font-semibold">{adding ? "เพิ่มกิจการใหม่" : "ยินดีต้อนรับ 👋"}</h1>

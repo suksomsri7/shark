@@ -12,8 +12,8 @@ import { buildOpenApi, posWebhookEvents } from "@/lib/modules/pos/api/openapi";
 import { POS_OPS } from "@/lib/modules/pos/api/registry";
 
 export const metadata: Metadata = {
-  title: "SHARK POS API for developers",
-  description: "REST API ของระบบขายหน้าร้าน (POS) ใน SHARK: ขาย คืนเงิน ยกเลิกบิล ออเดอร์ออนไลน์ สินค้า ช่องทางขาย กะ และรายงาน",
+  title: "Lekaa POS API for developers",
+  description: "REST API ของระบบขายหน้าร้าน (POS) ในเลขา: ขาย คืนเงิน ยกเลิกบิล ออเดอร์ออนไลน์ สินค้า ช่องทางขาย กะ และรายงาน",
 };
 
 const BASE_URL = "https://shark.in.th/api/v1/pos";
@@ -74,7 +74,7 @@ export default function PosDevelopersPage() {
       <section className={sectionCls}>
         <h2 className={h2}>การยืนยันตัวตนและสิทธิ์</h2>
         <p className="text-sm text-[color:var(--color-ink-soft)]">
-          แนบ <code className={codeCls}>Authorization: Bearer &lt;API key&gt;</code> ทุกคำขอ · เจ้าของร้านออกคีย์ได้ที่ หน้าขาย › ตั้งค่า › การเชื่อมต่อระบบ SHARK › คีย์ API (เห็นคีย์ครั้งเดียวตอนสร้าง) ·
+          แนบ <code className={codeCls}>Authorization: Bearer &lt;API key&gt;</code> ทุกคำขอ · เจ้าของร้านออกคีย์ได้ที่ หน้าขาย › ตั้งค่า › การเชื่อมต่อระบบเลขา › คีย์ API (เห็นคีย์ครั้งเดียวตอนสร้าง) ·
           คีย์ผูกระบบขายหน้าร้านหนึ่งระบบ และทำงานในนามของตัวเอง (บิลที่ขายผ่าน API ผูกกับคีย์ ไม่ใช่คนที่ออกคีย์) · จำกัดสาขาได้ด้วย{" "}
           <code className={codeCls}>{POS_FILTER_UNIT_PREFIX}&lt;unitId&gt;</code>
         </p>
@@ -152,7 +152,7 @@ export default function PosDevelopersPage() {
       ))}
 
       <section className={sectionCls}>
-        <h2 className={h2}>Webhooks (SHARK เรียกหาคุณ)</h2>
+        <h2 className={h2}>Webhooks (เลขาเรียกหาคุณ)</h2>
         <p className="text-sm text-[color:var(--color-ink-soft)]">
           เจ้าของร้านเพิ่ม URL ปลายทางได้ที่ ตั้งค่าร้าน › การเชื่อมต่อ › แอปภายนอก/API · ทุกครั้งลงลายเซ็น X-Shark-Signature (HMAC-SHA256) · ส่งอย่างน้อยหนึ่งครั้ง ตัวรับต้องกันซ้ำเอง
         </p>

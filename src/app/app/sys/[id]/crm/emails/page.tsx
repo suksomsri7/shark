@@ -24,7 +24,7 @@ import type { CrmEmailInboxData, CrmEmailMySendingData, CrmEmailThreadRow } from
 
 /** ป้ายไทยของโหมด Reply-To (ชุดเดียวกันกับหน้าตั้งค่าอีเมลของร้าน — ด่าน F2.3 ห้ามคอมโพเนนต์ดึงทะเบียนของโมดูลเอง) */
 const REPLY_MODE_TH: Record<string, string> = {
-  SHARK: "กล่อง SHARK (แนะนำ — คำตอบเข้า CRM อัตโนมัติ)",
+  SHARK: "กล่องเลขา (แนะนำ — คำตอบเข้า CRM อัตโนมัติ)",
   STAFF: "อีเมลของพนักงานผู้ส่ง",
   SELF: "อีเมลของพนักงานผู้ส่ง (ตัวเอง)",
   CUSTOM: "กำหนดเอง",

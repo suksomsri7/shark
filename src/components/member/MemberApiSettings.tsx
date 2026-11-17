@@ -414,7 +414,7 @@ export function MemberApiSettings({
           <div className="min-w-0">
             <h2 className="text-sm font-medium">Webhook</h2>
             <p className={`mt-1 ${help}`}>
-              ให้ SHARK ยิงกลับไปหาระบบของคุณเมื่อมีอะไรเปลี่ยนในระบบสมาชิก · เนื้อที่ส่งไปมีแต่รหัสอ้างอิง
+              ให้เลขายิงกลับไปหาระบบของคุณเมื่อมีอะไรเปลี่ยนในระบบสมาชิก · เนื้อที่ส่งไปมีแต่รหัสอ้างอิง
               ไม่มีชื่อหรือเบอร์ของลูกค้า · ปลายทางที่รับเหตุการณ์ของระบบอื่นด้วย จัดการได้ที่{" "}
               <Link href="/app/settings/integrations" className="text-[color:var(--color-accent)] underline">
                 ตั้งค่าร้าน › แอปภายนอก

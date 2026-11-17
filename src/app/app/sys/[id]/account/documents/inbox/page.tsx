@@ -168,7 +168,7 @@ export default async function InboxPage({
               </li>
               <li className="flex items-start gap-2 border-t pt-3">
                 <AccountIcon name="camera" className="mt-0.5 h-4 w-4 shrink-0 text-[color:var(--color-muted)]" />
-                <span>ถ่ายรูปบิลผ่านแอป SHARK แล้วอัปโหลด</span>
+                <span>ถ่ายรูปบิลผ่านแอปเลขาแล้วอัปโหลด</span>
               </li>
             </ul>
           </div>

@@ -10,8 +10,8 @@ import { SUPPORT_EMAIL } from "@/components/public-chrome";
 // 🔴 กติกาของหน้านี้: เขียนเฉพาะสิ่งที่ระบบทำได้จริงวันนี้ ห้ามสัญญาเกิน
 //    ผู้ตรวจจะกดตามจริง ถ้าทำตามแล้วไม่มีปุ่มอย่างที่เขียน = ตีกลับทันที
 export const metadata = {
-  title: "ลบบัญชีและข้อมูล — SHARK",
-  description: "วิธีลบร้าน ลบบัญชีผู้ใช้ และขอลบข้อมูลทั้งหมดออกจาก SHARK",
+  title: "ลบบัญชีและข้อมูล — เลขา",
+  description: "วิธีลบร้าน ลบบัญชีผู้ใช้ และขอลบข้อมูลทั้งหมดออกจากเลขา",
 };
 
 export default function AccountDeletionPage() {
@@ -20,11 +20,11 @@ export default function AccountDeletionPage() {
     <main className="mx-auto flex w-full max-w-2xl flex-col gap-8 px-6 py-14">
       <header className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">ลบบัญชีและข้อมูล</h1>
-        <p className={`text-sm ${muted}`}>SHARK (shark.in.th) — อัปเดตล่าสุด 20 สิงหาคม 2026</p>
+        <p className={`text-sm ${muted}`}>เลขา (shark.in.th) — อัปเดตล่าสุด 20 สิงหาคม 2026</p>
       </header>
 
       <section className="card flex flex-col gap-3 p-5">
-        <h2 className="text-lg font-medium">SHARK แยกข้อมูลเป็น 2 ชั้น</h2>
+        <h2 className="text-lg font-medium">เลขาแยกข้อมูลเป็น 2 ชั้น</h2>
         <p className="text-sm leading-6">
           เข้าใจตรงนี้ก่อนจะเลือกได้ถูกว่าต้องลบอะไร:
         </p>
@@ -42,10 +42,10 @@ export default function AccountDeletionPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">1. ลบร้านและข้อมูลธุรกิจทั้งหมด (ทำเองได้ทันที)</h2>
         <p className={`text-sm leading-6 ${muted}`}>
-          ทำได้เฉพาะเจ้าของร้าน (OWNER) — ทั้งในแอป SHARK และบนเว็บ ขั้นตอนเดียวกัน
+          ทำได้เฉพาะเจ้าของร้าน (OWNER) — ทั้งในแอปเลขาและบนเว็บ ขั้นตอนเดียวกัน
         </p>
         <ol className="list-decimal pl-6 text-sm leading-6">
-          <li>เข้าสู่ระบบที่ shark.in.th หรือเปิดแอป SHARK</li>
+          <li>เข้าสู่ระบบที่ shark.in.th หรือเปิดแอปเลขา</li>
           <li>
             เปิดเมนู → <strong>ตั้งค่า</strong> → <strong>ความเป็นส่วนตัว (PDPA)</strong>
           </li>
@@ -65,10 +65,10 @@ export default function AccountDeletionPage() {
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-medium">2. ลบบัญชีผู้ใช้ของคุณ (ทำเองได้ทันที)</h2>
         <p className={`text-sm leading-6 ${muted}`}>
-          ทำได้ทุกคน ไม่ว่าจะเป็นเจ้าของร้านหรือพนักงาน — ทั้งในแอป SHARK และบนเว็บ ขั้นตอนเดียวกัน
+          ทำได้ทุกคน ไม่ว่าจะเป็นเจ้าของร้านหรือพนักงาน — ทั้งในแอปเลขาและบนเว็บ ขั้นตอนเดียวกัน
         </p>
         <ol className="list-decimal pl-6 text-sm leading-6">
-          <li>เข้าสู่ระบบที่ shark.in.th หรือเปิดแอป SHARK</li>
+          <li>เข้าสู่ระบบที่ shark.in.th หรือเปิดแอปเลขา</li>
           <li>
             เปิดเมนู → <strong>ตั้งค่า</strong> → <strong>ความเป็นส่วนตัว (PDPA)</strong>
           </li>
@@ -109,7 +109,7 @@ export default function AccountDeletionPage() {
         <h2 className="text-lg font-medium">3. เข้าสู่ระบบผ่าน Apple / Google / LINE / Facebook</h2>
         <p className="text-sm leading-6">
           ข้อมูลเดียวที่เราได้รับจากผู้ให้บริการเหล่านั้นคือ <strong>อีเมลและชื่อที่แสดง</strong> —
-          เมื่อบัญชี SHARK ของคุณถูกลบ ข้อมูลส่วนนั้นถูกลบออกจากระบบเราด้วยทั้งหมด
+          เมื่อบัญชีเลขาของคุณถูกลบ ข้อมูลส่วนนั้นถูกลบออกจากระบบเราด้วยทั้งหมด
         </p>
         <p className={`text-sm leading-6 ${muted}`}>
           การยกเลิกการเชื่อมต่อฝั่งผู้ให้บริการ (เช่น เอาแอปออกจากรายการ Sign in with Apple)

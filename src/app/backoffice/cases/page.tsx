@@ -61,7 +61,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
       <PageHeader
         title="เรื่องแจ้งจากผู้ใช้"
         back={{ href: "/backoffice", label: "ภาพรวมแพลตฟอร์ม" }}
-        desc={`ทีม SHARK · ${cases.length.toLocaleString("th-TH")} เรื่องในมุมมองนี้`}
+        desc={`ทีมเลขา · ${cases.length.toLocaleString("th-TH")} เรื่องในมุมมองนี้`}
         actions={
           <form action={logoutAction}>
             <button type="submit" className="btn btn-ghost text-sm">

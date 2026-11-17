@@ -376,7 +376,7 @@ function CaseThread({
               }`}
             >
               <div className="mb-0.5 text-xs text-[color:var(--color-muted)]">
-                {m.authorSide === "SHOP" ? "คุณ" : "ทีมงาน SHARK"}
+                {m.authorSide === "SHOP" ? "คุณ" : "ทีมงานเลขา"}
               </div>
               <div className="whitespace-pre-wrap">{m.body}</div>
               <MessageAttachments attachments={m.attachments} />
