@@ -811,3 +811,10 @@
   - เลน 3 `wip/hr-vis-5a` — รวม session/hr (ชน: qc-hr-h3.6 / h3.9 / h4.3-lib / priv-2) + migrate ฐานเลน + รันข้อสอบ + typecheck → บันทึก `ledger/wo-notes/hr-VIS-5a-remerge.md`
   - เลน 1 `wip/hr-vis-5bc` — รวม session/hr (ชน: qc-hr-h4.3-lib / priv-2 / walk-hr-matrix.json) + re-pin hrNavFilter + ปรับ vis-5c S1/S8 + รายงานว่า F5 เหลืออะไร → `ledger/wo-notes/hr-VIS-5b-remerge.md`
 - ถัดไป: เพิ่ม OT ใน seed-hr-walk → build+ถ่ายภาพ VIS-5a รอบยืนยัน → F5 ของ VIS-5b → merge ทั้งสองใบ → VIS-5c → HF-TENANT (ต้องขอ GO) → VIS-5d/5e → ด่าน pm-full
+
+### 2026-11-17T17:00Z · ผล re-merge สองเลน + คำตัดสินผู้คุม (ยังไม่ merge เข้า session/hr)
+- **VIS-5a เลน 3** `wip/hr-vis-5a` e64e15b88: รวม session/hr แล้ว · vis-5a 39/39 · h3.6 62 · h3.9 60 · h4.3 45 · priv-2 47 · priv-3b 20 · h0.6 55 · h1.3 63 · fitness เขียว · typecheck 0 (heap 12288) · ไม่มีการตรึงค่าใหม่ · แก้ import `hrViewerOf` ซ้ำใน payroll/page.tsx (git รวมเงียบ) · priv-3 25/28 แดง S4 S6 P7
+  - **คำตัดสิน P7:** ไม่ตรึงค่าใหม่เป็นตัวเลขของ view เดียว → ให้ P7 เรนเดอร์ทุก view ที่ผู้ชมได้รับแล้วเทียบ "ผลรวม" กับค่า golden เดิม (ถ้าต่างให้รายงานส่วนต่าง ไม่วัดใหม่) · เปิดผู้เขียนข้อสอบแล้ว + เพิ่ม OT ของน้ำฝนใน seed-hr-walk → `ledger/wo-notes/hr-VIS-5a-p7-otseed.md`
+- **VIS-5b เลน 1** `wip/hr-vis-5bc`: re-merge c0cb0bf76 (vis-5b 29/29 · typecheck 0 · re-pin hrNavFilter + ช่วงบรรทัด vis-5-lib + vis-5c S3/S8) → ข้อสอบ F5 c416e3806 (F1–F4 แดงถูกเหตุผล 29/33) → ผู้สร้าง F5 กำลังทำ (เป้า 33/33 · เฉพาะ HrHub ใน ui.tsx)
+  - **คำตัดสิน:** priv-3 S6 รับกรณี migration 20270112000000 อยู่ในฐานแล้ว (ตรึงเนื้อหา 95fb5ad171abc2e3) — แก้แล้วบนเลน 1 · N2 ใช้ `gatedHubOf` (แยกจาก `gatedOf` ของ N1) รับ · N3 ต้องแทน `?day=YYYY-MM-DD` ด้วยตัวยึดก่อนวัดค่าใหม่ (ค่าเปลี่ยนทุกวัน) — ทำหลังผู้สร้าง F5 · S4 ปล่อย (ตรวจตอน merge) · vis-5c S1 = คำถามเปิดข้อ 8 เดิม
+- หมายเหตุ: typecheck ต้องใช้ `--max-old-space-size=12288` (8192 หมดหน่วยความจำ)
