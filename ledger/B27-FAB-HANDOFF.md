@@ -98,4 +98,23 @@ Commits: c1f0deb07 (Job A fixes) · 4fc4b138b (topbar2) · later commits listed 
 - `PUT secretary/systems/order {keys}` (zod, max 200, gate null, 30/min) keeps only keys valid for the tenant now; missing ones appended in registry order.
 - Mobile: `src/components/secretary/navSystems.ts` (store shared by strip + panel, live order while dragging), `openSystem.ts`, new SecTopBar strip, BusinessSwitcherSheet rewritten as the pull-down panel (gesture-handler + reanimated, no new native dep).
 - Closing the panel while in reorder mode saves (same as "เสร็จ") — owner to confirm.
-- Team badge colour: see final report.
+- Team badge on the top bar is now red like every other badge (topbar2 shows all red; it was orange).
+- Business-icon palette moved from SecTopBar into the theme (`c.biz`), `bizColor(name, accent, palette)` now takes the palette.
+- Strip buttons: white round + thin shadow (`c.topPanel.btn/btnShadow`) — the glass shadow was clipped into a grey band.
+- Context-confirm yes button: short label per fab6 ("ใช่ ใบนี้" for ACCOUNT_DOC, else "ใช่ อันนี้"); the message sent is still "ใช่ <label>". `RoomPageContext.entityType` added on the app side.
+- Lekaa sheet resting top changed to fab6 values (list 0.237·H, room 0.142·H).
+
+### Verified (17 Nov, all through iso.sh)
+- `pnpm typecheck` (server) EXIT 0 · `apps/mobile npx tsc --noEmit` EXIT 0.
+- New `scripts/qc-sec-b27.mts` 14/14 (order API O-1..O-8, page context P-1..P-3, hide room K-1, add member blocked M-1, approver reject V-1).
+- Updated on purpose (ORACLE-EDIT B27-FAB): qc-sec-s1.4 28/28 · qc-sec-s1.6 16/16 · qc-sec-s3a.1 16/17 + 1 skip (R-1) · qc-sec-s1.14 12/13 (R-2 = pre-existing: calendar routes rate-limit through calGate, regex does not see it).
+- Unchanged and green: qc-sec-s1.7 27/27 · s1.11 15/15 · s1.14b 24/24 · s1.14c 12/12 · qc-cal-1.6 32/32 ×2 · qc-cal-1.7 59/59 ×2 · qc-ai-* ×2 all green except qc-ai-actions CRASH (AA-5.2) and qc-ai-analyst AN-2.1/AN-3.3 — both fail identically on the pre-lane base f37b1757c (checked in a temp worktree), so not caused by this lane.
+- Still red, pre-existing: qc-sec-ui U7.1 (hex in SecAttach.tsx only now; SecTopBar fixed) · qc-sec-s2.1 T-1/I-1/I-2/E-1/U-1 (all fail the same on b4308ffa5: old icon names, Thai in en comments, Thai literal in calendar, home-open-secretary button gone) · qc-sec-s2.12 U-1 (=U7.1) · qc-sec-s2.14 (needs a fresh `shoot-sec --both` + button registry crawl; registry dated 6 Nov).
+- Parity renders: `apps/mobile/qc/shoot-b27.mjs` → /root/qc/b27-fab/pair-*.png (tb1 bar, tb2 pulling, tb3 panel, tb4 reorder, tb5 strip scrolled, fab1–3; each light + -dark). Dashboard WebView body cannot render on web (loader shows).
+
+### Remaining / for the owner
+- Closing the panel while reordering saves the order (same as "เสร็จ").
+- Dashboard ("/") keeps the legacy white background in dark mode, so the dark top bar sits on white there (pre-existing since 14 Nov; index.tsx must not import the theme per qc-sec-s2.1 E-1).
+- Feather has no ticket icon: บัตรคิว = credit-card, คูปอง = percent, คลังความรู้ = book-open.
+- Not run on a device: gestures were checked only in the web render (pull-down, long-press drag with live strip).
+- Items 9 and 10 of the old list unchanged.
