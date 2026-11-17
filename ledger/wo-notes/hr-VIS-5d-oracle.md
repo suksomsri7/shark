@@ -106,4 +106,4 @@ Suites that need nothing (survey, read-only): h1.2 (reads none of the files), h2
 6. "OT และค่าแรงขั้นต่ำ" card title is pinned (mockup) although `hr.law.kinds.OT` = "ค่าล่วงเวลา (OT)" — new key must live in `hr.setview` (I1 forbids editing `hr.law`).
 
 ## 8. Commands / results
-See §2 for the baseline; post-commit re-run of the edited suites is recorded in the final report line below.
+Oracle commit e3a9072eb, re-run on that head (lane DB, QC_FORCE=1): vis-5a 42/42 · vis-5b 34/34 · h3.6 62/62 · h3.9 60/60 · h4.2 57/57 · h4.3 45/45 · priv-2 47/47 · leave-3 53/53 · preprod-1 57/57 (the allowlists accept this commit's own oracle/tool edits) · qc-hr-vis-5d forced 10/28, BASE-EXPECTATION 28/28 · unforced = SKIPPED · `walk-hr.mts --dry` 0 errors · `pnpm typecheck` (ISO_MEM=14000M, 12288) exit 0.
