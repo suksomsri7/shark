@@ -44,7 +44,7 @@ const CHECKS: Def[] = [
  D("R9", "§2 15", "MR", "[db] ?emp= side panel hr-people-panel = read view of that person (masked numbers only)"),
  D("V1", "5c-1 §3", "CR", "[db] profile default view, entitled viewers (owner · payroll-all · payroll-U1 own branch): only masked ID/SSO/bank strings · no full number / house address in HTML or client props"),
  D("V2", "5c-1 5c-4", "CG", "[db] [control] not entitled today (manager · branch manager · leave-read staff · payroll-U1 on a borrowed person): no full number default or ?edit=1 (HTML + client props) · no mask · no eye"),
- D("V3", "5c-1 Q1", "MR", "[db] eye hr-profile-reveal-* is a link to ?edit=1 (no client reveal) · edit link hr-profile-edit for entitled viewers and for managers (they get the form today)"), // HR VIS-5c oracle ▸ V2 + leave-read staff · V3 + managers' edit link ◂
+ D("V3", "5c-1 Q1", "MR", "[db] eye hr-profile-reveal-* is a link to ?edit=1 (no client reveal) for viewers who see numbers AND hold hr.employee.create (owner) · edit link hr-profile-edit for every hr.employee.create holder (owner · M · M-U1) — ruling 17 Nov (1)"), // HR VIS-5c oracle ▸ V2 + leave-read staff · V3 + managers' edit link ◂
  D("V4", "5c-1", "MG", "[db] [control] ?edit=1 for an entitled viewer: full value in the edit form (as today)"),
  D("V5", "§3 §5", "MR", "[db] EmployeeProfileForm only with ?edit=1 (no viewer gets it in the read view) · edit view has hr-profile-footer + hr-profile-unit"),
  D("V6", "§2 17 24", "MR", "[db] read view: hr-profile-tab-* links (?tab=, one aria-current) · hr-profile-connections"),
@@ -55,9 +55,10 @@ const CHECKS: Def[] = [
  D("G1", "PRIV-3 R2 Q1 · H2.10", "CG", "[db] [control] page matrix: register + profile render for O · payroll-all · payroll-U1 · M · M-U1 · leave-read staff (also ?emp= / ?add=1 / ?edit=1) · staff/kiosk/member → 404 on the register · staff on own profile → redirect /app/me/hr/profile · staff on another profile, kiosk, member → 404"),
  D("G2", "5c-1 5c-4", "CG", "[db] [control] register states (default · ?emp=namfon · ?add=1 · payroll-U1 ?emp=borrowed) for every register viewer: no full ID/SSO/bank/house value of ANY employee in HTML or client props · viewers not entitled for that person: no mask string, no eye"),
  D("A1", "§2 3 12 · 5c-1", "CG", "[db] [control] action surface: server actions bound on register (default · ?add=1) and profile (default · ?edit=1) ⊆ today's set for every viewer (no reveal/audit/import action) · owner register keeps create/update/schedule/remove + PinField"),
- D("A2", "owner list", "CG", "[db] [control] owner-list items absent: no CSV import control (th/en) · no ยืมตัว tag · no booking ตั้งเป็นช่าง / CRM commission in the profile (all tabs, th/en) · no sensitive_view audit action in src/"),
- D("R10", "§2 10 · §6 1", "MR", "[db] leave-today badge from employeesOnLeave: row of a person on approved leave today shows it (th text has วันนี้ · en text has leave) · a person not on leave does not"),
+ D("A2", "owner list", "CG", "[db] [control] owner-list items absent: no CSV import control (th/en) · no ยืมตัว tag · no document expiry dates (ruling 4) · no booking ตั้งเป็นช่าง / CRM commission in the profile (all tabs, th/en) · no sensitive_view audit action in src/"),
+ D("R10", "§2 10 · §6 1", "MR", "[db] leave-today badge from employeesOnLeave: row of a person on approved leave today shows it (th text has «ลา…วันนี้» and does not claim ลาป่วย — no leave type in employeesOnLeave, ruling 17 Nov (5) · en text has leave) · a person not on leave does not"),
  D("V10", "§2 18 · §6 3", "MR", "[db] ?tab=leave = leaveBalances(viewer) (policy name + balance) · a viewer leaveBalances refuses (payroll-U1) gets no balances · ?tab=schedule = HrScheduleEditor (setWorkScheduleAction · start-<wd> inputs)"),
+ D("A3", "ruling 17 Nov (1)(2)", "MR", "[db] editor controls only for hr.employee.create holders (the key every register/profile editor action asserts): payroll-all · payroll-U1 · leave-read staff get no create/update/schedule/remove/restore/doc/save action, no PinField, no EmployeeProfileForm, no hr-people-add(-name) / hr-people-more-* / hr-profile-edit / hr-profile-reveal-* — register default · ?add=1 · ?emp= and profile default · every tab · ?edit=1 · their ?edit=1 = 200 with the same test ids as their default view (the flag is ignored — no new refusal) · [control] O · M · M-U1 keep the register editors"),
  D("V11", "§5 5c-2", "CG", "[db] [control] no pay figure on the profile: every hr-profile-tab-* state (and the default) for every profile viewer — no salary of the person in HTML or client props"),
  D("Z1", "-", "CG", "residue · outbound"),
 ];
@@ -230,6 +231,7 @@ try {
  const hits = (r: Rendered, e: Emp) => full(e).filter((s) => r.html.includes(s) || r.clientText.includes(s));
  const v1: string[] = [], v3: string[] = [], v5: string[] = [];
  const entitled: [string, Any, Emp][] = [["owner", W.owner, nf], ["payAll", W.payAll, nf], ["payU1", W.payU1, nf], ["owner/brw", W.owner, E.brw!]];
+ const EDITOR = new Set(["owner", "owner/brw"]); // HR VIS-5c oracle ▸ ruling 17 Nov (1): eye/edit only where saveEmployeeProfileAction (hr.employee.create) would not refuse · payroll-only viewers: A3 pins absence ◂
  let ownDefault: Rendered | null = null;
  for (const [n, w, e] of entitled) {
   const r = await prof(w, e);
@@ -239,8 +241,8 @@ try {
   if (h.length) v1.push(`${n}:full×${h.length}`);
   if (mk.length || idsWith(r.html, "hr-profile-mask-").length < 2) v1.push(`${n}:mask ${mk.length ? "missing" : "ids"}`);
   const eyes = idsWith(r.html, "hr-profile-reveal-");
-  if (!eyes.length || !eyes.every((id) => /^<a\b/.test(elOf(r.html, id)) && queryOf(attrOf(elOf(r.html, id), "href") || "/").edit === "1")) v3.push(`${n}:eye`);
-  if (queryOf(attrOf(elOf(r.html, "hr-profile-edit"), "href") || "/").edit !== "1") v3.push(`${n}:edit link`);
+  if (EDITOR.has(n) && (!eyes.length || !eyes.every((id) => /^<a\b/.test(elOf(r.html, id)) && queryOf(attrOf(elOf(r.html, id), "href") || "/").edit === "1"))) v3.push(`${n}:eye`); // HR VIS-5c oracle ▸ editors only ◂
+  if (EDITOR.has(n) && queryOf(attrOf(elOf(r.html, "hr-profile-edit"), "href") || "/").edit !== "1") v3.push(`${n}:edit link`); // HR VIS-5c oracle ▸ editors only ◂
   if (r.client.some((c) => c.name === "EmployeeProfileForm.tsx")) v5.push(`${n}:form in read view`);
  }
  for (const [n, w] of [["mgr", W.mgr], ["mgrU1", W.mgrU1]] as [string, Any][]) { const r = await prof(w, nf); if (queryOf(attrOf(elOf(r.html, "hr-profile-edit"), "href") || "/").edit !== "1") v3.push(`${n}:edit link`); } // HR VIS-5c oracle ▸ managers get the form today ⇒ they keep a way to it ◂
@@ -333,13 +335,14 @@ try {
  const profStates: [string, Rendered][] = [["th", od], ["en", en]];
  for (const id of idsWith(od.html, "hr-profile-tab-")) { const q = queryOf(attrOf(elOf(od.html, id), "href") || "/"); if (!q.tab) continue; profStates.push([`th?tab=${q.tab}`, await prof(W.owner, nf, q)], [`en?tab=${q.tab}`, await prof(W.owner, nf, q, "en")]); }
  for (const [st, r] of profStates) if (/ตั้งเป็นช่าง|ค่าคอม|commission/i.test(textOfHtml(r.html))) a2.push(`profile ${st}: booking/CRM`);
+ for (const [st, r] of profStates) if (/หมดอายุ|expir(y|es|ed|ation)|valid until/i.test(textOfHtml(r.html))) a2.push(`profile ${st}: document expiry`); // HR VIS-5c oracle ▸ ruling 17 Nov (4): document expiry dates ABSENT (no backend) ◂
  const audit = srcFiles("src").filter((f2) => /\.(ts|tsx)$/.test(f2) && /sensitive_view/.test(rd(f2)));
  if (audit.length) a2.push(`sensitive_view in ${audit.slice(0, 2).join(",")}`);
  chk("A2", !a2.length, "absent", L(a2));
  // R10 leave today (p1 approved SICK today · f01 not)
  const rowTxt = (r: Rendered, k: string) => textOfHtml(elOf(r.html, idsWith(r.html, "hr-people-row-").find((x) => keyOfRow(x.slice(14)) === k) ?? "∅"));
  const onLeave = await M.svc?.employeesOnLeave?.({ tenantId: X.T, systemId: X.HRS }, [E.p1!.id, E.f01!.id], dbDate(D0)) /* Bangkok today as a UTC-midnight Date — rules.isAvailable compares UTC dates, so `new Date()` is the wrong day 00:00–07:00 Bangkok */.catch(() => null) as Set<string> | null; // premise: the service the builder must call
- const r10 = { premise: (!!onLeave && onLeave.has(E.p1!.id) && !onLeave.has(E.f01!.id)) || `employeesOnLeave=${onLeave ? [...onLeave].length : "err"} svc=${M.svc?.__err ?? typeof M.svc?.employeesOnLeave}`, p1th: /วันนี้/.test(rowTxt(o, "p1")), f01th: !!rowTxt(o, "f01") && !/วันนี้/.test(rowTxt(o, "f01")), p1en: /leave/i.test(rowTxt(enL, "p1")), f01en: !!rowTxt(enL, "f01") && !/leave/i.test(rowTxt(enL, "f01")) };
+ const r10 = { premise: (!!onLeave && onLeave.has(E.p1!.id) && !onLeave.has(E.f01!.id)) || `employeesOnLeave=${onLeave ? [...onLeave].length : "err"} svc=${M.svc?.__err ?? typeof M.svc?.employeesOnLeave}`, p1th: /ลา\s*วันนี้/.test(rowTxt(o, "p1")) && !/ลาป่วย/.test(rowTxt(o, "p1")) /* HR VIS-5c oracle ▸ ruling (5) ◂ */, f01th: !!rowTxt(o, "f01") && !/วันนี้/.test(rowTxt(o, "f01")), p1en: /leave/i.test(rowTxt(enL, "p1")), f01en: !!rowTxt(enL, "f01") && !/leave/i.test(rowTxt(enL, "f01")) };
  chk("R10", all(r10), "badge iff on leave", fails(r10));
  // V10 tab data
  const LV = await imp("@/lib/modules/hr/leave"), vOf = (role: string, ua: string[], perm: Record<string, boolean>, uid: string) => ({ role, unitAccess: ua, permissions: perm, userId: uid });
@@ -355,6 +358,24 @@ try {
  const tabQs = [{}, ...idsWith(od.html, "hr-profile-tab-").map((id) => queryOf(attrOf(elOf(od.html, id), "href") || "/")).filter((q) => q.tab)] as Record<string, string>[];
  for (const [n, w] of regViewers) for (const q of tabQs) { const r = await prof(w, nf, q); if (r.err) { v11.push(`${n}?tab=${q.tab ?? "-"}:render`); continue; } if (payOf(nf).some((x) => r.html.includes(x) || r.clientText.includes(x))) v11.push(`${n}?tab=${q.tab ?? "-"}:pay`); }
  chk("V11", !v11.length, "no pay", `${L(v11)} states=${tabQs.length}`);
+ // A3 ▸ HR VIS-5c oracle · ruling 17 Nov (1)(2): controls whose action refuses are not shown ◂
+ const EDIT_ACTS = ["createEmployeeAction", "updateEmployeeAction", "setWorkScheduleAction", "removeEmployeeAction", "restoreEmployeeAction", "saveEmployeeProfileAction", "addEmployeeDocAction", "removeEmployeeDocAction"], EDIT_CLIENT = ["PinField.tsx", "EmployeeProfileForm.tsx"], EDIT_IDS = ["hr-people-add", "hr-people-add-name", "hr-people-more-", "hr-profile-edit", "hr-profile-reveal-"];
+ const a3: string[] = [], dead = (st: string, r: Rendered) => {
+  if (r.err) { a3.push(`${st}:render`); return; }
+  const acts = (r.actions ?? []).filter((a) => EDIT_ACTS.includes(a)), cl = r.client.map((c) => c.name).filter((c) => EDIT_CLIENT.includes(c)), ids = EDIT_IDS.filter((id) => idsWith(r.html, id).length);
+  if (acts.length || cl.length || ids.length) a3.push(`${st}:${[...new Set([...acts, ...cl, ...ids])].slice(0, 4).join("+")}`);
+ };
+ for (const [n, w] of [["payAll", W.payAll], ["payU1", W.payU1], ["LR", W.leaveRead]] as [string, Any][]) {
+  for (const sp of [{}, { add: "1" }, { emp: nf.id }] as Record<string, string>[]) dead(`reg ${n}${sp.add ? "?add" : sp.emp ? "?emp" : ""}`, await list(w, sp));
+  const d0 = await prof(w, nf), e1 = await prof(w, nf, { edit: "1" });
+  dead(`prof ${n}`, d0); dead(`prof ${n}?edit`, e1);
+  for (const q of tabQs.filter((x) => x.tab)) dead(`prof ${n}?tab=${q.tab}`, await prof(w, nf, q));
+  dead(`prof ${n}?tab=schedule`, await prof(w, nf, { tab: "schedule" }));
+  const idSet = (r: Rendered) => [...new Set(idsWith(r.html, ""))].sort().join();
+  if (!e1.err && idSet(e1) !== idSet(d0)) a3.push(`prof ${n}?edit:ids≠default`);
+ }
+ const ctl = Object.entries(regActs).filter(([st]) => ["O", "M", "MU1"].includes(st)).filter(([, acts]) => !["createEmployeeAction", "updateEmployeeAction", "setWorkScheduleAction", "removeEmployeeAction"].every((a) => acts.includes(a))).map(([st]) => `${st}:lost editors`);
+ chk("A3", !a3.length && !ctl.length, "editors only for hr.employee.create", L([...ctl, ...a3]));
 } catch (e) {
  crashed = errText(e);
  console.log(`🔴 harness error: ${crashed} ${(e as Error)?.stack?.split("\n").slice(1, 4).join(" | ")}`);
