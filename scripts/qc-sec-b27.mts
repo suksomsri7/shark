@@ -9,6 +9,9 @@
 //   K  ลบห้อง (DELETE rooms/[id]): คนอื่น 404 · ผู้เปิด 200 · หายจากรายการ · ข้อเสนอ/แผน PENDING ⇒ REJECTED (เจ้าของตัดสินแล้ว 15 พ.ย.)
 //   M  ปิดการชวนคน: POST rooms/[id]/members ⇒ 403 forbidden ข้อความไทย · ไม่มีแถว
 //   V  OWNER ปฏิเสธข้อเสนอในห้องของ staff ได้ (canActOnApproval) แม้อ่านห้องไม่ได้ · STAFF คนอื่นไม่ได้
+//   O-9..O-13 (17 พ.ย. เจ้าของสั่งจากเครื่องจริง: ทีม/ปฏิทิน จัดลำดับได้ · เว้นที่เหนือแถวแรก): "team" "calendar" เป็นคีย์ที่ถูกต้อง ·
+//      ลำดับที่ไม่มี 2 คีย์นี้ ⇒ ขึ้นหน้าสุด ทีม → ปฏิทิน · items ไม่มี 2 ช่องนี้ (แอปรุ่นเก่าไม่เห็นซ้ำ) · ต่อคน
+//      (O-1..O-6 เดิมเทียบส่วน "หลัง" ทีม/ปฏิทิน ด้วย core())
 // รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-sec-b27.mts
 import { loadLegacyQcEnv } from "./qc-env-guard.mjs";
 loadLegacyQcEnv("qc-sec-b27"); // route systems → inbox/_shared import lib/env ตอนโหลด (SESSION_SECRET ฯลฯ) — โหลดจาก QC_ENV_FILE (.env.qc-sec) ไม่พิมพ์ค่า
@@ -80,43 +83,64 @@ try {
   const sK = await prisma.appSystem.create({ data: { tenantId: tid, type: "KANBAN", name: "บอร์ดงาน" } });
   const sOther = await prisma.appSystem.create({ data: { tenantId: tid2, type: "CRM", name: "CRM ร้าน b" } });
   const kA = `s-${sA.id}`, kC = `s-${sC.id}`, kK = `s-${sK.id}`;
+  const FRONT = ["team", "calendar"];
+  const core = (o: unknown) => ((o ?? []) as string[]).filter((k) => !FRONT.includes(k)); // ลำดับไม่นับทีม/ปฏิทิน (O-1..O-6 เดิม)
   const g0 = await call("systems", "GET", undefined, H);
-  const ord0 = (g0.body.order ?? []) as string[];
+  const ordF = (g0.body.order ?? []) as string[];
+  const ord0 = core(ordF);
   const items0 = ((g0.body.items ?? []) as { key: string }[]).map((x) => x.key);
+  chk("O-9", "ค่าเริ่ม (ไม่เคยบันทึก): order = ทีม ปฏิทิน หน้าหลัก แล้วตามทะเบียน · items ไม่มี team/calendar/home (wire เดิมของแอปรุ่นเก่า)", g0.status === 200 && ordF[0] === "team" && ordF[1] === "calendar" && ordF[2] === "home" && !items0.some((k) => ["team", "calendar", "home"].includes(k)), JSON.stringify(ordF.slice(0, 4)));
   chk("O-1", "ค่าเริ่ม: order = home ก่อน แล้วตามทะเบียน (ระบบเรียงตามที่สร้าง แล้วหน้า fixed) · items ไม่มี home และเรียงเหมือน order", g0.status === 200 && ord0[0] === "home" && ord0[1] === kA && ord0[2] === kC && ord0[3] === kK && ord0.includes("fp-KB") && JSON.stringify(items0) === JSON.stringify(ord0.filter((k) => k !== "home")), JSON.stringify({ s: g0.status, ord0 }).slice(0, 240));
 
   const want = [kK, "home", kA];
   const p1 = await call("systems/order", "PUT", { keys: want }, H);
   const g1 = await call("systems", "GET", undefined, H);
-  const ord1 = (g1.body.order ?? []) as string[];
+  const ord1F = (g1.body.order ?? []) as string[];
+  const ord1 = core(ord1F);
   const items1 = ((g1.body.items ?? []) as { key: string }[]).map((x) => x.key);
-  chk("O-2", "บันทึก [บอร์ด, home, บัญชี] ⇒ 200 · GET order ขึ้นต้นตามนั้น แล้วที่เหลือต่อท้ายตามทะเบียน · items เรียงตาม (ไม่มี home)", p1.status === 200 && JSON.stringify(p1.body.order) === JSON.stringify(ord1) && ord1[0] === kK && ord1[1] === "home" && ord1[2] === kA && ord1[3] === kC && JSON.stringify(items1) === JSON.stringify(ord1.filter((k) => k !== "home")), JSON.stringify({ p1: p1.status, ord1 }).slice(0, 240));
+  chk("O-2", "บันทึก [บอร์ด, home, บัญชี] ⇒ 200 · GET order ขึ้นต้นตามนั้น แล้วที่เหลือต่อท้ายตามทะเบียน · items เรียงตาม (ไม่มี home)", p1.status === 200 && JSON.stringify(p1.body.order) === JSON.stringify(ord1F) && ord1[0] === kK && ord1[1] === "home" && ord1[2] === kA && ord1[3] === kC && JSON.stringify(items1) === JSON.stringify(ord1.filter((k) => k !== "home")), JSON.stringify({ p1: p1.status, ord1 }).slice(0, 240));
 
+  chk("O-10", "บันทึกลำดับเก่าที่ไม่มีทีม/ปฏิทิน (ผู้ใช้เดิม/แอปรุ่นเก่า) ⇒ ทีม ปฏิทิน ขึ้นหน้าสุด แล้วตามที่บันทึก", ord1F[0] === "team" && ord1F[1] === "calendar" && ord1F[2] === kK && ord1F[3] === "home", JSON.stringify(ord1F.slice(0, 5)));
   const p2 = await call("systems/order", "PUT", { keys: ["zz-bogus", `s-${sOther.id}`, kC, "home"] }, H);
   const rawPrefs = ((await prisma.user.findUnique({ where: { id: U.owner }, select: { prefs: true } }))?.prefs ?? {}) as AnyMod;
-  const stored = (rawPrefs.secSystemOrder?.[tid] ?? []) as string[];
+  const stored = core(rawPrefs.secSystemOrder?.[tid]);
   chk("O-3", "คีย์แปลก/ระบบของร้านอื่นถูกตัด (ไม่เก็บ · ไม่คืน) · ที่เหลือเรียงตามที่ส่ง · prefs คีย์อื่น (kanbanShortcuts) ไม่หาย", p2.status === 200 && !stored.includes("zz-bogus") && !stored.includes(`s-${sOther.id}`) && stored[0] === kC && stored[1] === "home" && !((p2.body.order ?? []) as string[]).includes("zz-bogus") && rawPrefs.kanbanShortcuts === false, JSON.stringify({ p2: p2.status, stored, ks: rawPrefs.kanbanShortcuts }).slice(0, 240));
 
   const sNew = await prisma.appSystem.create({ data: { tenantId: tid, type: "MEMBER", name: "สมาชิก" } });
   await prisma.appSystem.update({ where: { id: sA.id }, data: { active: false } });
   const g2 = await call("systems", "GET", undefined, H);
-  const ord2 = (g2.body.order ?? []) as string[];
+  const ord2 = core(g2.body.order);
   chk("O-4", "ระบบที่เปิดใหม่ (ยังไม่อยู่ในลำดับ) ต่อท้ายตามทะเบียน · ระบบที่ปิดแล้ว (คีย์ยังอยู่ในลำดับที่บันทึก) ไม่โผล่", ord2[0] === kC && ord2[1] === "home" && ord2.includes(`s-${sNew.id}`) && ord2.indexOf(`s-${sNew.id}`) > ord2.indexOf(kK) && !ord2.includes(kA), JSON.stringify(ord2).slice(0, 240));
   await prisma.appSystem.update({ where: { id: sA.id }, data: { active: true } });
 
   const gS = await call("systems", "GET", undefined, HS);
-  const ordS = (gS.body.order ?? []) as string[];
+  const ordS = core(gS.body.order);
   const pS = await call("systems/order", "PUT", { keys: [kA] }, HS);
   const gO = await call("systems", "GET", undefined, H);
   const gS2 = await call("systems", "GET", undefined, HS2);
-  chk("O-5", "ต่อคน: staff เห็นลำดับเริ่มต้น (ไม่ใช่ของเจ้าของ) · staff บันทึกของตัวเอง ⇒ เจ้าของยังเป็นลำดับเดิม · staff2 ยังเป็นค่าเริ่ม", gS.status === 200 && ordS[0] === "home" && ordS[1] === kA && pS.status === 200 && ((gO.body.order ?? []) as string[])[0] === kC && ((gS2.body.order ?? []) as string[])[0] === "home", JSON.stringify({ ordS: ordS.slice(0, 3), o: ((gO.body.order ?? []) as string[]).slice(0, 2), s2: ((gS2.body.order ?? []) as string[]).slice(0, 2) }));
+  chk("O-5", "ต่อคน: staff เห็นลำดับเริ่มต้น (ไม่ใช่ของเจ้าของ) · staff บันทึกของตัวเอง ⇒ เจ้าของยังเป็นลำดับเดิม · staff2 ยังเป็นค่าเริ่ม", gS.status === 200 && ordS[0] === "home" && ordS[1] === kA && pS.status === 200 && core(gO.body.order)[0] === kC && core(gS2.body.order)[0] === "home", JSON.stringify({ ordS: ordS.slice(0, 3), o: core(gO.body.order).slice(0, 2), s2: core(gS2.body.order).slice(0, 2) }));
 
   const xO = await call("systems/order", "PUT", { keys: [kK] }, HO);
   const xG = await call("systems", "GET", undefined, HO);
   const pB = await call("systems/order", "PUT", { keys: [`s-${sOther.id}`, kK] }, HO2);
   const outPrefs = ((await prisma.user.findUnique({ where: { id: U.out }, select: { prefs: true } }))?.prefs ?? {}) as AnyMod;
   const gO2 = await call("systems", "GET", undefined, H);
-  chk("O-6", "คนนอกชี้ร้าน a ⇒ PUT/GET 403/404 · เจ้าของร้าน b บันทึกในร้านตัวเอง ⇒ เก็บใต้ tid2 เท่านั้น (คีย์ร้าน a ถูกตัด) · ร้าน a ไม่เปลี่ยน", [403, 404].includes(xO.status) && [403, 404].includes(xG.status) && pB.status === 200 && !outPrefs.secSystemOrder?.[tid] && (outPrefs.secSystemOrder?.[tid2] ?? [])[0] === `s-${sOther.id}` && !(outPrefs.secSystemOrder?.[tid2] ?? []).includes(kK) && ((gO2.body.order ?? []) as string[])[0] === kC, JSON.stringify({ xO: xO.status, xG: xG.status, pB: pB.status, out: outPrefs.secSystemOrder }).slice(0, 240));
+  chk("O-6", "คนนอกชี้ร้าน a ⇒ PUT/GET 403/404 · เจ้าของร้าน b บันทึกในร้านตัวเอง ⇒ เก็บใต้ tid2 เท่านั้น (คีย์ร้าน a ถูกตัด) · ร้าน a ไม่เปลี่ยน", [403, 404].includes(xO.status) && [403, 404].includes(xG.status) && pB.status === 200 && !outPrefs.secSystemOrder?.[tid] && core(outPrefs.secSystemOrder?.[tid2])[0] === `s-${sOther.id}` && !(outPrefs.secSystemOrder?.[tid2] ?? []).includes(kK) && core(gO2.body.order)[0] === kC, JSON.stringify({ xO: xO.status, xG: xG.status, pB: pB.status, out: outPrefs.secSystemOrder }).slice(0, 240));
+
+  // ── ทีม/ปฏิทิน (17 พ.ย.) ──
+  const w1 = await call("systems/order", "PUT", { keys: [kK, "calendar", "TEAM", "teams", "home", "team"] }, H);
+  const w1g = await call("systems", "GET", undefined, H);
+  const w1o = (w1g.body.order ?? []) as string[];
+  const w1s = ((await prisma.user.findUnique({ where: { id: U.owner }, select: { prefs: true } }))?.prefs as AnyMod)?.secSystemOrder?.[tid] as string[] | undefined;
+  const w1i = ((w1g.body.items ?? []) as { key: string }[]).map((x) => x.key);
+  chk("O-11", "team/calendar รับเป็นคีย์ที่ถูกต้อง (วางกลาง/ท้ายได้ · เก็บ · GET คืนตามนั้น) · คีย์คล้าย (TEAM/teams) ถูกตัด · items ยังไม่มี 2 ช่องนี้", w1.status === 200 && JSON.stringify(w1o.slice(0, 4)) === JSON.stringify([kK, "calendar", "home", "team"]) && JSON.stringify((w1s ?? []).slice(0, 4)) === JSON.stringify([kK, "calendar", "home", "team"]) && !w1o.includes("TEAM") && !w1o.includes("teams") && !(w1s ?? []).includes("teams") && !w1i.includes("team") && !w1i.includes("calendar"), JSON.stringify({ s: w1.status, w1o: w1o.slice(0, 5), w1s: (w1s ?? []).slice(0, 5) }).slice(0, 240));
+  const w2 = await call("systems/order", "PUT", { keys: [kC, "team", "home"] }, H);
+  chk("O-12", "ลำดับที่มีทีมแต่ไม่มีปฏิทิน ⇒ ปฏิทินขึ้นหน้าสุดตัวเดียว ทีมอยู่ที่ผู้ใช้วาง", w2.status === 200 && JSON.stringify(((w2.body.order ?? []) as string[]).slice(0, 4)) === JSON.stringify(["calendar", kC, "team", "home"]), JSON.stringify(((w2.body.order ?? []) as string[]).slice(0, 5)));
+  const w3 = await call("systems/order", "PUT", { keys: ["home", "calendar", "team"] }, HS2);
+  const w3o = core((await call("systems", "GET", undefined, H)).body.order);
+  const w3s = (await call("systems", "GET", undefined, HS)).body.order as string[];
+  const w3f = (await call("systems", "GET", undefined, H)).body.order as string[];
+  chk("O-13", "ต่อคน: staff2 วางทีม/ปฏิทินท้าย ⇒ ของ staff2 เท่านั้น · เจ้าของยังเป็น [ปฏิทิน, CRM, ทีม, …] · staff ยังมีทีม ปฏิทิน หน้าสุด", w3.status === 200 && JSON.stringify(((w3.body.order ?? []) as string[]).slice(0, 3)) === JSON.stringify(["home", "calendar", "team"]) && w3f[0] === "calendar" && w3f[2] === "team" && w3o[0] === kC && w3s[0] === "team" && w3s[1] === "calendar", JSON.stringify({ w3: ((w3.body.order ?? []) as string[]).slice(0, 3), o: w3f.slice(0, 3), s: w3s.slice(0, 3) }));
 
   const b1 = await call("systems/order", "PUT", { keys: "home" }, H);
   const b2 = await call("systems/order", "PUT", { keys: ["home"], extra: 1 }, H);
@@ -125,6 +149,7 @@ try {
   chk("O-7", "body ผิดรูป/คีย์เกิน/ช่องเกิน 200 ⇒ 400 · ไม่มี Bearer ⇒ 401", b1.status === 400 && b2.status === 400 && b3.status === 400 && b4.status === 401, JSON.stringify({ b1: b1.status, b2: b2.status, b3: b3.status, b4: b4.status }));
   const nav = await import("@/lib/core/nav-systems");
   chk("O-8", "orderNavKeys (pure): ซ้ำตัดทิ้ง · คีย์ที่ไม่มีไม่สน · ที่ขาดต่อท้ายตามทะเบียน", JSON.stringify(nav.orderNavKeys(["home", "a", "b", "c"], ["c", "x", "c", "home"])) === JSON.stringify(["c", "home", "a", "b"]), "");
+  chk("O-14", "orderNavKeys (pure · กติกาเดียวกับ fullOrder ของแอป): ทีม/ปฏิทินที่ขาด ⇒ หน้าสุดตามลำดับ front · ที่บันทึกไว้ = อยู่ที่เดิม · ไม่บันทึกเลย = ทะเบียน", JSON.stringify(nav.orderNavKeys(["team", "calendar", "home", "a", "b"], ["b", "calendar", "home"])) === JSON.stringify(["team", "b", "calendar", "home", "a"]) && JSON.stringify(nav.orderNavKeys(["team", "calendar", "home", "a"], ["a", "home"])) === JSON.stringify(["team", "calendar", "a", "home"]) && JSON.stringify(nav.orderNavKeys(["team", "calendar", "home", "a"], [])) === JSON.stringify(["team", "calendar", "home", "a"]), "");
 
   // ═══════════════ P. page context ═══════════════
   console.log("── P: page context ──");

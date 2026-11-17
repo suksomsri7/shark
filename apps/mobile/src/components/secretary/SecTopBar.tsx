@@ -23,6 +23,11 @@
 //     "เปิดอยู่": หน้าระบบ (zone="systems") = ช่องที่ href ตรงพาธเว็บ (`activePath` จากข้อความ page-context) · โซนลูกค้า = ระบบแชทช่องแรก
 //   แตะไอคอนกิจการ หรือ "ลากแถบบนลง" = แผ่นดึงลงจากขอบบน (BusinessSwitcherSheet · แถบนี้ยังเห็นอยู่บนแผ่น) · ลำดับ/รายการระบบอ่านจาก store กลาง ./navSystems
 //   (ลากจัดลำดับในแผ่น = แถบนี้เรียงตามทันที) · badge ทุกปุ่มบนแถบ = แดง (แบบ topbar2 · เดิมทีม = ส้ม) · testID เดิม sec-top-* คงไว้ · ใหม่: sec-top-strip · sec-top-sys-<key> · sec-top-fade-l/-r
+// 17 พ.ย. (เจ้าของสั่งจากเครื่องจริง: ทีม/ปฏิทิน จัดลำดับได้ · เว้นที่เหนือแถวแรก): เลิกปุ่มโซนคงที่ [ทีม][ปฏิทิน] หน้าแถบ
+//   ⇒ แถบเลื่อน = ลำดับของผู้ใช้ล้วน (ทีม/ปฏิทิน = ช่องในตัวของ ./navSystems แบบ "home" · ผู้ใช้เดิม = ทีม ปฏิทิน หน้าสุดเหมือนเดิม) · ไอคอนกิจการซ้ายสุดนอกลำดับ · ? ท้ายสุดนอกลำดับ
+//   ช่องที่เปิดอยู่: โซนทีม = ช่องทีม · โซนปฏิทิน = ช่องปฏิทิน → วงกลมทึบเข้ม (c.accent) เหมือนทุกช่อง (เลิกพื้นม่วง zone.team) · badge ทีม/ปฏิทินเดิม (props badges / store โซน)
+//   testID เดิมคงไว้: sec-top-team · sec-top-calendar (+ -badge) · ช่องอื่น sec-top-sys-<key> · ปุ่มโซนเดิมไม่ได้ซ่อนตามสิทธิ์ (ตัวกรอง custOk ใช้กับ "ลูกค้า" ที่ถอดไปแล้ว) ⇒ ทุกคนมี 2 ช่องนี้เหมือนเดิม
+//   ช่อง "home" ชื่อ "Dashboard" ไอคอน grid (เจ้าของสั่งวันเดียวกัน)
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { useRouter } from "expo-router";
@@ -31,12 +36,12 @@ import { scheduleOnRN } from "react-native-worklets";
 import { Text } from "@/src/components/ui/text";
 import { Icon, IconBtn, type IconName } from "@/src/components/airy";
 import { useAuth } from "@/src/lib/auth-context";
-import { useCustomersAccess, useZoneBadgeCounts } from "@/src/api/secretary";
+import { useZoneBadgeCounts } from "@/src/api/secretary";
 import { useT, type I18nKey } from "@/src/i18n";
-import { F, bgImage, linear, shadow, useTheme, zoneColor, type ZoneKey } from "@/src/theme/index";
+import { F, bgImage, linear, shadow, useTheme, type ZoneKey } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
 import { useBusinessSwitcher } from "./BusinessSwitcherSheet";
-import { activeTileKey, useNavTiles, type NavTile } from "./navSystems";
+import { CAL_KEY, TEAM_KEY, activeTileKey, useNavTiles, type NavTile } from "./navSystems";
 import { useOpenSystem } from "./openSystem";
 // 15 พ.ย. (เจ้าของอนุมัติแบบ fab6 · Lekaa FAB): ถอดไอคอนเลขา (คน) ⇒ แถบ = [กิจการ][ทีม][ปฏิทิน][?] · สั่งงานใหม่/รายการงาน = ปุ่มลอย Lekaa (ไม่มี + ของโซนเลขาแล้ว)
 import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
@@ -44,10 +49,8 @@ import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
 export type SecZone = ZoneKey | "systems" | "calendar"; // "secretary" | "customers" | "team" | "systems" (หน้าระบบ WebView · ไม่มีปุ่มโซนใดทึบ) | "calendar" (CAL2.1)
 export type ZoneBadges = { secretary?: number; customers?: number; team?: number; calendar?: number };
 
-const ZONES: { zone: ZoneKey | "calendar"; icon: IconName; path: string; label: I18nKey }[] = [
-  { zone: "team", icon: "users", path: "/secretary/staff", label: "sec.zone.team" },
-  { zone: "calendar", icon: "calendar", path: "/secretary/calendar", label: "cal.zone" },
-];
+/** testID เดิมของปุ่มโซน (fixture QC เดิมยังหาเจอ) — ช่องอื่น = sec-top-sys-<key> */
+const LEGACY_ID: Record<string, string> = { [TEAM_KEY]: "sec-top-team", [CAL_KEY]: "sec-top-calendar" };
 
 /** ปุ่ม + ของแต่ละโซน (ลูกค้า/ระบบ = ไม่มี) */
 const PLUS: Record<SecZone, { path: string; label: I18nKey } | null> = {
@@ -94,10 +97,7 @@ export function SecTopBar(props: SecTopBarProps) {
   const shared = useZoneBadgeCounts(); // R-S2.1e: store กลาง (โหลดที่ layout ของโซน) ไม่ยิงต่อ mount
   const counts = badges ?? shared;
   const plus = !showPlus ? null : onPlus ? { path: "", label: plusLabel ?? PLUS[zone]?.label ?? "sec.top.new" } : PLUS[zone];
-  // S2.17: ไม่มีสิทธิ์ดูแชทลูกค้า (inbox 403) ⇒ ไม่มีไอคอน "ลูกค้า" ทุกโซน (จอ /customers แสดง "ไม่มีสิทธิ์" เอง)
-  const custOk = useCustomersAccess();
-  const zones = custOk ? ZONES : ZONES.filter((z) => z.zone !== "customers");
-  const { tiles } = useNavTiles();
+  const { tiles } = useNavTiles(counts);
   const openSystem = useOpenSystem();
   const activeKey = helpOn
     ? null
@@ -105,7 +105,11 @@ export function SecTopBar(props: SecTopBarProps) {
       ? activeTileKey(tiles, activePath)
       : zone === "customers"
         ? (tiles.find((x) => x.code === "CHAT")?.key ?? null)
-        : null;
+        : zone === "team"
+          ? TEAM_KEY
+          : zone === "calendar"
+            ? CAL_KEY
+            : null;
 
   // ── เปิดแผ่น: แตะไอคอนกิจการ / ลากแถบลง — ส่งตำแหน่งแถบ (วางสำเนาบนแผ่นตรงที่เดิม) + props ของแถบ ──
   const rowRef = useRef<View>(null);
@@ -146,10 +150,11 @@ export function SecTopBar(props: SecTopBarProps) {
   const sysBtn = (x: NavTile) => {
     const on = x.key === activeKey;
     const n = badgeText(x.badge);
+    const id = LEGACY_ID[x.key] ?? `sec-top-sys-${x.key}`;
     return (
       <View key={x.key} style={styles.slot}>
         <StripBtn
-          testID={`sec-top-sys-${x.key}`}
+          testID={id}
           icon={x.icon}
           color={x.fg}
           on={on}
@@ -157,7 +162,7 @@ export function SecTopBar(props: SecTopBarProps) {
           onPress={() => openSystem(x.href, x.code)}
         />
         {n ? (
-          <View testID={`sec-top-sys-${x.key}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
+          <View testID={`${id}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
             <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
           </View>
         ) : null}
@@ -184,39 +189,6 @@ export function SecTopBar(props: SecTopBarProps) {
             contentContainerStyle={styles.strip}
             accessibilityLabel={t("sec.top.systems")}
           >
-            {zones.map((z) => {
-              const n = badgeText(counts[z.zone]);
-              if (z.zone === "calendar") {
-                const on = !helpOn && zone === "calendar";
-                return (
-                  <View key="calendar" style={styles.slot}>
-                    <StripBtn testID="sec-top-calendar" icon="calendar" on={on} label={t("cal.zone")} onPress={() => router.navigate("/secretary/calendar")} />
-                    {n ? (
-                      <View testID="sec-top-calendar-badge" pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
-                        <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
-                      </View>
-                    ) : null}
-                  </View>
-                );
-              }
-              return (
-                <View key={z.zone} style={styles.slot}>
-                  <StripBtn
-                    testID={`sec-top-${z.zone}`}
-                    icon={z.icon}
-                    onBg={zoneColor(c, z.zone as ZoneKey)}
-                    on={!helpOn && z.zone === zone}
-                    label={t(z.label)}
-                    onPress={() => router.navigate(z.path)}
-                  />
-                  {n ? (
-                    <View testID={`sec-top-${z.zone}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
-                      <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
-                    </View>
-                  ) : null}
-                </View>
-              );
-            })}
             {tiles.map(sysBtn)}
             <StripBtn testID="sec-top-help" icon="help-circle" on={helpOn} label={t("sec.top.help")} onPress={helpOn ? undefined : () => router.push("/secretary/help")} />
           </ScrollView>
@@ -241,10 +213,10 @@ export function SecTopBar(props: SecTopBarProps) {
   );
 }
 
-/** ปุ่มกลมบนแถบเลื่อน (แบบ topbar2 .btn): พื้นขาวเงาบาง (เงากระจกเดิมฟุ้ง 30px โดนขอบแถบเลื่อนตัดเป็นแผ่นเทา) · `on` = ทึบเข้ม (หรือสีโซน) ไอคอนขาว */
-function StripBtn({ testID, icon, color, on = false, onBg, label, onPress }: { testID: string; icon: IconName; color?: string; on?: boolean; onBg?: string; label: string; onPress?: () => void }) {
+/** ปุ่มกลมบนแถบเลื่อน (แบบ topbar2 .btn): พื้นขาวเงาบาง (เงากระจกเดิมฟุ้ง 30px โดนขอบแถบเลื่อนตัดเป็นแผ่นเทา) · `on` = ทึบเข้ม ไอคอนขาว (17 พ.ย. เลิกสีโซน) */
+function StripBtn({ testID, icon, color, on = false, label, onPress }: { testID: string; icon: IconName; color?: string; on?: boolean; label: string; onPress?: () => void }) {
   const { c } = useTheme();
-  const bg = onBg ?? c.accent;
+  const bg = c.accent;
   return (
     <Pressable
       testID={testID}
@@ -255,7 +227,7 @@ function StripBtn({ testID, icon, color, on = false, onBg, label, onPress }: { t
       onPress={onPress}
       style={[styles.btn, { backgroundColor: on ? bg : c.topPanel.btn }, shadow(c.topPanel.btnShadow)]}
     >
-      <Icon name={icon} color={on ? (onBg ? c.zone.onZone : c.onAccent) : (color ?? c.icon)} />
+      <Icon name={icon} color={on ? c.onAccent : (color ?? c.icon)} />
     </Pressable>
   );
 }

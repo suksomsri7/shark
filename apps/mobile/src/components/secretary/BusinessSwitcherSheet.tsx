@@ -18,6 +18,10 @@
 // BusinessSwitcherHost ครอบ Stack ของโซน (secretary/customers/business _layout + หน้าระบบ index) → SecTopBar เรียก useBusinessSwitcher()
 //   ท่าลากลงอยู่ที่แถบบน (SecTopBar) — ขับ `drag.progress` (0 = ปิด · 1 = เปิดสุด) ของ Host นี้ตรงบนเธรด UI · ปล่อยนิ้ว = settle(เปิด/ปิด)
 // วาดเป็น View absolute ทับทั้งจอ (Modal ของ RN-web ไม่เรนเดอร์ใน headless) · เปิดอยู่ = ซ่อนปุ่มลอย Lekaa (useLekaaSuppress)
+// 17 พ.ย. (เจ้าของสั่งจากเครื่องจริง: ทีม/ปฏิทิน จัดลำดับได้ · เว้นที่เหนือแถวแรก): ตารางมีช่อง "ทีม" "ปฏิทิน" (ช่องในตัว ./navSystems แบบ "home"
+//   · badge ทีม/ปฏิทิน · ลากจัดได้ · แตะ = จอ native ของโซน + ปิดแผ่น) · ช่อง "home" ชื่อ "Dashboard" ไอคอน grid
+//   ตารางเว้นที่เหนือแถวแรก GRID_TOP (badge ของช่องแถวแรกเคยโดน ScrollView ตัดขอบบน · รวมตอนช่องถูกยกขยาย 1.18 ในโหมดจัดลำดับ)
+//   ข้อความ "ยังไม่ได้เปิดระบบ" = ไม่มีช่องที่เป็นระบบของร้าน (ไม่นับช่องในตัว)
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { BackHandler, Pressable, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { useRouter } from "expo-router";
@@ -32,7 +36,7 @@ import { useLekaaSuppress } from "@/src/components/lekaa/core";
 import { useAuth } from "@/src/lib/auth-context";
 import { BIZ_SETTING_ROLES } from "@/src/api/secretary";
 import { BizIcon, SecTopBar, badgeText, type SecTopBarProps } from "./SecTopBar";
-import { loadNavSystems, saveNavOrder, setLiveOrder, useNavTiles, type NavTile } from "./navSystems";
+import { BUILTIN_KEYS, loadNavSystems, saveNavOrder, setLiveOrder, useNavTiles, type NavTile } from "./navSystems";
 import { useOpenSystem } from "./openSystem";
 import { useT, type I18nKey } from "@/src/i18n";
 import { glassStyle, shadow, useTheme } from "@/src/theme/index";
@@ -403,7 +407,7 @@ function TopPanel({
                       <Icon name="rotate-cw" size={16} color={c.iconDim} />
                     </Pressable>
                   ) : null}
-                  {loaded && tiles.length <= 1 ? <Text style={[styles.meta, styles.state, { color: c.textMuted }]}>{t("sec.sheet.empty")}</Text> : null}
+                  {loaded && tiles.every((x) => BUILTIN_KEYS.includes(x.key)) ? <Text style={[styles.meta, styles.state, { color: c.textMuted }]}>{t("sec.sheet.empty")}</Text> : null}
                   {saveErr ? (
                     <Text testID="sec-sheet-save-error" style={[styles.meta, styles.state, { color: c.bad.fg }]}>
                       {t("sec.panel.saveFail")}
@@ -470,6 +474,8 @@ const CELL_H = 80;
 const STRIDE = 94;
 const ICON = 56;
 const LONG_PRESS_MS = 350;
+/** ที่ว่างเหนือแถวแรก (17 พ.ย.): badge อยู่เหนือไอคอน 5 · ตอนยกขยาย 1.18 ขึ้นไปอีก ~5 ⇒ ≥ 12 ไม่โดนขอบ ScrollView ตัด */
+const GRID_TOP = 14;
 
 function SystemGrid({ tiles, reorder, onReorder, onOpen }: { tiles: NavTile[]; reorder: boolean; onReorder: () => void; onOpen: (x: NavTile) => void }) {
   const { c } = useTheme();
@@ -659,9 +665,9 @@ const styles = StyleSheet.create({
   round: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   done: { paddingHorizontal: 18, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center" },
   doneT: { fontSize: T.sub, fontWeight: "700" },
-  lb: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 18, marginBottom: 12, marginHorizontal: 4 },
+  lb: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 18, marginBottom: 8, marginHorizontal: 4 },
   lbT: { fontSize: T.cap, fontWeight: "700", lineHeight: 18 },
-  grid: { position: "relative" },
+  grid: { position: "relative", marginTop: GRID_TOP },
   tile: { position: "absolute", left: 0, top: 0, height: CELL_H, alignItems: "center" },
   tileIn: { alignItems: "center", gap: 6 },
   tileIc: { width: ICON, height: ICON, borderRadius: 18, alignItems: "center", justifyContent: "center" },

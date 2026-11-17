@@ -60,15 +60,25 @@ export function navSystems(
 
 /** คีย์ช่อง "หน้าหลัก" (/app) ของแอป — ไม่อยู่ในทะเบียน (เมนูเว็บมีหน้าหลักแยก) แต่จัดลำดับร่วมกับระบบได้บนแถบบนแอป (topbar2) */
 export const NAV_HOME_KEY = "home";
+// 17 พ.ย. (เจ้าของสั่งจากเครื่องจริง: ทีม/ปฏิทิน จัดลำดับได้ · เว้นที่เหนือแถวแรก): ปุ่มโซน "ทีม" (/secretary/staff) และ "ปฏิทิน" (/secretary/calendar)
+//   ของแอปเป็นช่องในลำดับเดียวกับระบบ (แบบเดียวกับ "home" · ไม่อยู่ในทะเบียน/เมนูเว็บ) · ทุกคนในร้านมี 2 ช่องนี้ (ปุ่มโซนเดิมไม่กรองตามบทบาท)
+export const NAV_TEAM_KEY = "team";
+export const NAV_CAL_KEY = "calendar";
+/** ช่องที่ "ขึ้นหน้าสุด" เมื่อลำดับที่บันทึกไม่มี (ผู้ใช้เดิมก่อน 17 พ.ย. = ทีม ปฏิทิน อยู่หน้าเหมือนปุ่มโซนเดิม · ไม่มีอะไรขยับจนผู้ใช้จัดเอง) */
+export const NAV_FRONT_KEYS: readonly string[] = [NAV_TEAM_KEY, NAV_CAL_KEY];
 
 /**
  * ลำดับของผู้ใช้ (แถบบนแอปเลขา · topbar2 17 พ.ย. · pure) — คีย์ที่บันทึกไว้ก่อนตามลำดับที่บันทึก
  * คีย์ที่บันทึกแต่ไม่มีแล้ว (ระบบถูกปิด/ลบ) = ไม่สน · ระบบที่ยังไม่อยู่ในลำดับ (เปิดใหม่) = ต่อท้ายตามลำดับทะเบียน
- * `keys` = ลำดับทะเบียน (เช่น ["home", ...navSystems().key]) · คืนรายการคีย์ครบชุดเดียวกับ `keys`
+ * ยกเว้น `front` (ปริยาย ทีม ปฏิทิน): ที่ยังไม่อยู่ในลำดับที่บันทึก = ขึ้น "หน้าสุด" ตามลำดับของ `front` (17 พ.ย.)
+ * `keys` = ลำดับทะเบียน (เช่น ["team", "calendar", "home", ...navSystems().key]) · คืนรายการคีย์ครบชุดเดียวกับ `keys`
+ * 🔴 แอป (apps/mobile/src/components/secretary/navSystems.ts `fullOrder`) ใช้กติกาเดียวกัน — แก้ที่หนึ่งต้องแก้อีกที่
  */
-export function orderNavKeys(keys: readonly string[], saved: readonly string[]): string[] {
+export function orderNavKeys(keys: readonly string[], saved: readonly string[], front: readonly string[] = NAV_FRONT_KEYS): string[] {
   const have = new Set(keys);
+  const kept = new Set(saved);
   const out: string[] = [];
+  for (const k of front) if (have.has(k) && !kept.has(k) && !out.includes(k)) out.push(k);
   for (const k of saved) if (have.has(k) && !out.includes(k)) out.push(k);
   for (const k of keys) if (!out.includes(k)) out.push(k);
   return out;
