@@ -106,7 +106,7 @@ export const dark: Palette = {
   // ไอคอนกิจการวงกลม (BizIcon · bizsheet4): ชุดสีพื้นเมื่อร้านไม่ได้ตั้งสีแบรนด์ (เลือกตามชื่อ คงที่ต่อร้าน) · ตัวอักษร · เงาลูกศรเล็ก — ย้ายจาก SecTopBar (17 พ.ย. · ห้ามสีฝังในคอมโพเนนต์)
   biz: { palette: ["#1E7A8F", "#E07A1F", "#5B5FD6", "#2F9E5B", "#C2456B", "#8A5CD1", "#B8860B", "#3A7BD5"], fg: "#FFFFFF", chevShadow: "#000000" },
   // แผ่นดึงลงจากแถบบน (topbar2 จอ 2–4): พื้นแผ่น · เงา · กรอบเส้นประของช่องที่จะวาง · เงาไอคอนที่ยก · ลิงก์ "จัดลำดับ" · ขอบจางของแถบเลื่อน · ปุ่มกลมบนแถบ
-  topPanel: { bg: "#1a1a22", shadow: "0px 18px 40px rgba(0,0,0,0.55)", slot: "rgba(255,255,255,0.3)", lift: "0px 14px 26px rgba(0,0,0,0.6)", link: "#a3abff", fade: "rgba(14,14,21,0)", fadeTo: "#0e0e15", btn: "rgba(255,255,255,0.1)", btnShadow: "0px 2px 8px rgba(0,0,0,0.3)" },
+  topPanel: { panelFade: "rgba(26,26,34,0)", bg: "#1a1a22", shadow: "0px 18px 40px rgba(0,0,0,0.55)", slot: "rgba(255,255,255,0.3)", lift: "0px 14px 26px rgba(0,0,0,0.6)", link: "#a3abff", fade: "rgba(14,14,21,0)", fadeTo: "#0e0e15", btn: "rgba(255,255,255,0.1)", btnShadow: "0px 2px 8px rgba(0,0,0,0.3)" },
   divider: "rgba(255,255,255,0.14)",
   orb: {
     hi: "rgba(255,255,255,0.95)",

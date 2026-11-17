@@ -33,7 +33,7 @@ import { Icon, IconBtn, type IconName } from "@/src/components/airy";
 import { useAuth } from "@/src/lib/auth-context";
 import { useCustomersAccess, useZoneBadgeCounts } from "@/src/api/secretary";
 import { useT, type I18nKey } from "@/src/i18n";
-import { F, bgImage, glassStyle, linear, shadow, useTheme, type ZoneKey } from "@/src/theme/index";
+import { F, bgImage, linear, shadow, useTheme, zoneColor, type ZoneKey } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
 import { useBusinessSwitcher } from "./BusinessSwitcherSheet";
 import { activeTileKey, useNavTiles, type NavTile } from "./navSystems";
@@ -148,17 +148,14 @@ export function SecTopBar(props: SecTopBarProps) {
     const n = badgeText(x.badge);
     return (
       <View key={x.key} style={styles.slot}>
-        <Pressable
+        <StripBtn
           testID={`sec-top-sys-${x.key}`}
-          accessibilityRole="button"
-          accessibilityLabel={n ? `${x.label} · ${t("sec.sheet.unread", { n: x.badge })}` : x.label}
-          accessibilityState={{ selected: on }}
-          hitSlop={4}
+          icon={x.icon}
+          color={x.fg}
+          on={on}
+          label={n ? `${x.label} · ${t("sec.sheet.unread", { n: x.badge })}` : x.label}
           onPress={() => openSystem(x.href, x.code)}
-          style={[styles.btn, on ? [{ backgroundColor: c.accent }, shadow(c.glass.shadow)] : glassStyle(c, size.iconBtn / 2)]}
-        >
-          <Icon name={x.icon} color={on ? c.onAccent : x.fg} />
-        </Pressable>
+        />
         {n ? (
           <View testID={`sec-top-sys-${x.key}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
             <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
@@ -189,7 +186,7 @@ export function SecTopBar(props: SecTopBarProps) {
                 const on = !helpOn && zone === "calendar";
                 return (
                   <View key="calendar" style={styles.slot}>
-                    <IconBtn testID="sec-top-calendar" icon="calendar" zone="secretary" on={on} label={t("cal.zone")} onPress={() => router.navigate("/secretary/calendar")} />
+                    <StripBtn testID="sec-top-calendar" icon="calendar" on={on} label={t("cal.zone")} onPress={() => router.navigate("/secretary/calendar")} />
                     {n ? (
                       <View testID="sec-top-calendar-badge" pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
                         <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
@@ -200,10 +197,10 @@ export function SecTopBar(props: SecTopBarProps) {
               }
               return (
                 <View key={z.zone} style={styles.slot}>
-                  <IconBtn
+                  <StripBtn
                     testID={`sec-top-${z.zone}`}
                     icon={z.icon}
-                    zone={z.zone as ZoneKey}
+                    onBg={zoneColor(c, z.zone as ZoneKey)}
                     on={!helpOn && z.zone === zone}
                     label={t(z.label)}
                     onPress={() => router.navigate(z.path)}
@@ -217,10 +214,10 @@ export function SecTopBar(props: SecTopBarProps) {
               );
             })}
             {tiles.map(sysBtn)}
-            <IconBtn testID="sec-top-help" icon="help-circle" on={helpOn} label={t("sec.top.help")} onPress={helpOn ? undefined : () => router.push("/secretary/help")} />
+            <StripBtn testID="sec-top-help" icon="help-circle" on={helpOn} label={t("sec.top.help")} onPress={helpOn ? undefined : () => router.push("/secretary/help")} />
           </ScrollView>
-          {fadeL ? <View testID="sec-top-fade-l" pointerEvents="none" style={[styles.fade, styles.fadeL, bgImage(linear(c.topPanel.fade, c.topPanel.fadeTo, 270))]} /> : null}
-          {fadeR ? <View testID="sec-top-fade-r" pointerEvents="none" style={[styles.fade, styles.fadeR, bgImage(linear(c.topPanel.fade, c.topPanel.fadeTo, 90))]} /> : null}
+          {fadeL ? <View testID="sec-top-fade-l" pointerEvents="none" style={[styles.fade, styles.fadeL, bgImage(inPanel ? linear(c.topPanel.panelFade, c.topPanel.bg, 270) : linear(c.topPanel.fade, c.topPanel.fadeTo, 270))]} /> : null}
+          {fadeR ? <View testID="sec-top-fade-r" pointerEvents="none" style={[styles.fade, styles.fadeR, bgImage(inPanel ? linear(c.topPanel.panelFade, c.topPanel.bg, 90) : linear(c.topPanel.fade, c.topPanel.fadeTo, 90))]} /> : null}
         </View>
         {plus ? (
           <IconBtn
@@ -237,6 +234,25 @@ export function SecTopBar(props: SecTopBarProps) {
         ) : null}
       </View>
     </GestureDetector>
+  );
+}
+
+/** ปุ่มกลมบนแถบเลื่อน (แบบ topbar2 .btn): พื้นขาวเงาบาง (เงากระจกเดิมฟุ้ง 30px โดนขอบแถบเลื่อนตัดเป็นแผ่นเทา) · `on` = ทึบเข้ม (หรือสีโซน) ไอคอนขาว */
+function StripBtn({ testID, icon, color, on = false, onBg, label, onPress }: { testID: string; icon: IconName; color?: string; on?: boolean; onBg?: string; label: string; onPress?: () => void }) {
+  const { c } = useTheme();
+  const bg = onBg ?? c.accent;
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: on }}
+      hitSlop={4}
+      onPress={onPress}
+      style={[styles.btn, { backgroundColor: on ? bg : c.topPanel.btn }, shadow(c.topPanel.btnShadow)]}
+    >
+      <Icon name={icon} color={on ? (onBg ? c.zone.onZone : c.onAccent) : (color ?? c.icon)} />
+    </Pressable>
   );
 }
 
@@ -314,8 +330,8 @@ export function TenantTitle({ onPress, big = false, testID }: { onPress?: () => 
 const styles = StyleSheet.create({
   // topbar2: [กิจการ] + แถบเลื่อน (ปุ่มกลม 44 ห่าง 6 · แบบ .btn/.in gap 6) + [+] · ขอบจาง 34
   bar: { height: 52, flexDirection: "row", alignItems: "center", gap: 6 },
-  stripBox: { flex: 1, minWidth: 0, alignSelf: "stretch", justifyContent: "center" },
-  strip: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 4, paddingRight: 4, paddingLeft: 2 },
+  stripBox: { flex: 1, minWidth: 0, alignSelf: "stretch", justifyContent: "center", marginVertical: -8 },
+  strip: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 12, paddingRight: 4, paddingLeft: 2 },
   slot: { width: size.iconBtn, height: size.iconBtn },
   btn: { width: size.iconBtn, height: size.iconBtn, borderRadius: size.iconBtn / 2, alignItems: "center", justifyContent: "center" },
   fade: { position: "absolute", top: 0, bottom: 0, width: 34 },

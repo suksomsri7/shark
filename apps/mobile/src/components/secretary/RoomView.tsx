@@ -490,7 +490,7 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
         const who = people.get(m.authorId ?? "");
         node = <MemberBubble msg={m} name={who?.name ?? t("sec.room.someone")} role={who?.role ? roleLabel(t, who.role) : null} testID={MEMBER_BUBBLE_ID} />;
       } else if (m.role === "assistant" && pc && pc.state === "ASKED" && pc.askId === m.id) {
-        node = <ContextConfirmCard text={m.content} label={pc.label} busy={ctxBusy} note={ctxNote} onAnswer={(yes) => void answerCtx(yes)} />;
+        node = <ContextConfirmCard text={m.content} label={pc.label} entityType={pc.entityType} busy={ctxBusy} note={ctxNote} onAnswer={(yes) => void answerCtx(yes)} />;
       } else {
         const ref = m.role === "assistant" && pc && pc.refIds.includes(m.id) ? <PageRefChip label={pc.label} /> : undefined;
         node = <Bubble msg={m} mine={mine} authorName={null} testID="sec-room-bubble" footer={ref} />;

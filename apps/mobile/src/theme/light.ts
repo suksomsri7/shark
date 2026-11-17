@@ -110,7 +110,7 @@ export const light = {
   // ไอคอนกิจการวงกลม (BizIcon · bizsheet4): ชุดสีพื้นเมื่อร้านไม่ได้ตั้งสีแบรนด์ (เลือกตามชื่อ คงที่ต่อร้าน) · ตัวอักษร · เงาลูกศรเล็ก — ย้ายจาก SecTopBar (17 พ.ย. · ห้ามสีฝังในคอมโพเนนต์)
   biz: { palette: ["#1E7A8F", "#E07A1F", "#5B5FD6", "#2F9E5B", "#C2456B", "#8A5CD1", "#B8860B", "#3A7BD5"], fg: "#FFFFFF", chevShadow: "#000000" },
   // แผ่นดึงลงจากแถบบน (topbar2 จอ 2–4): พื้นแผ่น · เงา · กรอบเส้นประของช่องที่จะวาง · เงาไอคอนที่ยก · ลิงก์ "จัดลำดับ" · ขอบจางของแถบเลื่อน · ปุ่มกลมบนแถบ
-  topPanel: { bg: "#fbfbfd", shadow: "0px 18px 40px rgba(0,0,0,0.2)", slot: "#b9b9c6", lift: "0px 14px 26px rgba(0,0,0,0.28)", link: "#5a5fd6", fade: "rgba(251,251,253,0)", fadeTo: "#fbfbfd", btn: "#ffffff", btnShadow: "0px 2px 8px rgba(0,0,0,0.07)" },
+  topPanel: { panelFade: "rgba(251,251,253,0)", bg: "#fbfbfd", shadow: "0px 18px 40px rgba(0,0,0,0.2)", slot: "#b9b9c6", lift: "0px 14px 26px rgba(0,0,0,0.28)", link: "#5a5fd6", fade: "rgba(251,251,253,0)", fadeTo: "#fbfbfd", btn: "#ffffff", btnShadow: "0px 2px 8px rgba(0,0,0,0.07)" },
   divider: "rgba(150,150,185,0.2)",
   // ลูกแก้ว .ao.o1
   orb: {

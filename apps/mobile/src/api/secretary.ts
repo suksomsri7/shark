@@ -639,7 +639,7 @@ export type RoomDetail = {
   /** Lekaa FAB ▸ หน้าที่เปิดอยู่ตอนสั่ง: ป้าย · สถานะ (ASKED = การ์ดถามใต้ข้อความ askId) · ข้อความเลขาที่อ้าง (refIds → ชิป 📍) · null = ไม่มี */
   pageContext: RoomPageContext | null;
 };
-export type RoomPageContext = { label: string; state: "PENDING" | "ASKED" | "CONFIRMED" | "REJECTED"; askId: string | null; refIds: string[] };
+export type RoomPageContext = { label: string; state: "PENDING" | "ASKED" | "CONFIRMED" | "REJECTED"; askId: string | null; refIds: string[]; entityType: string | null };
 /** Lekaa FAB ▸ หน้าที่ผู้ใช้เปิดอยู่ (จอ native = route + รหัส · หน้าระบบ WebView = ข้อความ page-context ของเว็บ) — label เป็นแค่คำใบ้ */
 export type PageContext = { system?: string; systemId?: string; path?: string; title?: string; route?: string; entity?: { type: string; id: string; label?: string } };
 function pageContextOf(v: unknown): RoomPageContext | null {
@@ -648,7 +648,7 @@ function pageContextOf(v: unknown): RoomPageContext | null {
   if (!label) return null;
   const st = str(o.state).toUpperCase();
   const state = st === "ASKED" || st === "CONFIRMED" || st === "REJECTED" ? st : "PENDING";
-  return { label, state, askId: str(o.askId) || null, refIds: (Array.isArray(o.refIds) ? o.refIds : []).filter((x): x is string => typeof x === "string") };
+  return { label, state, askId: str(o.askId) || null, refIds: (Array.isArray(o.refIds) ? o.refIds : []).filter((x): x is string => typeof x === "string"), entityType: str(o.entityType) || null };
 }
 export function normalizeRoomDetail(v: unknown): RoomDetail {
   const o = rec(rec(v).room ?? v);

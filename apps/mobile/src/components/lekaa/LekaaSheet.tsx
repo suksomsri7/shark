@@ -64,7 +64,8 @@ export function LekaaSheet({ visible, onClose, pageContext }: { visible: boolean
   }, [visible]);
 
   const fullTop = insets.top + 8;
-  const restTop = Math.round(H * (view.kind === "list" ? 0.3 : 0.22));
+  // 17 พ.ย. (ภาพคู่ fab6): ขอบบนตามแบบ — รายการ top 200/844 · ห้อง/งานใหม่ top 120/844
+  const restTop = Math.round(H * (view.kind === "list" ? 0.237 : 0.142));
   const baseTop = full ? fullTop : Math.max(restTop, fullTop);
   const top = useRef(new Animated.Value(baseTop)).current;
   useEffect(() => {

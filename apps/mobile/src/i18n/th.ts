@@ -1316,6 +1316,8 @@ const th = {
   "lekaa.deleteErr": "ลบงานไม่สำเร็จ ลองใหม่อีกครั้ง",
   "sec.ctx.yes": "ใช่ {label}",
   "sec.ctx.no": "ไม่ใช่",
+  "sec.ctx.yesDoc": "ใช่ ใบนี้",
+  "sec.ctx.yesThis": "ใช่ อันนี้",
   "sec.ctx.ref": "📍 อ้างอิง: {label}",
   "sec.ctx.err": "ส่งคำตอบไม่สำเร็จ ลองใหม่อีกครั้ง",
   "sec.inbox.notYours": "งานนี้เป็นของคนอื่น — อนุมัติหรือตีกลับจากรายการนี้ได้เลย",

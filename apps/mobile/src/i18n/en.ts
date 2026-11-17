@@ -1314,6 +1314,8 @@ const en: Record<I18nKey, string> = {
   "lekaa.deleteErr": "Couldn't delete the task — try again",
   "sec.ctx.yes": "Yes, {label}",
   "sec.ctx.no": "No",
+  "sec.ctx.yesDoc": "Yes, this document",
+  "sec.ctx.yesThis": "Yes, this one",
   "sec.ctx.ref": "📍 Ref: {label}",
   "sec.ctx.err": "Couldn't send your answer — try again",
   "sec.inbox.notYours": "This task belongs to someone else — approve or send it back from this list",
