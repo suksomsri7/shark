@@ -648,6 +648,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
           </Link>
         </div>
 
+        {/* HR VIS-5c ▸ บรรทัดเตือน "ยังไม่ระบุสาขาประจำ N คน" (H1.1 R8) = hr.people.unitPrompt (สองภาษา) ◂ */}
         {showBranches && unassigned > 0 && (
           <p data-testid="hr-register-unit-prompt" role="note" className={`text-xs ${muted}`}>
             {t("unitPrompt", { n: unassigned })}
