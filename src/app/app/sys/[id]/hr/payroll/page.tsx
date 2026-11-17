@@ -24,7 +24,6 @@ import { syncAttendanceDeductionsAction } from "@/lib/modules/hr/attendance-pay-
 // HR VIS-5a ▸ one page, sub-views ?view= (run · hours · adjust · profiles · docs · ytd · history) — nav shows a view only when an existing gate of its sections passes ◂
 import { PAY_VIEWS, payViewOf, type PayView } from "@/lib/modules/hr/pay-run-view";
 import { canViewPayroll } from "@/lib/core/rbac";
-import { hrViewerOf } from "@/lib/modules/hr/privacy";
 import { canReadWorkEntries } from "@/lib/modules/hr/work-entries";
 import { canRequestStockCharge, canSeeStockCharges } from "@/lib/modules/hr/stock-charge";
 import { canUseBankFiles } from "@/lib/modules/hr/bank-files/service";
