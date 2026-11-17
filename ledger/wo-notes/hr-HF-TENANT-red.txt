@@ -1,0 +1,36 @@
+[env] qc-hr-hf-tenant · ไฟล์ .env.qc-hf · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+⚠️  QC_FORCE=1 — hr-target.ts ยังไม่มี (คาด: T*/C3/M1/M2 แดงตามเหตุผล · C1/C2 เขียว)
+
+
+fixture qc-hr-hft-mwkyq3lh · A=cmwkyq3ma0000zkkzgu1hwi8e B=cmwkyq3mo0001zkkzyta22o09 SA=cmwkyq3qi000ezkkzey7i31ur U=cb38364a65f6ebc96c1cfbf1d
+  ❌ [M1] ดัชนีใหม่ HrSalaryProfile_tenantId_systemId_employeeId_key / HrPayrollRun_tenantId_systemId_periodKey_key (unique เต็ม คอลัมน์ตรง) · ไม่มีชื่อเก่า
+      ↳ new profile=ไม่มี · new run=ไม่มี · old=HrPayrollRun_systemId_periodKey_key,HrSalaryProfile_systemId_employeeId_key
+  ✅ [M3] ซ้ำในร้าน A เอง (โปรไฟล์ eA1 · รอบ P1) ยังได้ P2002
+  ❌ [M2] มีแถวตกค้าง (B,SA,eA2)/(B,SA,P2) แล้วเจ้าของ A ยังตั้งโปรไฟล์ eA2 + สร้างรอบ P2 ผ่านปุ่มจริงได้
+      ↳ setProfile=X:P2002: Invalid `tenantDb(ctx).hrSalaryProfile.create()` invocation in /root/projects/shark-hr-hf/src/lib/modules/hr/payroll.ts → null · createRun=X:P2002: Invalid `tx.hrPayrollRun.create()` invocation in /root/projects/shark-hr-hf/src/lib/modules/hr/payroll.ts:427:39 424 {  → null
+  ✅ [M4] แถวตกค้าง (โปรไฟล์/รอบ/พนักงานของ B บน SA) อยู่ครบค่าเดิม
+  ✅ [M5] drift: schema ↔ ฐาน ไม่มีตาราง Hr* ต่าง (ฐานของ main ต่างอยู่แล้ว 1 จุด DormUtilityRate NULLS NOT DISTINCT = ค่าฐาน)
+  ✅ [C1] เจ้าของ A + พนักงานเงินเดือน A ขับ 14 ปุ่มด้วยฟอร์มครบ ถึงการเขียนจริงทุกปุ่ม
+  ✅ [C2] ระบบตัวเอง + runId ไม่มีจริง: approve / reverse / markPaid ยังเขียน audit การปฏิเสธ 1 แถว/ครั้ง ไม่เขียนอื่น
+  ❌ [C3] ระบบตัวเอง + employee ไม่มีจริง บน setSalaryProfile ไม่เขียน (เปลี่ยนพฤติกรรมโดยตั้งใจ → แดงก่อนแก้)
+      ↳ R:null Δ=HrSalaryProfile:A
+  ❌ [T1] setSalaryProfile ข้ามร้าน (XO, XP × SA{ไม่มี emp, eA2, eA1} / U / SN) ไม่เขียนอะไร
+      ↳ 16 จุด: setProfile|XO|emp=ghost@SA: Δ=HrSalaryProfile:B,crossSA R:null | setProfile|XO|emp=ghost@U: Δ=HrSalaryProfile:B R:null | setProfile|XO|emp=ghost@SN: Δ=HrSalaryProfile:B R:null | setProfile|XO|emp=eA2@SA: Δ=HrSalaryProfile:B R:null | setProfile|XO|emp=eA2@U: Δ=HrSalaryProfile:B R:null | setProfile|XO|emp=eA2@SN: Δ=HrSalaryProfile:B R:null | …
+  ❌ [T2] createPayrollRun ข้ามร้าน (มีโปรไฟล์ตกค้างบน SA) ไม่เกิดรอบ/items · U / SN ไม่เขียน
+      ↳ 3 จุด: createRun|XO@SA: Δ=HrPayrollItem:B,HrPayrollRun:B,crossSA R:null | createRun|XO@U: Δ=HrPayrollItem:B,HrPayrollRun:B R:null | createRun|XO@SN: Δ=HrPayrollItem:B,HrPayrollRun:B R:null
+  ❌ [T3] approve / reverse / markPaid ข้ามร้าน (runId rA1 · rA2 · รอบตกค้าง) บน SA / U / SN ไม่มี AuditLog / outbox / ไม่แตะรอบ
+      ↳ 54 จุด: approve|XO|rA1@SA: Δ=AuditLog:B R:null | approve|XO|rA1@U: Δ=AuditLog:B R:null | approve|XO|rA1@SN: Δ=AuditLog:B R:null | markPaid|XO|rA1@SA: Δ=AuditLog:B R:null | markPaid|XO|rA1@U: Δ=AuditLog:B R:null | markPaid|XO|rA1@SN: Δ=AuditLog:B R:null | …
+  ❌ [T4] request / decide / cancel adjustment ข้ามร้าน ไม่เขียน/ไม่ลบ · คำตอบของ SA = คำตอบของ U
+      ↳ 14 จุด: requestAdj|XO|fB|BONUS@SA: Δ=HrPayAdjustment:B,crossSA R:{"status":"ok","message":"ยื่นแล้ว 5,000 บาท — รออนุมัติ"} | requestAdj|XP|fB|BONUS@SA: Δ=HrPayAdjustment:B,crossSA R:{"status":"ok","message":"ยื่นแล้ว 5,000 บาท — รออนุมัติ"} | decideAdj|XO|res1@SA: Δ=AuditLog:B,HrPayAdjustment:B R:{"ok":true} | decideAdj|XO|res2@SA: Δ=AuditLog:B,HrPayAdjustment:B R:{"ok":true} | cancelAdj|XP|res1@SA: Δ=AuditLog:B,HrPayAdjustment:B,crossSA R:{"ok":true} | cancelAdj|XP|res2@SA: Δ=AuditLog:B,HrPayAdjustment:B,crossSA R:{"ok":true} | …
+  ❌ [T5] พนักงาน 4 ปุ่ม (create / update / remove / restore) ข้ามร้าน ไม่มี HrEmployee / Party
+      ↳ 9 จุด: createEmp|XO@SA: Δ=HrEmployee:B,Party:B,crossSA R:null | createEmp|XO@U: Δ=HrEmployee:B R:null | createEmp|XO@SN: Δ=HrEmployee:B R:null | createEmp|XP@SA: Δ=HrEmployee:B,Party:B,crossSA R:null | createEmp|XP@U: Δ=HrEmployee:B R:null | createEmp|XP@SN: Δ=HrEmployee:B R:null | …
+  ❌ [T6] ทุกปุ่ม: ผลของ SA = U = SN (คำตอบ + ชุดตารางที่เปลี่ยน) ต่อผู้กด/ฟอร์มเดียวกัน
+      ↳ 23/52 ไม่เท่ากัน: setProfile|XO|emp=ghost: SA=R:null Δ[HrSalaryProfile,crossSA] · U=R:null Δ[HrSalaryProfile] · SN=R:null Δ[HrSalaryProfile] | setProfile|XO|emp=eA1: SA=X:P2002: Invalid `tenantDb(ctx).hrSalaryProfile.create()` invocation in /root/projects/shark-hr-hf/src/lib/modules/hr/payroll.ts Δ[] · U=R:null Δ[HrSalaryProfile] · SN=R:null Δ[HrSalaryProfile] | setProfile|XP|emp=eA1: SA=X:P2002: Invalid `tenantDb(ctx).hrSalaryProfile.create()` invocation in /root/projects/shark-hr-hf/src/lib/modules/hr/payroll.ts Δ[] · U=R:null Δ[HrSalaryProfile] · SN=R:null Δ[HrSalaryProfile] | createRun|XO: SA=R:null Δ[HrPayrollItem,HrPayrollRun,crossSA] · U=R:null Δ[HrPayrollItem,HrPayrollRun] · SN=R:null Δ[HrPayrollItem,HrPayrollRun] | approve|XO|resRun: SA=R:null Δ[AuditLog,HrPayrollRun] · U=R:null Δ[AuditLog] · SN=R:null Δ[AuditLog]
+  ❌ [T8] clock + requestLeave บน SA / U / SN ไม่เขียน HrAttendance / HrLeave / outbox
+      ↳ 12 จุด: clock|XP|fB@SA: Δ=HrAttendance:B,crossSA R:null | requestLeave|XO|fB@SA: Δ=HrLeave:B,OutboxEvent:B,crossSA R:null | clock|XP|fB@U: Δ=HrAttendance:B R:null | requestLeave|XO|fB@U: Δ=HrLeave:B,OutboxEvent:B R:null | clock|XP|fB@SN: Δ=HrAttendance:B R:null | requestLeave|XO|fB@SN: Δ=HrLeave:B,OutboxEvent:B R:null | …
+  ❌ [T7] [static] 14 ปุ่มเรียก hrTargetOwned ก่อน await อื่น (ยกเว้น requireTenant) + คำปฏิเสธตาม §1 · hr-target.ts ไม่มี "use server" · blob = V2 · ไม่ re-export
+      ↳ setSalaryProfileAction: await แรก (นอก requireTenant) = setSalaryProfile · createPayrollRunAction: await แรก (นอก requireTenant) = createPayrollRun · approvePayrollRunAction: await แรก (นอก requireTenant) = approveRun · reverseRunAction: await แรก (นอก requireTenant) = reverseRun · markPaidAction: await แรก (นอก requireTenant) = markPaid · requestAdjustmentAction: await แรก (นอก requireTenant) = requestAdjustment · decideAdjustmentAction: await แรก (นอก requireTenant) = decideAdjustment · cancelAdjustmentAction: await แรก (นอก requireTenant) = cancelAdjustment · createEmployeeAction: await แรก (นอก requireTenant) = createEmployee · updateEmployeeAction: await แรก (นอก requireTenant) = updateEmployee · removeEmployeeAction: await แรก (นอก requireTenant) = setEmployeeActive · restoreEmployeeAction: await แรก (นอก requireTenant) = setEmployeeActive · clockAction: await แรก (นอก requireTenant) = clock · requestLeaveAction: await แรก (นอก requireTenant) = requestLeave · src/lib/modules/hr/hr-target.ts ไม่มี · src/lib/modules/hr/payroll-actions.ts: ไม่มี import { hrTargetOwned } from "./hr-target" · src/lib/modules/hr/actions.ts: ไม่มี import { hrTargetOwned } from "./hr-target"
+  ✅ [Z1] คืนสภาพ: ร้าน/ผู้ใช้ qc-hr-hft-* ของรอบนี้ถูกลบ · แถวที่มี tenantId/systemId ของร้านเหล่านั้น = 0 · sequence เลขสมุดบัญชี = 0
+
+❌ qc-hr-hf-tenant [full] — 6/17 ผ่าน · ตก: M1, M2, C3, T1, T2, T3, T4, T5, T6, T8, T7
+JSON_SUMMARY {"suite":"qc-hr-hf-tenant","mode":"full","total":17,"passed":6,"failed":["M1","M2","C3","T1","T2","T3","T4","T5","T6","T8","T7"],"crashed":false,"registered":17}
