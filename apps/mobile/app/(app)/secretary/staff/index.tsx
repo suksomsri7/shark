@@ -266,7 +266,7 @@ export default function TeamListScreen() {
 
       {plusMenu ? (
         <View testID="team-plus-menu" style={StyleSheet.absoluteFill}>
-          <Pressable testID="team-plus-menu-dim" accessibilityRole="button" accessibilityLabel={t("team.menu.close")} onPress={() => setPlusMenu(false)} style={[StyleSheet.absoluteFill, { backgroundColor: c.dim }]} />
+          <Pressable testID="team-plus-menu-dim" accessibilityRole="button" accessibilityLabel={t("team.menu.close")} onPress={() => setPlusMenu(false)} style={[StyleSheet.absoluteFill, styles.dimFull, { backgroundColor: c.dim }]} />
           <View style={[styles.menu, { top: menuTop, backgroundColor: c.surface }, shadow(c.tabShadow)]}>
             <Pressable testID="team-menu-add" accessibilityRole="button" onPress={() => go("/secretary/team/add")} style={styles.mi}>
               <Icon name="user-plus" size={20} color={c.zone.team} />
@@ -322,4 +322,6 @@ const styles = StyleSheet.create({
   miT: { fontSize: T.sub + 1, fontWeight: "700", lineHeight: 21 },
   miS: { fontSize: T.cap, lineHeight: 17, marginTop: 1 },
   miLine: { height: StyleSheet.hairlineWidth, marginHorizontal: 12 },
+  // พื้นมืดคลุมถึงแถบสถานะ (team4 จอ 2 มืดทั้งจอ) — AiryScreen เว้นบน ≥ 47 · ล้นขึ้นไปได้ (root ตัดขอบเอง)
+  dimFull: { top: -120, bottom: -60 },
 });

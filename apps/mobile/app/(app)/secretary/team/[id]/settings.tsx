@@ -234,7 +234,9 @@ export default function TeamGroupSettingsScreen() {
                   sub={subOf(m)}
                   right={
                     admin && !m.me ? (
-                      <IconBtn testID="team-gs-more" icon="more-horizontal" label={t("team.gs.more", { name: m.name })} onPress={() => setActOn(m)} />
+                      <Pressable testID="team-gs-more" accessibilityRole="button" accessibilityLabel={t("team.gs.more", { name: m.name })} hitSlop={10} onPress={() => setActOn(m)} style={styles.more}>
+                        <Icon name="more-horizontal" size={20} color={c.textMuted} />
+                      </Pressable>
                     ) : undefined
                   }
                 />
@@ -336,4 +338,6 @@ const styles = StyleSheet.create({
   main: { flex: 1.6 },
   btnT: { fontSize: T.sub + 1, fontWeight: "600" },
   addList: { maxHeight: 420, marginBottom: 12 },
+  // ⋯ ต่อคน (team4 จอ 5): จุดสามจุดเทาเปล่า ไม่มีวงปุ่ม
+  more: { marginLeft: "auto", paddingHorizontal: 4, paddingVertical: 6 },
 });
