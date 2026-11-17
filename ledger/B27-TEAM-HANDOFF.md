@@ -1,5 +1,40 @@
 # B27 TEAM CHAT — handoff (15 Nov 2026 · continued 17 Nov 2026)
 
+## ▶ 17 Nov 2026 — customer chat: AI suggest / translation switches in the app + ✨ button (owner approved)
+- Why: the owner could not find "แปล" / "แปลแล้วส่ง" / the draft card in the app. Both features are off by default per chat system,
+  and the only switch was on the web.
+- Server (commit `46f9e223b`):
+  - `src/lib/modules/chat/ai-settings.ts` is the one reader/writer of `ChatSetting.aiSuggestEnabled/translateEnabled/staffLang`.
+    If the row is missing, it is created only after checking that the system belongs to the tenant.
+  - The web `setChatAiSettingsAction` now calls it, with the same permission key, form fields and staffLang rule.
+  - `CHAT_SETTING_ACTION` (= `chat.setting.setMemberSystem`) is in `guard-keys.ts`.
+  - New `GET/PUT /api/mobile/inbox/ai-settings`. Gate READ; editing needs `CHAT_SETTING_ACTION` (403 Thai otherwise); zod strict;
+    staffLang must be one of the web form's 8 codes (th en cn ja ko de fr ru); 30/min; `withErrors`. Documented in `docs/api/SECRETARY-API.md`.
+  - `conversations/[id]`: `can.aiSuggest` = key `chat.ai.suggest` **AND** the shop's `aiSuggestEnabled` (same as `can.translate`).
+    Consumers checked: the app room (auto-fetch uses `!== false`, unchanged; ✨ uses `=== true`), `states-sec.mjs` fixture, `qc-sec-s1.14c` C-1 (updated deliberately).
+- App (commit `b23a4b21c`):
+  - `secretary/settings/customers.tsx` › `InboxSettings` has a new section "AI และการแปลภาษา" (first, above channels):
+    switches, 8 language chips, a per-use cost line, and read-only (dimmed + one line) when `canEdit` is false. Saves on tap.
+  - `customers/[id]/index.tsx` has a ✨ button (`cust-draft-ask`) in the input row. It shows when `can.aiSuggest === true`, the user can reply,
+    the message is not an internal note and the reply window is open. Pressing it posts `…/ai-suggest` and shows the existing draft card (spinner while busy);
+    `ok:false` shows the server's reason in `cust-room-note`.
+  - **Composer arrangement:** at 390pt, ＋ 🔒 field ✨ แปลแล้วส่ง send + Lekaa left the text field ~0 wide. "แปลแล้วส่ง" is now a small
+    right-aligned strip above the send button. The input row is ＋ 🔒 field ✨ send + Lekaa; the field is ~95pt, so the Thai placeholder wraps to 2 lines.
+  - i18n th/en: new keys `cust.draft.ask/asking/fail` and `cust.ai.*`. Customer-chat strings now say Lekaa instead of Shark:
+    `cust.draft.title`, `cust.row.aiDraft`, `cust.msg.aiBy`, `cust.msg.aiNoApprover`, `cust.info.askShark`, `cust.ask.title`.
+    Not renamed: the platform name "SHARK" (`cust.info.inShark`) and the after-hours `sec.cust.*` strings (outside this scope).
+  - `qc/buttons-sec.json` regenerated (+ `cust-set-ai*`, `cust-draft-ask`). `clicks-sec.json` was **not** re-run, so it is stale vs the registry.
+- Verified (all through iso.sh):
+  - server `pnpm typecheck` EXIT 0 · mobile `tsc --noEmit` EXIT 0 (run after the last change)
+  - `qc-b27-chat-ai` 22/22 (run 3×, last after the final change) · `qc-sec-s1.14c` 13/13 · `qc-sec-s1.14b` 24/24 · `qc-sec-s3a6-s` 23/23
+  - `qc-chat-translate` 34/34 · `qc-chat-ai-suggest` 44/44 · `qc-chat-inbox-ui` 55/55
+  - screen specs s3a6 / s2.17 / s2.7: only U-1 ← U7.1 red, which is pre-existing (hex in `src/components/secretary/SecAttach.tsx`, not touched)
+  - fitness passes (pre-commit)
+- Renders in `/root/qc/b27-chat/`, light + dark (`shoot-team.mjs` with `FIXTURE=apps/mobile/qc/fixtures/b27-chat/chat.json` / `chat-readonly.json`):
+  - `render-chat-settings*`, `render-chat-room-ask*` (text typed), `render-chat-room-draft*` (after ✨), `render-chat-room-internal*`
+    (no ✨ / no translate strip), `render-chat-settings-readonly*`, `render-chat-room-off*`
+  - Crops: `crop-*.png`. No mockup exists for this, so there are no MOCKUP|RENDER pairs.
+
 ## ▶ 17 Nov 2026 follow-up (owner: permission prompts in Thai AND English · App Store link)
 - iOS permission strings are localized through app config `locales` (`apps/mobile/locales/th.json`, `en.json`, key `ios`) +
   `ios.infoPlist.CFBundleAllowMixedLocalizations: true`. Every usage string the config resolves to has th + en: contacts, photos, camera,
