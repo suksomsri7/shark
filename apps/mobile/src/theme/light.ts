@@ -105,6 +105,10 @@ export const light = {
   sheet: { from: "rgba(255,255,255,0.95)", to: "rgba(248,248,253,0.9)", grab: "#d1d1d6" },
   // Lekaa FAB (15 พ.ย. · แบบ fab6): ปุ่มลอยวงกลมขาว + วงแหวน/เงาม่วงอ่อน · ชิป 📍 อ้างอิงหน้า
   lekaa: { fabBg: "#ffffff", ring: "rgba(124,102,234,0.15)", shadow: "0px 8px 24px rgba(124,102,234,0.35)", refBg: "#eef2ff", refFg: "#2a3a8f", logoRing: "0px 2px 8px rgba(124,102,234,0.25)" },
+  // แถบบน topbar2 (17 พ.ย. · เจ้าของอนุมัติ): สีของแต่ละระบบตามรหัส (fg = ไอคอนบนแถบ/ในแผ่น · bg = พื้นช่องในแผ่น) — ค่าจาก gen.py ของแบบ · รหัสที่แบบไม่มี = สี SYS_LOOK เดิม + พื้นจาง 12%
+  navSys: { HOME: { fg: "#44444c", bg: "#ededf0" }, QUEUE: { fg: "#3b6fd9", bg: "#e8eefc" }, HR: { fg: "#8a5bd6", bg: "#f0eafb" }, CHAT: { fg: "#2f9e5e", bg: "#e6f4ec" }, ACCOUNT: { fg: "#1f8a9a", bg: "#e3f1f3" }, INVENTORY: { fg: "#e08a2b", bg: "#fcefe0" }, CRM: { fg: "#c2416b", bg: "#fae6ec" }, KANBAN: { fg: "#c9951a", bg: "#faf1dc" }, MEMBER: { fg: "#5a5fd6", bg: "#e9eafb" }, COUPON: { fg: "#e5484d", bg: "#fde8e8" }, REWARD: { fg: "#d6458f", bg: "#fbe6f1" }, KB: { fg: "#2a6fd6", bg: "#e5eefb" }, PAGES: { fg: "#66666e", bg: "#ededf0" }, HOTEL: { fg: "#6a4fd8", bg: "#edeafa" }, RESTAURANT: { fg: "#e07a1f", bg: "#fbefe4" }, SHOP: { fg: "#d9488f", bg: "#fae9f2" }, BOOKING: { fg: "#178a99", bg: "#e3f1f3" }, TICKET: { fg: "#c2456b", bg: "#f8e9ed" }, POINT: { fg: "#e08a00", bg: "#fbf1e0" }, MEETING: { fg: "#3a7bd5", bg: "#e7effa" }, POS: { fg: "#e07a1f", bg: "#fbefe4" }, MARKETING: { fg: "#e5484d", bg: "#fce9ea" }, RENTAL: { fg: "#2f9e5b", bg: "#e6f3eb" }, SCHOOL: { fg: "#5b5fd6", bg: "#ebecfa" }, CLINIC: { fg: "#e5484d", bg: "#fce9ea" }, other: { fg: "#666666", bg: "#ededed" } },
+  // แผ่นดึงลงจากแถบบน (topbar2 จอ 2–4): พื้นแผ่น · เงา · กรอบเส้นประของช่องที่จะวาง · เงาไอคอนที่ยก · ลิงก์ "จัดลำดับ" · ขอบจางของแถบเลื่อน · ปุ่มกลมบนแถบ
+  topPanel: { bg: "#fbfbfd", shadow: "0px 18px 40px rgba(0,0,0,0.2)", slot: "#b9b9c6", lift: "0px 14px 26px rgba(0,0,0,0.28)", link: "#5a5fd6", fade: "rgba(251,251,253,0)", fadeTo: "#fbfbfd", btn: "#ffffff", btnShadow: "0px 2px 8px rgba(0,0,0,0.07)" },
   divider: "rgba(150,150,185,0.2)",
   // ลูกแก้ว .ao.o1
   orb: {

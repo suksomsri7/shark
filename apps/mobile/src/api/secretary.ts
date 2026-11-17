@@ -68,6 +68,8 @@ const PATH = {
   "secretary/business/export": "/api/mobile/secretary/business/export",
   // 14 พ.ย. (bizsheet4 ขั้น 2): ระบบของกิจการ active สำหรับตาราง "เปิดระบบ" ในชีตกิจการ — ทะเบียนเดียวกับเมนูเว็บ (navSystems)
   "secretary/systems": "/api/mobile/secretary/systems",
+  // 17 พ.ย. (topbar2): ลำดับไอคอนระบบบนแถบบน "ต่อคน ต่อร้าน" (PUT {keys}) — GET secretary/systems คืน items เรียงแล้ว + `order` (รวม "home")
+  "secretary/systems/order": "/api/mobile/secretary/systems/order",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -192,7 +194,7 @@ type GetMap = {
   "secretary/notify": { prefs?: Partial<Record<string, string>>; kinds?: string[]; modes?: string[] };
   "secretary/account/delete/preview": DeletePreview;
   "secretary/business": BusinessProfileRes;
-  "secretary/systems": { items?: NavSystemRow[] };
+  "secretary/systems": { items?: NavSystemRow[]; order?: string[] };
 };
 type PostMap = {
   // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)
@@ -999,6 +1001,7 @@ type PutMap = {
   "secretary/rules": { body: { key: RuleKey; enabled?: boolean; limitSatang?: number | null }; res: RulesView };
   "secretary/after-hours": { body: Partial<AfterHours>; res: AfterHours };
   "secretary/notify": { body: { kind: NotifyKind; mode: NotifyMode }; res: { prefs?: Partial<Record<string, string>>; scope?: string } };
+  "secretary/systems/order": { body: { keys: string[] }; res: { order?: string[] } };
 };
 /** บันทึกตัวตนเลขา (PUT secretary · ระดับผู้ใช้ — B2 + C1) */
 export function updateSecretary(body: PutMap["secretary"]["body"]): Promise<SecretaryIdentity> {

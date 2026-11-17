@@ -21,12 +21,31 @@ import { useAuth } from "@/src/lib/auth-context";
 import { C, R, S } from "@/src/theme";
 import { BusinessSwitcherHost } from "@/src/components/secretary/BusinessSwitcherSheet";
 import { SecTopBar } from "@/src/components/secretary/SecTopBar";
-import { refreshZoneBadges, useSecretaryZone } from "@/src/api/secretary";
+import { refreshZoneBadges, useSecretaryZone, type PageContext } from "@/src/api/secretary";
+import { useLekaaPageContext } from "@/src/components/lekaa/core";
 
 // M3.11 — จอ native อื่น (สรุปสมาชิก: ใช้สิทธิ์/ให้แต้ม/ออก voucher) ขอให้เปิดหน้าเว็บของร้านใน WebView นี้
 // ด้วย `?open=/app/...&t=<nonce>` · รับเฉพาะพาธใต้ /app ของโดเมนเดียวกัน (กันพาไปเว็บอื่นด้วยพารามิเตอร์)
 // 14 พ.ย.: รับ "/app" เปล่า (ช่อง "หน้าหลัก" ของชีตกิจการ) + ตัว %XX (slug ที่ encodeURI แล้ว) · ยังห้าม "." (กัน ..) · ":" (กัน scheme) — เปิดได้แค่โดเมนเดียวกันเสมอ
 const OPEN_PATH_RE = /^\/app(\/[A-Za-z0-9_\-%/]*)?(\?[A-Za-z0-9_=&\-%]*)?$/;
+
+/** ข้อความ page-context ของเว็บ → PageContext (ตัดสตริงยาว · ค่าแปลก = ทิ้ง · เซิร์ฟเวอร์ตรวจ entity ใหม่ด้วยสิทธิ์ผู้สั่งอยู่แล้ว) */
+function webPageContext(d: { system?: unknown; systemId?: unknown; path?: unknown; title?: unknown; entity?: unknown }): PageContext | null {
+  const s = (v: unknown, n: number) => (typeof v === "string" && v ? v.slice(0, n) : undefined);
+  const path = s(d.path, 300);
+  if (!path || !path.startsWith("/app")) return null;
+  const e = d.entity && typeof d.entity === "object" ? (d.entity as Record<string, unknown>) : null;
+  const type = s(e?.type, 40);
+  const id = s(e?.id, 80);
+  return {
+    route: "index",
+    path,
+    system: s(d.system, 40),
+    systemId: s(d.systemId, 64),
+    title: s(d.title, 120),
+    ...(type && id ? { entity: { type, id, label: s(e?.label, 120) } } : {}),
+  };
+}
 
 export default function DashboardScreen() {
   useSecretaryZone(); // secretary/me + badge ของแถบบน (focus/foreground)
@@ -39,6 +58,11 @@ export default function DashboardScreen() {
   const webRef = useRef<WebView>(null);
   const [webReady, setWebReady] = useState(false);
   const openedKey = useRef("");
+  // Lekaa FAB (17 พ.ย. · ปิดข้อค้างของ handoff ข้อ 1): หน้าเว็บที่เปิดอยู่จากข้อความ {ev:"page-context"} ของ AppShell → ปุ่ม Lekaa ส่งไปกับคำสั่งแรก
+  //   ยังไม่ได้ข้อความ = null (Host เดาจากเส้นทาง "/" = หน้าหลักร้าน) · path ใช้ไฮไลต์ไอคอนระบบที่เปิดอยู่บนแถบบนด้วย (แบบ topbar2)
+  const [webCtx, setWebCtx] = useState<PageContext | null>(null);
+  useLekaaPageContext(webCtx);
+  useEffect(() => setWebCtx(null), [activeTenantId]);
 
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -153,7 +177,7 @@ export default function DashboardScreen() {
     <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
       {hideOrb ? null : (
         <View style={styles.bar}>
-          <SecTopBar zone="systems" center="none" />
+          <SecTopBar zone="systems" center="none" activePath={webCtx?.path ?? "/app"} />
         </View>
       )}
       <View style={styles.flex}>
@@ -167,7 +191,11 @@ export default function DashboardScreen() {
             onMessage={(ev) => {
               // สัญญาจากเว็บ (AppShell): {ev:"chat-fullscreen", on:boolean} · (NavDrawer): {ev:"open-ai"}
               try {
-                const d = JSON.parse(ev.nativeEvent.data) as { ev?: string; on?: boolean };
+                const d = JSON.parse(ev.nativeEvent.data) as { ev?: string; on?: boolean; system?: unknown; systemId?: unknown; path?: unknown; title?: unknown; entity?: unknown };
+                if (d.ev === "page-context") {
+                  setWebCtx(webPageContext(d));
+                  return;
+                }
                 if (d.ev === "chat-fullscreen") {
                   // 15 พ.ย. (เจ้าของสั่ง): เลิกใช้หน้าแชทลูกค้าแบบเว็บในแอป — เว็บเข้ากล่องแชทเต็มจอเมื่อไหร่ = ถอยหน้าเว็บ แล้วไปจอแชท native
                   if (d.on === true) {

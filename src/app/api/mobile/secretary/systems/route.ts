@@ -4,12 +4,15 @@
 //   wire: `{ items: [{ key, kind: "unit"|"system"|"fixed", code, href, label, badge }] }` · href ขึ้นต้น /app เสมอ (แอปเปิดใน WebView หน้าระบบ)
 //   badge = แชทลูกค้าที่ยังไม่อ่านของระบบแชทนั้น (`unreadFor` ตัวเดียวกับ secretary/badges · ไม่มีสิทธิ์อ่านแชท = 0) · ระบบอื่น = 0
 // ด่าน = สมาชิกร้าน (gate null · เมนูเว็บก็ไม่ต้องใช้คีย์) · 60/นาที ต่อ Membership · query 2 ตาราง + นับแชทเฉพาะระบบแชท
-import { tenantDb } from "@/lib/core/db";
-import { evaluate } from "@/lib/core/rbac";
-import { CHAT_READ_ACTION } from "@/lib/modules/chat/guard";
-import { navSystems } from "@/lib/core/nav-systems";
+// 17 พ.ย. (เจ้าของอนุมัติแบบ topbar2): แถบบนแอปแสดงทุกระบบ + ผู้ใช้จัดลำดับเองได้ "ต่อคน ต่อร้าน" (User.prefs.secSystemOrder · PUT systems/order)
+//   items เรียงตามลำดับของผู้เรียกแล้ว (คีย์ที่บันทึกก่อน · ระบบใหม่ต่อท้ายตามทะเบียน · คีย์ที่ไม่มีแล้วไม่สน)
+//   `order` = ลำดับเต็มรวมช่อง "home" (หน้าหลัก /app · ไม่อยู่ใน items เพื่อให้แอปรุ่นเก่าที่เติม "หน้าหลัก" เองไม่เห็นซ้ำ)
+//   เมนูเว็บไม่อ่านลำดับนี้ (ลำดับเว็บคงเดิม)
+import { getSystemOrder } from "@/lib/core/user-preferences";
+import { orderNavKeys } from "@/lib/core/nav-systems";
 import { READ, can, unreadFor, type InboxCtx } from "../../inbox/_shared";
 import { gate, ok, thrown, withRateLimit, withErrors } from "../_shared";
+import { loadNav } from "./_nav";
 
 async function GET_(req: Request) {
   const a = await gate(req, null);
@@ -18,17 +21,11 @@ async function GET_(req: Request) {
   const rl = await withRateLimit(`${tenantId}:${userId}`, "systems", 60);
   if (rl) return rl;
   try {
-    const db = tenantDb({ tenantId });
-    const [units, appSystems] = await Promise.all([
-      db.businessUnit.findMany({
-        where: { tenantId, status: { not: "ARCHIVED" } },
-        orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }],
-        select: { id: true, slug: true, name: true, type: true },
-      }),
-      db.appSystem.findMany({ where: { tenantId, active: true }, orderBy: { createdAt: "asc" }, select: { id: true, name: true, type: true } }),
-    ]);
-    // href แชท = กติกาเดียวกับเมนูเว็บ (evaluate บน Membership) · badge ใช้ด่านแอป can(READ) แบบ secretary/badges
-    const nav = navSystems(units, appSystems, { chatRead: evaluate(m, { module: "chat", action: CHAT_READ_ACTION }) });
+    const [{ nav, appSystems, keys }, saved] = await Promise.all([loadNav(a.c), getSystemOrder(userId, tenantId)]);
+    const order = orderNavKeys(keys, saved);
+    const rank = new Map(order.map((k, i) => [k, i]));
+    nav.sort((x, y) => (rank.get(x.key) ?? 0) - (rank.get(y.key) ?? 0));
+    // badge ใช้ด่านแอป can(READ) แบบ secretary/badges
     const ic: InboxCtx = { g: a.c.g, tenantId, userId, m, ua: m.unitAccess };
     const chatRead = can(ic, READ);
     const chatIds = new Set(appSystems.filter((s) => s.type === "CHAT").map((s) => s.id));
@@ -37,6 +34,7 @@ async function GET_(req: Request) {
     );
     return ok({
       items: nav.map((n, i) => ({ key: n.key, kind: n.kind, code: n.code, href: n.href, label: n.label, badge: badges[i] })),
+      order,
     });
   } catch (e) {
     return thrown(e, "systems");
