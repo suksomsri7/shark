@@ -59,3 +59,16 @@ UI caller check (legit user regression):
 - `decideLeaveAction`: no UI caller in `src` (only exported).
 - Inactive (soft-removed) employees: `HrEmployee` scope is `sys()` with no active/deleted filter, so `hrTargetOwned(..., { employeeId })` still finds them → profile/doc/schedule pages for removed employees keep working.
 - Not driven in a browser (static read of callers + oracle C4/C1 which drive the actions as owner/staff A).
+
+## Round 3 (ruling R-R2-1 · oracle 991dbcc15 · 21 checks)
+Five lines inserted, each directly after `const auth = await requireTenant();` (before `assertHrCan` / `assertRequestAdjust`, as ruled), text exactly as the oracle table, with a trailing `// HR HF-TENANT r3 ▸ … ◂` comment:
+| file:line (after fix) | action | check | refusal |
+|---|---|---|---|
+| `payroll-actions.ts:171` | requestAdjustmentAction | `typeof systemId !== "string"` | `{ status: "error", message: "ไม่พบพนักงาน" }` |
+| `actions.ts:137` | saveEmployeeProfileAction | systemId or employeeId not string | same |
+| `actions.ts:187` | setPinAction | systemId or employeeId not string | same |
+| `actions.ts:209` | kioskClockAction | `typeof systemId !== "string"` | same |
+| `actions.ts:292` | bulkDecideLeaveAction | `typeof systemId !== "string"` | `{ status: "error", message: "ไม่พบระบบ" }` |
+`hr-target.ts` untouched (blob `d033fd77…`); oracle not edited. UI callers unchanged in effect: all five are `useActionState` wrappers that bind string ids (round-2 caller check), so legit users never hit the new line; the refusal is a state object of each action's type.
+
+Results (hf_tenant via iso.sh + qc-hf.sh + with-gate-lock.sh): `--static` T7 ✅ · full oracle `QC_FORCE=1` **21/21**, exit 0, Z1 residue 0 · qc-hr 9/9 · qc-hr-attendance 31/31 · qc-hr-leave-booking 14/14 · qc-hr-roster 24/24 · qc-hr-payadjust 27/27 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hf-hr-privacy 193/194 (L-5 only, pre-existing) · fitness 53/53 · fitness-pos 8/8 · typecheck (iso.sh, ISO_MEM=14000M, heap 12288, MemAvailable 25.4 GB) exit 0.
