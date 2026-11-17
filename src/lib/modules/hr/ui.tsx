@@ -517,9 +517,9 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
   // แผงเปิดอยู่ ⇒ คอลัมน์ประเภทจ้าง/บัญชี SHARK พับเข้าเซลล์ชื่อ/PIN จนถึง 2xl (ตารางไม่ล้นข้างแผง)
   const wideCol = pv ? "hidden 2xl:table-cell" : "hidden xl:table-cell";
   const foldCol = pv ? "2xl:hidden" : "xl:hidden";
-  const th = `px-2 py-3 text-left text-xs font-semibold whitespace-nowrap ${muted}`;
-  const td = "md:table-cell md:px-2 md:py-3 md:align-middle";
-  const chipCls = "inline-flex min-h-[28px] items-center whitespace-nowrap rounded-lg border px-2.5 text-xs font-semibold";
+  const th = `px-1.5 py-3 text-left text-xs font-semibold whitespace-nowrap xl:px-2 ${muted}`; // HR VIS-5c ◂
+  const td = "md:table-cell md:px-1.5 md:py-3 md:align-middle xl:px-2"; // HR VIS-5c ◂
+  const chipCls = "inline-flex min-h-[28px] items-center rounded-lg border px-2.5 py-0.5 text-xs font-semibold 2xl:whitespace-nowrap"; // HR VIS-5c ▸ 1024 en: ป้ายยาวขึ้นบรรทัดได้ (ตารางไม่ล้นจอ) ◂
   const typeOf = (v: string | null) => (v && ["FULL_TIME", "PART_TIME", "CONTRACT", "DAILY", "PROBATION"].includes(v) ? t(`type.${v as "FULL_TIME"}`) : t("type.none"));
 
   return (
