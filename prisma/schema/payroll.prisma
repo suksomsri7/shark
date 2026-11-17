@@ -90,7 +90,8 @@ model HrSalaryProfile {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  @@unique([systemId, employeeId])
+  // HR PRIV-3 ▸ R10: unique ผูกร้าน (tenantId นำหน้า) — แถวของร้านอื่นไม่จองคีย์ของเรา · migration 20270112000000_hr_tenant_scoped_unique_keys ◂
+  @@unique([tenantId, systemId, employeeId])
   @@index([tenantId])
 }
 

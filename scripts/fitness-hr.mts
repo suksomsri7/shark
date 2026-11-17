@@ -329,10 +329,9 @@ function scopeExports(ROOT: string): Set<string> {
  */
 export const PAGE_GUARD_BASELINE = new Map<string, string>([
   // HR H2.5 ▸ หน้าลงเวลาใหม่กันด้วย hrScopeOf (hr/scope) + ตัวโหลดที่คืน null ⇒ ปิดหนี้ (ratchet) ◂
-  ["src/app/app/sys/[id]/hr/leave/page.tsx", "closes in H2.7"],
-  ["src/app/app/sys/[id]/hr/employees/page.tsx", "closes in H1.1/H4.4"],
+  // ORACLE-EDIT (HR PRIV-3 · controller) ▸ leave / employees / payroll ปิดหนี้แล้ว (requireHrPage ของ hr/privacy) — ถอด 3 แถว · kiosk คงไว้ (มติ Q4) ◂
   ["src/app/app/sys/[id]/hr/kiosk/page.tsx", "closes in H2.4"],
-  ["src/app/app/sys/[id]/hr/payroll/page.tsx", "closes in H3.4"],
+  // ORACLE-EDIT (HR PRIV-3 · controller) ▸ แถว payroll/page.tsx ถอดแล้ว (ดูหมายเหตุด้านบน) ◂
 ]);
 /** จุดยึดของตัวค้นหา: หน้าที่มีตัวกันจริงวันนี้ต้องถูกเห็นว่า "มีตัวกัน" เสมอ (positive control) */
 const F163_ANCHORS = ["src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", "src/app/app/sys/[id]/payroll/[runId]/slip/[employeeId]/page.tsx"];

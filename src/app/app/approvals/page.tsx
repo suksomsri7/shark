@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { requireTenant } from "@/lib/core/context";
 import { listPending, listMyRequests, listPolicies } from "@/lib/modules/approval/service";
-import { cancelMyRequestAction } from "@/lib/modules/approval/actions";
+import { withdrawMyRequestFormAction } from "@/lib/modules/approval/actions"; // HR LEAVE-3 ▸ W5: ถอนไม่สำเร็จ = แสดงเหตุผลแบบปุ่มยกเลิกอื่นในหน้านี้ ◂
 import { cancelLeaveAction } from "@/lib/modules/hr/actions"; // HR H0.7 ▸ R5 ยกเลิกใบลาของตัวเอง (ใบลา + คำขอพร้อมกัน) ◂
 import { entityLabel } from "@/lib/modules/approval/labels";
 import { PageHeader } from "@/components/ui/PageHeader";
@@ -112,16 +112,18 @@ export default async function ApprovalsPage() {
               const c = cards.get(r.id);
               const lg = legalSummaries.get(r.id);
               return c
-                ? { id: r.id, ...posCard(r, c) }
+                ? { id: r.id, step: r.currentStepOrder, ...posCard(r, c) } // HR LEAVE-3 ▸ R2: ขั้นที่เห็น ◂
                 : lg
                   ? {
                       id: r.id,
+                      step: r.currentStepOrder, // HR LEAVE-3 ▸ R2 ◂
                       label: lg.titleTh,
                       meta: `ขั้นที่ ${r.currentStepOrder} · ยื่นเมื่อ ${r.createdAt.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`,
                       legal: { codes: lg.codes, lines: lg.lines },
                     }
                   : {
                     id: r.id,
+                    step: r.currentStepOrder, // HR LEAVE-3 ▸ R2 ◂
                     label: `${entityLabel(r.entityType)}${r.amountSatang != null ? ` · ${formatBaht(r.amountSatang)}` : ""}`,
                     meta: `ขั้นที่ ${r.currentStepOrder} · ยื่นเมื่อ ${r.createdAt.toLocaleDateString("th-TH", { day: "numeric", month: "short" })}`,
                   };
@@ -262,7 +264,7 @@ export default async function ApprovalsPage() {
                       detail={`${entityLabel(r.entityType)}${r.amountSatang != null ? ` · ${formatBaht(r.amountSatang)}` : ""} — คำขอจะถูกยกเลิกและออกจากสายอนุมัติ`}
                       confirmLabel="ยืนยันยกเลิก"
                       danger
-                      action={cancelMyRequestAction}
+                      action={withdrawMyRequestFormAction} // HR LEAVE-3 ▸ W5 ◂
                       fields={{ requestId: r.id }}
                     />
                   </div>

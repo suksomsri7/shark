@@ -276,7 +276,9 @@ function runStatic(): void {
       if (x === y) return true;
       if (!IN_BASE || !x || !y) return false;
       const hs = blockHunks(y.split("\n"), x.split("\n"));
-      return hs.length > 0 && hs.every((h) => h.added.some(blockLaterMark));
+      // ORACLE-EDIT (HR PRIV-3 · controller r3 R15) S1.2: exactly the R10 key swap in HrSalaryProfile — removed @@unique([systemId, employeeId]) · added @@unique([tenantId, systemId, employeeId]) · plus comment lines; nothing else ◂
+      const cmt = (l: string) => /^\s*(\/\/.*)?$/.test(l), r10 = (h: { added: string[]; removed: string[] }) => name === "HrSalaryProfile" && h.removed.every((l) => cmt(l) || /^\s*@@unique\(\[systemId, employeeId\]\)\s*$/.test(l)) && h.added.every((l) => cmt(l) || /^\s*@@unique\(\[tenantId, systemId, employeeId\]\)\s*$/.test(l)) && h.added.some((l) => !cmt(l)); // ORACLE-EDIT (HR PRIV-3 · controller r3 R15) ◂
+      return hs.length > 0 && hs.every((h) => h.added.some(blockLaterMark) || r10(h)); // ORACLE-EDIT (HR PRIV-3 · controller r3 R15): r10 replaces the "any hunk marked HR PRIV-3" acceptance ◂
     };
     const mig = rd(F.mig);
     const hrCur = rd(F.hrSchema);
@@ -342,8 +344,12 @@ function runStatic(): void {
       /HR-SET-\d+|HR MONEY-2|HR PRIV-\d+/.test(l) || [...l.matchAll(/HR H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9") || [...(l.match(/ORACLE-EDIT[^\n]*/)?.[0] ?? "").matchAll(/H(\d+\.\d+)/g)].some((m) => m[1] !== "3.9"); // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.3) ◂ // ORACLE-EDIT (HR HF-SSO · controller fix2) ◂
     // ORACLE-EDIT (HR HF-SSO · controller fix2) S1.5: "HF-SSO" marks count only in the HF-SSO files this FROZEN list covers (was: any file) ◂
     const HF_SSO_FILES = new Set([`${H}payroll.ts`, `${H}payroll-actions.ts`, `${H}law.ts`, "scripts/qc-hr-lib.mts", "scripts/qc-hr-h1.2.mts", "scripts/qc-hr-h1.3.mts"]);
-    const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => laterMark(l) || (HF_SSO_FILES.has(f) && /HF-SSO/.test(l))));
-    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f)) : [];
+    // ORACLE-EDIT (HR LEAVE-3 · controller) S1.5: explicit allowlist — "HR LEAVE-3" counts only in the LEAVE-3 files this FROZEN list covers (hr judge.ts · hr service.ts · approval service.ts · approval actions.ts) · unmarked still fails ◂
+    const L3_FILES = new Set([`${H}judge.ts`, `${H}service.ts`, "src/lib/modules/approval/service.ts", "src/lib/modules/approval/actions.ts", `${H}ot.ts`]); // ORACLE-EDIT (HR LEAVE-3 · controller) ◂ // ORACLE-EDIT (HR LEAVE-3 · controller r3b): + ot.ts (W3) ◂
+    const PP1_S15 = new Set(["leave.ts", "privacy.ts", "self.ts", "self-ui.tsx", "service.ts", "settings.ts", "stock-charge.ts", "work-entries.ts", "work-entries-rules.ts", "payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "ui.tsx"].map((x) => `${H}${x}`)); // ORACLE-EDIT (HR PREPROD-1 · controller): brief-allowed files of the later ticket ◂
+    const laterOk = (f: string) => IN_BASE && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => laterMark(l) || (HF_SSO_FILES.has(f) && /HF-SSO/.test(l)) || (L3_FILES.has(f) && /HR LEAVE-3/.test(l)) || (PP1_S15.has(f) && /HR PREPROD-1/.test(l)))); // ORACLE-EDIT (HR LEAVE-3 · controller): + L3_FILES ◂ // ORACLE-EDIT (HR LEAVE-3 · controller merge): per hunk, a LEAVE-3 or PREPROD-1 mark in that ticket's own files ◂
+    const pp1Only = (f: string) => IN_BASE && PP1_S15.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PREPROD-1/.test(l))); // ORACLE-EDIT (HR PREPROD-1 · controller): explicit file list, every hunk marked ◂
+    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f) && !pp1Only(f)) : []; // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Only ◂
     const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
     const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
@@ -384,12 +390,15 @@ function runStatic(): void {
     ck("S1.7", r, "route + page wired");
   }
   // S1.8
+  // ORACLE-EDIT (HR PRIV-3 · controller): explicit allowlist — exactly these files, and only when every hunk adds the PRIV-3 marker on an ADDED line ◂
+  const PRIV3_ALLOW: Record<string, string> = { [F.nav]: "HR PRIV-3", [F.visual]: "ORACLE-EDIT (HR PRIV-3" }; // ORACLE-EDIT (HR PRIV-3 · controller) ◂
+  const PRIV3_OK = (f: string) => f in PRIV3_ALLOW && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes(PRIV3_ALLOW[f]!))); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
   {
     const hub = code(F.hrUi) + code(F.overview);
     const r = {
       link: /\/hr\/reports/.test(hub) && /hr-overview-reports-link/.test(hub),
       page: existsSync(join(ROOT, F.page)),
-      nav: changedVsBase(BASE, [F.nav]) === "unchanged",
+      nav: changedVsBase(BASE, [F.nav]) === "unchanged" || PRIV3_OK(F.nav), // ORACLE-EDIT (HR PRIV-3 · controller) S1.8: + nav.ts when every hunk adds "HR PRIV-3" (page gates for employees/leave/payroll — still no "รายงาน" tab) ◂
     };
     ck("S1.8", r, "no tab · hub link");
   }
@@ -443,7 +452,7 @@ function runStatic(): void {
     //   marked with some ticket ("HR H<n>.<n>" · "HR-SET-<n>") on an ADDED line (deleting a marked line is not a mark); hub/json presence is n/a · before that
     //   the original rule applies unchanged · controller ruling 13 Nov: this stricter version replaces the b357957e7 "n/a once in base" edit ◂
     const anyMarked = (f: string) => (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H\d+\.\d+|HR-SET-\d+/.test(l)));
-    const bad = IN_BASE ? files.filter((f) => !/\.json$/.test(f) && !anyMarked(f)) : all.filter((f) => !markedOk(f) && !/\.json$/.test(f));
+    const bad = IN_BASE ? files.filter((f) => !/\.json$/.test(f) && !anyMarked(f) && !PRIV3_OK(f)) : all.filter((f) => !markedOk(f) && !/\.json$/.test(f)); // ORACLE-EDIT (HR PRIV-3 · controller) S1.10: + PRIV3_OK (visual-hr.mts :60 staff expectation) ◂
     const jsonTouched = IN_BASE || [F.th, F.en, F.inv].every((f) => (diffHunks(BASE, f) ?? []).length > 0);
     ck("S1.10", { marked: bad.length === 0, hub: IN_BASE || hub.length > 0, json: jsonTouched }, "every hunk marked", `unmarked=${bad.join(",") || "0"}${IN_BASE ? " · H3.9 in base" : ""}`);
   }

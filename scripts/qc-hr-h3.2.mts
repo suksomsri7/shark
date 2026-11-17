@@ -223,15 +223,19 @@ function runStatic(): void {
   {
     const shaOk = sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA;
     const ch = changedVsBase(BASE, FROZEN);
+    const PP1_S18 = new Set(["leave.ts", "privacy.ts", "self.ts", "service.ts", "settings.ts", "stock-charge.ts", "work-entries.ts", "work-entries-rules.ts", "payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "ui.tsx", "self-ui.tsx"].map((x) => `src/lib/modules/hr/${x}`)); // ORACLE-EDIT (HR PREPROD-1 · controller): brief-allowed files of the later ticket ◂
     const bad = ch === "unchanged" ? [] : ch.startsWith("changed: ") ? ch.slice(9).split(",").filter((f) => {
       const hs = diffHunks(BASE, f);
+      if (PP1_S18.has(f) && !!hs && hs.length > 0 && hs.every((h) => h.added.some((l) => /HR PREPROD-1/.test(l)))) return false; // ORACLE-EDIT (HR PREPROD-1 · controller): explicit file list, every hunk marked ◂
       // ORACLE-EDIT (builder HR-SET-1 · 13 Nov) S1.8: a later fix ticket's hunks ("HR-SET-<n>") count as marked like "HR H<n>" ones · unmarked still fails ◂
       // ORACLE-EDIT (HF-SSO-2569 · later-ticket static, pre-authorised) S1.8: + hotfix hunks marked "HR HF-SSO" (law.ts ssoDay) ◂
       // ORACLE-EDIT (HR-MONEY-2 builder · pre-authorised) S1.8: "HR MONEY-2" hunks count as marked like "HR-SET-<n>" ones · unmarked still fails ◂
       // ORACLE-EDIT (HR-PRIV-2 · controller): S1.8 later-ticket marks `/HR H\d|HR-SET-\d/` → `/HR H\d|HR-SET-\d|HR PRIV-\d/` · unmarked still fails ◂
       // ORACLE-EDIT (HR HF-SSO · controller fix2): "HR HF-SSO" counts only in the HF-SSO file this list covers (law.ts) — no standing pass elsewhere ◂
       const hfSso = f === `${H}law.ts`;
-      return !hs || hs.some((h) => h.added.concat(h.removed).some((l) => /HR H3\.2/.test(l)) || !h.added.concat(h.removed).some((l) => /HR H\d|HR-SET-\d|HR MONEY-2|HR PRIV-\d/.test(l) || (hfSso && /HR HF-SSO/.test(l))));
+      // ORACLE-EDIT (HR LEAVE-3 · controller) S1.8: explicit allowlist — "HR LEAVE-3" counts only in the LEAVE-3 files this list covers (judge.ts · service.ts · work-entries-rules.ts) · unmarked still fails ◂
+      const l3 = [`${H}judge.ts`, `${H}service.ts`, `${H}work-entries-rules.ts`, `${H}ot.ts`].includes(f); // ORACLE-EDIT (HR LEAVE-3 · controller) ◂ // ORACLE-EDIT (HR LEAVE-3 · controller r3b): + ot.ts (W3) ◂
+      return !hs || hs.some((h) => h.added.concat(h.removed).some((l) => /HR H3\.2/.test(l)) || !h.added.concat(h.removed).some((l) => /HR H\d|HR-SET-\d|HR MONEY-2|HR PRIV-\d/.test(l) || (hfSso && /HR HF-SSO/.test(l)) || (l3 && /HR LEAVE-3/.test(l)) || (PP1_S18.has(f) && /HR PREPROD-1/.test(l)))); // ORACLE-EDIT (HR LEAVE-3 · controller): + l3 ◂ // ORACLE-EDIT (HR LEAVE-3 · controller merge): per hunk, a PREPROD-1 mark in its own files too (files changed by both tickets) ◂
     }) : [ch];
     ck("S1.8", { sha: shaOk, frozen: bad.length === 0 }, "unchanged", bad.join(","));
   }

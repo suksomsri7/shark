@@ -57,7 +57,7 @@ const SPECS: Record<string, readonly PageSpec[]> = {
   "0.7": [{ key: "approvals-my-requests", path: () => `/app/approvals`, users: ["owner", "manager", "staff"], why: "คำขอของฉัน + ปุ่มยกเลิกใบลา (H0.7)" }],
   // HR H1.1 ▸ R8 (mockup 02): ทะเบียนสาขา + ชิปกรอง (ผู้ดูทุกสาขา) · ผู้จัดการสาขา (manager-branch = สาขาหัวหิน · ไม่มีชิป) · ช่องสาขาประจำในโปรไฟล์ ◂
   "1.1": [
-    { key: "register-branches", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "staff"], why: "ทะเบียน: คอลัมน์สาขา + ชิปกรองสาขา + ป้ายสถานะ + ยังไม่ระบุสาขาประจำ (H1.1)" },
+    { key: "register-branches", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["owner", "staff"], expect: { staff: 404 } /* ORACLE-EDIT (HR PRIV-3 · controller) ▸ staff ไม่มีคีย์ทะเบียน = 404 (มติ Q1) ◂ */, why: "ทะเบียน: คอลัมน์สาขา + ชิปกรองสาขา + ป้ายสถานะ + ยังไม่ระบุสาขาประจำ (H1.1)" },
     { key: "register-branch-manager", path: (i) => `/app/sys/${i.hr}/hr/employees`, users: ["manager-branch"], why: "ทะเบียนของผู้จัดการสาขา: เฉพาะสาขาหัวหิน + เจที่ยืมตัวเข้ามา · ไม่มีชิป (H1.1)" },
     { key: "profile-unit", path: (i) => `/app/sys/${i.hr}/hr/employees/${i.namfon}`, users: ["owner", "manager-branch"], why: "โปรไฟล์: สาขาประจำ · สถานะการจ้าง · วันครบทดลองงาน/สิ้นสุดสัญญา (H1.1)" },
   ],

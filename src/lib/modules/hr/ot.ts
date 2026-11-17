@@ -219,7 +219,10 @@ async function weekMinutes(tx: Tx, ctx: Ctx, employeeId: string, day: string): P
 
 /** r2.8a ใบลาเต็มวันที่อนุมัติแล้วครอบวันนั้น (ไม่ใช่ครึ่งวัน/รายชั่วโมง) */
 async function fullDayLeave(db: Tx, ctx: Ctx, employeeId: string, day: string): Promise<boolean> {
-  return !!(await db.hrLeave.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, status: "APPROVED", fromDate: { lte: dbDate(day) }, toDate: { gte: dbDate(day) }, halfDay: null, hours: null }, select: { id: true } }));
+  if (await db.hrLeave.findFirst({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, status: "APPROVED", fromDate: { lte: dbDate(day) }, toDate: { gte: dbDate(day) }, halfDay: null, hours: null }, select: { id: true } })) return true; // HR LEAVE-3 ▸ W3: เดิม = return !!(…) ◂
+  // HR LEAVE-3 ▸ W3 (r3): ใบครึ่งเช้า + ครึ่งบ่ายที่อนุมัติทั้งคู่ในวันนั้น = ลาทั้งวัน (เหมือนตัวตัดสินเวลา) · ครึ่งวันใบเดียว = เหมือนเดิม ◂
+  const halves = await db.hrLeave.findMany({ where: { tenantId: ctx.tenantId, systemId: ctx.systemId, employeeId, status: "APPROVED", fromDate: dbDate(day), toDate: dbDate(day), halfDay: { not: null }, hours: null }, select: { halfDay: true }, take: 10 });
+  return halves.some((l) => l.halfDay === "AM") && halves.some((l) => l.halfDay === "PM"); // HR LEAVE-3 ◂
 }
 /** r2.8b มีค่าจ้างฐานให้คิด OT ไหม (คำตอบใช่/ไม่ใช่เท่านั้น — ไม่ส่งตัวเลขออก) */
 async function hasRate(db: Tx, ctx: Ctx, employeeId: string): Promise<boolean> {
@@ -291,7 +294,7 @@ export async function requestOt(
 }
 
 /** ยกเลิกคำขอที่ยังรออนุมัติ — ผู้ยื่นหรือตัวพนักงานเท่านั้น (คนอื่น = cancelNo · ไม่พบ = notFound) */
-export async function cancelOtRequest(ctx: Ctx, actor: OtViewer, id: string): Promise<{ ok: true } | Fail> {
+export async function cancelOtRequest(ctx: Ctx, actor: OtViewer, id: string, opts: { hideForeign?: boolean } = {}): Promise<{ ok: true } | Fail> { // HR PRIV-3 ▸ R7: hideForeign = ทางฟอร์ม — ผู้ไม่ใช่ผู้ยื่น/ตัวพนักงาน = notFound (ไบต์เดียวกับไม่พบ) ◂
   const uid = str(actor?.userId);
   const rid = str(id);
   const db = dbOf(ctx);
@@ -299,6 +302,7 @@ export async function cancelOtRequest(ctx: Ctx, actor: OtViewer, id: string): Pr
   if (!r) return refuse(T.notFound);
   const emp = await empOf(db, ctx, r.employeeId);
   const mine = !!uid && (r.requestedByUserId === uid || emp?.linkedUserId === uid);
+  if (!mine && opts.hideForeign === true) return refuse(T.notFound); // HR PRIV-3 ◂
   if (!mine || r.status !== "PENDING") return refuse(T.cancelNo);
   try {
     const n = await tenantDb(ctx).$transaction(async (t) => {

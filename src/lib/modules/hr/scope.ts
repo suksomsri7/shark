@@ -158,6 +158,8 @@ export function unitTargetOf(scope: HrScope, emp: EmployeeUnits, day?: Date): Un
 //   ห้ามเขียนตัวตัดสินชุดที่สองที่อื่น (payslip/labor/payroll/attendance-pay/reports/privacy/inbox/payroll-ui เรียกที่นี่) ◂
 /** ข้อความหมายเหตุเมื่อมีพนักงานที่ผู้ดูไม่มีสิทธิ์ดูค่าจ้าง (แทน {n} ด้วยจำนวน — ไม่มีชื่อ/id) */
 export const PAY_SCOPE_EXCLUDED_TEXT = "ไม่รวมพนักงานที่คุณไม่มีสิทธิ์ดูค่าจ้าง {n} คน";
+// HR PREPROD-1 ▸ R4: คำตอบเดียวของ "ไม่พบรายการ" และ "นอกขอบเขตค่าจ้าง" ของทุกทางที่แตะรายการเงิน (ผู้ดูที่จำกัดสาขา) ◂
+export const PAY_SCOPE_NO_ACCESS_TEXT = "ไม่พบรายการนี้ หรือคุณไม่มีสิทธิ์ดูค่าจ้างของพนักงานคนนี้";
 /** ผู้ดูในขอบเขตนี้เห็นค่าจ้างของพนักงานที่มีสาขาประจำนี้ไหม (pure) */
 export function inPayScope(scope: HrScope, homeUnitId: string | null | undefined): boolean {
   if (!scope) return false;
