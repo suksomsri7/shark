@@ -65,7 +65,7 @@ model HrSalaryProfile {
   createdAt             DateTime @default(now())
   updatedAt             DateTime @updatedAt
 
-  @@unique([systemId, employeeId])
+  @@unique([tenantId, systemId, employeeId])
   @@index([tenantId])
 }
 
@@ -89,7 +89,7 @@ model HrPayrollRun {
 
   items HrPayrollItem[]
 
-  @@unique([systemId, periodKey])
+  @@unique([tenantId, systemId, periodKey])
   @@index([tenantId, status])
 }
 

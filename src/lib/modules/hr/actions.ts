@@ -22,6 +22,7 @@ import {
   type Ctx,
 } from "./service";
 import { employeeProfileInputFromForm, hrViewerOf } from "./privacy";
+import { hrTargetOwned } from "./hr-target"; // HR HF-TENANT ▸ ระบบ HR ต้องเป็นของร้านผู้กด (สำเนา V2) ◂
 
 // ตรวจสิทธิ์โมดูล HR (system-scoped) — OWNER/MANAGER ผ่าน · STAFF ตาม permission
 // convention action = "hr.<entity>.<verb>" (F6 ratchet บังคับให้ไฟล์นี้เรียก assertCan)
@@ -48,6 +49,7 @@ export async function createEmployeeAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !name) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await createEmployee(ctx, {
     name,
@@ -66,6 +68,7 @@ export async function clockAction(formData: FormData) {
   const employeeId = String(formData.get("employeeId") ?? "");
   const rawKind = String(formData.get("kind") ?? "");
   if (!systemId || !employeeId || !KINDS.has(rawKind as HrAttendanceKind)) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await clock(ctx, { employeeId, kind: rawKind as HrAttendanceKind });
   revalidate(systemId);
@@ -79,6 +82,7 @@ export async function updateEmployeeAction(formData: FormData) {
   const employeeId = String(formData.get("employeeId") ?? "");
   const name = String(formData.get("name") ?? "").trim();
   if (!systemId || !employeeId || !name) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   await updateEmployee({ tenantId: auth.active.tenantId, systemId }, employeeId, {
     name,
     position: String(formData.get("position") ?? ""),
@@ -94,6 +98,7 @@ export async function removeEmployeeAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const employeeId = String(formData.get("employeeId") ?? "");
   if (!systemId || !employeeId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   await setEmployeeActive({ tenantId: auth.active.tenantId, systemId }, employeeId, false);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
 }
@@ -104,6 +109,7 @@ export async function restoreEmployeeAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const employeeId = String(formData.get("employeeId") ?? "");
   if (!systemId || !employeeId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   await setEmployeeActive({ tenantId: auth.active.tenantId, systemId }, employeeId, true);
   revalidatePath(`/app/sys/${systemId}/hr/employees`);
 }
@@ -234,6 +240,7 @@ export async function requestLeaveAction(formData: FormData) {
   const fromDate = String(formData.get("fromDate") ?? "").trim();
   const toDate = String(formData.get("toDate") ?? "").trim();
   if (!systemId || !employeeId || !fromDate || !toDate) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await requestLeave(ctx, {
     employeeId,
