@@ -20,6 +20,9 @@ export const OWN: Record<Tk, { files: string[]; fresh: string[]; ranges: [number
  "5b": { files: ["src/app/app/sys/[id]/page.tsx", "src/components/module-tabs.tsx", `${H}overview-ui.tsx`, `${H}InboxBatch.tsx`], fresh: [`${H}hub-ui.tsx`, `${H}hub-rules.ts`], ranges: [[96, 132], [731, 845]] /* HR VIS-5c oracle ▸ base = session/hr 8df167086 (VIS-5b merged): the same hrTabs/hrTabsFor + HrHub spans in new-base line numbers (map of git diff -U0 98c2fee1d 8df167086 · 89→96 118→132 717→731 802→845) · was [[89, 118], [717, 802]] ◂ */, block: "hub", after: "inbox" },
  "5c": { files: ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", `${H}EmployeeProfileForm.tsx`], fresh: [`${H}people-ui.tsx`, `${H}people-rules.ts`], ranges: [[453, 730]] /* HR VIS-5c oracle ▸ base 8df167086: VIS-5b added +14 lines above the employees section (marker now :453 · kiosk section ends :730) · was [[439, 716]] ◂ */, block: "people", after: "life" },
 };
+export const TABS = "src/components/module-tabs.tsx", V5_TOOLS = ["scripts/walk-hr.mts", "scripts/seed-hr-walk.mts"]; // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
+/** ORACLE-EDIT (HR VIS-5c · controller r2) B4: hr.life keys VIS-5c may re-word to the approved mockup 02 strings — th only, exactly these values (en untouched) ◂ */
+export const LIFE_MOCKUP: Record<string, string> = { "hr.life.banner.pass": "ประเมิน", "hr.life.due.onboarding": "Onboarding ค้าง", "hr.life.due.offboarding": "Offboarding", "hr.life.checklist.onboarding": "Onboarding checklist" }; // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
 export const ORACLE_FILES = ["scripts/qc-hr-vis-5b.mts", "scripts/qc-hr-vis-5c.mts", "scripts/qc-hr-vis-5-lib.mts"];
 const SHARED_FREE = [TH, EN, INV, UI, "scripts/walk-hr-matrix.json", ...ORACLE_FILES];
 export const ORACLE_EDIT_MARK = "ORACLE-EDIT (HR VIS-5";
@@ -54,7 +57,11 @@ export function diffStatics(tk: Tk): { outside: string[]; bad: string[]; files: 
  for (const f of ch) {
   if (f.startsWith("ledger/") || SHARED_FREE.includes(f)) continue;
   if (vis5aOk(f)) continue; // ORACLE-EDIT (HR VIS-5a · controller) S1 ◂
-  if (me.files.includes(f)) { for (const h of hunksOf(f)) if (!marked(h, MARK[tk])) bad.push(`${f.split("/").slice(-2).join("/")}@${h.a}:unmarked`); continue; }
+  // ORACLE-EDIT (HR VIS-5c · controller r2) S1/S2: walker + walk seed (round-2 walk assertions/states) accepted only when EVERY hunk adds a VIS-5 ticket marker ·
+  //   module-tabs.tsx (a VIS-5b file) takes VIS-5c hunks only for the profile's module-tab highlight (ruling P14) — every such hunk marked "HR VIS-5c" · never a whole file ◂
+  if (V5_TOOLS.includes(f) && fileAt(BASE, f) !== null && hunksOf(f).length > 0 && hunksOf(f).every((h) => marked(h, MARK["5b"]) || marked(h, MARK["5c"]))) continue; // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
+  if (tk === "5c" && f === TABS && hunksOf(f).length > 0 && hunksOf(f).every((h) => marked(h, MARK["5c"]))) continue; // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
+  if (me.files.includes(f)) { for (const h of hunksOf(f)) if (!marked(h, MARK[tk]) && !(f === TABS && marked(h, MARK["5c"]))) bad.push(`${f.split("/").slice(-2).join("/")}@${h.a}:unmarked`); continue; }
   if (me.fresh.includes(f)) { const b = fileAt(BASE, f); if (b !== null || !rd(f).split("\n").slice(0, 3).join("\n").includes(MARK[tk])) bad.push(`${f.split("/").pop()}:header`); continue; }
   if (oracleOk(f)) continue;
   // ORACLE-EDIT (HR VIS-5c · controller) R4: the other VIS-5 ticket's files on a shared lane — accepted only when every hunk adds that ticket's marker (fresh file: base has none + marker in lines 1-3) · never the whole file ◂
@@ -79,7 +86,7 @@ export function msgStatics(tk: Tk): Record<string, boolean | string> {
  const r: Record<string, boolean | string> = {};
  for (const [lc, p] of [["th", TH], ["en", EN]] as const) {
   const b = flat(base(p) ?? {}), n = flat(jsonOf(p) ?? {});
-  const moved = [...new Set([...Object.keys(b), ...Object.keys(n)])].filter((k) => JSON.stringify(b[k]) !== JSON.stringify(n[k]) && !k.startsWith(`hr.${me.block}.`) && !k.startsWith(`hr.${oth}.`) && !/^hr\.(run2|payview)\./.test(k)); // ORACLE-EDIT (HR VIS-5a · controller) S5 (re-merge 2): VIS-5a's message keys (hr.run2.* · hr.payview.*, the same key-path rule as leave-3 ST3) are not "other" keys ◂
+  const moved = [...new Set([...Object.keys(b), ...Object.keys(n)])].filter((k) => JSON.stringify(b[k]) !== JSON.stringify(n[k]) && !k.startsWith(`hr.${me.block}.`) && !k.startsWith(`hr.${oth}.`) && !/^hr\.(run2|payview)\./.test(k) && !(lc === "th" && k in LIFE_MOCKUP && n[k] === LIFE_MOCKUP[k])); /* ORACLE-EDIT (HR VIS-5c · controller r2) S5: + the listed hr.life keys re-worded to the mockup (th, exact value) ◂ */ // ORACLE-EDIT (HR VIS-5a · controller) S5 (re-merge 2): VIS-5a's message keys (hr.run2.* · hr.payview.*, the same key-path rule as leave-3 ST3) are not "other" keys ◂
   r[`${lc}Only`] = !moved.length || moved.slice(0, 3).join(",");
   const hk = Object.keys((jsonOf(p) ?? {}).hr ?? {});
   r[`${lc}After`] = hk.indexOf(me.block) > 0 && hk.indexOf(me.block) === hk.indexOf(me.after) + 1;
@@ -231,6 +238,15 @@ export const showsNum = (el: string, n: number) => new RegExp(`>\\s*${n}\\s*<`).
 export const attrOf = (el: string, name: string) => unent(new RegExp(`\\s${name}="([^"]*)"`).exec(el)?.[1] ?? "");
 export const hrefsIn = (el: string) => [...el.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => unent(m[1]!));
 export const queryOf = (href: string): Record<string, string> => Object.fromEntries(new URL(href, "http://x").searchParams.entries());
+// ORACLE-EDIT (HR VIS-5c · controller r2) ▸ round-2 helpers (qc-hr-vis-5c D1–D5) ◂
+/** a heading (h2–h4) whose text has `label` and which contains the element `id` (e.g. แก้ไข on «ข้อมูลส่วนตัว») */
+export const headingWith = (html: string, label: string, id: string) => [...html.matchAll(/<h[2-4]\b[\s\S]*?<\/h[2-4]>/g)].some((m) => textOfHtml(m[0]).includes(label) && m[0].includes(`data-testid="${id}"`));
+/** element `id` sits before the first profile tab link (= in the header card) */
+export const beforeTabs = (html: string, id: string) => { const t = html.search(/data-testid="hr-profile-tab-/), i = html.indexOf(`data-testid="${id}"`); return i >= 0 && (t < 0 || i < t); };
+/** regex source «<day> <Thai short month>» of a ymd (THAI_MONTH_SHORT of src/lib/ui/date) */
+export const dayMonRe = (ymd: string, mon: string[]) => `${Number(ymd.slice(8, 10))}\\s*${(mon[Number(ymd.slice(5, 7)) - 1] ?? "∅").replace(/\./g, "\\.")}`;
+/** Thai tokens of a text that are not data (tokens found in `data` are names/values, not labels) */
+export const thaiTokens = (t: string, data: string) => [...new Set(t.match(/[^\s]*[\u0E01-\u0E3A\u0E40-\u0E5B]+[^\s]*/g) ?? [])].filter((w) => !data.includes(w.replace(/[()·:,]/g, "")));
 export const isClientFile = (f: string) => /^\s*["']use client["']/.test(rd(f));
 export const clientNames = (r: Rendered) => new Set(r.client.map((c) => c.name));
 export { importsOf };

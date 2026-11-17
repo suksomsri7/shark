@@ -39,6 +39,10 @@ const WALK = {
   lawPrefix: "qc-hr-walk:",
   sessionUa: "qc-walk-hr",
   user: { key: "payroll-branch", email: "hr-qc-payroll-branch@shark.local", name: "ฝ่ายเงินเดือนสาขาหัวหิน (QC HR walk)", role: "STAFF" as const, units: ["huahin"] as const },
+  /** ORACLE-EDIT (HR VIS-5c · controller r2) ▸ A2: ผู้ดู "ดูวันลา" (LR · STAFF ถือ hr.leave.read อย่างเดียว · ทุกสาขา = unitAccess []) — เปิดทะเบียน/โปรไฟล์ได้ ไม่เห็นเลขอ่อนไหว ไม่มีปุ่มแก้ ·
+   *  + ใบลาอนุมัติแล้วที่คลุมวันนี้ของ "ต้น" (ป้าย "ลาวันนี้" ในทะเบียน · ภาพ 02 ต้น = ลาป่วยวันนี้) ผ่าน hr.requestLeave/decideLeave แบบ seed-hr-qc ข้อ 9 · --down ลบทั้งคู่ ◂ */
+  leaveRead: { key: "leave-read", email: "hr-qc-leave-read@shark.local", name: "ผู้ดูวันลา (QC HR walk)", role: "STAFF" as const, keys: { "hr.leave.read": true } },
+  leaveToday: { employee: "ton", type: "SICK", reason: "ไม่สบาย (QC walk · ป้ายลาวันนี้)" },
   /** พนักงานเสริม 1 คน (วิว = กรอกยอดยกมาแล้ว + ข้อมูลครบสำหรับ 50 ทวิ) · "ขาดยอดยกมา" = พนักงานเดิมของ seed บนรอบร่าง (ไม่มีรอบก่อนในปี) */
   employees: {
     view: { name: "วิว", code: "EMP-W01", position: "บาริสต้า", department: "บาร์", baseSalarySatang: 1_800_000, startMonthDay: "01-15" },
@@ -128,6 +132,7 @@ type Manifest = {
   after?: Digest;
   lawKeys: string[];
   userEmail: string;
+  extraEmails?: string[]; // ORACLE-EDIT (HR VIS-5c · controller r2): ผู้ใช้เพิ่มของ walk (leave-read) ◂
   ids: Record<string, Any>;
   users: Record<string, { userId: string; membershipId: string; email: string }>;
   steps?: Step[];
@@ -177,16 +182,18 @@ async function down(m: Manifest, scopeTenantId: string | null): Promise<string[]
   const newKeys = keys.filter((k) => !m.rateKeysBefore.includes(k));
   if (newKeys.length) await P.chatRateBucket.deleteMany({ where: { key: { in: newKeys } } });
   await P.hrLawTable.deleteMany({ where: { sourceKey: { startsWith: WALK.lawPrefix } } });
-  const u = await P.user.findFirst({ where: { email: m.userEmail }, select: { id: true } });
+  for (const email of [m.userEmail, ...(m.extraEmails ?? [])]) { // ORACLE-EDIT (HR VIS-5c · controller r2): + extraEmails (leave-read) ◂
+  const u = await P.user.findFirst({ where: { email }, select: { id: true } });
   if (u) {
     await P.session.deleteMany({ where: { userId: u.id } });
     const others = await P.membership.count({ where: { userId: u.id } });
     if (others === 0) await P.user.delete({ where: { id: u.id } });
-    else residue.push(`ผู้ใช้ ${m.userEmail} ยังมีสมาชิกภาพ ${others} ร้าน — ไม่ลบ`);
+    else residue.push(`ผู้ใช้ ${email} ยังมีสมาชิกภาพ ${others} ร้าน — ไม่ลบ`); // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
   }
+  } // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
   // ตรวจของค้าง
   if ((await P.hrLawTable.count({ where: { sourceKey: { startsWith: WALK.lawPrefix } } })) > 0) residue.push("HrLawTable qc-hr-walk:* ยังเหลือ");
-  if (await P.user.findFirst({ where: { email: m.userEmail }, select: { id: true } })) residue.push(`User ${m.userEmail} ยังเหลือ`);
+  for (const email of [m.userEmail, ...(m.extraEmails ?? [])]) if (await P.user.findFirst({ where: { email }, select: { id: true } })) residue.push(`User ${email} ยังเหลือ`); // ORACLE-EDIT (HR VIS-5c · controller r2): + extraEmails ◂
   if (sameTenant) {
     const now = await digestOf(m.tenantId, await tenantTables());
     residue.push(...diffDigest(m.baseline.digest, now).map((x) => `ต่างจากภาพฐาน: ${x}`));
@@ -207,7 +214,8 @@ try {
       summary.note = "ไม่มี manifest — ไม่มีอะไรต้องถอด (ตรวจกฎหมาย/ผู้ใช้ค้าง)";
       const law = await P.hrLawTable.count({ where: { sourceKey: { startsWith: WALK.lawPrefix } } });
       const usr = await P.user.count({ where: { email: WALK.user.email } });
-      summary.residue = [...(law ? [`HrLawTable qc-hr-walk:* ${law}`] : []), ...(usr ? [`User ${WALK.user.email}`] : [])];
+      const usr2 = await P.user.count({ where: { email: WALK.leaveRead.email } }); // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
+      summary.residue = [...(law ? [`HrLawTable qc-hr-walk:* ${law}`] : []), ...(usr ? [`User ${WALK.user.email}`] : []), ...(usr2 ? [`User ${WALK.leaveRead.email}`] : [])]; // ORACLE-EDIT (HR VIS-5c · controller r2): + leave-read ◂
     } else {
       summary.residue = await down(m, scope?.tenantId ?? null);
       if ((summary.residue as string[]).every((x) => x.startsWith("ร้านในฐาน"))) rmSync(WALK.manifestPath, { force: true });
@@ -250,7 +258,7 @@ try {
       manifest: m ? { tenantId: m.tenantId, complete: m.complete, day: m.day } : null,
       user: WALK.user,
       periods: PER,
-      steps: ["user", "law", "engine", "book", "employees", "opening", "runs", "cert", "filings", "bank", "labour", "line", "notices", "todo-4.3", "todo-4.8"],
+      steps: ["user", "user-leave-read", "law", "engine", "book", "employees", "opening", "runs", "leave-today", "cert", "filings", "bank", "labour", "line", "notices", "todo-4.3", "todo-4.8"], // ORACLE-EDIT (HR VIS-5c · controller r2): + user-leave-read · leave-today ◂
     };
     throw new Done();
   }
@@ -295,6 +303,7 @@ try {
     baseline: { ids: await idsOf(tenantId, tables), digest: await digestOf(tenantId, tables) },
     lawKeys: [],
     userEmail: WALK.user.email,
+    extraEmails: [WALK.leaveRead.email], // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
     ids: { periods: PER },
     users: {},
   };
@@ -328,6 +337,18 @@ try {
     man.users[WALK.user.key] = { userId: u.id, membershipId: mm.id, email: WALK.user.email };
     return { ok: true, reason: `user ${u.id} · units ${WALK.user.units.join(",")}` };
   }, (r) => r.ok, (r) => r.reason);
+
+  // ORACLE-EDIT (HR VIS-5c · controller r2) ▸ 1b. ผู้ดู leave-read (A2: ภาพทะเบียน/โปรไฟล์ของผู้ดูวันลา) — แบบผู้ใช้ payroll-branch · unitAccess [] = ทุกสาขา ◂
+  await step("user.leave-read", async () => {
+    const L = WALK.leaveRead;
+    const left = await P.user.findFirst({ where: { email: L.email }, select: { id: true } });
+    if (left && (await P.membership.count({ where: { userId: left.id } })) === 0) await P.user.delete({ where: { id: left.id } });
+    const u = left && (await P.membership.count({ where: { userId: left.id } })) > 0 ? left : await P.user.create({ data: { email: L.email, name: L.name } });
+    const mm = (await P.membership.findFirst({ where: { userId: u.id, tenantId } })) ?? (await P.membership.create({ data: { userId: u.id, tenantId, role: L.role, unitAccess: [], permissions: L.keys, acceptedAt: new Date() } }));
+    man.users[L.key] = { userId: u.id, membershipId: mm.id, email: L.email };
+    writeManifest(man);
+    return { ok: true, reason: `user ${u.id} · hr.leave.read · ทุกสาขา` };
+  }, (r) => r.ok, (r) => r.reason); // ◂ HR VIS-5c
 
   // 2. กฎหมาย ACTIVE ใต้ sourceKey ของตัวเอง (มติ Q7) — วันที่มีผล = 1 ม.ค. ปีที่แล้ว (เลื่อนวันถ้าชนแถว ACTIVE ของคนอื่นชนิดเดียวกัน)
   await step("law.active", async () => {
@@ -433,6 +454,17 @@ try {
       return { ok: miss.includes(emp.namfon) && !miss.includes(man.ids["emp.view"]), reason: `YTD_OPENING ${miss.length} คน (น้ำฝน ${miss.includes(emp.namfon) ? "มี" : "ไม่มี"} · วิว ${miss.includes(man.ids["emp.view"]) ? "มี" : "ไม่มี"})` };
     }, (r) => r.ok, (r) => r.reason);
   }
+
+  // ORACLE-EDIT (HR VIS-5c · controller r2) ▸ 7b. ใบลาอนุมัติแล้วของต้น คลุมวันนี้ (ป้าย "ลาวันนี้" ในทะเบียน · A2) — hr.requestLeave + decideLeave ในนามเจ้าของ (แบบ seed-hr-qc ข้อ 9) ◂
+  await step(`leave.today.${WALK.leaveToday.employee}`, async () => {
+    const LT = WALK.leaveToday;
+    const lv = await hr.requestLeave(ctx, { employeeId: emp[LT.employee], type: LT.type, fromDate: D.today, toDate: D.today, reason: LT.reason }); // ไม่ส่ง actorUserId = ทางเดียวกับ seed-hr-qc ข้อ 9
+    await hr.decideLeave(ctx, lv.id, "APPROVED", uid("owner"));
+    const row = await P.hrLeave.findFirst({ where: { id: lv.id }, select: { status: true } });
+    man.ids.leaveToday = lv.id;
+    writeManifest(man);
+    return { ok: row?.status === "APPROVED", reason: `${lv.id} ${row?.status} ${D.today}` };
+  }, (r) => r.ok, (r) => r.reason); // ◂ HR VIS-5c
 
   // 8a. ข้อมูลผู้จ่ายเงิน (ทั้งหนังสือรับรองเงินเดือนและแบบยื่นใช้ชื่อนายจ้าง/ผู้ลงนามจากที่นี่)
   await step("filing.profile", () =>

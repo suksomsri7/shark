@@ -276,3 +276,125 @@ How each change is explained:
 | typecheck (iso, ISO_MEM=14000M, heap 12288) | exit 0 · 0 errors |
 
 After the builder restores the 5 strings and removes the comment, the expected result is vis-5c 38/38 and h1.1 81/81.
+
+---
+# Round 2 — VIS-5c fix round (oracle writer · 17 Nov · after visual review r1 "FIX REQUIRED")
+Spec of this round: `/root/projects/shark-hr-merge/ledger/wo-notes/hr-VIS-5c-visual-r1.md` (A1, A2, B1–B11) + controller rulings G, A1–B11, P14. No src/ edits.
+
+## Step 0 — base update
+- `git merge session/hr` (7d532038e, VIS-5a merged as 08f495db0) → merge commit **fb68f9c43**. New BASE of every merge-base oracle = 7d532038e.
+- Text conflicts (3, all oracle allowlists), resolved as unions — no check dropped or loosened:
+  - `qc-hr-leave-3` ST2 `bad`/`fz` and ST3 loop: `… || v5Ok(f) || v5cOk(f)` (both tickets' narrow acceptances).
+  - `qc-hr-priv-2` S5: `out` = `!vis5aSrc && !vis5Src && !vis5cSrc`; `bad` keeps VIS-5a's `!vis5aSrc`; VIS-5c's `VIS5C_SRC`/`vis5cSrc` lines kept.
+  - `qc-hr-priv-3` P5/P7: both helpers kept (`regUnion` for the register, `payUnion` for payroll); the cell is `ru ? ru.c : pu ? pu.c : cell(…)`; failure text carries both.
+- Auto-merged (checked by reading the result): `qc-hr-h4.3-lib` (VIS5A_ALLOW + VIS5_ORACLES both present), `qc-hr-vis-5-lib` (VIS-5a's `vis5aOk` + `hr.(run2|payview)` key rule and VIS-5c's R4 acceptance / `overrideMessages` / `actions` all present; ui.tsx untouched by VIS-5a ⇒ OWN ranges unchanged), `walk-hr-matrix.json`, `walk-hr.mts`, `seed-hr-walk.mts`, inventory, messages (JSON valid).
+- **No src/ conflict, no merge damage in src/.**
+
+## New oracle checks (qc-hr-vis-5c · all `ORACLE-EDIT (HR VIS-5c · controller r2)`)
+Fixture changes: bow starts D0−76 (90-day probation ending D0+14) · f02 gets `contractEndAt` D0+20.
+| id | ruling | what is pinned |
+|---|---|---|
+| W1 (extended) | B4 | besides R1's 5 strings: `hr.people.prof.conn.pin` = «PIN POS» · `prof.conn.pinChange` = «เปลี่ยน PIN» · `form.save` = «บันทึก» · the department filter control's text starts with «แผนก» · ต้องจัดการ (`hr-life-due`) shows «Onboarding ค้าง» and «Offboarding», not รับพนักงานใหม่ค้าง/ออกจากงานค้าง · bow's general tab shows «ประเมิน» and nowhere «ผ่านทดลองงาน» · `hr-life-checklist` heading «Onboarding checklist». Exception (a): `col.pin` stays «รหัส PIN» (F16.4 forbids a th value matching `^[A-Z_]+$`, i.e. «PIN»). |
+| D1 | A1 | `?emp=bow` (owner th) panel: `hr-profile-edit` inside the h2–h4 heading whose text has «ข้อมูลส่วนตัว», and not before the first `hr-profile-tab-*` (= not in the panel header) · text «ครบ <d> <mon> … (อีก 14 วัน)» · new test id **`hr-people-prob-stats`** = «เริ่ม <formatThaiDateFull(start)> … 90 วัน … สาย L … ขาด A … OT H ชม.» with L/A/H = `loadAttendanceMonth(ctx, owner, {employeeId, month})` summed over every month from the start month to this month (premise: reader non-null) · [exception control] `hr-people-panel-open` links to the profile. |
+| D2 | B6 B7 | profile general tab (bow, owner th): `hr-life-banner` and `hr-people-prob-stats` after the first `hr-profile-tab-*` (below the tabs) · same stats regex · `hr-profile-edit` on the «ข้อมูลส่วนตัว» heading and not in the header card, for O (namfon) and M (namfon) · for payroll-all / payroll-U1, **if** `loadAttendanceMonth` refuses them, their bow profile shows no «สาย n / ขาด n / OT n ชม.». |
+| D3 | B5 | owner th row f02: «สัญญาถึง <d> <mon>» (D0+20) · en row «Contract until» · f01 (no contract date) has neither. |
+| D4 | B11 | header tail «ทะเบียนลูกจ้างตามกฎหมายแรงงานออกจากหน้านี้» in the owner th register · DOM order `hr-people-search` < `hr-people-branch` < `hr-people-dept` < `hr-people-ended` (mockup: search · branch · department · switch) · `hr-people-search-go` absent or `sr-only` (Enter still submits the GET form) · owner row namfon (MONTHLY) shows «รายเดือน» (type cell line 2) · [privacy control] M, MU1 and LR register HTML + props never contain «รายเดือน» · new test id **`hr-people-summary`**: «<U1> 24» and «<U2> 3» (active per home branch) · with `?ended=1` also «สิ้นสุด 2». |
+| D5 | B3 | `EmployeeProfileForm` rendered **alone** (renderTree) with the owner's `?edit=1` props: en text has no Thai token except data values found in the props (labels, legends, options, help text must be translated) · control: the th render has Thai labels. |
+Pinned by DOM order / presence / text only: placement (heading, below tabs, filter order), wording, counts. Left to the walker + visual review: drawer shape, row density, wrapping, menu fit, colours/icons.
+
+## New walker assertions (`walk-hr.mts` · `state.r2` per size id, "*" = all · ORACLE-EDIT (HR VIS-5c · controller r2))
+| finding kind | ruling | rule |
+|---|---|---|
+| FOLD | B1 | `[data-testid^="hr-people-row-"]` fully inside the first viewport: ≥ 8 at 1440×900, ≥ 6 at 1024×768, ≥ 3 at 390×844 (`02-employees`, all viewers) |
+| ONE-LINE | A1 B8 | status chips `hr-register-status-*` on one line (all register states); + branch names `hr-register-unit-*` at 1024/1440 and with the panel |
+| MID-WORD | A1 B7 B8 | text may break only at whitespace or after - – / : table cells at 1024/1440 and beside the panel (1280/1366/1440/1536), panel h2/h3, profile h1/h2 at every size (Thai runs without a space count as one word — the mockup keeps them unbroken) |
+| LABELS-TOUCH | B2 | at 390: each `hr-profile-tab-*` label inside its own box and ≥ 8 px from the next on the same line (all profile states) |
+| MENU-FIT | B9 | `02-employees-menu`: after clicking ⋯ of น้ำฝน, the floating box (nearest absolute/fixed ancestor of the delete trigger) fits the viewport and `hr-people-remove-<id>-trigger` is hit-testable |
+| DRAWER | A1 | `02-employees-panel` 1440 + `02-employees-panel-widths` 1280/1366/1536: panel bottom ≥ min(viewport bottom, table bottom) at scroll 0 |
+| FIT-CLIP (existing) | A1 | panel states: every table cell inside `hr-people-table` |
+| TAB-ACTIVE | P14 | profile states: a visible `<a href="/app/sys/{hr}/hr/employees">` with `aria-current="page"` or `border-b-2` |
+| SEED-DIRTY | B10 | every `hr-people-row-<id>` is a seed-hr-qc / seed-hr-walk employee id (press-test leftovers fail the cell) |
+| EN-THAI-FORM | B3 | `03-employee-namfon-edit-en` (O, M · 1440 en): every Thai token inside `form:has([data-testid="hr-profile-footer"])`, not capped at 8; seed data removed |
+| EXPECT-TEXT | A2 B5 A1 | `02-employees`: ton's chip «ลาวันนี้»/«On leave today» (seeded leave) · jay's chip «สัญญาถึง»/«Contract until» · panel text «ครบ … (อีก N วัน)» |
+Also: `state.click` now fills `{placeholders}`; r2 is skipped on redirect cells (S → /app/me); `--dry` validates every r2 selector with `querySelectorAll` in Chromium.
+
+## Walk matrix / seed (A2)
+- New viewer **LR** = `leave-read` (STAFF, only `hr.leave.read`, all branches) — `seed-hr-walk` step `user.leave-read`; `--down` deletes it (`extraEmails` in the manifest; residue check covers it).
+- Seed step `leave.today.ton`: `hr.requestLeave` + `decideLeave` (owner) SICK today → «ลาวันนี้» on ton's row. Removed by `--down` (tenant rows not in the baseline).
+- States added: `02-employees-panel-widths` (O · 1280/1366/1536 · th/en) · `02-employees-ended` (`?tab=ended` · O P M MB) · `02-employees-ended-switch` (`?ended=1` · O) · `02-employees-menu` (⋯ open · O M MB) · `03-employee-namfon-{docs,schedule,leave,history}` (O M P) · `03-employee-namfon-pay` (O P) · `03-employee-namfon-edit-en` (O M · 1440 en). All new states 3 sizes × th/en unless stated.
+- Changed: `02-employees` + LR + r2 · `02-employees-panel` viewers O P MB + fit + r2 · `03-employee-namfon` + LR · `03-employee-namfon-edit` + MB PB LR (their `?edit=1` = normal read view) · `03-employee-bow` r2.
+- Dry run: see Runs.
+
+## Narrow acceptances added for this round (never a whole file)
+- `qc-hr-vis-5-lib` diffStatics: `walk-hr.mts` / `seed-hr-walk.mts` only when every hunk carries a VIS-5 marker · `module-tabs.tsx` (a VIS-5b file) takes hunks marked «HR VIS-5c» (P14) — in the 5c run and in vis-5b's own-file check · msgStatics: `LIFE_MOCKUP` = exactly `hr.life.banner.pass`=«ประเมิน», `due.onboarding`=«Onboarding ค้าง», `due.offboarding`=«Offboarding», `checklist.onboarding`=«Onboarding checklist» (th only, exact value; en untouched).
+- `qc-hr-leave-3` v5cOk: + module-tabs.tsx · + vis-5a.mts, walk-hr.mts, seed-hr-walk.mts (every hunk «HR VIS-5c») · messages: the same 4 hr.life keys (th, exact value).
+- `qc-hr-priv-2` S5 `VIS5C_SRC` + module-tabs.tsx · S4 `VIS5_ORACLES` + vis-5a.mts. `qc-hr-h4.3-lib` S1.6 `VIS5_ORACLES` + vis-5a.mts.
+- `qc-hr-vis-5a` S2 (was 41/42 on the lane after the merge: VIS-5c's files outside VIS-5a's list): explicit `V5C_FILES` (VIS-5c product files, module-tabs, the oracles/tools edited for VIS-5c) accepted only when every hunk has «HR VIS-5c»; new files (people-ui/-rules, qc-hr-vis-5c) only absent in base + marker in lines 1–3.
+
+## Builder to-do (round 2) — item → file/area → covered by
+General rule G: match mockup 02 in layout, placement and wording except (a) fitness-forbidden values, (b) ruled absences, (c) the declared exceptions below.
+| # | item | file / area | check / assertion |
+|---|---|---|---|
+| 1 | R1 leftovers: `hr.people.title` «พนักงาน», `branches` «{n} สาขา», `unitPeople` «{name} {n} คน», `col.unit` «สาขา», `branch` «สาขา» | `src/messages/th/common.json` | W1 |
+| 2 | R2 leftover: remove the «ยังไม่ระบุสาขาประจำ» comment in ui.tsx | `ui.tsx` | qc-hr-h1.1 X9.1 |
+| 3 | B4: `prof.conn.pin` «PIN POS» · `prof.conn.pinChange` «เปลี่ยน PIN» · `form.save` «บันทึก» · dept filter default/label «แผนก» | th messages · ui.tsx filter | W1 |
+| 4 | B4: ต้องจัดการ tiles «Onboarding ค้าง» / «Offboarding» | `hr.life.due.onboarding/offboarding` (th; LifecycleDuePanel itself is frozen) | W1 · S5 accepts exactly these values |
+| 5 | B4/B6: banner action «ประเมิน» on the general tab; no «ผ่านทดลองงาน» there — **see Q2 before choosing the route** (rename `hr.life.banner.pass`, or own «ประเมิน ›» link to the history tab where the confirm stays) | th messages or page/people-ui | W1 |
+| 6 | B4: checklist heading «Onboarding checklist» | `hr.life.checklist.onboarding` (th) or a `hr.people` key used by ProfileChecklist | W1 |
+| 7 | A1/B7: «แก้ไข» = link on the «ข้อมูลส่วนตัว» heading (EmployeeReadView), removed from ProfileHeader (panel and profile) | `people-ui.tsx` | D1 · D2 · V3 (href ?edit=1) · A3 |
+| 8 | A1: panel = full-height drawer flush right (border-left + shadow, no short rounded card) | `ui.tsx` panel `<aside>` | walker DRAWER (`02-employees-panel`, `-widths`) · visual |
+| 9 | A1: probation strip «ทดลองงาน · ครบ <d mon> (อีก N วัน)» (same wording as LifecycleBanner `banner.probation`) | `ui.tsx` panel | D1 · walker EXPECT-TEXT |
+| 10 | A1/B6: stats line, test id `hr-people-prob-stats` (+ inventory rows on both pages): «เริ่ม <formatThaiDateFull(start)> · <probationEnd−start> วัน · สาย L · ขาด A · OT H ชม.»; L/A/OT = `loadAttendanceMonth(ctx, viewer, {employeeId, month})` (judge.ts, existing gate) summed over start-month…this month; counts omitted when it returns null | `people-ui.tsx` (+ panel in ui.tsx) | D1 · D2 |
+| 11 | B6: probation banner (and stats) below the tabs, first item of the general tab | profile page / people-ui | D2 |
+| 12 | A1/B8: beside the panel and at 1024 — chips one line, branch names one line, no mid-word break in any cell or title; cells inside the frame at 1280–1536 | `ui.tsx` table classes | walker ONE-LINE · MID-WORD · FIT-CLIP |
+| 13 | B1: fold — ≥ 8 full rows at 1440×900, ≥ 6 at 1024×768, ≥ 3 cards at 390×844 (header/tabs/filters height, row height, card height) | `ui.tsx` + employees page | walker FOLD |
+| 14 | B2: profile tab labels must not touch/overflow at 390 (en and th) | `ProfileTabs` (people-ui) | walker LABELS-TOUCH |
+| 15 | B3: EmployeeProfileForm fully translated: legends, labels, select options, help text, placeholders (hard-coded Thai literals → `hr.people.form.*`) | `EmployeeProfileForm.tsx` + messages | D5 · walker EN-THAI-FORM · S5 noThaiLiteral |
+| 16 | B5: contract-end chip «สัญญาถึง <d mon>» / «Contract until <date>» when `contractEndAt` is set | `ui.tsx` status cell | D3 · walker EXPECT-TEXT (jay) |
+| 17 | B9: ⋯ menu fits the viewport, delete reachable (e.g. compact schedule rows, max-height + internal scroll that stays inside the viewport, open upward near the bottom) | `ui.tsx` ⋯ menu | walker MENU-FIT · visual |
+| 18 | B11: header tail sentence «— ทะเบียนลูกจ้างตามกฎหมายแรงงานออกจากหน้านี้» (new `hr.people` key, en too) | `ui.tsx` header | D4 |
+| 19 | B11: filter order search · branch · แผนก · แสดงที่สิ้นสุด; no visible «ค้นหา» button (a `sr-only` submit is allowed; Enter submits the GET form) | `ui.tsx` filters | D4 · visual (control look) |
+| 20 | B11: type column second line = pay type (รายเดือน …) — only for viewers entitled to pay data; **Q1** | `ui.tsx` type cell | D4 (owner yes · M/MU1/LR never) |
+| 21 | B11: footer `hr-people-summary` «แสดง … · <branch> n · <branch> n (· สิ้นสุด n with the switch)» (+ inventory row) | `ui.tsx` footer | D4 |
+| 22 | P14: «พนักงาน» module tab highlighted on profile pages (e.g. optional prefix/active prop on ModuleTabs used only by HR — module-tabs.tsx hunks marked «HR VIS-5c»; qc-hr-vis-5b must stay green; other modules byte-identical behaviour) | `module-tabs.tsx` + profile page | walker TAB-ACTIVE |
+| 23 | B10: pictures on a clean seed (press-test rows removed: `seed-hr-walk --down` then up) | controller procedure | walker SEED-DIRTY |
+| 24 | A2: nothing to build — states exist; the badge/ended/menu/tab/LR pictures come from the walk | — | walker states |
+
+## Declared exceptions (owner list)
+- (c) Panel footer = link to the full profile («เปิดโปรไฟล์เต็ม →»), not บันทึก · ยกเลิก · สิ้นสุดการจ้าง (no second editor).
+- (c) Table beside the open panel may show fewer than 9 columns (app shell wider than the mockup's rail) — nothing may wrap mid-word or clip.
+- (a) `col.pin` stays «รหัส PIN» (mockup «PIN» = `^[A-Z_]+$`, F16.4).
+- (b) footer «+ ยืมตัวมา N» part (needs the borrowings list reader — same as the ยืมตัว tag already on the owner list).
+
+## Owner-list additions
+- In-panel save / cancel / end-employment (panel footer exception).
+- «ยืมตัวมา N» in the register footer (borrowings reader).
+- If Q1 is ruled out: pay-type sub-line in the type column.
+
+## Deferred to VIS-5e (review C-items, not pinned)
+R6/P8 checklist footnote + tickable squares · P5 SSO hospital (no field) · R13 account role / «ใช้ kiosk» · P6 multi-line address (unverified data) · R15 title shown 3× · Thai dates in en from base components (banner, LINE chip, ต้องจัดการ tiles) · LINE pill wrap · 12-hour native time inputs · back link 20 px · edit-form 41 px inputs · add card overlaying filters · empty lifecycle card for the manager in edit mode · legend divider · unlabelled gap before บันทึกเพิ่มเติม · faint «→» for payroll rows · R14 ต้องจัดการ sub-title/icon · C4 nickname vs legal name in the list · C5 ก้อง chip without day count · cov-02/cov-03 pictures (C3). P14 is NOT deferred (pinned above).
+
+## Questions for the controller
+1. **Q1 type line 2 (pay type).** The mockup's second line is the pay basis (รายเดือน / ฿400/วัน); brief §1 says non-payroll viewers get no payType. Pinned: owner sees «รายเดือน», M / MU1 / LR never. It needs a per-row read of the salary profile's payType with the PRIV-2 pay scope — the same kind of read 5c-2 left out for the pay rate. Allowed in VIS-5c, or owner list (then D4.typeLine is removed)?
+2. **Q2 «ประเมิน».** LifecycleBanner's button passes probation in one click (`confirmProbationAction`). Re-labelling it «ประเมิน» (evaluate) would mislabel an irreversible step. W1 accepts either: rename `hr.life.banner.pass`, or a «ประเมิน ›» link to the history tab (notes/review + the confirm button, labelled as today). Recommend the link.
+3. **Q3 MID-WORD definition.** Lines may break only at whitespace or after - – /. Thai runs without a space therefore must not wrap in table cells and titles (mockup: `white-space: nowrap`); a 390 profile title may wrap only at « · ». Confirm.
+4. **Q4 seed side effect.** ton's approved sick leave today also shows on today's hub/attendance/leave pictures (VIS-5b/attendance states). Accept, or move the leave to a non-rostered employee?
+5. **Q5 oracle size.** qc-hr-vis-5c.mts is ~62 KB (> 60 KB guideline; helpers already moved to qc-hr-vis-5-lib). Accept, or split the D-checks into a lib function?
+
+## Runs (lane DB · iso.sh → qc-hr.sh → with-gate-lock.sh · QC_FORCE=1)
+Logs: `/tmp/claude-0/-root/59156a1f-9c0e-594d-9643-d1896f46b191/scratchpad/r2/`.
+| suite | right after the merge (fb68f9c43, no edit of mine) | after round 2 (this commit) |
+|---|---|---|
+| qc-hr-vis-5a | 41/42 — S2: VIS-5c's lane files outside VIS-5a's list | **42/42** (narrow S2 acceptance) |
+| qc-hr-vis-5b | 34/34 | **34/34** |
+| qc-hr-vis-5c | 37/38 — W1 only (R1 wording, builder) | **37/43** — red by design: W1 · D1 · D2 · D3 · D4 · D5 (reasons below) · structural/controls green · residue none |
+| qc-hr-priv-3 | 27/28 — S4 only (lane scope, excluded) | 27/28 — S4 only |
+| qc-hr-priv-2 | 47/47 | 47/47 |
+| qc-hr-h4.3 | 45/45 | 45/45 |
+| qc-hr-leave-3 | 53/53 | 53/53 |
+| qc-hr-preprod-1 | 57/57 | 57/57 |
+| qc-hr-h1.1 | — | 80/81 — X9.1 `commentOnly` (builder to-do 2, unchanged) |
+| typecheck (iso, ISO_MEM=14000M, heap 12288) | — | exit 0 · 0 errors |
+| walk-hr `--dry` | — | exit 0 · 63 states · 963 shots · every r2 selector parsed by Chromium · no matrix error |
+Why each new check is red now (right reason): W1 — the 5 R1 strings + «PIN ลงเวลา», «ตั้ง/เปลี่ยน PIN», «บันทึกข้อมูล», «ทุกแผนก», tiles, «ผ่านทดลองงาน», «รายการรับพนักงานใหม่» · D1 — แก้ไข in the panel header, strip «ทดลองงาน · N วัน» without «ครบ … (อีก N วัน)», no `hr-people-prob-stats` (premise loadAttendanceMonth(owner) holds; footer link control green) · D2 — banner before the tabs, no stats, แก้ไข in the header card (O, M) · D3 — f02 row has no contract chip · D4 — no tail sentence, dept before branch, visible ค้นหา, no pay-type line, no `hr-people-summary` (privacy control «no รายเดือน for M/MU1/LR» green) · D5 — 57 Thai tokens in the en form (control green).
+Not executed: every walker r2 assertion and every new walk state (needs a build + server + `seed-hr-walk` up — CONTROLLER-RUN); the seed steps `user.leave-read` / `leave.today.ton` and their `--down` removal are written but not run. Two accidental bare `tsx scripts/seed-hr-walk.mts` invocations (no wrapper, no args) stopped at the "no seed-hr-qc expected file" check (exit 3) before any write — no manifest was created.

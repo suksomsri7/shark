@@ -59,7 +59,17 @@ type State = {
   pathBy?: Record<string, string>; expectFinal?: Record<string, string>; moneyOk?: string[]; limitedNote?: { viewers: string[]; selector: string };
   allowScroll?: string[]; click?: string; extra?: boolean; configMoneyOk?: string[]; why?: string; langs?: string[]; sizes?: string[]; todoInventoryPrefix?: string; coverage?: boolean;
   fit?: { box: string; cells: string; must?: string }; pressProbe?: string[]; // ORACLE-EDIT (HR VIS-5a · controller r4): FIT-CLIP + press probe ◂
+  r2?: Record<string, R2>; // ORACLE-EDIT (HR VIS-5c · controller r2): layout assertions per size id ("*" = every size) — see vis5cOf ◂
 };
+// ORACLE-EDIT (HR VIS-5c · controller r2) ▸ round-2 rulings B1/B2/B8/B9/B10/A1/B3/P14 as walker assertions (selectors may carry {placeholders}):
+//   fold = rows fully inside the first viewport ≥ min (FOLD) · oneLine = each element's text on ONE line (ONE-LINE) ·
+//   wsOnly = text may break lines only at whitespace or after - / – (MID-WORD; Thai runs count as one word — the mockup keeps cells/titles unbroken) ·
+//   apart = consecutive labels (text boxes) ≥ gap px apart on the same line and inside their own box (LABELS-TOUCH) ·
+//   reach = after state.click: the floating box around this element (nearest absolute/fixed ancestor) fits the viewport and the element is hit-testable (MENU-FIT) ·
+//   drawer = panel bottom reaches min(viewport bottom, list bottom) at scroll 0 (DRAWER) · active = an <a href> with aria-current="page" or border-b-2 (TAB-ACTIVE) ·
+//   seedOnly = every row test id suffix is a seed employee id (SEED-DIRTY · B10 clean-seed pictures) · enThaiIn = en: every Thai token inside, not capped at 8 (EN-THAI-FORM) ·
+//   texts = element text matches th/en regex, or element absent (EXPECT-TEXT) ◂
+type R2 = { fold?: { rows: string; min: number }; oneLine?: string; wsOnly?: string; apart?: { items: string; gap: number }; reach?: string; drawer?: { panel: string; list: string }; active?: string; seedOnly?: string; enThaiIn?: string; texts?: { sel: string; th?: string; en?: string; absent?: boolean }[] }; // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
 type Refusal = { id: string; page: string; path: string; unknown: string; viewers: string[]; pathBy?: Record<string, string> };
 type Matrix = { sizes: Size[]; langs: string[]; viewers: Record<string, ViewerDef>; allow: { enumsTh: string[]; thaiInEnExtra: string[]; readOnlyActions?: string[] }; states: State[]; refusals: Refusal[]; excludedInventoryPages: Record<string, string> };
 type InvRow = { page: string; testid: string; kind: string; interactive: boolean; roles?: string[]; hiddenFor?: string[]; conditional?: string; expect?: { type?: string } };
@@ -193,6 +203,7 @@ if (DRY) {
   const ph = placeholderIds();
   const invPages = [...new Set(INV.map((r) => r.page))];
   const seenIds = new Set<string>();
+  const r2Sels: [string, string][] = []; // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
   for (const s of [...M.states, ...M.refusals]) {
     if (seenIds.has(s.id)) errs.push(`id ซ้ำ ${s.id}`);
     seenIds.add(s.id);
@@ -215,6 +226,14 @@ if (DRY) {
     if ("sizes" in s) for (const z of s.sizes ?? []) if (!M.sizes.some((x) => x.id === z || x.id.startsWith(z))) errs.push(`${s.id}: ขนาด ${z} ไม่อยู่ใน sizes`);
     if ("fit" in s && s.fit) for (const q of [s.fit.box, s.fit.must ?? ""].filter(Boolean)) { const t = /data-testid="([^"]+)"/.exec(q)?.[1]; if (!t || !invOf(s.page).some((r) => r.re.test(t) || r.testid === t)) errs.push(`${s.id}: fit ${q} ไม่มีในทะเบียน ${s.page}`); }
     if ("pressProbe" in s) for (const t of s.pressProbe ?? []) if (!invOf(s.page).some((r) => r.testid === t)) errs.push(`${s.id}: pressProbe ${t} ไม่มีในทะเบียน ${s.page}`);
+    // ORACLE-EDIT (HR VIS-5c · controller r2): r2 keys = size ids or "*" · every selector parses after placeholder fill · fold.min ≥ 1 ◂
+    if ("r2" in s && s.r2) for (const [z, r] of Object.entries(s.r2)) {
+      if (z !== "*" && !M.sizes.some((x) => x.id === z)) errs.push(`${s.id}: r2 ขนาด ${z} ไม่อยู่ใน sizes`);
+      const sels = [r.fold?.rows, r.oneLine, r.wsOnly, r.apart?.items, r.reach, r.drawer?.panel, r.drawer?.list, r.active ? `a[href="${r.active}"]` : "", r.seedOnly, r.enThaiIn, ...(r.texts ?? []).map((x) => x.sel)].filter(Boolean) as string[];
+      for (const q of sels) { try { r2Sels.push([`${s.id} ${z}`, fill(q, ph)]); } catch (e) { errs.push(`${s.id}: r2 ${z} selector ${q}: ${(e as Error).message.slice(0, 80)}`); } } // checked by querySelectorAll in the dry-run Chromium below
+      if (r.fold && !(r.fold.min >= 1)) errs.push(`${s.id}: r2 ${z} fold.min`);
+      for (const x of r.texts ?? []) for (const re of [x.th, x.en].filter(Boolean) as string[]) { try { new RegExp(re); } catch { errs.push(`${s.id}: r2 ${z} regex ${re}`); } }
+    }
   }
   const covered = new Set([...M.states.filter((s) => !s.todoInventoryPrefix).map((s) => s.page), ...M.refusals.map((r) => r.page)]);
   const notCovered = invPages.filter((p) => !covered.has(p) && !M.excludedInventoryPages[p]);
@@ -237,6 +256,7 @@ if (DRY) {
       await pg.goto("about:blank");
       const ua = (await pg.evaluate("navigator.userAgent")) as string;
       browserOk = `ok · ${(await b.version()) as string} · ${ua.includes("Headless") ? "headless" : "headed"}`;
+      for (const [w, q] of r2Sels) { const bad = (await pg.evaluate((x: string) => { try { document.querySelectorAll(x); return ""; } catch (e) { return String((e as Error).message).slice(0, 80); } }, q)) as string; if (bad) errs.push(`${w}: r2 selector ${q}: ${bad}`); } // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
     } finally {
       await b.close().catch(() => {});
     }
@@ -660,6 +680,66 @@ const fitOf = (o: { box: string; cells: string; must: string }) => {
   if (o.must) for (const c of Array.from(document.querySelectorAll(o.must)) as HTMLElement[]) if (c.getBoundingClientRect().width > 0 && c.scrollWidth > c.clientWidth + 1) out.push(`clipped text «${c.innerText.trim().slice(0, 30)}» ${c.scrollWidth}>${c.clientWidth}`);
   return { missing: false, out };
 }; // ◂ HR VIS-5a
+// ORACLE-EDIT (HR VIS-5c · controller r2) ▸ in-page layout assertions of state.r2 (see type R2) — returns [kind, detail][] ◂
+const vis5cOf = (o: { fold: string; foldMin: number; oneLine: string; wsOnly: string; apart: string; gap: number; reach: string; dPanel: string; dList: string; active: string }) => {
+  const out: [string, string][] = [];
+  const vh = window.innerHeight, vw = window.innerWidth;
+  const shown = (e: Element) => { const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return r.width > 0 && r.height > 0 && cs.visibility !== "hidden" && cs.display !== "none"; };
+  const q = (s: string) => (s ? (Array.from(document.querySelectorAll(s)) as HTMLElement[]).filter(shown) : []);
+  const txt = (e: Element) => ((e as HTMLElement).innerText || e.textContent || "").replace(/\s+/g, " ").trim().slice(0, 40);
+  /** line centres of a set of rects: rects whose vertical centres lie within half a line of each other share a line */
+  const lines = (rs: DOMRect[]) => { const c: number[] = []; for (const r of rs.filter((x) => x.width > 0 && x.height > 0).sort((a, b) => a.top - b.top)) { const m = r.top + r.height / 2; if (!c.some((y) => Math.abs(y - m) < Math.max(3, r.height / 2))) c.push(m); } return c; };
+  const rangeRects = (e: Element) => { const g = document.createRange(); g.selectNodeContents(e); return Array.from(g.getClientRects()); };
+  window.scrollTo(0, 0);
+  if (o.fold) { const n = q(o.fold).filter((e) => { const r = e.getBoundingClientRect(); return r.top >= -0.5 && r.bottom <= vh + 0.5; }).length; if (n < o.foldMin) out.push(["FOLD", `${n} full rows in the first ${vw}×${vh} viewport < ${o.foldMin} (${o.fold})`]); }
+  for (const e of q(o.oneLine)) { const n = lines(rangeRects(e)).length; if (n > 1) out.push(["ONE-LINE", `«${txt(e)}» on ${n} lines (${e.getAttribute("data-testid") ?? e.tagName.toLowerCase()})`]); }
+  if (o.wsOnly) {
+    const seg = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+    for (const e of q(o.wsOnly)) {
+      const tw = document.createTreeWalker(e, NodeFilter.SHOW_TEXT);
+      for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+        const s = n.textContent ?? "", gs = [...seg.segment(s)];
+        let prev: { ch: string; y: number; h: number } | null = null;
+        for (const g of gs) {
+          const rg = document.createRange(); rg.setStart(n, g.index); rg.setEnd(n, g.index + g.segment.length);
+          const r = rg.getBoundingClientRect();
+          if (!r.width && !r.height) { prev = null; continue; }
+          const cur = { ch: g.segment, y: r.top + r.height / 2, h: r.height };
+          if (prev && !/\s/.test(prev.ch) && !/\s/.test(cur.ch) && !/[-–/]/.test(prev.ch) && Math.abs(cur.y - prev.y) > Math.max(3, Math.min(cur.h, prev.h) / 2)) { out.push(["MID-WORD", `«${s.trim().slice(0, 40)}» breaks between «${prev.ch}» and «${cur.ch}»`]); break; }
+          prev = cur;
+        }
+      }
+    }
+  }
+  if (o.apart) {
+    const it = q(o.apart).map((e) => { const rs = rangeRects(e).filter((r) => r.width > 0); const b = e.getBoundingClientRect(); return { e, b, l: Math.min(...rs.map((r) => r.left)), r: Math.max(...rs.map((r) => r.right)), t: Math.min(...rs.map((r) => r.top)), bt: Math.max(...rs.map((r) => r.bottom)) }; }).filter((x) => Number.isFinite(x.l));
+    for (const x of it) if (x.l < x.b.left - 1 || x.r > x.b.right + 1) out.push(["LABELS-TOUCH", `«${txt(x.e)}» text ${Math.round(x.l)}–${Math.round(x.r)} outside its box ${Math.round(x.b.left)}–${Math.round(x.b.right)}`]);
+    for (let i = 1; i < it.length; i++) { const a = it[i - 1]!, b = it[i]!; if (Math.min(a.bt, b.bt) > Math.max(a.t, b.t) && b.l - a.r < o.gap) out.push(["LABELS-TOUCH", `«${txt(a.e)}» → «${txt(b.e)}» gap ${Math.round(b.l - a.r)} px < ${o.gap}`]); }
+  }
+  if (o.reach) {
+    const t = document.querySelector(o.reach) as HTMLElement | null;
+    if (!t || !shown(t)) out.push(["MENU-FIT", `${o.reach} not visible after the click`]);
+    else {
+      let box: HTMLElement | null = t;
+      while (box && !["absolute", "fixed"].includes(getComputedStyle(box).position)) box = box.parentElement;
+      box ??= t;
+      box.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const b = box.getBoundingClientRect();
+      if (b.top < -0.5 || b.bottom > vh + 0.5 || b.left < -0.5 || b.right > vw + 0.5) out.push(["MENU-FIT", `menu box ${Math.round(b.left)},${Math.round(b.top)}–${Math.round(b.right)},${Math.round(b.bottom)} not inside viewport ${vw}×${vh}`]);
+      t.scrollIntoView({ block: "nearest", inline: "nearest" });
+      const r = t.getBoundingClientRect(), at = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2);
+      if (!at || !(at === t || t.contains(at))) out.push(["MENU-FIT", `${o.reach} not reachable (centre hits ${at ? ((at as HTMLElement).dataset?.testid ?? at.tagName.toLowerCase()) : "nothing"})`]);
+      window.scrollTo(0, 0);
+    }
+  }
+  if (o.dPanel) {
+    const p = q(o.dPanel)[0], l = q(o.dList)[0];
+    if (!p || !l) out.push(["DRAWER", `missing ${p ? o.dList : o.dPanel}`]);
+    else { const pb = p.getBoundingClientRect().bottom, want = Math.min(vh, l.getBoundingClientRect().bottom); if (pb < want - 2) out.push(["DRAWER", `panel ends at y=${Math.round(pb)} < ${Math.round(want)} (viewport/list bottom) — not a full-height drawer`]); }
+  }
+  if (o.active) { const as = (Array.from(document.querySelectorAll(`a[href="${o.active}"]`)) as HTMLElement[]).filter(shown); if (!as.some((a) => a.getAttribute("aria-current") === "page" || /(^|\s)border-b-2(\s|$)/.test(a.className))) out.push(["TAB-ACTIVE", `no highlighted link to ${o.active} (${as.length} links)`]); }
+  return out;
+}; // ◂ HR VIS-5c
 // H5.1 tuning ▸ เทียบเป็นชุดก้อน RSC เรียงแล้ว + ตัด </body></html>: forbidden กับ unknown ต่างกันแค่ตำแหน่งที่ก้อน "6:E{NEXT_HTTP_ERROR_FALLBACK;404}" ถูกสตรีม (ก่อน/หลัง </body>) — เนื้อหาเท่ากัน ◂
 const stripIds = (html: string, ids: string[]) =>
   ids.reduce((s, id) => (id ? s.split(id).join("<ID>") : s), html).replace(/nonce="[^"]*"/g, 'nonce=""').replace("</body></html>", "").split(/(?=<script)/).sort().join("");
@@ -689,7 +769,8 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
     finalPath = page.url().replace(BASE, "");
     const st = c.def as State;
     if (!isRef && st.click) {
-      await page.click(st.click).then(() => new Promise((r) => setTimeout(r, 500)), () => add("FAIL", "STATE-CLICK", `ไม่พบ ${st.click}`));
+      const clickSel = fill(st.click, IDS); // ORACLE-EDIT (HR VIS-5c · controller r2): placeholders in click ({emp.namfon}) ◂
+      await page.click(clickSel).then(() => new Promise((r) => setTimeout(r, 500)), () => add("FAIL", "STATE-CLICK", `ไม่พบ ${clickSel}`));
     }
     const a = (await page.evaluate(analyze, { allowScroll: isRef ? [] : (st.allowScroll ?? []), mobile: c.size.mobile })) as ReturnType<typeof analyze>;
     // ORACLE-EDIT (HR VIS-5a · controller r4) ▸ หน้า error ของ Next ตอนโหลด · FIT-CLIP ◂
@@ -700,6 +781,35 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
       if (f.missing) add("FAIL", "FIT-CLIP", `ไม่พบ ${st.fit.box}`);
       for (const x of f.out.slice(0, 12)) add("FAIL", "FIT-CLIP", x);
     }
+    // ORACLE-EDIT (HR VIS-5c · controller r2) ▸ state.r2 ("*" merged with this size) ◂
+    const r2: R2 | null = !isRef && st.r2 && !st.expectFinal?.[c.v] ? { ...(st.r2["*"] ?? {}), ...(st.r2[c.size.id] ?? {}) } : null;
+    if (r2 && Object.keys(r2).length) {
+      const F2 = (x?: string) => (x ? fill(x, IDS) : "");
+      const lay = (await page.evaluate(vis5cOf, { fold: F2(r2.fold?.rows), foldMin: r2.fold?.min ?? 0, oneLine: F2(r2.oneLine), wsOnly: F2(r2.wsOnly), apart: F2(r2.apart?.items), gap: r2.apart?.gap ?? 0, reach: F2(r2.reach), dPanel: F2(r2.drawer?.panel), dList: F2(r2.drawer?.list), active: F2(r2.active) })) as [string, string][];
+      for (const [k, d] of lay.slice(0, 16)) add("FAIL", k, d);
+      if (r2.seedOnly) { // B10: pictures only on a clean seed — every row id must be a seed-hr-qc / seed-hr-walk employee
+        const pfx = F2(r2.seedOnly), known = new Set(Object.entries(IDS).filter(([k]) => k.startsWith("emp.")).map(([, v]) => v));
+        const ids = (await page.evaluate((p: string) => Array.from(document.querySelectorAll(`[data-testid^="${p}"]`)).map((e) => [e.getAttribute("data-testid")!.slice(p.length), ((e as HTMLElement).innerText || "").replace(/\s+/g, " ").trim().slice(0, 30)]), pfx)) as [string, string][];
+        const dirty = ids.filter(([id]) => !known.has(id));
+        if (dirty.length) add("FAIL", "SEED-DIRTY", `${dirty.length} non-seed row(s) — re-seed before taking pictures: ${dirty.slice(0, 4).map(([id, t]) => `${id.slice(0, 10)} «${t}»`).join(" | ")}`);
+      }
+      for (const x of r2.texts ?? []) { // EXPECT-TEXT
+        const re = c.lang === "en" ? x.en : x.th;
+        const got = (await page.evaluate((s: string) => { const e = document.querySelector(s) as HTMLElement | null; return e ? (e.innerText || e.textContent || "").replace(/\s+/g, " ").trim() : null; }, F2(x.sel))) as string | null;
+        if (x.absent) { if (got !== null && (!re || new RegExp(re).test(got))) add("FAIL", "EXPECT-TEXT", `${F2(x.sel)} should be absent${re ? ` (or not match /${re}/)` : ""}: «${got.slice(0, 80)}»`); }
+        else if (got === null) add("FAIL", "EXPECT-TEXT", `missing ${F2(x.sel)}`);
+        else if (re && !new RegExp(re).test(got)) add("FAIL", "EXPECT-TEXT", `${F2(x.sel)} «${got.slice(0, 80)}» !~ /${re}/`);
+      }
+      if (r2.enThaiIn && c.lang === "en") { // B3: whole region, not capped at 8 tokens · data (seed names, units, positions …) and allow-list removed
+        const t = (await page.evaluate((s: string) => Array.from(document.querySelectorAll(s)).map((e) => (e as HTMLElement).innerText || "").join("\n"), F2(r2.enThaiIn))) as string;
+        const data = JSON.stringify(HQC);
+        let rest = t;
+        for (const s of thaiAllow) rest = rest.split(s).join(" ");
+        const th = [...new Set(rest.match(/[^\s]*[ก-ฺเ-๛]+[^\s]*/g) ?? [])].filter((w) => !data.includes(w.replace(/[()·:,]/g, "")));
+        if (!t.trim()) add("FAIL", "EN-THAI-FORM", `nothing rendered in ${F2(r2.enThaiIn)}`);
+        else if (th.length) add("FAIL", "EN-THAI-FORM", `${th.length} Thai token(s): ${th.slice(0, 40).join(" · ")}`);
+      }
+    } // ◂ HR VIS-5c
     const source = `${(await page.content()) as string}\n${(await page.evaluate("JSON.stringify(self.__next_f || [])")) as string}`;
 
     // HTTP / ปลายทาง

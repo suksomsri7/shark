@@ -115,14 +115,16 @@ function runStatic(): void {
  };
  const p3Ok = (f: string) => P3_DATA.includes(f) || (P3_FILES.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR PRIV-3")))); // ORACLE-EDIT (HR PRIV-3 · controller merge) ◂
  // ORACLE-EDIT (HR VIS-5c · controller) ST2/ST3: explicit allowlist — the later ticket VIS-5c: its product files (every hunk adds a line with "HR VIS-5c"; new files: absent in base + "HR VIS-5c" in lines 1-3) · the oracles edited for it (every hunk "HR VIS-5c") · messages th/en only when every changed key is under hr.people.* · never a whole file · unmarked still fails ◂
- const V5C_SRC = ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", `${H}EmployeeProfileForm.tsx`, `${H}ui.tsx`], V5C_NEW = [`${H}people-ui.tsx`, `${H}people-rules.ts`]; // ORACLE-EDIT (HR VIS-5c · controller) ◂
- const V5C_OR = ["vis-5b", "vis-5c", "vis-5-lib", "priv-2", "priv-3", "priv-3-lib", "h4.3-lib", "h1.1"].map((x) => `scripts/qc-hr-${x}.mts`); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const V5C_SRC = ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", `${H}EmployeeProfileForm.tsx`, `${H}ui.tsx`, "src/components/module-tabs.tsx" /* ORACLE-EDIT (HR VIS-5c · controller r2): P14 ◂ */], V5C_NEW = [`${H}people-ui.tsx`, `${H}people-rules.ts`]; // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const V5C_OR = [...["vis-5b", "vis-5c", "vis-5-lib", "priv-2", "priv-3", "priv-3-lib", "h4.3-lib", "h1.1", "vis-5a" /* ORACLE-EDIT (HR VIS-5c · controller r2) ◂ */].map((x) => `scripts/qc-hr-${x}.mts`), "scripts/walk-hr.mts", "scripts/seed-hr-walk.mts" /* ORACLE-EDIT (HR VIS-5c · controller r2): round-2 walk tools ◂ */]; // ORACLE-EDIT (HR VIS-5c · controller) ◂
  const v5cKeys = (f: string) => { // ORACLE-EDIT (HR VIS-5c · controller): changed leaf keys of a messages file vs base ◂
   const flat = (o: Any, p = ""): Record<string, unknown> => (o && typeof o === "object" ? Object.assign({}, ...Object.entries(o).map(([k, v]) => flat(v, p ? `${p}.${k}` : k))) : { [p]: o });
   try { const a = flat(JSON.parse(git(["show", `${BASE}:${f}`]) || "{}")), b = flat(JSON.parse(rd(f) || "{}")); return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])); } catch { return ["∅json"]; }
  };
+ const V5C_LIFE: Record<string, string> = { "hr.life.banner.pass": "ประเมิน", "hr.life.due.onboarding": "Onboarding ค้าง", "hr.life.due.offboarding": "Offboarding", "hr.life.checklist.onboarding": "Onboarding checklist" }; // ORACLE-EDIT (HR VIS-5c · controller r2) B4 ◂
+ const flatV5c = (o: Any, p = ""): Record<string, unknown> => (o && typeof o === "object" ? Object.assign({}, ...Object.entries(o).map(([k, v]) => flatV5c(v, p ? `${p}.${k}` : k))) : { [p]: o }); // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
  const v5cOk = (f: string) => { // ORACLE-EDIT (HR VIS-5c · controller) ◂
-  if (/^src\/messages\/(th|en)\/common\.json$/.test(f)) { const ks = v5cKeys(f); return ks.length > 0 && ks.every((k) => k.startsWith("hr.people.")); }
+  if (/^src\/messages\/(th|en)\/common\.json$/.test(f)) { const ks = v5cKeys(f); return ks.length > 0 && ks.every((k) => k.startsWith("hr.people.") || (/\/th\//.test(f) && k in V5C_LIFE && JSON.parse(rd(f) || "{}")?.hr?.life && flatV5c(JSON.parse(rd(f)))[k] === V5C_LIFE[k])); } // ORACLE-EDIT (HR VIS-5c · controller r2): + hr.life keys re-worded to the mockup (th, exact values) ◂
   if (V5C_NEW.includes(f)) return git(["cat-file", "-t", `${BASE}:${f}`]) !== "blob" && rd(f).split("\n").slice(0, 3).join("\n").includes("HR VIS-5c");
   const hs = diffHunks(BASE, f) ?? [];
   if (!hs.length) return false;

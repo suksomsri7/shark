@@ -1,12 +1,13 @@
 // QC HR VIS-5c employee register + profile (mockup 02) · number masking · brief hr-brief-VIS-5c.md (+ CONTROLLER RULINGS) · notes hr-VIS-5bc-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-vis-5c.mts
 // HR VIS-5c oracle (17 Nov · after VIS-5b merge) ▸ BASE = merge-base(HEAD, local session/hr) = 8df167086 (VIS-5b + PRIV-3 in base) · + role matrix G1 · payload-wide PII G2 · action surface A1 · owner-list absences A2 · leave-today R10 · tab data V10 · no pay on profile V11 · notes hr-VIS-5c-oracle.md ◂
+// ORACLE-EDIT (HR VIS-5c · controller r2) ▸ round 2 (visual review r1 FIX REQUIRED): W1 + B4 wording · D1 panel (A1) · D2 profile banner/stats/แก้ไข (B6/B7) · D3 contract chip (B5) · D4 header/filters/type line/footer (B11) · D5 en edit form (B3) — layout items are walker r2 assertions (walk-hr-matrix.json) ◂
 // No browser: pages rendered in-process (server components awaited, "use client" components kept with their props = what the browser/RSC receives).
 //   Table/card layout per size, sticky footer, fold and clipping are the controller's walk.
 import { type Any, type Def, ROOT, rd, errText, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, sha, stripComments, importsOf, fileAt } from "./qc-hr-lib.mjs";
 import { installNetGuard, NET, sweepTenants, sweepResidue } from "./qc-hr-h4.3-lib.mjs";
 import { textOfAny } from "./qc-hr-priv-2-lib.mjs";
-import { H, BASE, UI, diffStatics, msgStatics, invHas, invRows, baseIdsGone, pinned, installIntl, loadClientSet, renderPage, inScope, overrideMessages, CUR, idsWith, elOf, showsNum, attrOf, hrefsIn, queryOf, textOfHtml, isClientFile, type Rendered } from "./qc-hr-vis-5-lib.mjs"; // HR VIS-5c oracle ▸ + inScope (G1 outcomes) ◂
+import { H, BASE, UI, diffStatics, msgStatics, invHas, invRows, baseIdsGone, pinned, installIntl, loadClientSet, renderPage, inScope, overrideMessages, CUR, idsWith, elOf, showsNum, attrOf, hrefsIn, queryOf, textOfHtml, isClientFile, type Rendered, renderTree, h, headingWith, beforeTabs, dayMonRe, thaiTokens } from "./qc-hr-vis-5-lib.mjs"; // HR VIS-5c oracle ▸ + inScope (G1 outcomes) ◂
 import { srcFiles } from "./qc-hr-lib.mjs"; // HR VIS-5c oracle ▸ A2 ◂
 
 const SUITE = "qc-hr-vis-5c", ARGV = process.argv.slice(2), FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run"), PFX = "qc-hr-vis5c-";
@@ -59,8 +60,14 @@ const CHECKS: Def[] = [
  D("R10", "§2 10 · §6 1", "MR", "[db] leave-today badge from employeesOnLeave: row of a person on approved leave today shows it (th text has «ลา…วันนี้» and does not claim ลาป่วย — no leave type in employeesOnLeave, ruling 17 Nov (5) · en text has leave) · a person not on leave does not"),
  D("V10", "§2 18 · §6 3", "MR", "[db] ?tab=leave = leaveBalances(viewer) (policy name + balance) · a viewer leaveBalances refuses (payroll-U1) gets no balances · ?tab=schedule = HrScheduleEditor (setWorkScheduleAction · start-<wd> inputs)"),
  D("A3", "ruling 17 Nov (1)(2)", "MR", "[db] editor controls only for hr.employee.create holders (the key every register/profile editor action asserts): payroll-all · payroll-U1 · leave-read staff get no create/update/schedule/remove/restore/doc/save action, no PinField, no EmployeeProfileForm, no hr-people-add(-name) / hr-people-more-* / hr-profile-edit / hr-profile-reveal-* — register default · ?add=1 · ?emp= and profile default · every tab · ?edit=1 · their ?edit=1 = 200 with the same test ids as their default view (the flag is ignored — no new refusal) · [control] O · M · M-U1 keep the register editors"),
- D("W1", "R1 (controller 18 Nov) · mockup 02", "MR", "[static+db] approved mockup wording restored: th hr.people.title = พนักงาน · branches = {n} สาขา · unitPeople = {name} {n} คน · col.unit = สาขา · branch = สาขา · owner th register shows «2 สาขา · <unit> N คน»"), // ORACLE-EDIT (HR VIS-5c · controller) R1 ◂
+ D("W1", "R1 (controller 18 Nov) · mockup 02", "MR", "[static+db] approved mockup wording restored: th hr.people.title = พนักงาน · branches = {n} สาขา · unitPeople = {name} {n} คน · col.unit = สาขา · branch = สาขา · owner th register shows «2 สาขา · <unit> N คน» · r2 B4: prof.conn.pin = PIN POS · prof.conn.pinChange = เปลี่ยน PIN · form.save = บันทึก · dept filter shows «แผนก» · ต้องจัดการ tiles «Onboarding ค้าง» / «Offboarding» · bow banner action «ประเมิน» (not ผ่านทดลองงาน) · checklist heading «Onboarding checklist» · [exception a] col.pin stays (F16.4 forbids th = PIN)"), // ORACLE-EDIT (HR VIS-5c · controller) R1 ◂ · r2 ◂
  D("V11", "§5 5c-2", "CG", "[db] [control] no pay figure on the profile: every hr-profile-tab-* state (and the default) for every profile viewer — no salary of the person in HTML or client props"),
+ // ORACLE-EDIT (HR VIS-5c · controller r2) ▸ round-2 rulings (17 Nov) ◂
+ D("D1", "r2 A1", "MR", "[db] ?emp=bow panel: แก้ไข on the «ข้อมูลส่วนตัว» heading not the header · «ครบ <date> (อีก N วัน)» · hr-people-prob-stats «เริ่ม <date> · 90 วัน · สาย L · ขาด A · OT H ชม.» (loadAttendanceMonth summed) · [exception] footer = profile link"),
+ D("D2", "r2 B6 B7", "MR", "[db] profile: banner + hr-people-prob-stats below the tabs · แก้ไข on the «ข้อมูลส่วนตัว» heading (O · M) · no late/absent/OT for viewers loadAttendanceMonth refuses"),
+ D("D3", "r2 B5", "MR", "[db] register row of a person with a contract end date shows «สัญญาถึง <date>» (en «Contract until») · a person without one does not"),
+ D("D4", "r2 B11", "MR", "[db] register: header tail sentence · filters search → branch → dept → ended · no visible ค้นหา (sr-only ok) · type line 2 = pay type (O; never for non-payroll) · hr-people-summary per-branch counts (+ สิ้นสุด N)"),
+ D("D5", "r2 B3", "MR", "[db] EmployeeProfileForm alone (owner ?edit=1 props): en has no Thai label/legend/option · [control] th has"),
  D("Z1", "-", "CG", "residue · outbound"),
 ];
 const R = makeRegistry(SUITE, "", CHECKS);
@@ -156,8 +163,8 @@ async function buildFixture() {
  for (const [i, [k, u, cls, type, st]] of defs.entries()) {
   const name = `QCV5c ${k} ${tag}`, code = `C5${tag.slice(0, 3)}${String(i + 1).padStart(2, "0")}`, phone = `08${digits(8, SEED / 7 + i * 7919)}`;
   const nid = `1${digits(12, SEED / 3 + i * 104729)}`, sso = digits(10, SEED / 11 + i * 15485863), acc = digits(10, SEED / 13 + i * 32452843), house = `zHOUSE${tag}${k}`;
-  const id = await fx.mkEmp(T, HRS, name, { code, startDate: "2023-03-20", position: `ตำแหน่ง${k}`, unitId: u, status: st, ...(cls === "ended" ? { active: false, endDate: addDay(D0, -10) } : {}) });
-  await P.hrEmployee.update({ where: { id }, data: { phone, employmentType: type, department: k.startsWith("p") ? "บาร์" : "หน้าร้าน", nationalId: nid, ssoNumber: sso, bankName: "KBank", bankAccountNo: acc, bankAccountName: `BN${tag}`, houseRegAddress: house, birthDate: new Date("1998-11-14T00:00:00Z"), ...(cls === "prob" ? { probationEndAt: dbDate(addDay(D0, 14)) } : {}) } });
+  const id = await fx.mkEmp(T, HRS, name, { code, startDate: k === "bow" ? addDay(D0, -76) : "2023-03-20" /* ORACLE-EDIT (HR VIS-5c · controller r2): bow 90-day probation (D1/D2 stats) ◂ */, position: `ตำแหน่ง${k}`, unitId: u, status: st, ...(cls === "ended" ? { active: false, endDate: addDay(D0, -10) } : {}) });
+  await P.hrEmployee.update({ where: { id }, data: { phone, employmentType: type, department: k.startsWith("p") ? "บาร์" : "หน้าร้าน", nationalId: nid, ssoNumber: sso, bankName: "KBank", bankAccountNo: acc, bankAccountName: `BN${tag}`, houseRegAddress: house, birthDate: new Date("1998-11-14T00:00:00Z"), ...(cls === "prob" ? { probationEndAt: dbDate(addDay(D0, 14)) } : {}), ...(k === "f02" ? { contractEndAt: dbDate(addDay(D0, 20)) } : {}) /* ORACLE-EDIT (HR VIS-5c · controller r2): D3 ◂ */ } });
   await P.hrSalaryProfile.create({ data: { ...sc, employeeId: id, payType: "MONTHLY", baseSalarySatang: SAL + i, ssoEligible: true } });
   E[k] = { k, id, name, code, phone, unit: u, cls, nid, sso, acc, house };
  }
@@ -298,7 +305,14 @@ try {
  const thP = (JSON.parse(rd("src/messages/th/common.json")).hr ?? {}).people ?? {}, WANT: [string, unknown, string][] = [["title", thP.title, "พนักงาน"], ["branches", thP.branches, "{n} สาขา"], ["unitPeople", thP.unitPeople, "{name} {n} คน"], ["col.unit", thP.col?.unit, "สาขา"], ["branch", thP.branch, "สาขา"]]; // ORACLE-EDIT (HR VIS-5c · controller) ◂
  const oT = textOfHtml(o.html), w1: string[] = WANT.filter(([, got, want]) => got !== want).map(([k, got]) => `${k}=${JSON.stringify(got)}`); // ORACLE-EDIT (HR VIS-5c · controller) ◂
  if (!/(^|\s)2 สาขา ·/.test(oT) || !new RegExp(`สาขาหนึ่ง ${tag} \\d+ คน`).test(oT)) w1.push("rendered count line"); // ORACLE-EDIT (HR VIS-5c · controller) ◂
- chk("W1", !w1.length, "mockup wording", L(w1)); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ // ORACLE-EDIT (HR VIS-5c · controller r2) ▸ B4: the other renamed labels, mockup strings (key values where the key is ours · rendered text where a base component draws it) ◂
+ for (const [k, got, want] of [["prof.conn.pin", thP.prof?.conn?.pin, "PIN POS"], ["prof.conn.pinChange", thP.prof?.conn?.pinChange, "เปลี่ยน PIN"], ["form.save", thP.form?.save, "บันทึก"]] as [string, unknown, string][]) if (got !== want) w1.push(`${k}=${JSON.stringify(got)}`);
+ if (!/^แผนก(\s|$)/.test(textOfHtml(elOf(o.html, "hr-people-dept")))) w1.push(`dept filter «${textOfHtml(elOf(o.html, "hr-people-dept")).slice(0, 12)}»≠แผนก`);
+ const dueT = textOfHtml(elOf(o.html, "hr-life-due"));
+ if (!dueT.includes("Onboarding ค้าง") || !dueT.includes("Offboarding") || /รับพนักงานใหม่ค้าง|ออกจากงานค้าง/.test(dueT)) w1.push(`ต้องจัดการ tiles «${dueT.slice(0, 50)}»`);
+ if (!bt.includes("ประเมิน") || bt.includes("ผ่านทดลองงาน")) w1.push("bow banner action ≠ ประเมิน");
+ if (!textOfHtml(elOf(bw.html, "hr-life-checklist")).includes("Onboarding checklist")) w1.push("checklist heading ≠ Onboarding checklist");
+ chk("W1", !w1.length, "mockup wording", L(w1)); // ORACLE-EDIT (HR VIS-5c · controller) ◂ · r2 ◂
 
  // ═════════════ HR VIS-5c oracle ▸ role matrix · payload-wide PII · action surface · absences · tab data (17 Nov) ◂ ═════════════
  const outcome = async (mod: Any, w: Any, path: string, params: Record<string, string>, sp: Record<string, string>): Promise<string> => {
@@ -389,6 +403,41 @@ try {
  }
  const ctl = Object.entries(regActs).filter(([st]) => ["O", "M", "MU1"].includes(st)).filter(([, acts]) => !["createEmployeeAction", "updateEmployeeAction", "setWorkScheduleAction", "removeEmployeeAction"].every((a) => acts.includes(a))).map(([st]) => `${st}:lost editors`);
  chk("A3", !a3.length && !ctl.length, "editors only for hr.employee.create", L([...ctl, ...a3]));
+ // ═════════════ ORACLE-EDIT (HR VIS-5c · controller r2) ▸ D1–D5 (visual review r1 → controller rulings 17 Nov) ◂ ═════════════
+ const dm = (ymd: string) => dayMonRe(ymd, (M.date.THAI_MONTH_SHORT ?? []) as string[]);
+ const JV = await imp("@/lib/modules/hr/judge"), bowStart = addDay(D0, -76), months: string[] = [];
+ for (let m = bowStart.slice(0, 7); m <= D0.slice(0, 7); m = addDay(`${m}-28`, 7).slice(0, 7)) months.push(m);
+ const statsOf = async (role: string, ua: string[], perm: Record<string, boolean>, uid: string) => { let late = 0, abs = 0, ot = 0; for (const m of months) { const r = await JV.loadAttendanceMonth?.({ tenantId: X.T, systemId: X.HRS }, vOf(role, ua, perm, uid), { employeeId: E.bow!.id, month: m }).catch(() => null); if (!r) return null; late += r.summary.lateCount; abs += r.summary.absentDays; ot += r.summary.otMin; } return { late, abs, ot: String(+(ot / 60).toFixed(2)) }; };
+ const stO = await statsOf("OWNER", [], {}, W.owner.id), statsRe = (st: { late: number; abs: number; ot: string }) => new RegExp(`เริ่ม\\s*${M.date.formatThaiDateFull?.(bowStart).replace(/\./g, "\\.")}[\\s\\S]*90\\s*วัน[\\s\\S]*สาย\\s*${st.late}[\\s\\S]*ขาด\\s*${st.abs}[\\s\\S]*OT\\s*${st.ot}\\s*ชม`);
+ // D1 panel (owner ?emp=bow)
+ const pb = await list(W.owner, { emp: E.bow!.id }), pnl = elOf(pb.html, "hr-people-panel"), pnT = textOfHtml(pnl);
+ const d1 = { premise: !!stO || "loadAttendanceMonth(owner)=null", panel: !!pnl, editOnHeading: headingWith(pnl, "ข้อมูลส่วนตัว", "hr-profile-edit"), notInHeader: !beforeTabs(pnl, "hr-profile-edit"), strip: new RegExp(`ครบ\\s*${dm(addDay(D0, 14))}[^()]*\\(อีก\\s*14\\s*วัน\\)`).test(pnT) || `«${pnT.slice(0, 60)}»`, stats: (!!stO && statsRe(stO).test(textOfHtml(elOf(pnl, "hr-people-prob-stats")))) || `«${textOfHtml(elOf(pnl, "hr-people-prob-stats")).slice(0, 70)}»`, footerLink: queryOf(attrOf(elOf(pnl, "hr-people-panel-open"), "href") || "/?x=1").x !== "1" };
+ chk("D1", all(d1), "all", fails(d1));
+ // D2 profile banner + stats + แก้ไข
+ const d2: string[] = [], tabAt = bw.html.search(/data-testid="hr-profile-tab-/), banAt = bw.html.indexOf('data-testid="hr-life-banner"'), stAt = bw.html.indexOf('data-testid="hr-people-prob-stats"');
+ if (tabAt < 0 || banAt < tabAt) d2.push(`banner@${banAt} not below tabs@${tabAt}`);
+ if (stAt < tabAt || !stO || !statsRe(stO).test(textOfHtml(elOf(bw.html, "hr-people-prob-stats")))) d2.push(`stats «${textOfHtml(elOf(bw.html, "hr-people-prob-stats")).slice(0, 60)}»`);
+ for (const [n, w] of [["O", W.owner], ["M", W.mgr]] as [string, Any][]) { const r = n === "O" ? od : await prof(w, nf); if (!headingWith(r.html, "ข้อมูลส่วนตัว", "hr-profile-edit") || beforeTabs(r.html, "hr-profile-edit")) d2.push(`${n}: แก้ไข not on the ข้อมูลส่วนตัว heading`); }
+ for (const [n, w, ua, perm] of [["payAll", W.payAll, ["*"], { "hr.payroll.read": true }], ["payU1", W.payU1, [X.U1], { "hr.payroll.read": true }]] as [string, Any, string[], Record<string, boolean>][]) { if (await statsOf("STAFF", ua, perm, w.id)) continue; const r = await prof(w, E.bow!); if (/สาย\s*\d|ขาด\s*\d|OT\s*[\d.]+\s*ชม/.test(textOfHtml(r.html))) d2.push(`${n}: late/absent/OT shown though loadAttendanceMonth refuses`); }
+ chk("D2", !d2.length, "all", L(d2));
+ // D3 contract chip (f02 contract ends D0+20)
+ const st = (r: Rendered, k: string) => rowTxt(r, k);
+ const d3 = { th: new RegExp(`สัญญาถึง\\s*${dm(addDay(D0, 20))}`).test(st(o, "f02")) || `«${st(o, "f02").slice(-40)}»`, en: /contract until/i.test(st(enL, "f02")), noneTh: !!st(o, "f01") && !/สัญญาถึง/.test(st(o, "f01")), noneEn: !/contract until/i.test(st(enL, "f01")) };
+ chk("D3", all(d3), "all", fails(d3));
+ // D4 header · filters · type line · footer
+ const pos = (id: string) => o.html.indexOf(`data-testid="${id}"`), ord = ["hr-people-search", "hr-people-branch", "hr-people-dept", "hr-people-ended"].map(pos), goEl = elOf(o.html, "hr-people-search-go");
+ const sumO = textOfHtml(elOf(o.html, "hr-people-summary")), en1 = await list(W.owner, { ended: "1" }), sumE = textOfHtml(elOf(en1.html, "hr-people-summary"));
+ const n1 = emps.filter((e) => e.cls !== "ended" && e.unit === X.U1).length, n2 = emps.filter((e) => e.cls !== "ended" && e.unit === X.U2).length, nEnd = emps.filter((e) => e.cls === "ended").length;
+ const mgrRegs = [await list(W.mgr), mg.first, await list(W.leaveRead)];
+ const d4 = { tail: oT.includes("ทะเบียนลูกจ้างตามกฎหมายแรงงานออกจากหน้านี้"), order: (ord.every((x) => x >= 0) && ord.every((x, i) => i === 0 || x > ord[i - 1]!)) || ord.join("<"), noSearchButton: !goEl || /\bsr-only\b/.test(attrOf(goEl, "class")), typeLine: st(o, "namfon").includes("รายเดือน"), noPayTypeNonPayroll: mgrRegs.every((r) => !r.err && !(r.html + r.clientText).includes("รายเดือน")), summary: (new RegExp(`สาขาหนึ่ง ${tag}\\s*${n1}\\b`).test(sumO) && new RegExp(`สาขาสอง ${tag}\\s*${n2}\\b`).test(sumO)) || `«${sumO.slice(0, 80)}»`, summaryEnded: new RegExp(`สิ้นสุด\\s*${nEnd}\\b`).test(sumE) || `«${sumE.slice(0, 80)}»` };
+ chk("D4", all(d4), "all", fails(d4));
+ // D5 the edit form alone (owner ?edit=1 props): en without Thai labels · th control
+ const FM = await imp("@/lib/modules/hr/EmployeeProfileForm"), Form = FM.default ?? FM.EmployeeProfileForm, fp = edForm?.props;
+ const rf = async (lc: "th" | "en") => (Form && fp ? await renderTree(h(Form, fp), lc) : null), fEn = await rf("en"), fTh = await rf("th");
+ const dataTxt = textOfAny(fp ?? {}), thaiTok = (t: string) => thaiTokens(t, dataTxt);
+ const enTok = fEn ? thaiTok(textOfHtml(fEn.html)) : ["∅form"];
+ const d5 = { rendered: (!!fEn && !fEn.err && textOfHtml(fEn.html).length > 40) || `${fEn?.err ?? "no form/props"}`.slice(0, 60), noThai: !enTok.length || `${enTok.length}: ${enTok.slice(0, 10).join(" ")}`, thControl: !!fTh && thaiTok(textOfHtml(fTh.html)).length > 0 };
+ chk("D5", all(d5), "all", fails(d5)); // ◂ HR VIS-5c r2
 } catch (e) {
  crashed = errText(e);
  console.log(`🔴 harness error: ${crashed} ${(e as Error)?.stack?.split("\n").slice(1, 4).join(" | ")}`);

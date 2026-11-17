@@ -119,7 +119,11 @@ const CH = changedFiles(BASE).filter((f) => !/^(ledger|scratchpad)\//.test(f));
 {
  const r = { sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, runRules: !!rd(F.rr) && rd(F.rr) === fileAt(BASE, F.rr), untouched: changedVsBase(BASE, UNTOUCHED) === "unchanged" };
  chk("S1", all(r), "", `${fails(r)} ${changedVsBase(BASE, UNTOUCHED).slice(0, 120)}`);
- const out = CH.filter((f) => ![...ALLOW_SRC, ...ALLOW_DATA, ...OWN].includes(f) && !(/^scripts\/qc-.*\.mts$/.test(f) && !isNew(f) && oracleEditOk(BASE, f)) && !(TOOL.includes(f) && !isNew(f) && !vis5aUnmarked(BASE, [f], isNew).length)); // ORACLE-EDIT (HR VIS-5a · controller): + TOOL ◂
+ // ORACLE-EDIT (HR VIS-5c · controller r2) S2: lane wip/hr-vis-5bc (VIS-5c on top of VIS-5a) — VIS-5c's own files accepted only when EVERY hunk adds a line with "HR VIS-5c"
+ //   (new files: absent in base + "HR VIS-5c" in lines 1-3) · the list is explicit (VIS-5c product files · module-tabs · the oracles/tools edited for VIS-5c) · never a whole file ◂
+ const V5C_FILES = ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", "src/lib/modules/hr/EmployeeProfileForm.tsx", "src/lib/modules/hr/ui.tsx", "src/components/module-tabs.tsx", "scripts/walk-hr.mts", "scripts/seed-hr-walk.mts", ...["vis-5a", "vis-5b", "vis-5c", "vis-5-lib", "priv-2", "priv-3", "priv-3-lib", "h4.3-lib", "h1.1", "leave-3"].map((x) => `scripts/qc-hr-${x}.mts`)], V5C_NEW = ["src/lib/modules/hr/people-ui.tsx", "src/lib/modules/hr/people-rules.ts"]; // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
+ const v5cOk = (f: string) => (V5C_NEW.includes(f) ? isNew(f) && rd(f).split("\n").slice(0, 3).join("\n").includes("HR VIS-5c") : V5C_FILES.includes(f) && !isNew(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR VIS-5c")))); // ORACLE-EDIT (HR VIS-5c · controller r2) ◂
+ const out = CH.filter((f) => ![...ALLOW_SRC, ...ALLOW_DATA, ...OWN].includes(f) && !(/^scripts\/qc-.*\.mts$/.test(f) && !isNew(f) && oracleEditOk(BASE, f)) && !(TOOL.includes(f) && !isNew(f) && !vis5aUnmarked(BASE, [f], isNew).length) && !v5cOk(f)); // ORACLE-EDIT (HR VIS-5a · controller): + TOOL ◂ · ORACLE-EDIT (HR VIS-5c · controller r2): + v5cOk ◂
  chk("S2", !out.length, "none", `outside=${L(out)} base=${BASE.slice(0, 9)}`);
  const bad = vis5aUnmarked(BASE, CH.filter((f) => ALLOW_SRC.includes(f)), isNew);
  chk("S3", !bad.length, "", L(bad));
