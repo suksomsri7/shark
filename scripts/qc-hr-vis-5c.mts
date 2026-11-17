@@ -1,11 +1,13 @@
 // QC HR VIS-5c employee register + profile (mockup 02) · number masking · brief hr-brief-VIS-5c.md (+ CONTROLLER RULINGS) · notes hr-VIS-5bc-oracle.md · ⚠️ ORACLE-EDIT only · QC_FORCE=1 · --list
 // Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-vis-5c.mts
+// HR VIS-5c oracle (17 Nov · after VIS-5b merge) ▸ BASE = merge-base(HEAD, local session/hr) = 8df167086 (VIS-5b + PRIV-3 in base) · + role matrix G1 · payload-wide PII G2 · action surface A1 · owner-list absences A2 · leave-today R10 · tab data V10 · no pay on profile V11 · notes hr-VIS-5c-oracle.md ◂
 // No browser: pages rendered in-process (server components awaited, "use client" components kept with their props = what the browser/RSC receives).
 //   Table/card layout per size, sticky footer, fold and clipping are the controller's walk.
 import { type Any, type Def, ROOT, rd, errText, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, sha, stripComments, importsOf, fileAt } from "./qc-hr-lib.mjs";
 import { installNetGuard, NET, sweepTenants, sweepResidue } from "./qc-hr-h4.3-lib.mjs";
 import { textOfAny } from "./qc-hr-priv-2-lib.mjs";
-import { H, BASE, UI, diffStatics, msgStatics, invHas, invRows, baseIdsGone, pinned, installIntl, loadClientSet, renderPage, CUR, idsWith, elOf, showsNum, attrOf, hrefsIn, queryOf, textOfHtml, isClientFile, type Rendered } from "./qc-hr-vis-5-lib.mjs";
+import { H, BASE, UI, diffStatics, msgStatics, invHas, invRows, baseIdsGone, pinned, installIntl, loadClientSet, renderPage, inScope, CUR, idsWith, elOf, showsNum, attrOf, hrefsIn, queryOf, textOfHtml, isClientFile, type Rendered } from "./qc-hr-vis-5-lib.mjs"; // HR VIS-5c oracle ▸ + inScope (G1 outcomes) ◂
+import { srcFiles } from "./qc-hr-lib.mjs"; // HR VIS-5c oracle ▸ A2 ◂
 
 const SUITE = "qc-hr-vis-5c", ARGV = process.argv.slice(2), FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run"), PFX = "qc-hr-vis5c-";
 const F = { list: "src/app/app/sys/[id]/hr/employees/page.tsx", prof: "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", form: `${H}EmployeeProfileForm.tsx`, pui: `${H}people-ui.tsx`, prules: `${H}people-rules.ts` };
@@ -21,8 +23,8 @@ const PIN: Record<string, [string, string, string]> = {
 
 const D = (id: string, g: string, sb: string, t: string): Def => [id, g, ({ C: "CRITICAL", M: "MAJOR", m: "MINOR" } as const)[sb[0] as "C"], sb[1] === "R" ? "RED" : "GREEN", t];
 const CHECKS: Def[] = [
- D("S1", "§7 §8", "MG", "[static] diff vs merge-base(session/hr): only VIS-5c files + shared lists · VIS-5b-only files refused"),
- D("S2", "§8", "MG", "[static] every hunk of a VIS-5c file adds \"HR VIS-5c\" · ui.tsx hunks only in 432-709 / import block · new files marked in first 3 lines"),
+ D("S1", "§7 §8", "MG", "[static] diff vs merge-base(session/hr) (= 8df167086 after the VIS-5b merge): only VIS-5c files + shared lists + marked oracle edits · VIS-5b-only files refused"),
+ D("S2", "§8", "MG", "[static] every hunk of a VIS-5c file adds \"HR VIS-5c\" · ui.tsx hunks only in base 453-730 / import block · new files marked in first 3 lines"),
  D("S3", "§8", "CG", "[static] [control] payroll-rules.ts byte-identical · pinned bodies (profile loader · form parser · employee actions · lifecycle/leave/line readers) unchanged"),
  D("S4", "F16.1", "CG", "[static] [control] fitness F16.1 clean"),
  D("S5", "§5", "MR", "[static] hr.people block: th = en keys · right after hr.life · en values have no Thai · no other message key changed · no Thai literal in new JSX/TS"),
@@ -41,14 +43,22 @@ const CHECKS: Def[] = [
  D("R8", "5c-2", "CG", "[db] [control] no pay rate / salary figure in the register (owner · HTML + client props)"),
  D("R9", "§2 15", "MR", "[db] ?emp= side panel hr-people-panel = read view of that person (masked numbers only)"),
  D("V1", "5c-1 §3", "CR", "[db] profile default view, entitled viewers (owner · payroll-all · payroll-U1 own branch): only masked ID/SSO/bank strings · no full number / house address in HTML or client props"),
- D("V2", "5c-1 5c-4", "CG", "[db] [control] not entitled today (manager · branch manager · payroll-U1 on a borrowed person): no full number default or ?edit=1 · no mask · no eye"),
- D("V3", "5c-1 Q1", "MR", "[db] eye hr-profile-reveal-* is a link to ?edit=1 (no client reveal) · edit link hr-profile-edit"),
+ D("V2", "5c-1 5c-4", "CG", "[db] [control] not entitled today (manager · branch manager · leave-read staff · payroll-U1 on a borrowed person): no full number default or ?edit=1 (HTML + client props) · no mask · no eye"),
+ D("V3", "5c-1 Q1", "MR", "[db] eye hr-profile-reveal-* is a link to ?edit=1 (no client reveal) · edit link hr-profile-edit for entitled viewers and for managers (they get the form today)"), // HR VIS-5c oracle ▸ V2 + leave-read staff · V3 + managers' edit link ◂
  D("V4", "5c-1", "MG", "[db] [control] ?edit=1 for an entitled viewer: full value in the edit form (as today)"),
  D("V5", "§3 §5", "MR", "[db] EmployeeProfileForm only with ?edit=1 (no viewer gets it in the read view) · edit view has hr-profile-footer + hr-profile-unit"),
  D("V6", "§2 17 24", "MR", "[db] read view: hr-profile-tab-* links (?tab=, one aria-current) · hr-profile-connections"),
  D("V7", "§2 19 23", "MG", "[db] [control] probation banner + onboarding checklist progress 5/7 from lifecycle data (bow)"),
  D("V8", "§5", "MR", "[db] read-view dates: th Buddhist-year formatThaiDateFull · en formatShortDate · no ISO / mm/dd/yyyy / date input"),
  D("V9", "§5 §9", "MR", "[db] en profile + register: hr.people exists · no missing key · no Thai value of hr.people in en HTML"),
+ // HR VIS-5c oracle ▸ added 17 Nov (role matrix · payload-wide PII · action surface · owner-list absences · tab data) ◂
+ D("G1", "PRIV-3 R2 Q1 · H2.10", "CG", "[db] [control] page matrix: register + profile render for O · payroll-all · payroll-U1 · M · M-U1 · leave-read staff (also ?emp= / ?add=1 / ?edit=1) · staff/kiosk/member → 404 on the register · staff on own profile → redirect /app/me/hr/profile · staff on another profile, kiosk, member → 404"),
+ D("G2", "5c-1 5c-4", "CG", "[db] [control] register states (default · ?emp=namfon · ?add=1 · payroll-U1 ?emp=borrowed) for every register viewer: no full ID/SSO/bank/house value of ANY employee in HTML or client props · viewers not entitled for that person: no mask string, no eye"),
+ D("A1", "§2 3 12 · 5c-1", "CG", "[db] [control] action surface: server actions bound on register (default · ?add=1) and profile (default · ?edit=1) ⊆ today's set for every viewer (no reveal/audit/import action) · owner register keeps create/update/schedule/remove + PinField"),
+ D("A2", "owner list", "CG", "[db] [control] owner-list items absent: no CSV import control (th/en) · no ยืมตัว tag · no booking ตั้งเป็นช่าง / CRM commission in the profile (all tabs, th/en) · no sensitive_view audit action in src/"),
+ D("R10", "§2 10 · §6 1", "MR", "[db] leave-today badge from employeesOnLeave: row of a person on approved leave today shows it (th text has วันนี้ · en text has leave) · a person not on leave does not"),
+ D("V10", "§2 18 · §6 3", "MR", "[db] ?tab=leave = leaveBalances(viewer) (policy name + balance) · a viewer leaveBalances refuses (payroll-U1) gets no balances · ?tab=schedule = HrScheduleEditor (setWorkScheduleAction · start-<wd> inputs)"),
+ D("V11", "§5 5c-2", "CG", "[db] [control] no pay figure on the profile: every hr-profile-tab-* state (and the default) for every profile viewer — no salary of the person in HTML or client props"),
  D("Z1", "-", "CG", "residue · outbound"),
 ];
 const R = makeRegistry(SUITE, "", CHECKS);
@@ -113,7 +123,7 @@ installNetGuard();
 const { P, coreHash } = await qc4Env(SUITE);
 installIntl();
 console.log(`client components known: ${await loadClientSet()}`);
-const M = { sys: await imp("@/lib/modules/system/service"), list: await imp("@/app/app/sys/[id]/hr/employees/page"), prof: await imp("@/app/app/sys/[id]/hr/employees/[employeeId]/page"), date: await imp("@/lib/ui/date") };
+const M = { sys: await imp("@/lib/modules/system/service"), list: await imp("@/app/app/sys/[id]/hr/employees/page"), prof: await imp("@/app/app/sys/[id]/hr/employees/[employeeId]/page"), date: await imp("@/lib/ui/date"), svc: await imp("@/lib/modules/hr/service") /* HR VIS-5c oracle ▸ R10 premise ◂ */ };
 const badImp = Object.entries(M).filter(([, m]) => m?.__err).map(([k, m]) => `${k}:${m.__err}`);
 if (badImp.length) console.log(`import problems: ${badImp.join(" | ")}`);
 
@@ -132,7 +142,8 @@ async function buildFixture() {
  const sc = { tenantId: T, systemId: HRS };
  const PAY = { "hr.payroll.read": true, "hr.payroll.create": true, "hr.payroll.approve": true, "hr.payroll.pay": true, "hr.payroll.reverse": true };
  const mk = (t: string, r: "OWNER" | "MANAGER" | "STAFF", ua: string[], p: Record<string, boolean>) => fx.mkUser(T, t, `QCV5c ${t} ${tag}`, r, ua, p);
- const W = { owner: await mk("owner", "OWNER", [], {}), payAll: await mk("payall", "STAFF", ["*"], PAY), payU1: await mk("payu1", "STAFF", [U1], { "hr.payroll.read": true }), mgr: await mk("mgr", "MANAGER", [], {}), mgrU1: await mk("mgru1", "MANAGER", [U1], {}) };
+ const W = { owner: await mk("owner", "OWNER", [], {}), payAll: await mk("payall", "STAFF", ["*"], PAY), payU1: await mk("payu1", "STAFF", [U1], { "hr.payroll.read": true }), mgr: await mk("mgr", "MANAGER", [], {}), mgrU1: await mk("mgru1", "MANAGER", [U1], {}),
+  staff: await mk("staff", "STAFF", ["*"], { "hr.leave.request": true }), kiosk: await mk("kiosk", "STAFF", ["*"], { "hr.attendance.clock": true }), member: await mk("member", "STAFF", [], {}), leaveRead: await mk("leaveread", "STAFF", ["*"], { "hr.leave.read": true }) }; // HR VIS-5c oracle ▸ + S K N (PRIV-3 viewers) · leave-read staff (register yes · sensitive no) ◂
  const defs: [string, string, Emp["cls"], string, string][] = [];
  for (let i = 1; i <= 12; i++) defs.push([`f${String(i).padStart(2, "0")}`, U1, "full", "FULL_TIME", "ACTIVE"]);
  defs.push(["namfon", U1, "full", "FULL_TIME", "ACTIVE"]);
@@ -149,8 +160,11 @@ async function buildFixture() {
   E[k] = { k, id, name, code, phone, unit: u, cls, nid, sso, acc, house };
  }
  await P.hrEmployeeUnit.create({ data: { ...sc, employeeId: E.brw!.id, unitId: U1, fromDate: dbDate(addDay(D0, -3)), toDate: null } });
+ await P.hrEmployee.update({ where: { id: E.namfon!.id }, data: { linkedUserId: W.staff.id } }); // HR VIS-5c oracle ▸ staff = namfon (own-profile redirect) ◂
+ const policy = await P.hrLeavePolicy.create({ data: { ...sc, category: "VACATION", name: `zPOL${tag}`, quotaDays: 6 } }); // HR VIS-5c oracle ▸ V10 ◂
+ await P.hrLeave.create({ data: { ...sc, employeeId: E.p1!.id, type: "SICK", fromDate: dbDate(D0), toDate: dbDate(D0), status: "APPROVED", days: 1 } }); // HR VIS-5c oracle ▸ R10 (on leave today) ◂
  for (let i = 0; i < 7; i++) await P.hrOnboardingTask.create({ data: { ...sc, employeeId: E.bow!.id, kind: "ONBOARDING", title: `งาน ${i + 1}`, sortOrder: i, ...(i < 5 ? { doneAt: new Date(), doneById: W.owner.id } : {}) } });
- return { T, U1, U2, HRS, W, E };
+ return { T, U1, U2, HRS, W, E, policy: policy.name }; // HR VIS-5c oracle ▸ + policy ◂
 }
 
 let crashed = "";
@@ -229,11 +243,12 @@ try {
   if (queryOf(attrOf(elOf(r.html, "hr-profile-edit"), "href") || "/").edit !== "1") v3.push(`${n}:edit link`);
   if (r.client.some((c) => c.name === "EmployeeProfileForm.tsx")) v5.push(`${n}:form in read view`);
  }
+ for (const [n, w] of [["mgr", W.mgr], ["mgrU1", W.mgrU1]] as [string, Any][]) { const r = await prof(w, nf); if (queryOf(attrOf(elOf(r.html, "hr-profile-edit"), "href") || "/").edit !== "1") v3.push(`${n}:edit link`); } // HR VIS-5c oracle ▸ managers get the form today ⇒ they keep a way to it ◂
  chk("V1", !v1.length, "masked only", L(v1));
  chk("V3", !v3.length, "links to ?edit=1", L(v3));
  // V2 non-entitled (default + edit)
  const v2: string[] = [];
- for (const [n, w, e] of [["mgr", W.mgr, nf], ["mgrU1", W.mgrU1, nf], ["payU1/brw", W.payU1, E.brw!]] as [string, Any, Emp][]) for (const sp of [{}, { edit: "1" }] as Record<string, string>[]) {
+ for (const [n, w, e] of [["mgr", W.mgr, nf], ["mgrU1", W.mgrU1, nf], ["leaveRead", W.leaveRead, nf] /* HR VIS-5c oracle ▸ + leave-read staff ◂ */, ["payU1/brw", W.payU1, E.brw!]] as [string, Any, Emp][]) for (const sp of [{}, { edit: "1" }] as Record<string, string>[]) {
   const r = await prof(w, e, sp);
   if (r.err || r.html.length < 300) { v2.push(`${n}${sp.edit ? "+edit" : ""}:render ${r.err.slice(0, 40)}`); continue; }
   if (hits(r, e).length) v2.push(`${n}${sp.edit ? "+edit" : ""}:full`);
@@ -269,6 +284,77 @@ try {
  const enAll = enT + " " + textOfHtml(enL.html);
  const v9 = { block: thPeople.length > 0, rendered: (!en.err && !enL.err) || `${en.err}${enL.err}`, noMissing: !/‹MISSING:hr\.people/.test(en.html + enL.html), noThai: !thPeople.filter((t) => /[฀-๿]/.test(t) && t.length > 1).some((t) => enAll.includes(t.replace(/\{[^}]*\}/g, "").trim().slice(0, 12))) };
  chk("V9", all(v9), "all", fails(v9));
+
+ // ═════════════ HR VIS-5c oracle ▸ role matrix · payload-wide PII · action surface · absences · tab data (17 Nov) ◂ ═════════════
+ const outcome = async (mod: Any, w: Any, path: string, params: Record<string, string>, sp: Record<string, string>): Promise<string> => {
+  try { await inScope(`${w.cookie}; LOCALE=th`, path, async () => mod.default({ params: Promise.resolve(params), searchParams: Promise.resolve(sp) })); return "200"; }
+  catch (e) { const d = String((e as Any)?.digest ?? (e as Any)?.message ?? ""); return /^NEXT_REDIRECT/.test(d) ? `redirect:${d.split(";")[2] ?? ""}` : /NEXT_HTTP_ERROR_FALLBACK;404|NEXT_NOT_FOUND/.test(d) ? "404" : `err:${errText(e).slice(0, 40)}`; }
+ };
+ const regViewers: [string, Any][] = [["O", W.owner], ["payAll", W.payAll], ["payU1", W.payU1], ["M", W.mgr], ["MU1", W.mgrU1], ["LR", W.leaveRead]];
+ const g1: string[] = [];
+ for (const sp of [{}, { emp: nf.id }, { add: "1" }] as Record<string, string>[]) {
+  for (const [n, w] of regViewers) { const r = await list(w, sp); if (r.err || r.html.length < 300) g1.push(`reg${sp.emp ? "?emp" : sp.add ? "?add" : ""}:${n} ${r.err.slice(0, 40) || "empty"}`); }
+  for (const [n, w] of [["S", W.staff], ["K", W.kiosk], ["N", W.member]] as [string, Any][]) { const o2 = await outcome(M.list, w, `/app/sys/${X.HRS}/hr/employees`, { id: X.HRS }, sp); if (o2 !== "404") g1.push(`reg${sp.emp ? "?emp" : sp.add ? "?add" : ""}:${n}=${o2}`); }
+ }
+ for (const sp of [{}, { edit: "1" }] as Record<string, string>[]) {
+  for (const [n, w] of regViewers) { const r = await prof(w, nf, sp); if (r.err || r.html.length < 300) g1.push(`prof${sp.edit ? "+edit" : ""}:${n} ${r.err.slice(0, 40) || "empty"}`); }
+  const pp = (e: Emp) => `/app/sys/${X.HRS}/hr/employees/${e.id}`, pa = (e: Emp) => ({ id: X.HRS, employeeId: e.id });
+  for (const [n, w, e, want] of [["S/own", W.staff, nf, "redirect:/app/me/hr/profile"], ["S/other", W.staff, E.f01!, "404"], ["K", W.kiosk, nf, "404"], ["N", W.member, nf, "404"]] as [string, Any, Emp, string][]) { const o2 = await outcome(M.prof, w, pp(e), pa(e), sp); if (o2 !== want) g1.push(`prof${sp.edit ? "+edit" : ""}:${n}=${o2}≠${want}`); }
+ }
+ chk("G1", !g1.length, "matrix = PRIV-3", L(g1));
+ // G2 register payload
+ const g2: string[] = [], anyFull = (r: Rendered) => emps.flatMap((e) => full(e).map((x) => [e.k, x] as const)).filter(([, x]) => r.html.includes(x) || r.clientText.includes(x)).map(([k]) => k);
+ const sensFor = new Set(["O", "payAll", "payU1"]); // canSeeSensitive for namfon (U1) today
+ const regRuns: [string, Any, Record<string, string>, Emp | null][] = [...regViewers.flatMap(([n, w]) => [[n, w, {}, null], [n, w, { emp: nf.id }, nf], [n, w, { add: "1" }, null]] as [string, Any, Record<string, string>, Emp | null][]), ["payU1/brw", W.payU1, { emp: E.brw!.id }, E.brw!], ["O/brw", W.owner, { emp: E.brw!.id }, null]];
+ const regActs: Record<string, string[]> = {};
+ for (const [n, w, sp, e] of regRuns) {
+  const r = await list(w, sp), st = `${n}${sp.emp ? "?emp" : sp.add ? "?add" : ""}`;
+  if (r.err) { g2.push(`${st}:render`); continue; }
+  regActs[st] = r.actions ?? [];
+  const f = anyFull(r);
+  if (f.length) g2.push(`${st}:full(${[...new Set(f)].slice(0, 3).join(",")})`);
+  if (e && !(sensFor.has(n) && e === nf) && (mask(e).some((m) => r.html.includes(m) || r.clientText.includes(m)) || idsWith(r.html, "hr-profile-reveal-").length)) g2.push(`${st}:mask/eye`);
+ }
+ chk("G2", !g2.length, "no PII leak", L(g2));
+ // A1 action surface (today = base 8df167086, measured 17 Nov)
+ const TODAY_REG = ["createEmployeeAction", "removeEmployeeAction", "restoreEmployeeAction", "setWorkScheduleAction", "updateEmployeeAction"], TODAY_PROF = ["addEmployeeDocAction", "removeEmployeeDocAction", "saveEmployeeProfileAction", "saveRegisterFieldsAction", "onUnlinkLine", "adminUnlinkLineAction", "setWorkScheduleAction" /* ตารางงาน tab = HrScheduleEditor (brief §5) */, "addReviewNoteAction", "confirmProbationAction", "offboardEmployeeAction", "saveLifecyclePolicyAction", "setTaskDoneAction", "startChecklistAction"]; // measured 17 Nov on 8df167086 (QC_VIS5C_MEASURE=1: O addEmployeeDoc·addReviewNote·offboardEmployee·saveRegisterFields·startChecklist) ∪ actions the same page/components bind in other data states (doc rows · LINE linked · lifecycle-ui exports) ∪ the schedule action the brief moves into the tab
+ const a1: string[] = [];
+ for (const [st, acts] of Object.entries(regActs)) { const extra = acts.filter((a) => !TODAY_REG.includes(a)); if (extra.length) a1.push(`reg ${st}:+${extra.join("+")}`); }
+ for (const [n, w] of regViewers) for (const sp of [{}, { edit: "1" }] as Record<string, string>[]) { const r = await prof(w, nf, sp), extra = (r.actions ?? []).filter((a) => !TODAY_PROF.includes(a)); if (process.env.QC_VIS5C_MEASURE === "1") console.log(`  measure prof ${n}${sp.edit ? "+edit" : ""}: ${(r.actions ?? []).join(",")}`); if (extra.length) a1.push(`prof ${n}${sp.edit ? "+edit" : ""}:+${extra.join("+")}`); }
+ if (process.env.QC_VIS5C_MEASURE === "1") for (const [st, acts] of Object.entries(regActs)) console.log(`  measure reg ${st}: ${acts.join(",")}`);
+ const oAll = new Set([...(regActs.O ?? []), ...(regActs["O?add"] ?? [])]), oPin = o.client.some((c) => c.name === "PinField.tsx") || ad.client.some((c) => c.name === "PinField.tsx");
+ const ownerMiss = ["createEmployeeAction", "updateEmployeeAction", "setWorkScheduleAction", "removeEmployeeAction"].filter((a) => !oAll.has(a));
+ if (ownerMiss.length || !oPin) a1.push(`owner register lost ${ownerMiss.join("+")}${oPin ? "" : " PinField"}`);
+ chk("A1", !a1.length, "⊆ today · owner keeps editors", L(a1));
+ // A2 absences (owner list)
+ const a2: string[] = [], enReg = textOfHtml(enL.html), thReg = textOfHtml(o.html);
+ if (/นำเข้า|\bCSV\b/i.test(thReg + " " + enReg) || /data-testid="[^"]*import[^"]*"/i.test(o.html + enL.html)) a2.push("register: CSV import");
+ if (/ยืมตัว|\bon loan\b/i.test(thReg + " " + enReg)) a2.push("register: borrow tag");
+ const profStates: [string, Rendered][] = [["th", od], ["en", en]];
+ for (const id of idsWith(od.html, "hr-profile-tab-")) { const q = queryOf(attrOf(elOf(od.html, id), "href") || "/"); if (!q.tab) continue; profStates.push([`th?tab=${q.tab}`, await prof(W.owner, nf, q)], [`en?tab=${q.tab}`, await prof(W.owner, nf, q, "en")]); }
+ for (const [st, r] of profStates) if (/ตั้งเป็นช่าง|ค่าคอม|commission/i.test(textOfHtml(r.html))) a2.push(`profile ${st}: booking/CRM`);
+ const audit = srcFiles("src").filter((f2) => /\.(ts|tsx)$/.test(f2) && /sensitive_view/.test(rd(f2)));
+ if (audit.length) a2.push(`sensitive_view in ${audit.slice(0, 2).join(",")}`);
+ chk("A2", !a2.length, "absent", L(a2));
+ // R10 leave today (p1 approved SICK today · f01 not)
+ const rowTxt = (r: Rendered, k: string) => textOfHtml(elOf(r.html, idsWith(r.html, "hr-people-row-").find((x) => keyOfRow(x.slice(14)) === k) ?? "∅"));
+ const onLeave = await M.svc?.employeesOnLeave?.({ tenantId: X.T, systemId: X.HRS }, [E.p1!.id, E.f01!.id], dbDate(D0)) /* Bangkok today as a UTC-midnight Date — rules.isAvailable compares UTC dates, so `new Date()` is the wrong day 00:00–07:00 Bangkok */.catch(() => null) as Set<string> | null; // premise: the service the builder must call
+ const r10 = { premise: (!!onLeave && onLeave.has(E.p1!.id) && !onLeave.has(E.f01!.id)) || `employeesOnLeave=${onLeave ? [...onLeave].length : "err"} svc=${M.svc?.__err ?? typeof M.svc?.employeesOnLeave}`, p1th: /วันนี้/.test(rowTxt(o, "p1")), f01th: !!rowTxt(o, "f01") && !/วันนี้/.test(rowTxt(o, "f01")), p1en: /leave/i.test(rowTxt(enL, "p1")), f01en: !!rowTxt(enL, "f01") && !/leave/i.test(rowTxt(enL, "f01")) };
+ chk("R10", all(r10), "badge iff on leave", fails(r10));
+ // V10 tab data
+ const LV = await imp("@/lib/modules/hr/leave"), vOf = (role: string, ua: string[], perm: Record<string, boolean>, uid: string) => ({ role, unitAccess: ua, permissions: perm, userId: uid });
+ const balO = await LV.leaveBalances?.({ tenantId: X.T, systemId: X.HRS }, vOf("OWNER", [], {}, W.owner.id), { employeeId: nf.id, at: D0 }) /* current leave year (today, Bangkok) — the tab shows this year */.catch((e: unknown) => ({ ok: false, reason: errText(e) }));
+ const balP = await LV.leaveBalances?.({ tenantId: X.T, systemId: X.HRS }, vOf("STAFF", [X.U1], { "hr.payroll.read": true }, W.payU1.id), { employeeId: nf.id, at: D0 }).catch(() => ({ ok: false }));
+ const item = balO?.ok ? (balO.items as Any[]).find((i) => i.name === X.policy) : null;
+ const lvO = await prof(W.owner, nf, { tab: "leave" }), lvP = await prof(W.payU1, nf, { tab: "leave" }), lvOT = textOfHtml(lvO.html);
+ const sc0 = await prof(W.owner, nf, { tab: "schedule" });
+ const v10 = { premise: (!!item && balP?.ok === false) || `owner=${JSON.stringify(balO ?? LV.__err ?? null).slice(0, 120)} payU1 ok=${balP?.ok}`, ownerLeave: !!item && lvOT.includes(X.policy) && [item.balance, String(Number(item.balance))].some((b: string) => lvOT.includes(b)), payU1None: !lvP.err && !textOfHtml(lvP.html).includes(X.policy), schedule: !sc0.err && (sc0.actions ?? []).includes("setWorkScheduleAction") && /name="start-1"/.test(sc0.html) };
+ chk("V10", all(v10), "all", fails(v10));
+ // V11 no pay on the profile
+ const v11: string[] = [], payOf = (e: Emp) => { const i = emps.indexOf(e), v = SAL + i; return [String(v), (v / 100).toFixed(2), (v / 100).toLocaleString("en-US", { minimumFractionDigits: 2 }), (v / 100).toLocaleString("en-US")]; };
+ const tabQs = [{}, ...idsWith(od.html, "hr-profile-tab-").map((id) => queryOf(attrOf(elOf(od.html, id), "href") || "/")).filter((q) => q.tab)] as Record<string, string>[];
+ for (const [n, w] of regViewers) for (const q of tabQs) { const r = await prof(w, nf, q); if (r.err) { v11.push(`${n}?tab=${q.tab ?? "-"}:render`); continue; } if (payOf(nf).some((x) => r.html.includes(x) || r.clientText.includes(x))) v11.push(`${n}?tab=${q.tab ?? "-"}:pay`); }
+ chk("V11", !v11.length, "no pay", `${L(v11)} states=${tabQs.length}`);
 } catch (e) {
  crashed = errText(e);
  console.log(`🔴 harness error: ${crashed} ${(e as Error)?.stack?.split("\n").slice(1, 4).join(" | ")}`);

@@ -17,8 +17,8 @@ export type Tk = "5b" | "5c";
 export const MARK: Record<Tk, string> = { "5b": "HR VIS-5b", "5c": "HR VIS-5c" };
 export const UI = `${H}ui.tsx`, TH = "src/messages/th/common.json", EN = "src/messages/en/common.json", INV = "scripts/hr-ui-inventory.json";
 export const OWN: Record<Tk, { files: string[]; fresh: string[]; ranges: [number, number][]; block: string; after: string }> = {
- "5b": { files: ["src/app/app/sys/[id]/page.tsx", "src/components/module-tabs.tsx", `${H}overview-ui.tsx`, `${H}InboxBatch.tsx`], fresh: [`${H}hub-ui.tsx`, `${H}hub-rules.ts`], ranges: [[89, 118], [717, 802]] /* HR VIS-5b re-merge ▸ base = session/hr a49f81829: PRIV-3 shifted ui.tsx (+1 import · +7 before HrHub · +2 in it) · was [[88, 117], [710, 793]] ◂ */, block: "hub", after: "inbox" },
- "5c": { files: ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", `${H}EmployeeProfileForm.tsx`], fresh: [`${H}people-ui.tsx`, `${H}people-rules.ts`], ranges: [[439, 716]] /* HR VIS-5b re-merge ▸ same PRIV-3 shift (+7) · was [[432, 709]] ◂ */, block: "people", after: "life" },
+ "5b": { files: ["src/app/app/sys/[id]/page.tsx", "src/components/module-tabs.tsx", `${H}overview-ui.tsx`, `${H}InboxBatch.tsx`], fresh: [`${H}hub-ui.tsx`, `${H}hub-rules.ts`], ranges: [[96, 132], [731, 845]] /* HR VIS-5c oracle ▸ base = session/hr 8df167086 (VIS-5b merged): the same hrTabs/hrTabsFor + HrHub spans in new-base line numbers (map of git diff -U0 98c2fee1d 8df167086 · 89→96 118→132 717→731 802→845) · was [[89, 118], [717, 802]] ◂ */, block: "hub", after: "inbox" },
+ "5c": { files: ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", `${H}EmployeeProfileForm.tsx`], fresh: [`${H}people-ui.tsx`, `${H}people-rules.ts`], ranges: [[453, 730]] /* HR VIS-5c oracle ▸ base 8df167086: VIS-5b added +14 lines above the employees section (marker now :453 · kiosk section ends :730) · was [[439, 716]] ◂ */, block: "people", after: "life" },
 };
 export const ORACLE_FILES = ["scripts/qc-hr-vis-5b.mts", "scripts/qc-hr-vis-5c.mts", "scripts/qc-hr-vis-5-lib.mts"];
 const SHARED_FREE = [TH, EN, INV, UI, "scripts/walk-hr-matrix.json", ...ORACLE_FILES];
@@ -141,7 +141,8 @@ export async function loadClientSet(): Promise<number> {
  return CLIENT.size;
 }
 const isNextCtl = (e: Any) => /^NEXT_(REDIRECT|HTTP_ERROR|NOT_FOUND)/.test(String(e?.digest ?? e?.message ?? ""));
-export type Rendered = { html: string; client: { name: string; props: Any }[]; clientText: string; err: string };
+export type Rendered = { html: string; client: { name: string; props: Any }[]; clientText: string; err: string; actions?: string[] }; // HR VIS-5c oracle ▸ + actions = names of server-action functions bound in the output (host form action/formAction · function props named *Action of client components) ◂
+let ACTS: string[] = []; // HR VIS-5c oracle ◂
 async function resolveNode(n: Any, out: Rendered["client"], d = 0): Promise<Any> {
  if (d > 300 || n === null || n === undefined || typeof n !== "object") return n;
  if (typeof n.then === "function") return resolveNode(await n, out, d + 1);
@@ -150,6 +151,7 @@ async function resolveNode(n: Any, out: Rendered["client"], d = 0): Promise<Any>
  const { type, props } = n as Any;
  const keepClient = async (name: string) => {
   out.push({ name, props });
+  for (const v of Object.values(props ?? {})) if (typeof v === "function" && /Action$/.test((v as Any).name ?? "")) ACTS.push((v as Any).name); // HR VIS-5c oracle ◂
   const p: Any = {};
   for (const [k, v] of Object.entries(props ?? {})) p[k] = v && typeof v === "object" && (React.isValidElement(v) || Array.isArray(v)) ? await resolveNode(v, out, d + 1) : v;
   return React.createElement(type, { ...p, key: n.key });
@@ -163,6 +165,7 @@ async function resolveNode(n: Any, out: Rendered["client"], d = 0): Promise<Any>
   return resolveNode(await r, out, d + 1);
  }
  if (type && typeof type === "object" && (type.$$typeof === Symbol.for("react.forward_ref") || type.$$typeof === Symbol.for("react.memo"))) return keepClient(CLIENT.get(type) ?? type.render?.name ?? type.type?.name ?? "wrapped");
+ if (typeof type === "string" && props) for (const k of ["action", "formAction"]) if (typeof props[k] === "function") ACTS.push(props[k].name || "anon"); // HR VIS-5c oracle ◂
  if (props && "children" in props) return React.cloneElement(n, undefined, ...[].concat(await resolveNode(props.children, out, d + 1) as never));
  return n;
 }
@@ -184,13 +187,14 @@ const ROUTER = { push() {}, replace() {}, refresh() {}, prefetch() {}, back() {}
 /** await server components · keep client components as elements (props recorded) · static HTML inside intl + router providers */
 export async function renderTree(node: Any, locale: "th" | "en"): Promise<Rendered> {
  const client: Rendered["client"] = [];
+ ACTS = []; // HR VIS-5c oracle ◂
  CUR.locale = locale; CUR.messages = msgsOf(locale);
  try {
   const tree = await resolveNode(node, client);
   const el = React.createElement(NI.NextIntlClientProvider, { locale, messages: CUR.messages, timeZone: "Asia/Bangkok", onError: () => undefined, getMessageFallback: ({ namespace, key }: Any) => `‹MISSING:${namespace}.${key}›` }, React.createElement(ARC.AppRouterContext.Provider, { value: ROUTER }, tree));
   const err = console.error;
   console.error = () => undefined;
-  try { return { html: String(RDS.renderToStaticMarkup(el)), client, clientText: textOfAny(client.map((c) => c.props)), err: "" }; } finally { console.error = err; }
+  try { return { html: String(RDS.renderToStaticMarkup(el)), client, clientText: textOfAny(client.map((c) => c.props)), err: "", actions: [...new Set(ACTS)].sort() /* HR VIS-5c oracle ◂ */ }; } finally { console.error = err; }
  } catch (e) { return { html: "", client, clientText: "", err: `${(e as Any)?.digest ? `${String((e as Any).digest).split(";")[0]} ` : ""}${errText(e)}` }; }
 }
 
