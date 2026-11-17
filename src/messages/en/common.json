@@ -911,6 +911,7 @@
       "balPending": "Pending",
       "noBalances": "No leave types available yet",
       "daysN": "{n} days",
+      "unpaidDaysN": "{n} days unpaid",
       "hoursN": "{n} h",
       "minutesN": "{n} min",
       "reqTitle": "Requests",

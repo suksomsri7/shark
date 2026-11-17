@@ -69,7 +69,7 @@ export async function cancelOtAction(_prev: unknown, fd: FormData): Promise<{ ok
   const auth = await requireTenant();
   const ctx = ctxOf(auth, fd);
   if (!ctx) return { ok: false, reason: OT_TEXT.notFound };
-  const r = await cancelOtRequest(ctx, hrViewerOf(auth), field(fd, "id"));
+  const r = await cancelOtRequest(ctx, hrViewerOf(auth), field(fd, "id"), { hideForeign: true }); // HR PRIV-3 ▸ R7 ◂
   if (!r.ok) return { ok: false, reason: r.reason };
   done(ctx.systemId);
   return { ok: true };

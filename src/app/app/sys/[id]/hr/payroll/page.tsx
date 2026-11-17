@@ -2,6 +2,7 @@ import { notFound, redirect } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
+import { hrViewerOf, requireHrPage } from "@/lib/modules/hr/privacy"; // HR PRIV-3 ▸ ด่านหน้าตามบทบาท ◂
 import { hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
 import { PayrollSection } from "@/lib/modules/hr/payroll-ui";
 import { StockChargeSection } from "@/lib/modules/hr/stock-charge-ui"; // HR H4.6 ▸ หักค่าของ/ค่าเสียหาย ◂
@@ -47,6 +48,7 @@ export default async function HrPayrollPage({
   const auth = await requireTenant();
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId: auth.active.tenantId, type: "HR" } });
   if (!sys) notFound();
+  if (!requireHrPage(hrViewerOf(auth), "payroll")) notFound(); // HR PRIV-3 ▸ ไม่มีสิทธิ์หน้านี้ = 404 เดียวกับรหัสระบบที่ไม่มีอยู่ (ก่อนอ่านข้อมูลใด ๆ) ◂
   const def = systemDef(sys.type);
   // HR H3.1 ▸ งวดของแผงชั่วโมงทำงาน + ผลการกด (ตัวเลขเป็นจำนวนเต็มจาก URL เท่านั้น) ◂
   const period = /^\d{4}-(0[1-9]|1[0-2])$/.test(one(sp.period) ?? "") ? one(sp.period)! : thaiDateKey().slice(0, 7);

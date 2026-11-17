@@ -80,6 +80,7 @@ Global rule: migrations are additive; **migrate first, then deploy code** (Verce
 | 11 | R8 key backfill decision: STAFF memberships with `hr.payadjust.approve` w/o `hr.payadjust.reject`, or `hr.payroll.approve` w/o `hr.payroll.reverse` — query `membership.permissions`, add only where the owner wants (no data migration written) | owner O-05 · `wo-notes/hr-H3.4.md` Rulings (5) |
 | 12 | `pnpm drift` + read-only `scripts/verify-prod-hr.mts` (planned, H5.3 — does not exist yet) | master plan H5.3 |
 | 13 | only after accountant sign-off: SUPER_ADMIN one-off script `createLawDraft(…supersedesId)` → `activateLawRow(…{approvedByName})` per kind (SSO, TAX_BRACKET, DEDUCTION), with owner GO; never edit json in place | `wo-notes/hr-H3.3.md` §10 |
+| 13a | **13a (HF-SSO-M2).** Activate SSO and DEDUCTION as one set: the 1970 rows **and** `v1:SSO:2569/2572/2575` + `v1:DEDUCTION:2569/2572/2575` in the same session. With only the 1970 rows ACTIVE, engine v2 falls back to the 15,000 ฿ SSO ceiling and the 9,000 ฿ allowance cap from wage period 2026-01 (v1 unaffected: bands in code). Check: a v2 draft of 2026-01 at 20,000 ฿ shows SSO 875 ฿. Still gated by G-SSO-GO. | `hr-brief-PREPROD-1.md` R6 · `HR-DEBTS.md` HF-SSO-M2 |
 | 14 | per shop, OWNER flips the engine to 2 (refused while law missing or VARIABLE_PAY staff exist) | `hr-brief-H3.4.md` Q1 |
 
 QC-only note: main's `20261227000000_svc_h` sorts before applied HR folders and was applied out of order on QC DBs; prod unaffected (RESUME 12 Nov 21:00Z).

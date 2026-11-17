@@ -230,6 +230,23 @@ export async function applyApprovalEffect(evt: ApprovalEffectEvent): Promise<voi
   // entityType อื่น → เงียบ ๆ
 }
 
+// HR LEAVE-3 ▸ R4 (F4 · Q1/Q6): ผู้ยื่นถอนคำขอ HR ในสายอนุมัติ (approval/actions cancelMyRequestAction) = ยกเลิกตัว entity ด้วย ในธุรกรรมเดียวของ HR
+//   (ใบลา → hr.cancelLeave · แก้เวลา → hr.cancelCorrection · สลับกะ → hr.cancelSwap — แต่ละตัวล็อกของตัวเอง → cancelRequest(…,{tx}) + entity CANCELLED + audit ของตัวเอง) ·
+//   facade hr (dynamic import แบบกิ่งผลข้างบน) · systemId จากคำขออนุมัติ — ไม่มี = ไม่เขียนอะไร · ผู้ถอนที่ไม่ใช่เจ้าของ/ตัดสินแล้ว = HR ปฏิเสธเอง (ไม่เขียนอะไร)
+export const HR_WITHDRAW_TYPES: ReadonlySet<string> = new Set(["HrLeave", "HrTimeCorrection", "HrShiftSwapRequest"]);
+export async function withdrawHrRequest(
+  input: { tenantId: string; systemId: string | null; entityType: string; entityId: string },
+  actor: { userId: string; role: string; unitAccess: unknown; permissions?: unknown },
+): Promise<{ ok: boolean; reason?: string }> {
+  if (!input.systemId || !input.entityId || !actor.userId || !HR_WITHDRAW_TYPES.has(input.entityType)) return { ok: false };
+  const ctx = { tenantId: input.tenantId, systemId: input.systemId };
+  const hr = await import("@/lib/modules/hr");
+  if (input.entityType === "HrLeave") return hr.cancelLeave(ctx, input.entityId, { actorUserId: actor.userId });
+  if (input.entityType === "HrTimeCorrection") return hr.cancelCorrection(ctx, actor, input.entityId);
+  return hr.cancelSwap(ctx, actor, input.entityId);
+}
+// ◂ HR LEAVE-3
+
 // CRM C1.8 ▸ ผลของการอนุมัติชนิด `crm.*` — **ขั้นแรกที่ retry ได้** ของ `approval.request.approved|rejected` (มติผู้คุมงาน C1.8 ข้อ 6)
 //   ผู้เรียกวิ่งขั้นนี้ก่อนแจ้งเตือน/automation/บอร์ดงาน: ล้มชั่วคราว ⇒ event ล้ม ⇒ ส่งใหม่ (ยังไม่มีแจ้งเตือน/automation ซ้ำ เพราะยังไม่ได้วิ่ง) ·
 //   ใช้เฉพาะคำขอที่ดีลรออยู่ "ใบนี้" ใต้ล็อกแถวดีล (applyDiscountDecision) ⇒ ส่งซ้ำไม่ใช้ส่วนลดซ้ำ · ข้อมูลใช้ไม่ได้ถาวร = WARN แล้วจบ

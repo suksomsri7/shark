@@ -25,6 +25,7 @@ import { consumeBatch, getItem, listItems, searchItems } from "@/lib/modules/inv
 import { cancelStockChargeAdjustmentInTx, cancelStockChargeDraftAdjustment, stockChargeTargetPeriod, writeStockChargeAdjustmentInTx } from "./payroll"; // ทางเขียนเดียวของ HrPayAdjustment อยู่ที่ payroll.ts
 import { employeeOfUser } from "./service";
 import { hrScopeOf, unitWhere, isAllBranches, payScopeWhere } from "./scope"; // HR PRIV-2 ▸ + ขอบเขตค่าจ้าง ◂
+import { inPayScope } from "./scope"; // HR PREPROD-1 ▸ R4: ด่านของแถวที่มีอยู่ = ขอบเขตค่าจ้าง (สาขาประจำ) ◂
 
 type Ctx = { tenantId: string; systemId: string };
 type Tx = Prisma.TransactionClient;
@@ -455,6 +456,7 @@ async function chargeGate(ctx: Ctx, viewer: StockViewer, chargeId: unknown, at: 
   const emp = await employeeInScope(ctx, viewer, ch.employeeId, at);
   const m = membershipOf(viewer);
   if (!emp) return refuse(T.noAccess);
+  if (!inPayScope(hrScopeOf({ role: viewer.role, unitAccess: viewer.unitAccess }), emp.unitId)) return refuse(T.noAccess); // HR PREPROD-1 ▸ R4: ยืมตัว/ไม่มีสาขาประจำ ไม่ขยายสิทธิ์แตะรายการเงิน — คำตอบ "ไม่พบ" เดิม ◂
   const key = evaluate(m, { module: "hr", action: "hr.payadjust.request", ...unitQ(emp.unitId) }) || evaluate(m, { module: "hr", action: "hr.payadjust.approve", ...unitQ(emp.unitId) });
   if (!key) return refuse(T.noAccess);
   if (emp.linkedUserId && emp.linkedUserId === uid) return refuse(T.self);

@@ -911,6 +911,7 @@
       "balPending": "รออนุมัติ",
       "noBalances": "ยังไม่มีประเภทการลาที่ใช้ได้",
       "daysN": "{n} วัน",
+      "unpaidDaysN": "ไม่ได้ค่าจ้าง {n} วัน",
       "hoursN": "{n} ชม.",
       "minutesN": "{n} นาที",
       "reqTitle": "คำขอ",

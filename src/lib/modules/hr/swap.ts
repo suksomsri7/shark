@@ -378,7 +378,7 @@ export async function requestSwap(
 }
 
 // ═══════════════════════════ เพื่อนตอบรับ / ไม่รับ (R5 · R7) ═══════════════════════════
-export async function respondSwap(ctx: Ctx, actor: SwapActor, swapId: string, input: { accept: boolean }): Promise<{ ok: true; status: SwapStatus } | SwapFail> {
+export async function respondSwap(ctx: Ctx, actor: SwapActor, swapId: string, input: { accept: boolean; hideForeign?: boolean }): Promise<{ ok: true; status: SwapStatus } | SwapFail> { // HR PRIV-3 ▸ R7: hideForeign = ทางฟอร์ม — ไม่ใช่ผู้รับคำขอ = stale (ไบต์เดียวกับไม่พบ) ◂
   const id = str(swapId);
   if (!actor?.userId || !id) return refuse(T.stale);
   const accept = input?.accept === true;
@@ -390,7 +390,7 @@ export async function respondSwap(ctx: Ctx, actor: SwapActor, swapId: string, in
       const s = await swapOf(tx, ctx, id);
       if (!s) throw new SwapRefusal(T.stale);
       const target = await empOf(tx, ctx, s.targetEmployeeId);
-      if (!target || target.linkedUserId !== actor.userId) throw new SwapRefusal(T.notYours);
+      if (!target || target.linkedUserId !== actor.userId) throw new SwapRefusal(input?.hideForeign === true ? T.stale : T.notYours); // HR PRIV-3 ◂
       if (s.status !== "AWAITING_PEER") throw new SwapRefusal(T.stale);
       if (!accept) {
         const r = await tx.hrShiftSwapRequest.updateMany({ where: { id, tenantId: ctx.tenantId, status: "AWAITING_PEER" }, data: { status: "REJECTED", peerDecidedAt: new Date() } });
@@ -438,7 +438,7 @@ export async function respondSwap(ctx: Ctx, actor: SwapActor, swapId: string, in
 }
 
 // ═══════════════════════════ ผู้ขอยกเลิก (R5 · R13) ═══════════════════════════
-export async function cancelSwap(ctx: Ctx, actor: SwapActor, swapId: string): Promise<{ ok: true } | SwapFail> {
+export async function cancelSwap(ctx: Ctx, actor: SwapActor, swapId: string, opts: { hideForeign?: boolean } = {}): Promise<{ ok: true } | SwapFail> { // HR PRIV-3 ▸ R7: hideForeign = ทางฟอร์ม — ไม่ใช่ผู้ขอ = stale ◂
   const id = str(swapId);
   if (!actor?.userId || !id) return refuse(T.stale);
   try {
@@ -448,7 +448,7 @@ export async function cancelSwap(ctx: Ctx, actor: SwapActor, swapId: string): Pr
       const s = await swapOf(tx, ctx, id);
       if (!s) throw new SwapRefusal(T.stale);
       const requester = await empOf(tx, ctx, s.requesterEmployeeId);
-      if (!requester || requester.linkedUserId !== actor.userId) throw new SwapRefusal(T.notOwn);
+      if (!requester || requester.linkedUserId !== actor.userId) throw new SwapRefusal(opts.hideForeign === true ? T.stale : T.notOwn); // HR PRIV-3 ◂
       if (s.status !== "AWAITING_PEER" && s.status !== "PENDING") throw new SwapRefusal(T.stale);
       // คำขออนุมัติก่อน แล้วจึงคำขอสลับ (ลำดับเดียวกับ Q16 ใน roster.ts) · ตัดสินในสายไปแล้ว ⇒ ยกเลิกเองไม่ได้ (ย้อนทั้งหมด)
       const reqs = await tx.approvalRequest.findMany({ where: { tenantId: ctx.tenantId, entityType: SWAP_ENTITY, entityId: id, status: { not: "CANCELLED" } }, select: { id: true } });

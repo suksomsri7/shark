@@ -5,7 +5,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { tenantDb } from "@/lib/core/db";
+import { hrTargetOwned } from "../hr-target"; // HR PRIV-3 ▸ R11 ◂
 import { assertCan } from "@/lib/core/rbac";
 import { hrViewerOf } from "../privacy";
 import { BANK_TEXT } from "./codes";
@@ -31,8 +31,7 @@ function keyGate(auth: Auth): boolean {
 async function systemOf(tenantId: string, fd: FormData): Promise<string | null> {
   const systemId = s(fd, "systemId");
   if (!/^[A-Za-z0-9_-]{1,64}$/.test(systemId)) return null;
-  const sys = await tenantDb({ tenantId }).appSystem.findFirst({ where: { id: systemId, type: "HR" }, select: { id: true } });
-  return sys?.id ?? null;
+  return (await hrTargetOwned({ tenantId, systemId })) ? systemId : null; // HR PRIV-3 ▸ R11: resolver เดียว (ระบบ HR ของร้านผู้กด) แทนสำเนาในไฟล์ ◂
 }
 
 /** บัญชีต้นทาง + รูปแบบธนาคารที่เปิด (เจ้าของร้าน — service ตรวจซ้ำ) */

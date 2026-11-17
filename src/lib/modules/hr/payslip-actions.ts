@@ -6,7 +6,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireMembership, requireTenant } from "@/lib/core/context";
-import { tenantDb } from "@/lib/core/db";
+import { hrTargetOwned } from "./hr-target"; // HR PRIV-3 ▸ R11 ◂
 import type { SelfActor } from "./self";
 import { cancelMySalaryCertRequest, issueSalaryCertificate, rejectSalaryCertRequest, requestSalaryCertificate, voidSalaryCertificate, type PayslipViewer } from "./payslip";
 
@@ -22,8 +22,7 @@ async function viewerOf(auth: Auth): Promise<PayslipViewer & { tenantId: string;
 async function systemOf(tenantId: string, fd: FormData): Promise<string | null> {
   const systemId = s(fd, "systemId");
   if (!ID_RE.test(systemId)) return null;
-  const sys = await tenantDb({ tenantId }).appSystem.findFirst({ where: { id: systemId, type: "HR" }, select: { id: true } });
-  return sys?.id ?? null;
+  return (await hrTargetOwned({ tenantId, systemId })) ? systemId : null; // HR PRIV-3 ▸ R11: resolver เดียว (ระบบ HR ของร้านผู้กด) แทนสำเนาในไฟล์ ◂
 }
 const gateBack = (systemId: string, code: string) => `/app/sys/${systemId}/hr/payroll?sc=${encodeURIComponent(code)}#hr-salarycert`;
 const meBack = (code: string) => `${ME_PAY}?sc=${encodeURIComponent(code)}#hr-salarycert-mine`;

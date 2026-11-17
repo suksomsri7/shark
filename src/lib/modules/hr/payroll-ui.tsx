@@ -347,6 +347,7 @@ export async function PayrollSection({ systemId, parts, locale = "th" }: { syste
         {stranded.length > 0 && (
           <div role="note" data-testid="hr-payroll-stranded" className="mb-2 rounded-lg border bg-[color:var(--color-surface-2)] px-3 py-2 text-xs">
             <div className="font-medium">รายการค้าง {stranded.length} รายการ — งวดของรายการมีรอบจ่ายแล้ว จะไม่ถูกจ่ายจนกว่าจะย้ายไปงวดถัดไป</div>
+            {stranded.some((a) => a.reason === "REFUND_BEHIND") && <div className={muted}>เงินคืนที่อยู่ในงวดที่ยังไม่มีรอบจ่าย แต่รอบงวดหลังของพนักงานอนุมัติแล้ว — ย้ายไปงวดถัดไปที่ยังไม่มีรอบจ่าย (พนักงานที่พ้นสภาพแล้ว ให้คืนเงินนอกระบบเงินเดือน)</div>} {/* HR PREPROD-1 ▸ R2: REFUND_BEHIND ◂ */}
             <div className="mt-1 flex flex-col gap-1">
               {stranded.map((a) => (
                 <div key={a.id} className="flex flex-wrap items-center justify-between gap-2">

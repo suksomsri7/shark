@@ -53,10 +53,10 @@ type ViewerDef = { key: string; inventoryRole: string | null; money: boolean | "
 type State = {
   id: string; row: string; page: string; path: string; viewers: string[]; mockup: string | null; pairViewer?: string;
   pathBy?: Record<string, string>; expectFinal?: Record<string, string>; moneyOk?: string[]; limitedNote?: { viewers: string[]; selector: string };
-  allowScroll?: string[]; click?: string; extra?: boolean; why?: string; langs?: string[]; sizes?: string[]; todoInventoryPrefix?: string; coverage?: boolean;
+  allowScroll?: string[]; click?: string; extra?: boolean; configMoneyOk?: string[]; why?: string; langs?: string[]; sizes?: string[]; todoInventoryPrefix?: string; coverage?: boolean;
 };
 type Refusal = { id: string; page: string; path: string; unknown: string; viewers: string[]; pathBy?: Record<string, string> };
-type Matrix = { sizes: Size[]; langs: string[]; viewers: Record<string, ViewerDef>; allow: { enumsTh: string[]; thaiInEnExtra: string[] }; states: State[]; refusals: Refusal[]; excludedInventoryPages: Record<string, string> };
+type Matrix = { sizes: Size[]; langs: string[]; viewers: Record<string, ViewerDef>; allow: { enumsTh: string[]; thaiInEnExtra: string[]; readOnlyActions?: string[] }; states: State[]; refusals: Refusal[]; excludedInventoryPages: Record<string, string> };
 type InvRow = { page: string; testid: string; kind: string; interactive: boolean; roles?: string[]; hiddenFor?: string[]; conditional?: string; expect?: { type?: string } };
 
 const M = JSON.parse(readFileSync(MATRIX_PATH, "utf8")) as Matrix;
@@ -402,13 +402,45 @@ const SECURE = (process.env.APP_ENV ?? "") !== "development";
 // ── ตัวชี้ความเป็นส่วนตัว (sentinels) ──
 const empName = Object.fromEntries(HQC.employees.map((e) => [e.key, e.name])) as Record<string, string>;
 const nonHuahin = HQC.employees.filter((e) => e.unit !== "huahin").map((e) => e.name);
-const salarySentinels = [...new Set(HQC.employees.flatMap((e) => [String(e.baseSalarySatang), bahtText(e.baseSalarySatang)]))].concat(["1800000", "18,000.00"]);
+// H5.1 tuning ▸ ชื่อพนักงานต้องไม่ติดอักษร/วรรณยุกต์ไทยทั้งสองข้าง ("เจ" ≠ "เจ้าของร้าน" · "ต้น" ≠ "เริ่มต้น") ◂
+const nameRe = (n: string) => new RegExp(`(?<![\u0E01-\u0E4E])${n.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\u0E01-\u0E4E])`);
+const hasName = (text: string, n: string) => nameRe(n).test(text);
+const salaryOf = (e: { key: string; baseSalarySatang: number }) => ({ key: e.key, values: [String(e.baseSalarySatang), bahtText(e.baseSalarySatang)] });
+const SALARY = [...HQC.employees.map(salaryOf), { key: "view", values: ["1800000", "18,000.00"] }];
+const salarySentinels = [...new Set(SALARY.flatMap((x) => x.values))];
+const sentinelIn = (src: string, v: string) => new RegExp(`(^|[^\\d,.])${v.replace(/[.,]/g, "\\$&")}($|[^\\d])`).test(src);
+/** ฿ ที่ตามด้วยตัวเลข = จำนวนเงิน · ฿{amount} ในข้อความแปล / ฿ เปล่า ๆ = ป้ายสกุลเงิน ไม่ใช่ข้อมูล (H5.1 tuning) */
+const BAHT_FIGURE = /฿\s?-?\d/;
+/** H5.1 tuning ▸ ข้อความแปลคงที่ที่มีตัวเลขเงินอยู่ในตัว (เช่น "ค่าคอมฯ คงที่ต้องอยู่ระหว่าง ฿0–฿10,000" · "บิลเกิน ฿5,000 → สร้างดีล") ถูกส่งไปกับก้อนข้อความของหน้า —
+ *  ไม่ใช่ข้อมูลของใคร ⇒ ตัดสตริงเหล่านี้ (ตามตัวอักษร จาก src/messages/{th,en}/*.json) ออกก่อนสแกน ฿ + ตัวเลข · ชื่อช่อง/เงินเดือนจริงยังตรวจเต็ม ◂ */
+const MSG_MONEY: string[] = (() => {
+  const out = new Set<string>();
+  const visit = (x: unknown) => {
+    if (typeof x === "string") {
+      if (/฿\s?-?\d/.test(x)) out.add(x);
+    } else if (x && typeof x === "object") Object.values(x).forEach(visit);
+  };
+  for (const lang of ["th", "en"]) {
+    const dir = join(ROOT, "src/messages", lang);
+    if (!existsSync(dir)) continue;
+    for (const f of readdirSync(dir).filter((n) => n.endsWith(".json"))) {
+      try {
+        visit(JSON.parse(readFileSync(join(dir, f), "utf8")));
+      } catch {
+        /* ไฟล์ข้อความอ่านไม่ได้ = ไม่ตัด */
+      }
+    }
+  }
+  return [...out].sort((a, b) => b.length - a.length);
+})();
+const withoutStaticMoney = (t: string) => MSG_MONEY.reduce((acc, m) => (acc.includes(m) ? acc.split(m).join(" ") : acc), t);
 const FIELD_SENTINELS = ["baseSalarySatang", "netSatang", "grossSatang", "amountSatang", "ytdJson", "bankAccountNo", "nationalId", "ssoNumber", "houseRegAddress"];
 const NEVER_SENTINELS = ["pinHash", "pinCode"];
 /** ช่องอ่อนไหวเต็มค่า ต่อพนักงาน (seed-hr-qc sensitive + วิวของ seed-hr-walk) */
 const PII: { emp: string; values: string[] }[] = [
-  ...HQC.employees.filter((e) => e.sensitive).map((e) => ({ emp: e.key, values: [e.sensitive!.nationalId, e.sensitive!.bankAccountNo, e.sensitive!.addressLine] })),
-  { emp: "view", values: [thaiId("110000000881"), "0000088123", "9/9 ถ.นเรศดำริ"] }, // ค่าเดียวกับ seed-hr-walk emp.view
+  // H5.1 tuning ▸ addressLine (ที่อยู่ติดต่อ) อยู่ชั้นพื้นฐานของ DTO โดยสัญญา (privacy-shared.ts EMPLOYEE_BASE_FIELDS) — ช่องอ่อนไหวคือ houseRegAddress (ตรวจด้วยชื่อช่อง) ◂
+  ...HQC.employees.filter((e) => e.sensitive).map((e) => ({ emp: e.key, values: [e.sensitive!.nationalId, e.sensitive!.bankAccountNo] })),
+  { emp: "view", values: [thaiId("110000000881"), "0000088123"] }, // ค่าเดียวกับ seed-hr-walk emp.view
 ];
 function thaiId(prefix12: string): string {
   const d = prefix12.split("").map(Number);
@@ -441,12 +473,15 @@ function analyze(o: { allowScroll: string[]; mobile: boolean }) {
   };
   const desc = (el: Element) => `${el.tagName.toLowerCase()}${el.getAttribute("data-testid") ? `[${el.getAttribute("data-testid")}]` : ""}${el.className && typeof el.className === "string" ? "." + el.className.split(/\s+/).slice(0, 2).join(".") : ""}`;
   const allowed = (el: Element) => el.closest('[data-scroll="x"]') || o.allowScroll.some((s) => el.matches(s) || el.closest(s) || el.querySelector(s));
+  // H5.1 tuning ▸ แถบแท็บ/ชิปที่ตั้งใจเลื่อนได้ (ลูกทุกตัวเป็นลิงก์/ปุ่ม/แท็บ ≥ 2) และกล่องห่อตาราง = ตัวเลื่อนที่ประกาศโดยโครงสร้าง (WARN) · อย่างอื่น FAIL ◂
+  const strip = (el: Element) => el.children.length >= 2 && Array.from(el.children).every((c) => c.matches('a, button, [role="tab"], [role="button"]') || (c.children.length === 1 && c.firstElementChild!.matches("a, button")));
+  const tableWrap = (el: Element) => !!el.querySelector(":scope > table, :scope > div > table");
   const scrollers: { el: string; sw: number; cw: number; allowed: boolean }[] = [];
   for (const el of Array.from(main.querySelectorAll("*"))) {
     const h = el as HTMLElement;
     if (h.scrollWidth > h.clientWidth + 1 && h.clientWidth > 0) {
       const ox = getComputedStyle(h).overflowX;
-      if (ox === "auto" || ox === "scroll") scrollers.push({ el: desc(h), sw: h.scrollWidth, cw: h.clientWidth, allowed: !!allowed(h) });
+      if (ox === "auto" || ox === "scroll") scrollers.push({ el: `${desc(h)}${strip(h) ? " (tab/chip strip)" : tableWrap(h) ? " (table wrapper)" : ""}`, sw: h.scrollWidth, cw: h.clientWidth, allowed: !!allowed(h) || strip(h) || tableWrap(h) });
     }
   }
   const clipped: string[] = [];
@@ -487,6 +522,17 @@ function analyze(o: { allowScroll: string[]; mobile: boolean }) {
     small,
     dialogs,
     mainText: (main as HTMLElement).innerText ?? "",
+    // H5.1 tuning ▸ ข้อความของ element ปลายสุดคั่นบรรทัด — innerText ต่อ span แบบ flex ติดกัน ("พี่เก่งสาขาหัวหิน") ทำให้ตรวจชื่อแบบมีขอบเขตพลาด ◂
+    leafText: (() => {
+      const out: string[] = [];
+      const tw = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = tw.nextNode(); n; n = tw.nextNode()) {
+        const p = n.parentElement;
+        const t = (n.textContent ?? "").trim();
+        if (t && p && p.tagName !== "SCRIPT" && p.tagName !== "STYLE" && (vis(p) || p.tagName === "OPTION")) out.push(t);
+      }
+      return out.join("\n");
+    })(),
     bodyText: b?.innerText ?? "",
   };
 }
@@ -514,7 +560,21 @@ async function cookiesFor(viewerKey: string, lang: string): Promise<Any[]> {
 }
 
 // ── หนึ่งช่อง ──
-type Ctx2 = { blocked: string[]; errors: string[]; failed: string[] };
+type Ctx2 = { blocked: string[]; errors: string[]; failed: string[]; lastBlockAt?: number; walkerCaused?: string[] };
+/** id → ชื่อ server action จาก build ที่เสิร์ฟอยู่ (cwd/.next) — ใช้ตั้งชื่อใน POST-BLOCKED + ปล่อยตัวอ่านอย่างเดียว */
+const ACTIONS = (() => {
+  const m = new Map<string, string>();
+  const f = join(ROOT, ".next/server/server-reference-manifest.json");
+  if (!existsSync(f)) return m;
+  try {
+    const j = JSON.parse(readFileSync(f, "utf8")) as Record<string, Record<string, { exportedName?: string; filename?: string }>>;
+    for (const sect of [j.node ?? {}, j.edge ?? {}]) for (const [id, v] of Object.entries(sect)) m.set(id, `${v.exportedName ?? "?"} (${v.filename ?? "?"})`);
+  } catch {
+    /* manifest อ่านไม่ได้ = ไม่มีชื่อ · ไม่ปล่อยอะไร */
+  }
+  return m;
+})();
+const READ_ONLY = new Set(M.allow.readOnlyActions ?? []);
 async function openPage(browser: Any, c: Cell, ctx: Ctx2): Promise<Any> {
   const page = await browser.newPage();
   await page.setViewport({ width: c.size.w, height: c.size.h, deviceScaleFactor: 1, isMobile: c.size.mobile, hasTouch: c.size.touch });
@@ -525,13 +585,25 @@ async function openPage(browser: Any, c: Cell, ctx: Ctx2): Promise<Any> {
   page.on("request", (r: Any) => {
     const m = r.method();
     if (m !== "GET" && m !== "HEAD" && m !== "OPTIONS") {
-      ctx.blocked.push(`${m} ${r.url().replace(BASE, "").slice(0, 120)}${r.headers()["next-action"] ? " (server action)" : ""}`);
+      const act = r.headers()["next-action"] as string | undefined;
+      const name = act ? (ACTIONS.get(act) ?? `action ${act.slice(0, 10)}`) : "";
+      if (act && READ_ONLY.has(name.split(" ")[0]!)) return void r.continue().catch(() => {}); // H5.1 tuning ▸ อ่านอย่างเดียว ตรวจซอร์สแล้ว (matrix allow.readOnlyActions) ◂
+      ctx.blocked.push(`${m} ${r.url().replace(BASE, "").slice(0, 120)}${act ? ` (server action ${name})` : ""}`);
+      ctx.lastBlockAt = Date.now();
       r.abort("blockedbyclient").catch(() => {});
     } else r.continue().catch(() => {});
   });
-  page.on("pageerror", (e: Error) => ctx.errors.push(`pageerror ${e.message.slice(0, 160)}`));
+  // H5.1 tuning ▸ ข้อความที่ walker เป็นต้นเหตุเอง: "ERR_BLOCKED_BY_CLIENT" (คำขอที่ตัด) + pageerror "Failed to fetch" ภายใน 3 วิหลังตัด ⇒ WARN BLOCKED-BY-WALKER · อื่น ๆ = FAIL เหมือนเดิม ◂
+  page.on("pageerror", (e: Error) => {
+    const t = `pageerror ${e.message.slice(0, 160)}`;
+    if (/^Failed to fetch$/.test(e.message) && ctx.lastBlockAt && Date.now() - ctx.lastBlockAt < 3_000) (ctx.walkerCaused ??= []).push(t);
+    else ctx.errors.push(t);
+  });
   page.on("console", (msg: Any) => {
-    if (msg.type() === "error") ctx.errors.push(String(msg.text()).slice(0, 160));
+    if (msg.type() !== "error") return;
+    const t = String(msg.text()).slice(0, 160);
+    if (/net::ERR_BLOCKED_BY_CLIENT/.test(t)) (ctx.walkerCaused ??= []).push(t);
+    else ctx.errors.push(t);
   });
   page.on("requestfailed", (r: Any) => {
     const t = r.failure()?.errorText ?? "";
@@ -544,7 +616,9 @@ async function openPage(browser: Any, c: Cell, ctx: Ctx2): Promise<Any> {
   return page;
 }
 const slug = (s: string) => s.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80);
-const stripIds = (html: string, ids: string[]) => ids.reduce((s, id) => (id ? s.split(id).join("<ID>") : s), html).replace(/nonce="[^"]*"/g, 'nonce=""');
+// H5.1 tuning ▸ เทียบเป็นชุดก้อน RSC เรียงแล้ว + ตัด </body></html>: forbidden กับ unknown ต่างกันแค่ตำแหน่งที่ก้อน "6:E{NEXT_HTTP_ERROR_FALLBACK;404}" ถูกสตรีม (ก่อน/หลัง </body>) — เนื้อหาเท่ากัน ◂
+const stripIds = (html: string, ids: string[]) =>
+  ids.reduce((s, id) => (id ? s.split(id).join("<ID>") : s), html).replace(/nonce="[^"]*"/g, 'nonce=""').replace("</body></html>", "").split(/(?=<script)/).sort().join("");
 
 async function runCell(browser: Any, c: Cell): Promise<Result> {
   const findings: Finding[] = [];
@@ -579,7 +653,7 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
     // HTTP / ปลายทาง
     if (isRef) {
       if (status !== 404) add("FAIL", "HTTP", `expected 404 got ${status} (${finalPath})`);
-      const hrWords = HQC.employees.map((e) => e.name).filter((n) => a.bodyText.includes(n));
+      const hrWords = HQC.employees.map((e) => e.name).filter((n) => hasName(a.leafText, n));
       if (hrWords.length) add("BLOCKER", "REFUSAL-LEAK", `HR names on refusal page: ${hrWords.join(",")}`);
       // ไบต์เท่ากัน: forbidden id vs unknown id — ยิงตรงด้วยคุกกี้เดียวกัน (ไม่ผ่านเบราว์เซอร์) · ตัด id ทั้งสองข้าง + nonce
       const unknownPath = fill((c.def as Refusal).unknown, IDS);
@@ -601,9 +675,12 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
       } else if (status !== 200) add("FAIL", "HTTP", `expected 200 got ${status} (${finalPath})`);
     }
     // console / คำขอที่ล้ม
-    for (const e of ctx.errors) if (!(isRef && /404|Not Found/i.test(e))) add("FAIL", "CONSOLE", e);
-    for (const f of ctx.failed) if (!(isRef && /HTTP 404/.test(f))) add("FAIL", "REQUEST", f);
+    // H5.1 tuning ▸ ช่องครอบคลุม (cov-*) ที่ได้ 404 ตามสิทธิ์ = ข้อความ 404 ของเอกสารหลักเหมือนช่องปฏิเสธ ◂
+    const refusedDoc = isRef || (!!st.coverage && status === 404);
+    for (const e of ctx.errors) if (!(refusedDoc && /404|Not Found/i.test(e))) add("FAIL", "CONSOLE", e);
+    for (const f of ctx.failed) if (!(refusedDoc && /HTTP 404/.test(f))) add("FAIL", "REQUEST", f);
     for (const b of ctx.blocked) add("WARN", "POST-BLOCKED", `on load: ${b}`);
+    for (const w of [...new Set(ctx.walkerCaused ?? [])].filter((x) => x.startsWith("pageerror"))) add("WARN", "BLOCKED-BY-WALKER", w);
     // ล้น/เลื่อนแนวนอน
     if (a.overflow.html || a.overflow.body) add("FAIL", "HSCROLL-PAGE", `${a.overflow.sw}>${a.overflow.cw}`);
     for (const s of a.scrollers) add(s.allowed ? "WARN" : "FAIL", "HSCROLL-EL", `${s.el} ${s.sw}>${s.cw}${s.allowed ? " (declared scroller)" : ""}`);
@@ -618,7 +695,7 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
     if (c.lang === "en") {
       let rest = text;
       for (const s of thaiAllow) rest = rest.split(s).join(" ");
-      const th = rest.match(/[^\s]*[฀-๿]+[^\s]*/g);
+      const th = rest.match(/[^\s]*[\u0E01-\u0E3A\u0E40-\u0E5B]+[^\s]*/g); // H5.1 tuning ▸ ไม่นับ ฿ (U+0E3F สกุลเงิน ใช้ใน en ด้วย) ◂
       if (th) add("FAIL", "EN-THAI", [...new Set(th)].slice(0, 8).join(" · "));
     } else {
       const en = [...new Set((text.match(/\b[A-Z][A-Z_]{2,}\b/g) ?? []).filter((w) => !M.allow.enumsTh.includes(w)))];
@@ -628,12 +705,23 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
     if (em) add("FAIL", "RAW-ERROR", em[0]);
     // ความเป็นส่วนตัว (§6)
     const own = c.viewer.selfEmployee;
-    const moneyOk = c.viewer.money === true || c.viewer.money === "branch" || (!isRef && (st.moneyOk ?? []).includes(c.v));
-    if (!moneyOk) {
-      const hits = [...(a.bodyText.includes("฿") ? ["฿"] : []), ...((a.bodyText.match(MONEY_RE) ?? []).slice(0, 5))];
-      if (hits.length) add("BLOCKER", "PRIVACY-MONEY-TEXT", hits.join(" "));
-      const src = [...(source.includes("฿") ? ["฿"] : []), ...FIELD_SENTINELS.filter((f) => source.includes(f)), ...salarySentinels.filter((s) => new RegExp(`(^|[^\\d,.])${s.replace(/[.,]/g, "\\$&")}($|[^\\d])`).test(source))];
+    const roleMoney = c.viewer.money === true || c.viewer.money === "branch";
+    const ownPage = !isRef && (st.moneyOk ?? []).includes(c.v);
+    const configMoney = !isRef && (st.configMoneyOk ?? []).includes(c.v);
+    if (!roleMoney && !ownPage) {
+      // ข้อความที่เห็น: จำนวนเงิน (฿ + ตัวเลข หรือ x,xxx.xx) — ยกเว้นหน้าค่าตั้ง/กฎหมายที่ระบุใน configMoneyOk (ยอดตามกฎหมาย/ค่าตั้งร้าน ไม่ใช่เงินของคน)
+      if (!configMoney) {
+        const fig = withoutStaticMoney(a.bodyText).match(new RegExp(BAHT_FIGURE.source + "[\\d,.]*", "g")) ?? [];
+        const hits = [...fig.slice(0, 5), ...((a.bodyText.match(MONEY_RE) ?? []).slice(0, 5))];
+        if (hits.length) add("BLOCKER", "PRIVACY-MONEY-TEXT", hits.join(" "));
+      }
+      const srcFig = configMoney ? [] : (withoutStaticMoney(source).match(new RegExp(BAHT_FIGURE.source + "[\\d,.]*", "g")) ?? []); // configMoneyOk: ยอดค่าตั้ง/กฎหมายในก้อนข้อมูลเดียวกับที่เห็น · ชื่อช่อง + เงินเดือนจริงยังตรวจ
+      const src = [...srcFig.slice(0, 3), ...FIELD_SENTINELS.filter((f) => source.includes(f)), ...salarySentinels.filter((v) => sentinelIn(source, v))];
       if (src.length) add("BLOCKER", "PRIVACY-MONEY-SOURCE", src.slice(0, 8).join(" "));
+    } else if (ownPage && !roleMoney) {
+      // หน้าของตัวเอง: เงินของตัวเองได้ · เงินเดือนของคนอื่นไม่ได้
+      const other = SALARY.filter((x) => x.key !== own).flatMap((x) => x.values.filter((v) => sentinelIn(source, v)).map((v) => `${x.key}:${v}`));
+      if (other.length) add("BLOCKER", "PRIVACY-MONEY-SOURCE", `other employee salary on own page: ${other.slice(0, 5).join(" ")}`);
     }
     const never = NEVER_SENTINELS.filter((f) => source.includes(f));
     if (never.length) add("BLOCKER", "PRIVACY-PIN", never.join(" "));
@@ -642,8 +730,8 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
       if (pii.length) add(c.viewer.pii === "masked" ? "BLOCKER" : "WARN", "PRIVACY-PII", pii.join(" "));
     }
     if (c.viewer.money === "branch") {
-      const rows = (await page.evaluate(`Array.from(document.querySelectorAll('tr, li, [data-testid*="-row"], [data-testid*="-item-"]')).map(e => e.innerText || '')`)) as string[];
-      const bad = rows.filter((t) => nonHuahin.some((n) => t.includes(n)) && (t.includes("฿") || new RegExp(MONEY_RE.source).test(t)));
+      const rows = (await page.evaluate(`Array.from(document.querySelectorAll('tr, li, [data-testid*="-row"], [data-testid*="-item-"]')).map(e => { const w = document.createTreeWalker(e, NodeFilter.SHOW_TEXT); const o = []; for (let n = w.nextNode(); n; n = w.nextNode()) { const t = (n.textContent || '').trim(); if (t) o.push(t); } return o.join('\\n'); })`)) as string[];
+      const bad = rows.filter((t) => nonHuahin.some((n) => hasName(t, n)) && (BAHT_FIGURE.test(t) || new RegExp(MONEY_RE.source).test(t)));
       if (bad.length) add("BLOCKER", "PRIVACY-BRANCH-MONEY", bad.slice(0, 3).map((t) => t.replace(/\s+/g, " ").slice(0, 80)).join(" | "));
     }
     if (!isRef && st.limitedNote?.viewers.includes(c.v)) {

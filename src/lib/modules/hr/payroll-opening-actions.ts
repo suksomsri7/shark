@@ -5,7 +5,7 @@
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { requireTenant } from "@/lib/core/context";
-import { tenantDb } from "@/lib/core/db";
+import { hrTargetOwned } from "./hr-target"; // HR PRIV-3 ▸ R11 ◂
 import { assertCan } from "@/lib/core/rbac";
 import { hrViewerOf } from "./privacy";
 import { OPENING_BULK_MAX, saveOpeningYtd, saveOpeningYtdBulk } from "./payroll-opening";
@@ -36,12 +36,7 @@ function satangOf(raw: string): number | null {
 }
 const intOf = (raw: string): number | null => (/^\d{1,2}$/.test(raw) ? Number(raw) : raw === "" ? 0 : null);
 const revOf = (raw: string): number | null => (/^\d{1,6}$/.test(raw) && Number(raw) >= 1 ? Number(raw) : null);
-async function systemOf(tenantId: string, fd: FormData): Promise<string | null> {
-  const systemId = s(fd, "systemId");
-  if (!ID_RE.test(systemId)) return null;
-  const sys = await tenantDb({ tenantId }).appSystem.findFirst({ where: { id: systemId, type: "HR" }, select: { id: true } });
-  return sys?.id ?? null;
-}
+// HR PRIV-3 ▸ R11: ระบบ HR ของร้านผู้กด = hrTargetOwned (resolver เดียว) เรียกตรงในทั้งสองทางด้านล่าง — สำเนา systemOf ในไฟล์นี้ถูกถอด ◂
 const yearOf = (fd: FormData) => (/^\d{4}$/.test(s(fd, "taxYear")) ? Number(s(fd, "taxYear")) : 0);
 /** ค่าที่กรอกของแถว (ข้อความ) — ใช้เทียบกับค่าตั้งต้นที่หน้าใส่ไว้ใน orig_<id> (fix round F3: ส่งเฉพาะแถวที่เปลี่ยน) */
 const fieldsOf = (fd: FormData, id: string) => [s(fd, `asof_${id}`), s(fd, `months_${id}`), s(fd, `inc_${id}`), s(fd, `wht_${id}`), s(fd, `sso_${id}`)];
@@ -62,8 +57,8 @@ const back = (systemId: string, year: number, q: string) => `/app/sys/${systemId
 
 async function one(fd: FormData, zero: boolean): Promise<void> {
   const auth = await requireTenant();
-  const systemId = await systemOf(auth.active.tenantId, fd);
-  if (!systemId) redirect("/app");
+  const systemId = s(fd, "systemId");
+  if (!ID_RE.test(systemId) || !(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) redirect("/app"); // HR PRIV-3 ▸ R11 ◂
   const year = yearOf(fd);
   if (!keyGate(auth)) redirect(back(systemId, year, "ymsg=NO"));
   const id = s(fd, zero ? "zero" : "one");
@@ -84,8 +79,8 @@ export async function zeroOpeningYtdAction(fd: FormData): Promise<void> {
 /** บันทึกทั้งหมด — แถวที่กรอก (ไม่ว่างทั้งแถว · ไม่ล็อก) ทั้งตาราง ทั้งหมดหรือไม่มีเลย */
 export async function saveOpeningYtdBulkAction(fd: FormData): Promise<void> {
   const auth = await requireTenant();
-  const systemId = await systemOf(auth.active.tenantId, fd);
-  if (!systemId) redirect("/app");
+  const systemId = s(fd, "systemId");
+  if (!ID_RE.test(systemId) || !(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) redirect("/app"); // HR PRIV-3 ▸ R11 ◂
   const year = yearOf(fd);
   if (!keyGate(auth)) redirect(back(systemId, year, "ymsg=NO"));
   // fix round F3/MINOR-2: ส่งเฉพาะแถวที่ค่าเปลี่ยนจากที่หน้าแสดง (แถวที่ไม่เปลี่ยนไม่สร้าง rev ใหม่ · ไม่ถูกตรวจ OWN) · เกิน 300 แถว = ข้อความคงที่
