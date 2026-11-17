@@ -168,6 +168,7 @@ export async function requestAdjustmentAction(
   formData: FormData,
 ): Promise<AdjustState> {
   const auth = await requireTenant();
+  if (typeof systemId !== "string") return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r3 ▸ รหัสจากอาร์กิวเมนต์ตรงที่ไม่ใช่ string (ตัวดำเนินการ Prisma) = คำตอบเดิมของรหัสที่ไม่มี ◂
   assertRequestAdjust(auth);
   const employeeId = String(formData.get("employeeId") ?? "");
   const periodKey = String(formData.get("periodKey") ?? "").trim();

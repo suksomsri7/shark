@@ -134,6 +134,7 @@ export async function saveEmployeeProfileAction(
   formData: FormData,
 ): Promise<ProfileState> {
   const auth = await requireTenant();
+  if (typeof systemId !== "string" || typeof employeeId !== "string") return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r3 ▸ รหัสจากอาร์กิวเมนต์ตรงที่ไม่ใช่ string (ตัวดำเนินการ Prisma) = คำตอบเดิมของรหัสที่ไม่มี ◂
   assertHrCan(auth, "hr.employee.create");
   if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   // HF-HR-0: ช่องอ่อนไหวผ่านเข้า service เฉพาะผู้ดูเงินเดือน — ตัวกรองกลางอยู่ที่ privacy.ts (oracle เรียกตัวเดียวกัน)
@@ -183,6 +184,7 @@ export async function removeEmployeeDocAction(formData: FormData) {
 export type PinState = { status: "idle" } | { status: "ok"; message: string } | { status: "error"; message: string };
 export async function setPinAction(systemId: string, employeeId: string, _prev: PinState, formData: FormData): Promise<PinState> {
   const auth = await requireTenant();
+  if (typeof systemId !== "string" || typeof employeeId !== "string") return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r3 ▸ รหัสจากอาร์กิวเมนต์ตรงที่ไม่ใช่ string (ตัวดำเนินการ Prisma) = คำตอบเดิมของรหัสที่ไม่มี ◂
   assertHrCan(auth, "hr.employee.create");
   if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r2 ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const pin = String(formData.get("pin") ?? "");
@@ -204,6 +206,7 @@ export type KioskState =
  */
 export async function kioskClockAction(systemId: string, _prev: KioskState, formData: FormData): Promise<KioskState> {
   const auth = await requireTenant();
+  if (typeof systemId !== "string") return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT r3 ▸ รหัสจากอาร์กิวเมนต์ตรงที่ไม่ใช่ string (ตัวดำเนินการ Prisma) = คำตอบเดิมของรหัสที่ไม่มี ◂
   assertHrCan(auth, "hr.attendance.clock");
   const employeeId = String(formData.get("employeeId") ?? "");
   const pin = String(formData.get("pin") ?? "");
@@ -286,6 +289,7 @@ export async function bulkDecideLeaveAction(
   formData: FormData,
 ): Promise<BulkLeaveState> {
   const auth = await requireTenant();
+  if (typeof systemId !== "string") return { status: "error", message: "ไม่พบระบบ" }; // HR HF-TENANT r3 ▸ รหัสจากอาร์กิวเมนต์ตรงที่ไม่ใช่ string (ตัวดำเนินการ Prisma) = คำตอบเดิมของรหัสที่ไม่มี ◂
   assertHrCan(auth, "hr.leave.decide");
   const leaveIds = formData.getAll("leaveIds").map(String).filter(Boolean);
   const rawStatus = String(formData.get("status") ?? "");
