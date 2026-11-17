@@ -938,7 +938,7 @@
    "kind": "select",
    "interactive": true,
    "file": "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx",
-   "conditional": "ร้านมี BusinessUnit ≥ 1",
+   "conditional": "โหมดแก้ไข ?edit=1 (ผู้ถือ hr.employee.create) · ร้านมี BusinessUnit ≥ 1 — HR VIS-5c: ย้ายจากมุมมองอ่านเข้าโหมดแก้ไข",
    "roles": [
     "owner",
     "manager",
@@ -967,7 +967,7 @@
    "kind": "select",
    "interactive": true,
    "file": "src/lib/modules/hr/EmployeeProfileForm.tsx",
-   "conditional": "ทุกคนที่เปิดโปรไฟล์ได้",
+   "conditional": "โหมดแก้ไข ?edit=1 (ผู้ถือ hr.employee.create) — HR VIS-5c: ฟอร์มโปรไฟล์อยู่ในโหมดแก้ไขเท่านั้น",
    "roles": [
     "owner",
     "manager",
@@ -15297,6 +15297,1570 @@
    "wo": "H4.8",
    "oracle": "qc-hr-h4.8",
    "note": "คู่มือ HR API"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-add",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-people-add-name",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "+ พนักงาน (summary ของแผงเพิ่มพนักงาน · ?add=1 เปิดค้าง)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-add-name",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แผงเพิ่มพนักงานเปิดอยู่ (?add=1 หรือกด + พนักงาน) · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createEmployeeAction",
+    "db": "HrEmployee.name"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ช่องชื่อพนักงานใหม่ (กว้าง ≥ 16rem)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-add-position",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แผงเพิ่มพนักงานเปิดอยู่ (?add=1 หรือกด + พนักงาน) · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createEmployeeAction",
+    "db": "HrEmployee.position"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ตำแหน่งของพนักงานใหม่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-add-phone",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แผงเพิ่มพนักงานเปิดอยู่ (?add=1 หรือกด + พนักงาน) · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createEmployeeAction",
+    "db": "HrEmployee.phone"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เบอร์โทรของพนักงานใหม่"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-add-submit",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แผงเพิ่มพนักงานเปิดอยู่ (?add=1 หรือกด + พนักงาน) · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:createEmployeeAction",
+    "db": "HrEmployee (แถวใหม่ · สาขาประจำตาม hr-register-create-unit)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ปุ่ม + เพิ่มพนักงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-tab-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?tab=*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แท็บสถานะ ทั้งหมด/ประจำ/พาร์ทไทม์-รายวัน/ทดลองงาน/สิ้นสุด + จำนวน · * = all|full|part|prob|ended"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-search",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?q="
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ค้นชื่อ · รหัส · เบอร์ (GET ?q=)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-search-go",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?q=&dept="
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ปุ่มค้นหา (ส่งคำค้น + แผนก)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-dept",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "มีพนักงานที่ระบุแผนกอย่างน้อย 1 คน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?dept="
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ตัวกรองแผนก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-ended",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?ended=1"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "สวิตช์แสดงที่สิ้นสุด (คนที่ลบ/สิ้นสุดต่อท้ายแท็บทั้งหมด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-branch",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ดูทุกสาขา และร้านมี ≥ 2 สาขา",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-register-branch-chip-*",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ปุ่มเปิดรายการสาขา (summary ของ hr-register-branch-filter)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-table",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แท็บที่เลือกมีอย่างน้อย 1 คน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-people-table",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ตารางทะเบียน (≥ md) / การ์ดซ้อน (< md) — markup ชุดเดียว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-row-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แท็บที่เลือกมีอย่างน้อย 1 คน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-people-row-*",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แถวพนักงาน 1 คน · * = id พนักงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-name-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แท็บที่เลือกมีอย่างน้อย 1 คน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?emp=* (≥ 1280) | /app/sys/[id]/hr/employees/*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ชื่อในแถว — จอ ≥ 1280 เปิดแผงอ่านด้านขวา · จอเล็กเปิดโปรไฟล์"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-more-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แถวของคนที่ยังอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "updateEmployeeAction · HrScheduleEditor · PinField · ลบ",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เมนู ⋯ ของแถว: เปิดโปรไฟล์ · แก้ข้อมูลพื้นฐาน · ตารางเข้างาน · PIN · ลบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-open-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "ผู้ดูที่ไม่มี hr.employee.create",
+   "roles": [
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ลูกศรเปิดโปรไฟล์ของผู้ดูที่ไม่ใช่ผู้แก้ (แทนเมนู ⋯)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-restore-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แถวคนที่ลบแล้ว (แท็บสิ้นสุด หรือเปิดแสดงที่สิ้นสุด) · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:restoreEmployeeAction",
+    "db": "HrEmployee.active → true"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "กู้คืนคนที่ลบแล้ว (สถานะไม่ใช่สิ้นสุด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-page-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "แท็บที่เลือกมีมากกว่า 20 คน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?page=*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ตัวแบ่งหน้า 20 คน · * = เลขหน้า | prev | next"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-panel",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?emp=<id> ที่ผู้ดูเปิดโปรไฟล์ได้",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-people-panel",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แผงอ่านด้านขวา (เลขอ่อนไหวปิดแล้ว · ไม่มีปุ่มแก้ · ≥ 1280)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-panel-close",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "?emp=<id> ที่ผู้ดูเปิดโปรไฟล์ได้",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ปิดแผงอ่าน (ตัด ?emp=)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-panel-open",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?emp=<id> ที่ผู้ดูเปิดโปรไฟล์ได้",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เปิดโปรไฟล์เต็มจากแผงอ่าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-panel-review",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?emp=<id> ของคนที่ทดลองงานและมีวันครบ",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ประเมิน → โปรไฟล์ (แถบทดลองงาน + ปุ่มผ่านทดลองงานจริงอยู่ที่โปรไฟล์)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-profile-tab-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แผงอ่านด้านขวาของทะเบียน (?emp=<id> · จอ ≥ 1280) หรือมุมมองอ่านของโปรไฟล์",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*?tab=*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แท็บของแผงอ่าน → แท็บเดียวกันในโปรไฟล์"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-profile-edit",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แผงอ่านด้านขวาของทะเบียน (?emp=<id> · จอ ≥ 1280) หรือมุมมองอ่านของโปรไฟล์",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*?edit=1"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แก้ไข (หัวแผงอ่าน)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-profile-mask-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แผงอ่านด้านขวาของทะเบียน (?emp=<id> · จอ ≥ 1280) หรือมุมมองอ่านของโปรไฟล์ · ผู้เห็นข้อมูลอ่อนไหวของคนนี้",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-profile-mask-*",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เลขปิดแล้ว (บัตร ปชช. · ปสส. · บัญชี) ในแผงอ่าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-profile-reveal-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แผงอ่านด้านขวาของทะเบียน (?emp=<id> · จอ ≥ 1280) หรือมุมมองอ่านของโปรไฟล์ · ผู้เห็นข้อมูลอ่อนไหว ∧ ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*?edit=1#hr-profile-sensitive"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ปุ่มตา → หน้าแก้ไข (ไม่มี action เปิดเลข · owner list)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-profile-connections",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แผงอ่านด้านขวาของทะเบียน (?emp=<id> · จอ ≥ 1280) หรือมุมมองอ่านของโปรไฟล์",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-profile-connections",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เชื่อมระบบ: บัญชี SHARK (มี/ไม่มี) · PIN ลงเวลา"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-tab-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "มุมมองอ่าน (ไม่ใช่ ?edit=1 ของผู้แก้)",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*?tab=*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แท็บโปรไฟล์ ทั่วไป/เอกสาร/ตารางงาน/ลา/เงินเดือน (ผู้เห็นข้อมูลอ่อนไหว)/ประวัติ · aria-current ตัวเดียว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-edit",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "ผู้ถือ hr.employee.create · มุมมองอ่าน",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*?edit=1"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แก้ไข → โหมดแก้ไข (ฟอร์มเดิม)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-mask-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "ผู้เห็นข้อมูลอ่อนไหวของคนนี้ (OWNER / hr.payroll.read ในขอบเขตเงินเดือน) · แท็บทั่วไป",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-profile-mask-*",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "บัตร ปชช. x-xxxx-xxxxx-NN-N · ปสส. xxx-xxx-xxNN · ธนาคาร <ธนาคาร> xxx-x-xNNNN (ปิดฝั่ง server)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-reveal-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "ผู้เห็นข้อมูลอ่อนไหว ∧ ผู้ถือ hr.employee.create · แท็บทั่วไป",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*?edit=1#hr-profile-sensitive"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ปุ่มตา → หน้าแก้ไข (เลขเต็มอยู่ในฟอร์มเดิมเท่านั้น · ไม่มี action เปิดเลข/บันทึกการดู — owner list)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-connections",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แท็บทั่วไป",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-profile-connections",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เชื่อมระบบ: บัญชี SHARK (มี/ไม่มี · มติ 5c-5) · PIN ลงเวลา · LINE (ชิปเดิม H4.5)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-conn-pin",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "ผู้ถือ hr.employee.create · พนักงานที่ยังอยู่ · แท็บทั่วไป",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?q=*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ตั้ง/เปลี่ยน PIN → ทะเบียน (เมนู ⋯ ของคนนี้)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-checklist-manage",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "มีรายการรับเข้า และผู้ดูเห็นวงจรพนักงาน (canSeeLifecycleOps)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*?tab=history#hr-life"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "จัดการรายการรับพนักงานใหม่ → แท็บประวัติ (ติ๊ก/บันทึกอยู่ที่ LifecycleProfile)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-pay-open",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "?tab=pay · ผู้เห็นข้อมูลอ่อนไหวของคนนี้",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/payroll"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แท็บเงินเดือน: ลิงก์ไปหน้าเงินเดือน (ไม่มีตัวเลขบนโปรไฟล์)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-doc-open-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "?tab=docs · ผู้เห็นข้อมูลอ่อนไหว · มีเอกสาร",
+   "roles": [
+    "owner",
+    "payroll",
+    "payrollSelf"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "<doc.url>"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เปิดเอกสารแนบ · * = id เอกสาร"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-doc-remove-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "?tab=docs · ผู้เห็นข้อมูลอ่อนไหว ∧ ผู้ถือ hr.employee.create · มีเอกสาร",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:removeEmployeeDocAction",
+    "db": "HrEmployeeDoc (ลบแถว)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ลบเอกสารแนบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-doc-kind",
+   "kind": "select",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "?tab=docs · ผู้เห็นข้อมูลอ่อนไหว ∧ ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:addEmployeeDocAction",
+    "db": "HrEmployeeDoc.kind"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ชนิดเอกสารที่จะแนบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-doc-title",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "?tab=docs · ผู้เห็นข้อมูลอ่อนไหว ∧ ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:addEmployeeDocAction",
+    "db": "HrEmployeeDoc.title"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ชื่อเอกสาร"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-doc-url",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "?tab=docs · ผู้เห็นข้อมูลอ่อนไหว ∧ ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:addEmployeeDocAction",
+    "db": "HrEmployeeDoc.url"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ลิงก์ไฟล์"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-doc-add",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "?tab=docs · ผู้เห็นข้อมูลอ่อนไหว ∧ ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:addEmployeeDocAction",
+    "db": "HrEmployeeDoc (แถวใหม่)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "+ แนบเอกสาร"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-footer",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/EmployeeProfileForm.tsx",
+   "conditional": "?edit=1 ของผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-profile-footer",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "แถบล่างติดขอบจอของโหมดแก้ไข: บันทึก · ยกเลิก · สิ้นสุดการจ้าง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-footer-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/EmployeeProfileForm.tsx",
+   "conditional": "?edit=1 ของผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveEmployeeProfileAction",
+    "db": "HrEmployee (ช่องในฟอร์ม)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "บันทึก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-footer-cancel",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/EmployeeProfileForm.tsx",
+   "conditional": "?edit=1 ของผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ยกเลิก → มุมมองอ่าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-profile-footer-end",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/EmployeeProfileForm.tsx",
+   "conditional": "?edit=1 ของผู้ถือ hr.employee.create · พนักงานที่ยังอยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "#hr-life"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "สิ้นสุดการจ้าง → ส่วนวงจรพนักงานใต้ฟอร์ม (ด่านจริง = LifecycleProfile/offboardEmployeeAction)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-sched-on-*",
+   "kind": "checkbox",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ (ผู้ถือ hr.employee.create) · หรือแท็บตารางงานของโปรไฟล์ (ผู้แก้)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — ติ๊กวันทำงาน · * = weekday 0–6"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-sched-start-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ (ผู้ถือ hr.employee.create) · หรือแท็บตารางงานของโปรไฟล์ (ผู้แก้)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — เวลาเข้า"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-sched-end-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ (ผู้ถือ hr.employee.create) · หรือแท็บตารางงานของโปรไฟล์ (ผู้แก้)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — เวลาออก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-sched-off-*",
+   "kind": "checkbox",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ (ผู้ถือ hr.employee.create) · หรือแท็บตารางงานของโปรไฟล์ (ผู้แก้)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — วันหยุดประจำ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-sched-grace",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ (ผู้ถือ hr.employee.create) · หรือแท็บตารางงานของโปรไฟล์ (ผู้แก้)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — เข้าช้าได้ (นาที)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-sched-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ (ผู้ถือ hr.employee.create) · หรือแท็บตารางงานของโปรไฟล์ (ผู้แก้)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — บันทึกตาราง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-sched-on-*",
+   "kind": "checkbox",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?tab=schedule ของผู้ถือ hr.employee.create (ผู้ดูอื่นเห็นตารางอ่านอย่างเดียว)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — ติ๊กวันทำงาน · * = weekday 0–6"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-sched-start-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?tab=schedule ของผู้ถือ hr.employee.create (ผู้ดูอื่นเห็นตารางอ่านอย่างเดียว)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — เวลาเข้า"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-sched-end-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?tab=schedule ของผู้ถือ hr.employee.create (ผู้ดูอื่นเห็นตารางอ่านอย่างเดียว)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — เวลาออก"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-sched-off-*",
+   "kind": "checkbox",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?tab=schedule ของผู้ถือ hr.employee.create (ผู้ดูอื่นเห็นตารางอ่านอย่างเดียว)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — วันหยุดประจำ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-sched-grace",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?tab=schedule ของผู้ถือ hr.employee.create (ผู้ดูอื่นเห็นตารางอ่านอย่างเดียว)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — เข้าช้าได้ (นาที)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-sched-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "?tab=schedule ของผู้ถือ hr.employee.create (ผู้ดูอื่นเห็นตารางอ่านอย่างเดียว)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:setWorkScheduleAction",
+    "db": "HrWorkSchedule (upsert ต่อวัน)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "HrScheduleEditor — บันทึกตาราง"
   }
  ]
 }

@@ -1,6 +1,8 @@
 "use client";
 
 import { useActionState } from "react";
+import Link from "next/link"; // HR VIS-5c ▸ ยกเลิก = กลับมุมมองอ่าน ◂
+import { useTranslations } from "next-intl"; // HR VIS-5c ▸ ข้อความแถบล่าง (hr.people.form) ◂
 import { saveEmployeeProfileAction, type ProfileState } from "./actions";
 import { profileFormId, type EmployeeProfileDto } from "./privacy-shared"; // HR H1.1 ▸ profileFormId ◂
 
@@ -34,6 +36,7 @@ export default function EmployeeProfileForm({
     async (prev, formData) => saveEmployeeProfileAction(systemId, emp.id, prev, formData),
     { status: "idle" },
   );
+  const t = useTranslations("hr.people.form"); // HR VIS-5c ◂
 
   return (
     <form id={profileFormId(emp.id)} action={formAction} className="flex flex-col gap-5">
@@ -159,7 +162,7 @@ export default function EmployeeProfileForm({
       </fieldset>
 
       {canSeeSensitive && (
-        <fieldset className="flex flex-col gap-3 border-t pt-4">
+        <fieldset id="hr-profile-sensitive" className="flex scroll-mt-24 flex-col gap-3 border-t pt-4" /* HR VIS-5c ▸ ปลายทางของปุ่มตา (?edit=1#hr-profile-sensitive) ◂ */>
           <legend className="text-sm font-medium">🔒 ข้อมูลอ่อนไหว</legend>
           <p className={`text-xs ${muted}`}>
             เห็นได้เฉพาะเจ้าของกิจการหรือผู้ได้รับสิทธิ์ดูเงินเดือน — กรอกเท่าที่ร้านต้องใช้จริง (ทำเอกสาร/ประกันสังคม/โอนเงินเดือน)
@@ -194,14 +197,24 @@ export default function EmployeeProfileForm({
         <textarea name="note" rows={2} defaultValue={emp.note ?? ""} className="input" />
       </fieldset>
 
-      <div className="flex items-center gap-3">
-        <button type="submit" disabled={pending} className="btn btn-primary min-h-[44px] text-sm disabled:opacity-50">
-          {pending ? "กำลังบันทึก…" : "บันทึกข้อมูลพนักงาน"}
+      {/* HR VIS-5c ▸ แถบล่างติดขอบจอ (ภาพ 02): บันทึก · ยกเลิก (กลับมุมมองอ่าน) · สิ้นสุดการจ้าง (#hr-life ใต้ฟอร์ม · ด่านเดิมของ LifecycleProfile) ◂ */}
+      <div data-testid="hr-profile-footer" className="sticky bottom-0 z-10 -mx-4 -mb-4 flex flex-wrap items-center gap-3 rounded-b-2xl border-t border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-4 py-3 md:-mx-5 md:-mb-5 md:px-5">
+        <button type="submit" disabled={pending} data-testid="hr-profile-footer-save" className="btn btn-primary min-h-[44px] text-sm disabled:opacity-50">
+          {pending ? t("saving") : t("save")}{/* HR VIS-5c */}
         </button>
+        {/* HR VIS-5c */}<Link href={`/app/sys/${systemId}/hr/employees/${emp.id}`} data-testid="hr-profile-footer-cancel" className="btn btn-ghost min-h-[44px] text-sm">
+          {t("cancel")}
+        </Link>
         {state.status === "error" && (
           <span className="text-sm text-[color:var(--color-danger)]">{state.message}</span>
         )}
         {state.status === "ok" && <span className={`text-sm ${muted}`}>{state.message}</span>}
+        <span className="flex-1" />{/* HR VIS-5c */}
+        {emp.active && (
+          <Link href="#hr-life" data-testid="hr-profile-footer-end" className="btn btn-ghost min-h-[44px] text-sm text-[color:var(--color-danger)]">
+            {t("end")}
+          </Link>
+        )}
       </div>
     </form>
   );

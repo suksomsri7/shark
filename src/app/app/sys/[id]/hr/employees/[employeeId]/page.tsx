@@ -1,18 +1,15 @@
-import Link from "next/link";
+// HR VIS-5c ▸ ลิงก์/ฟอร์มเอกสารแนบย้ายไป people-ui (ProfileDocsTab) ◂
 import { notFound, redirect } from "next/navigation"; // HR H2.10 ▸ redirect โปรไฟล์ของตัวเอง ◂
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
-import { hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
+import { HrProfileScheduleTab, hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂ · HR VIS-5c ▸ แท็บตารางงาน ◂
 // HF-HR-0 (D4): ด่านสิทธิ์ + DTO รายช่อง — ห้ามส่งแถว HrEmployee ดิบให้ client component
 import { hrViewerOf, loadEmployeeProfileForViewer } from "@/lib/modules/hr/privacy";
 import { hrScopeOf, isAllBranches, unitsForScope } from "@/lib/modules/hr/scope"; // HR H1.1 ▸ ตัวเลือกสาขาประจำตามขอบเขตผู้แก้ ◂
-import { addEmployeeDocAction, removeEmployeeDocAction } from "@/lib/modules/hr/actions";
+// HR VIS-5c ▸ เอกสารแนบ (addEmployeeDocAction/removeEmployeeDocAction) ผูกตรงใน ProfileDocsTab ◂
 import EmployeeProfileForm from "@/lib/modules/hr/EmployeeProfileForm";
-import { profileFormId } from "@/lib/modules/hr/privacy-shared"; // HR H1.1 ◂
-import { PageHeader } from "@/components/ui/PageHeader";
-import { Section } from "@/components/ui/Section";
-import { SubmitButton } from "@/components/ui/SubmitButton";
+// HR VIS-5c ▸ Section/SubmitButton ไม่ใช้แล้ว (การ์ดของ people-ui) ◂
 import { ModuleTabs } from "@/components/module-tabs";
 // HR H4.4 ▸ วงจรพนักงาน (แถบทดลองงาน · รายการรับเข้า/ออก · บันทึก · สิ้นสุดการจ้าง) — DTO ของ lifecycle.ts เท่านั้น ◂
 import { isLinkedTo, loadLifecycleForViewer } from "@/lib/modules/hr/lifecycle"; // HR H2.10 ▸ isLinkedTo ◂
@@ -22,28 +19,22 @@ import { reportTextFor } from "@/lib/modules/hr/reports-rules"; // HR H3.9 ◂
 import { getLocale, getTranslations } from "next-intl/server"; // HR H3.9 ◂
 import { employeeLineStatus } from "@/lib/modules/hr/line-link"; // HR H4.5 ▸ ชิปสถานะ LINE (สถานะ + วันที่ผูกเท่านั้น · ด่านจากแถว Membership + สาขา) ◂
 import { adminUnlinkLineAction } from "@/lib/modules/hr/line-actions"; // HR H4.5 ◂
+// HR VIS-5c ▸ โปรไฟล์ (ภาพ 02): หัว · แท็บ · มุมมองอ่าน (เลขอ่อนไหวปิดแล้ว) · เชื่อมระบบ · แท็บลา/เงินเดือน/เอกสาร — ฝั่ง server ทั้งหมด ◂
+import { EmployeeReadView, PeopleCard, ProfileEditCard, ProfilePageHeader, ProfileRemovedNote, ProfileChecklist, ProfileConnections, ProfileDocsTab, ProfileHeader, ProfileLeaveTab, ProfilePayTab, ProfileTabs, canEditPeople, profileHref, profileTabOf, type ProfileTab } from "@/lib/modules/hr/people-ui"; // HR VIS-5c ◂
 
 // หน้าโปรไฟล์พนักงาน 1 คน (ข้อ 8) — ข้อมูลเต็มรูปแบบ + เอกสารแนบ
 // 🔒 ช่องอ่อนไหว (เลขบัตร/ประกันสังคม/ทะเบียนบ้าน/บัญชี) + เอกสาร = เห็นเฉพาะผู้มีสิทธิ์ดูเงินเดือน
-const DOC_KIND_LABEL: Record<string, string> = {
-  ID_CARD: "สำเนาบัตรประชาชน",
-  HOUSE_REG: "สำเนาทะเบียนบ้าน",
-  CONTRACT: "สัญญาจ้าง",
-  CERTIFICATE: "วุฒิการศึกษา/ใบรับรอง",
-  SSO_FORM: "เอกสารประกันสังคม",
-  BANK_BOOK: "หน้าสมุดบัญชี",
-  OTHER: "อื่นๆ",
-};
-
+// HR VIS-5c ▸ ค่าเริ่ม = มุมมองอ่าน: เลขอ่อนไหวปิดแล้วจากฝั่ง server (people-ui) · ฟอร์มแก้ไข (เลขเต็ม) เฉพาะ ?edit=1 ของผู้ถือ hr.employee.create ·
+//   ผู้ดูอื่นที่ส่ง ?edit=1 ได้มุมมองอ่านเดิม (ไม่ปฏิเสธใหม่) · แท็บ = ?tab= (ทั่วไป · เอกสาร · ตารางงาน · ลา · เงินเดือน · ประวัติ) · ไม่มีตัวเลขเงินบนหน้านี้ ◂
 export default async function HrEmployeeProfilePage({
   params,
   searchParams,
 }: {
   params: Promise<{ id: string; employeeId: string }>;
-  searchParams: Promise<{ life?: string; reg?: string }>; // HR H4.4 ▸ รหัสผลการกด (allowlist LIFE_MSG) ◂ · HR H3.9 ▸ reg = ผลบันทึกการ์ดทะเบียน ◂
+  searchParams: Promise<{ life?: string; reg?: string; tab?: string; edit?: string }>; // HR H4.4 ▸ รหัสผลการกด (allowlist LIFE_MSG) ◂ · HR H3.9 ▸ reg = ผลบันทึกการ์ดทะเบียน ◂ · HR VIS-5c ▸ tab · edit ◂
 }) {
   const { id, employeeId } = await params;
-  const { life: lifeCode, reg: regCode } = await searchParams; // HR H3.9 ▸ reg ◂
+  const { life: lifeCode, reg: regCode, tab: tabParam, edit: editParam } = await searchParams; // HR H3.9 ▸ reg ◂ · HR VIS-5c ▸ tab · edit ◂
   const auth = await requireTenant();
   const sys = await prisma.appSystem.findFirst({
     where: { id, tenantId: auth.active.tenantId, type: "HR" },
@@ -73,135 +64,100 @@ export default async function HrEmployeeProfilePage({
     "use server"; // HR H4.5 ▸ ยกเลิกผูก LINE (service ตรวจสิทธิ์จากแถว Membership + สาขาซ้ำ) ◂
     await adminUnlinkLineAction(fd); // HR H4.5 ◂
   }; // HR H4.5 ◂
+  // HR VIS-5c ▸ ผู้แก้ (hr.employee.create) · โหมดแก้ไขเฉพาะผู้แก้ · แท็บเงินเดือนเฉพาะผู้เห็นข้อมูลอ่อนไหวของคนนี้ ◂
+  const canEdit = canEditPeople(hrViewerOf(auth)); // HR VIS-5c ◂
+  const editing = canEdit && editParam === "1"; // HR VIS-5c ◂
+  const tab: ProfileTab = profileTabOf(tabParam ?? (regCode || lifeCode ? "history" : undefined)); // HR VIS-5c ▸ ผลกดของการ์ดทะเบียน/วงจรพนักงาน (#hr-register · #hr-life) กลับมาที่แท็บประวัติ ◂
+  const tabs: ProfileTab[] = sensitive ? ["general", "docs", "schedule", "leave", "pay", "history"] : ["general", "docs", "schedule", "leave", "history"]; // HR VIS-5c ◂
+  const shown: ProfileTab = tabs.includes(tab) ? tab : "general"; // HR VIS-5c ◂
+  const lineChip = line.ok ? ( // HR VIS-5c ▸ ชิป LINE เดิม (H4.5) ย้ายเข้าแถว "เชื่อมระบบ" ◂
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="rounded-full border px-2 py-1 text-xs" data-testid="hr-emp-line-chip">
+        {line.state === "ACTIVE" ? tLine("chipActive") : line.state === "PENDING" ? tLine("chipPending") : tLine("chipNone")}
+        {line.state === "ACTIVE" && line.linkedAt ? ` · ${tLine("linkedAt", { date: new Date(line.linkedAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", year: "numeric" }) })}` : ""}
+      </span>
+      {line.state === "ACTIVE" && (
+        <form action={onUnlinkLine}>
+          <input type="hidden" name="systemId" value={id} />
+          <input type="hidden" name="employeeId" value={emp.id} />
+          <button type="submit" className="btn btn-ghost min-h-[44px] text-sm" data-testid="hr-emp-line-unlink">
+            {tLine("adminUnlink")}
+          </button>
+        </form>
+      )}
+    </div>
+  ) : null; // ◂ HR H4.5
 
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
-      <PageHeader
-        title={`${def?.icon ?? ""} ${emp.name}`.trim()}
-        desc={[emp.position, emp.department].filter(Boolean).join(" · ") || "ข้อมูลพนักงาน"}
-        back={{ href: `/app/sys/${id}/hr/employees`, label: "พนักงานทั้งหมด" }}
-      />
+    <div className="flex max-w-6xl flex-col gap-5">{/* HR VIS-5c ▸ ภาพ 02: มุมมองอ่าน + คอลัมน์ขวา ⇒ max-w-6xl ◂ */}
+      <ProfilePageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} systemId={id} />{/* HR VIS-5c ▸ ชื่อ/ตำแหน่งย้ายเข้าหัวโปรไฟล์ · ข้อความแปลในคอมโพเนนต์ ◂ */}
       {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
-      <ModuleTabs items={await hrTabsFor(id)} />
+      <ModuleTabs items={await hrTabsFor(id)} wrap />{/* HR VIS-5c ◂ */}
       <LifecycleMsg code={typeof lifeCode === "string" ? lifeCode : undefined} />
-      {/* VIS-1 B2 ▸ แถบทดลองงาน/สัญญา/สิ้นสุด อยู่บนสุดของโปรไฟล์ (ภาพ 02) ◂ */}
-      <LifecycleBanner systemId={id} employeeId={emp.id} life={life} active={emp.active} />
-      {!emp.active && (
-        <p className="rounded-lg border px-3 py-2 text-xs text-[color:var(--color-danger)]">
-          พนักงานคนนี้ถูกลบออกจากทะเบียนแล้ว (ข้อมูลและประวัติยังอยู่ · กู้คืนได้ที่หน้าพนักงานทั้งหมด)
-        </p>
-      )}
+      <PeopleCard className="flex flex-col gap-4">{/* HR VIS-5c ▸ หัวโปรไฟล์ + แถบทดลองงาน/สัญญา (VIS-1 B2) + แท็บ ◂ */}
+        <ProfileHeader systemId={id} emp={emp} canEdit={canEdit} onEdit={editing} />
+        {/* VIS-1 B2 ▸ แถบทดลองงาน/สัญญา/สิ้นสุด อยู่บนสุดของโปรไฟล์ (ภาพ 02) ◂ */}
+        <LifecycleBanner systemId={id} employeeId={emp.id} life={life} active={emp.active} />
+        {!emp.active && <ProfileRemovedNote />}
+        {!editing && <ProfileTabs href={(k) => profileHref(id, emp.id, `?tab=${k}`)} tab={shown} tabs={tabs} />}{/* HR VIS-5c */}
+      </PeopleCard>
 
-      <Section title="ข้อมูลพนักงาน">
-        {/* HR H1.1 ▸ R8 สาขาประจำ — ช่องของฟอร์มโปรไฟล์ (form={…}) · ตัวเลือก = สาขาในขอบเขตของผู้แก้ · action ตรวจซ้ำจาก DB ◂ */}
-        {units.length > 0 && (
-          <label className={`mb-3 flex flex-col gap-1 text-xs ${muted}`}>
-            สาขาประจำ
-            <select name="unitId" form={profileFormId(emp.id)} data-testid="hr-profile-unit" defaultValue={emp.unitId ?? ""} className="input min-h-11">
-              {(isAllBranches(scope) || !emp.unitId) && <option value="">ยังไม่ระบุสาขาประจำ</option>}
-              {emp.unitId && !units.some((u) => u.id === emp.unitId) && <option value={emp.unitId}>{emp.unitName ?? "สาขาอื่น"}</option>}
-              {units.map((u) => (
-                <option key={u.id} value={u.id}>
-                  {u.name}
-                </option>
-              ))}
-            </select>
-          </label>
-        )}
-        <EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} />
-        {/* HR H4.5 ▸ ชิปสถานะ LINE ของพนักงาน — สถานะ + วันที่ผูกเท่านั้น (ไม่มีชื่อ/รหัส LINE · Q14) · ปุ่มยกเลิกผูกเมื่อผูกอยู่ ◂ */}
-        {line.ok && (
-          <div className="mt-2 flex flex-wrap items-center gap-2">
-            <span className="rounded-full border px-2 py-1 text-xs" data-testid="hr-emp-line-chip">
-              {line.state === "ACTIVE" ? tLine("chipActive") : line.state === "PENDING" ? tLine("chipPending") : tLine("chipNone")}
-              {line.state === "ACTIVE" && line.linkedAt ? ` · ${tLine("linkedAt", { date: new Date(line.linkedAt).toLocaleDateString("th-TH", { timeZone: "Asia/Bangkok", day: "numeric", month: "short", year: "numeric" }) })}` : ""}
-            </span>
-            {line.state === "ACTIVE" && (
-              <form action={onUnlinkLine}>
-                <input type="hidden" name="systemId" value={id} />
-                <input type="hidden" name="employeeId" value={emp.id} />
-                <button type="submit" className="btn btn-ghost min-h-[44px] text-sm" data-testid="hr-emp-line-unlink">
-                  {tLine("adminUnlink")}
-                </button>
-              </form>
-            )}
-          </div>
-        )}
-        {/* ◂ HR H4.5 */}
-        <p className={`mt-2 text-xs ${muted}`}>
-          PIN ลงเวลา: {emp.hasPin ? "ตั้งแล้ว" : "ยังไม่ตั้ง"} (ตั้ง/เปลี่ยนได้ที่หน้าพนักงานทั้งหมด)
-        </p>
-      </Section>
-
-      <LifecycleProfile systemId={id} employeeId={emp.id} life={life} active={emp.active} />
-      {/* HR H3.9 ▸ ทะเบียนลูกจ้าง ม.113 — การ์ดซ่อนเองเมื่อผู้ดูไม่มีสิทธิ์ · ผลบันทึก = รหัสคงที่ (ok · INPUT · อื่น ๆ = ไม่พบ/ไม่มีสิทธิ์) ◂ */}
-      <HrRegisterCard
-        systemId={id}
-        tenantId={auth.active.tenantId}
-        employeeId={emp.id}
-        viewer={hrViewerOf(auth)}
-        flash={regCode === "ok" ? (await getTranslations("hr.report"))("saved") : regCode === "INPUT" ? reportTextFor(await getLocale()).registerInput : regCode ? reportTextFor(await getLocale()).no : null}
-      />
-
-      {sensitive ? (
-        <Section title="🔒 เอกสารแนบ">
-          <div className="flex flex-col gap-2">
-            {docs.length === 0 && (
-              <p className={`text-xs ${muted}`}>ยังไม่มีเอกสาร — แนบสำเนาบัตร/ทะเบียนบ้าน/สัญญาจ้างได้ที่ฟอร์มด้านล่าง</p>
-            )}
-            {docs.map((doc) => (
-              <div key={doc.id} className="flex items-center justify-between gap-2 rounded-lg border px-3 py-2">
-                <span className="min-w-0">
-                  <span className="block truncate text-sm">{doc.title}</span>
-                  <span className={`block truncate text-xs ${muted}`}>
-                    {DOC_KIND_LABEL[doc.kind] ?? doc.kind}
-                    {doc.note ? ` · ${doc.note}` : ""}
-                  </span>
-                </span>
-                <span className="flex shrink-0 items-center gap-2">
-                  <Link href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs underline">
-                    เปิด
-                  </Link>
-                  <form action={removeEmployeeDocAction}>
-                    <input type="hidden" name="systemId" value={id} />
-                    <input type="hidden" name="employeeId" value={emp.id} />
-                    <input type="hidden" name="docId" value={doc.id} />
-                    <button className="text-xs text-[color:var(--color-danger)] underline">ลบ</button>
-                  </form>
-                </span>
-              </div>
-            ))}
-            <form action={addEmployeeDocAction} className="mt-1 flex flex-wrap items-end gap-2 border-t pt-3">
-              <input type="hidden" name="systemId" value={id} />
-              <input type="hidden" name="employeeId" value={emp.id} />
-              <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-                ชนิด
-                <select name="kind" className="input" defaultValue="ID_CARD">
-                  {Object.entries(DOC_KIND_LABEL).map(([k, v]) => (
-                    <option key={k} value={k}>
-                      {v}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className={`flex flex-1 flex-col gap-1 text-xs ${muted}`}>
-                ชื่อเอกสาร
-                <input name="title" required placeholder="เช่น สำเนาบัตร 2026" className="input min-w-0" />
-              </label>
-              <label className={`flex w-full flex-col gap-1 text-xs ${muted}`}>
-                ลิงก์ไฟล์ (http/https)
-                <input name="url" required placeholder="https://…" className="input" />
-              </label>
-              <SubmitButton variant="ghost">+ แนบเอกสาร</SubmitButton>
-            </form>
-          </div>
-        </Section>
+      {editing ? (
+        // HR VIS-5c ▸ โหมดแก้ไข (?edit=1 · ผู้แก้เท่านั้น): สาขาประจำ + ฟอร์มเดิม (เลขเต็มอยู่ในฟอร์มนี้ที่เดียว) · แถบล่าง บันทึก · ยกเลิก · สิ้นสุดการจ้าง (#hr-life) ◂
+        <>
+          <ProfileEditCard emp={emp} units={units} allBranches={isAllBranches(scope)}>
+            {/* HR H1.1 ▸ R8 สาขาประจำ (hr-profile-unit) อยู่ใน ProfileEditCard — ช่องของฟอร์มโปรไฟล์ (form={…}) · action ตรวจซ้ำจาก DB ◂ */}
+            <EmployeeProfileForm systemId={id} emp={view.profile} canSeeSensitive={sensitive} />
+          </ProfileEditCard>
+          <PeopleCard className="empty:hidden">
+            <LifecycleProfile systemId={id} employeeId={emp.id} life={life} active={emp.active} />
+          </PeopleCard>
+        </>
+      ) : shown === "docs" ? (
+        <PeopleCard>
+          <ProfileDocsTab systemId={id} employeeId={emp.id} docs={docs} sensitive={sensitive} canEdit={canEdit} />
+        </PeopleCard>
+      ) : shown === "schedule" ? (
+        <PeopleCard>
+          <HrProfileScheduleTab systemId={id} employeeId={emp.id} canEdit={canEdit} />
+        </PeopleCard>
+      ) : shown === "leave" ? (
+        <PeopleCard>
+          <ProfileLeaveTab systemId={id} tenantId={auth.active.tenantId} viewer={hrViewerOf(auth)} employeeId={emp.id} />
+        </PeopleCard>
+      ) : shown === "pay" ? (
+        <PeopleCard>
+          <ProfilePayTab systemId={id} sensitive={sensitive} />
+        </PeopleCard>
+      ) : shown === "history" ? (
+        <>
+          <PeopleCard className="empty:hidden">
+            <LifecycleProfile systemId={id} employeeId={emp.id} life={life} active={emp.active} />
+          </PeopleCard>
+          {/* HR H3.9 ▸ ทะเบียนลูกจ้าง ม.113 — การ์ดซ่อนเองเมื่อผู้ดูไม่มีสิทธิ์ · ผลบันทึก = รหัสคงที่ (ok · INPUT · อื่น ๆ = ไม่พบ/ไม่มีสิทธิ์) ◂ */}
+          <HrRegisterCard
+            systemId={id}
+            tenantId={auth.active.tenantId}
+            employeeId={emp.id}
+            viewer={hrViewerOf(auth)}
+            flash={regCode === "ok" ? (await getTranslations("hr.report"))("saved") : regCode === "INPUT" ? reportTextFor(await getLocale()).registerInput : regCode ? reportTextFor(await getLocale()).no : null}
+          />
+        </>
       ) : (
-        <Section title="🔒 เอกสารแนบ">
-          <p className={`text-xs ${muted}`}>
-            เอกสารพนักงานเป็นข้อมูลอ่อนไหว — เห็นได้เฉพาะเจ้าของกิจการหรือผู้ได้รับสิทธิ์ดูเงินเดือน
-          </p>
-        </Section>
+        // HR VIS-5c ▸ แท็บทั่วไป: มุมมองอ่าน ∣ รายการรับเข้า (อ่าน) + เชื่อมระบบ ◂
+        <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+          <PeopleCard>
+            <EmployeeReadView systemId={id} emp={emp} sensitive={sensitive} canEdit={canEdit} />
+          </PeopleCard>
+          <div className="flex min-w-0 flex-col gap-5">
+            <PeopleCard className="empty:hidden">
+              <ProfileChecklist systemId={id} tenantId={auth.active.tenantId} viewer={hrViewerOf(auth)} employeeId={emp.id} life={life} manageHref={profileHref(id, emp.id, "?tab=history#hr-life")} testId="hr-life-checklist" />
+            </PeopleCard>
+            <PeopleCard>
+              <ProfileConnections systemId={id} tenantId={auth.active.tenantId} emp={emp} canEdit={canEdit} line={lineChip} />
+            </PeopleCard>
+          </div>
+        </div>
       )}
     </div>
   );
