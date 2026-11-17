@@ -16,6 +16,8 @@ const PATH = {
   "inbox/staff": "/api/mobile/inbox/staff",
   "inbox/connections": "/api/mobile/inbox/connections",
   "inbox/routing": "/api/mobile/inbox/routing",
+  // B27 (17 พ.ย. 2026) สวิตช์ AI แนะนำคำตอบ · การแปล · ภาษาที่ทีมอ่าน ของระบบแชท (แก้ได้เมื่อ canEdit = คีย์ตั้งค่าแชท · ตัวเขียนเดียวกับฟอร์มเว็บ)
+  "inbox/ai-settings": "/api/mobile/inbox/ai-settings",
   "inbox/shift": "/api/mobile/inbox/shift",
   "inbox/attachments": "/api/mobile/inbox/attachments",
   // ค่าตั้งแจ้งเตือนต่อชนิด (S1.23 · route ของ S1.14 `GET/PUT notify {kind, mode}`) — K4 ใช้ kind=inbox
@@ -66,7 +68,7 @@ export type ConvItem = {
   /** ป้ายของห้อง (S1.14b · เซิร์ฟเวอร์ส่งเสมอ · "รอคน" = ป้ายส่งต่อคนของ S1.22 §O) — optional ไว้ให้ fixture เดิม */
   tags?: string[];
 };
-/** ปุ่มที่ผู้ใช้คนนี้กดได้ในห้อง (S1.14b · server ตัดสินจากคีย์ของผู้เรียก) · `aiSuggest` = คีย์ chat.ai.suggest (S1.14c · optional ไว้ให้ fixture เดิม) */
+/** ปุ่มที่ผู้ใช้คนนี้กดได้ในห้อง (S1.14b · server ตัดสินจากคีย์ของผู้เรียก) · `aiSuggest` = คีย์ chat.ai.suggest (S1.14c · optional ไว้ให้ fixture เดิม) ∧ ร้านเปิด AI แนะนำคำตอบ (B27 17 พ.ย.) */
 export type ConvCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest?: boolean; /** S3a.6: ร้านเปิดแปลภาษา ∧ ผู้ใช้เห็นห้อง */ translate?: boolean };
 /** ห้องในจอเธรด (GET inbox/conversations/[id]) = ConvItem + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */
 export type ConvDetail = ConvItem & {
@@ -134,6 +136,8 @@ export type SuggestRes = {
 };
 /** S3a.6 ผลแปล (ข้อความลูกค้า · ร่างคำตอบ) — 200 เสมอ · ok:false = reason ไทย (ปิดฟีเจอร์ · เครดิตหมด · แปลไม่ได้) */
 export type TranslateRes = { ok: true; text: string; cached?: boolean; lang?: string | null } | { ok: false; reason?: string };
+/** B27 (17 พ.ย.) ค่าตั้ง AI/แปลของระบบแชท (GET/PUT inbox/ai-settings) · ค่าเริ่มต้นปิดทั้งคู่ (คิดเงินต่อครั้งที่กด) */
+export type AiSettings = { systemId: string; aiSuggestEnabled: boolean; translateEnabled: boolean; staffLang: string; langs: string[]; canEdit: boolean };
 /** ผลเปิดการ์ดงานจากห้อง (POST …/task · S1.14b) */
 export type TaskFromChatRes = { cardId: string; cardNo: number | null; cardHref: string; created: boolean };
 
@@ -145,6 +149,7 @@ type GetMap = {
   "inbox/staff": { items?: StaffPick[] };
   "inbox/connections": { items?: Connection[] };
   "inbox/routing": Routing;
+  "inbox/ai-settings": AiSettings;
   "inbox/shift": ShiftState;
   "secretary/notify": { prefs?: Partial<Record<string, string>> };
   "member/search": { items?: MemberHit[] };
@@ -154,6 +159,7 @@ type PostMap = {
 };
 type PutMap = {
   "inbox/routing": { body: { systemId?: string; rules: Omit<RoutingRule, "id">[] }; res: Routing };
+  "inbox/ai-settings": { body: { systemId?: string; aiSuggestEnabled: boolean; translateEnabled: boolean; staffLang: string }; res: AiSettings };
   "secretary/notify": { body: { kind: "inbox"; mode: NotifyMode }; res: { prefs?: Partial<Record<string, string>> } };
 };
 type GetIdMap = {

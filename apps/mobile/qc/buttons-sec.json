@@ -2281,6 +2281,76 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "cust-set-ai",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-set-ai-cost",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-set-ai-readonly",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-set-ai-suggest",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "(v) => saveAi({ aiSuggestEnabled: v })",
+  "action": "endpoint inbox/ai-settings"
+ },
+ {
+  "testID": "cust-set-ai-translate",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "(v) => saveAi({ translateEnabled: v })",
+  "action": "endpoint inbox/ai-settings"
+ },
+ {
+  "testID": "cust-set-ai-lang",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-set-ai-note",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "cust-set-channels",
   "files": [
    "app/(app)/secretary/settings/customers.tsx"
@@ -2459,6 +2529,17 @@
   "tag": "Toggle",
   "handler": "() => void toggleShift()",
   "action": "endpoint inbox/shift · endpoint inbox/routing"
+ },
+ {
+  "testID": "cust-set-ai-lang-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => !on && saveAi({ staffLang: code })",
+  "action": "endpoint inbox/ai-settings"
  },
  {
   "testID": "sec-settings",
@@ -3891,7 +3972,7 @@
    "app/(app)/secretary/team/[id]/settings.tsx"
   ],
   "kind": "button",
-  "tag": "IconBtn",
+  "tag": "Pressable",
   "handler": "() => setActOn(m)",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
@@ -4557,6 +4638,16 @@
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
+  "testID": "cust-translate-send",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void translateDraft()",
+  "action": "endpoint inbox/conversations/[id]/translate-draft"
+ },
+ {
   "testID": "cust-input",
   "files": [
    "app/(app)/customers/[id]/index.tsx"
@@ -4599,14 +4690,14 @@
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
-  "testID": "cust-translate-send",
+  "testID": "cust-draft-ask",
   "files": [
    "app/(app)/customers/[id]/index.tsx"
   ],
   "kind": "button",
   "tag": "Pressable",
-  "handler": "() => void translateDraft()",
-  "action": "endpoint inbox/conversations/[id]/translate-draft"
+  "handler": "onSuggest",
+  "action": "handler ในจอ"
  },
  {
   "testID": "cust-info-note",

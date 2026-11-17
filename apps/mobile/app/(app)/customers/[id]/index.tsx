@@ -12,9 +12,13 @@
 //     POST …/messages/[mid]/translate → คำแปลใต้ต้นฉบับ (ต้นฉบับเห็นเสมอ · ป้าย "คำแปล · <ภาษา>") · มี translatedBody แล้ว ⇒ แสดงเลย ·
 //     การ์ดร่างมี `gloss` ⇒ บรรทัด "คำแปล: …" (ส่ง = ตัวร่างภาษาลูกค้า) · contactLang ≠ staffLang ∧ can.translate ⇒ ปุ่ม "แปลแล้วส่ง" หน้าปุ่มส่ง →
 //     POST …/translate-draft → แผ่นยืนยัน ต้นฉบับ/คำแปล: ส่งคำแปล · แก้ (ใส่คำแปลลงช่องพิมพ์) · ยกเลิก · ok:false ⇒ reason ไทยเป็นแถบแจ้ง · ไม่มีสิทธิ์/ปิด ⇒ ไม่มีปุ่ม
+//   B27 (17 พ.ย. 2026) ปุ่ม ✨ ในแถวช่องพิมพ์ = ขอร่างคำตอบเอง (POST …/ai-suggest) → การ์ดร่างเดิม · ขึ้นเมื่อ `can.aiSuggest === true`
+//     (server: คีย์ chat.ai.suggest ∧ ร้านเปิด AI แนะนำคำตอบ) ∧ ตอบลูกค้าได้ ∧ ไม่ใช่บันทึกภายใน ∧ หน้าต่างตอบยังไม่ปิด · กำลังขอ = ปุ่มหมุน ·
+//     ok:false ⇒ reason ไทยของ server ในแถบแจ้งของห้อง · การ์ดร่างขึ้นเองเมื่อห้องมีร่างค้าง (aiDraft) เหมือนเดิม ·
+//     ปุ่ม "แปลแล้วส่ง" ย้ายเป็นแถบเล็กเหนือปุ่มส่ง (แถวเดียวที่ 390pt ช่องพิมพ์เหลือ ~0)
 //   poll 5 วิ ขณะจออยู่และแอปอยู่หน้า (ออฟไลน์ถอยห่าง) · ไม่มี SSE · 403 ⇒ setCustomersAccess(false) · หน้าต่างตอบ 24 ชม. ของ Facebook/Instagram หมด ⇒ แถบเตือน + ตอบลูกค้าไม่ได้ (บันทึกภายในได้)
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
@@ -125,6 +129,9 @@ export default function CustomerRoomScreen() {
   const failCount = useRef(0);
   const readSent = useRef<string | null>(null);
   const draftAsked = useRef(false);
+  /** B27 กำลังขอร่างจากปุ่ม ✨ (กันกดซ้ำ) */
+  const [drafting, setDrafting] = useState(false);
+  const draftingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const atBottom = useRef(true);
   // S2.13: เปิดห้อง (รวมจากแจ้งเตือน) ต้องอยู่ท้ายห้อง — ช่วง 2.5 วิ หลังโหลดแรก เนื้อหาโต (รูป · การ์ดร่าง) ⇒ เลื่อนลงเสมอ
@@ -323,6 +330,32 @@ export default function CustomerRoomScreen() {
     }
   };
 
+  // B27 ปุ่ม ✨: ขอร่างคำตอบเอง → การ์ดร่างเดิม (ตัวเลือกแรก) · ok:false/ล้ม ⇒ แถบแจ้งไทยของห้อง (reason ของ server ก่อน)
+  const askDraft = async () => {
+    if (draftingRef.current) return;
+    draftingRef.current = true;
+    setDrafting(true);
+    setNote(null);
+    const tenant = activeTenantId;
+    try {
+      const r = await inboxPostId("inbox/conversations/[id]/ai-suggest", id, { systemId });
+      if (tenantRef.current !== tenant) return;
+      const opt = r.ok === true ? r.options?.[0] : undefined;
+      const body = (opt?.body ?? "").trim();
+      if (opt && body) {
+        const gloss = typeof opt.gloss === "string" && opt.gloss.trim() ? opt.gloss.trim() : null;
+        draftAsked.current = true;
+        atBottom.current = true;
+        setDraft({ id: opt.id || null, body, gloss });
+      } else setNote({ text: (r.ok === false && r.reason?.trim()) || t("cust.draft.fail"), warn: true });
+    } catch (e) {
+      if (tenantRef.current === tenant) setNote({ text: inboxNote(e) ?? t("cust.draft.fail"), warn: true });
+    } finally {
+      draftingRef.current = false;
+      setDrafting(false);
+    }
+  };
+
   const back = () => (router.canGoBack() ? router.back() : router.navigate("/customers"));
   const openInfo = (open?: string) => router.push(`/customers/${encodeURIComponent(id)}/info${systemId ? `?s=${encodeURIComponent(systemId)}` : ""}${open ? `${systemId ? "&" : "?"}open=${open}` : ""}`);
 
@@ -331,6 +364,8 @@ export default function CustomerRoomScreen() {
   const canReplyHere = canReply && conv?.can?.reply !== false;
   // S3a.6: ปุ่มแปลขึ้นเมื่อ server บอกว่าแปลได้ (ไม่มีฟิลด์/false = ไม่มีปุ่ม) · แปลแล้วส่ง = ภาษาลูกค้าต่างจากภาษาพนักงาน
   const canTranslate = conv?.can?.translate === true;
+  // B27: ปุ่ม ✨ = server บอกว่าขอร่างได้ (คีย์ ∧ ร้านเปิด) ∧ ตอบลูกค้าได้ — ไม่มีฟิลด์/false = ไม่มีปุ่ม (บันทึกภายใน/หน้าต่างปิด ตัดสินในช่องพิมพ์)
+  const canSuggest = conv?.can?.aiSuggest === true && canReplyHere;
   const translateTo = canTranslate && conv?.contactLang && conv?.staffLang && conv.contactLang.toLowerCase() !== conv.staffLang.toLowerCase() ? conv.contactLang : null;
   const name = thread?.contact.displayName ?? t("cust.noName");
   const windowH = conv ? replyWindowHours(conv.channel, msgs, nowMs) : null;
@@ -509,6 +544,9 @@ export default function CustomerRoomScreen() {
             translateTo={translateTo}
             translateLabel={translateTo ? langName(t, translateTo) : ""}
             onTranslated={(original, text) => setTrSheet({ original, text })}
+            canSuggest={canSuggest}
+            suggesting={drafting}
+            onSuggest={() => void askDraft()}
             onSent={() => {
               atBottom.current = true;
               void load();
@@ -600,9 +638,13 @@ type ComposerProps = {
   translateTo?: string | null;
   translateLabel?: string;
   onTranslated?: (original: string, text: string) => void;
+  /** B27 ปุ่ม ✨ ขอร่างคำตอบ (false = ไม่มีปุ่ม) · suggesting = กำลังขอ */
+  canSuggest?: boolean;
+  suggesting?: boolean;
+  onSuggest?: () => void;
 };
 const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { convId, systemId, channel, canReply, windowClosed, onSent, translateTo = null, translateLabel = "", onTranslated },
+  { convId, systemId, channel, canReply, windowClosed, onSent, translateTo = null, translateLabel = "", onTranslated, canSuggest = false, suggesting = false, onSuggest },
   ref,
 ) {
   const { c } = useTheme();
@@ -837,6 +879,26 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           ))}
         </View>
       ) : null}
+      {/* B27 (17 พ.ย.) ▸ "แปลแล้วส่ง" ย้ายจากในแถวช่องพิมพ์ขึ้นมาเป็นแถบเล็กเหนือปุ่มส่ง (ชิดขวา) — ที่ 390pt แถวเดียวมี ＋ 🔒 ช่องพิมพ์ ✨ แปลแล้วส่ง ส่ง Lekaa
+          แล้วช่องพิมพ์เหลือ ~0 (พิมพ์ไม่เห็น) · ✨ อยู่ในแถวช่องพิมพ์ (ปุ่มกลม 32) · ปุ่มยังเห็นตลอด (จางเมื่อยังไม่พิมพ์) เหมือนเดิม */}
+      {translateTo && !internal ? (
+        <View style={styles.toolRow}>
+          <Pressable
+            testID="cust-translate-send"
+            onPress={() => void translateDraft()}
+            disabled={translating || busy || !text.trim()}
+            accessibilityRole="button"
+            accessibilityLabel={t("cust.tr.sendBtnA11y", { lang: translateLabel })}
+            accessibilityState={{ disabled: translating || busy || !text.trim() }}
+            style={[styles.trSend, { backgroundColor: c.chip.bg }, (translating || busy || !text.trim()) && styles.trOff]}
+          >
+            <Icon name="globe" size={14} color={c.textDim} />
+            <Text style={[styles.trSendT, { color: c.textDim }]} numberOfLines={1}>
+              {translating ? t("cust.tr.busy") : t("cust.tr.sendBtn")}
+            </Text>
+          </Pressable>
+        </View>
+      ) : null}
       {/* Lekaa FAB (17 พ.ย.) ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (แบบ team4 จอ 4) — ช่องพิมพ์หดด้านขวา · ปุ่มลอยซ่อนเองบนจอนี้ */}
       <View style={styles.inputRow}>
       <InputBar
@@ -868,20 +930,18 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
         sendDisabled={busy || uploading || (!text.trim() && atts.length === 0)}
         onSend={() => void send()}
         right={
-          translateTo && !internal ? (
+          canSuggest && !internal && !windowClosed ? (
             <Pressable
-              testID="cust-translate-send"
-              onPress={() => void translateDraft()}
-              disabled={translating || busy || !text.trim()}
+              testID="cust-draft-ask"
+              onPress={onSuggest}
+              disabled={suggesting}
               accessibilityRole="button"
-              accessibilityLabel={t("cust.tr.sendBtnA11y", { lang: translateLabel })}
-              accessibilityState={{ disabled: translating || busy || !text.trim() }}
-              style={[styles.trSend, { backgroundColor: c.chip.bg }, (translating || busy || !text.trim()) && styles.trOff]}
+              accessibilityLabel={t(suggesting ? "cust.draft.asking" : "cust.draft.ask")}
+              accessibilityState={{ disabled: suggesting, busy: suggesting }}
+              hitSlop={4}
+              style={[styles.ask, { backgroundColor: c.chip.bg }]}
             >
-              <Icon name="globe" size={14} color={c.textDim} />
-              <Text style={[styles.trSendT, { color: c.textDim }]} numberOfLines={1}>
-                {translating ? t("cust.tr.busy") : t("cust.tr.sendBtn")}
-              </Text>
+              {suggesting ? <ActivityIndicator size="small" color={c.textDim} /> : <Text style={styles.askT}>✨</Text>}
             </Pressable>
           ) : undefined
         }
@@ -928,6 +988,9 @@ const styles = StyleSheet.create({
   trSend: { flexDirection: "row", alignItems: "center", gap: 4, height: 32, borderRadius: 16, paddingHorizontal: 10 },
   trSendT: { fontSize: T.cap - 0.5, fontWeight: "700" },
   trOff: { opacity: 0.5 },
+  toolRow: { flexDirection: "row", justifyContent: "flex-end", paddingBottom: 8, paddingRight: size.inputH + LEKAA_SLOT_GAP },
+  ask: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  askT: { fontSize: 16, lineHeight: 20 },
   trSheetT: { fontSize: T.h, fontWeight: "700", marginBottom: 6 },
   trSheetL: { fontSize: T.cap, fontWeight: "600", marginTop: 10 },
   trSheetB: { fontSize: T.sub + 0.5, lineHeight: 22, marginTop: 4 },
