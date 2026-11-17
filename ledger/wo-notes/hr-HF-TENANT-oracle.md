@@ -109,3 +109,30 @@ Notes on the choices (open for the controller):
 - **decideLeaveAction / bulkDecideLeaveAction** take leave ids, which `hrTargetOwned` cannot check → system only. Answers differ from today's unknown-leave answer: decide today *throws* `HrLeaveDecisionError("ไม่พบใบลา หรืออยู่นอกร้านนี้")`, guard returns void (same shape as every other void guard); bulk today returns `{ done: 0, failed: [{ id, "ไม่พบใบลา…" }] }`, guard returns the action's existing "ไม่พบระบบ" error. SA = U = SN still holds. If the controller prefers byte-identical answers, ORACLE-EDIT T7 refusal for these two.
 - **setPinAction / saveEmployeeProfileAction**: guard sits before the service's input validation, so a foreign/unknown id with an invalid PIN (or invalid profile field) now answers "ไม่พบพนักงาน" instead of the validation message — own valid employees unchanged.
 - Debt (R-F3, not in this hotfix): non-string bound `systemId` passes `hrTargetOwned` (reviewer F3); fix on V2 + main together later.
+
+## Round 3 — controller ruling R-R2-1 (review "round 2" R2-1) · head 59e6184a1
+Oracle now 21 checks. Evidence on 59e6184a1: `hr-HF-TENANT-r3-red.txt` — **19/21, red T7 + T11**, all other checks GREEN (incl. T9, T10, C4 from round 2). Typecheck exit 0.
+
+Direct-argument set (verified from every `export async function` in `payroll-actions.ts` + `actions.ts`; no other `"use server"` file in `src/lib/modules/hr/` on main): `requestAdjustmentAction(systemId, …)` · `saveEmployeeProfileAction(systemId, employeeId, …)` · `setPinAction(systemId, employeeId, …)` · `kioskClockAction(systemId, …)` · `bulkDecideLeaveAction(systemId, …)`. Every other id in both files comes from `String(formData.get(…))` (bulk's `leaveIds` via `.map(String)`), so it is always a string.
+
+T11 (XO, B's residue rows on SA; operators `{ not: "zzz" }` and `{ startsWith: "" }` as systemId, and also as employeeId for save profile / set PIN, plus string SA + operator employeeId) — each must write nothing, not throw, and answer exactly like the string ghost-id drive. On 59e6184a1, 14 failing drives:
+- requestAdjustment: throws `PrismaClientValidationError` at `hrPayAdjustment.create` (leaks to caller; no write).
+- saveProfile: `บันทึกแล้ว` — B's residue employee (and Party) rewritten, both with system-object and system+employee-object.
+- setPin: `ตั้ง PIN แล้ว` — residue employee PIN changed.
+- kioskClock: no write, but answers `PIN ไม่ถูกต้อง` (residue employee found) instead of `ไม่พบพนักงาน`.
+- bulkDecideLeave: `{ not }` → `done: 1`, residue leave + AuditLog changed; `{ startsWith }` → per-leave failure text (≠ "ไม่พบระบบ").
+String SA + operator employeeId already refused on the head (green part of T11).
+
+T7 static (added): in each of the 5, the statement right after `const auth = await requireTenant();` must be exactly `if (<typeof check>) <refusal>`.
+
+**Positive control (temporary, uncommitted, reverted byte-for-byte):** the 5 lines below → full run **21/21**.
+
+### Builder scope round 3 (line numbers on 59e6184a1) — insert directly after the `const auth = await requireTenant();` line
+| file:line | action | line to insert |
+|---|---|---|
+| `payroll-actions.ts:170` | requestAdjustmentAction | `if (typeof systemId !== "string") return { status: "error", message: "ไม่พบพนักงาน" };` |
+| `actions.ts:136` | saveEmployeeProfileAction | `if (typeof systemId !== "string" \|\| typeof employeeId !== "string") return { status: "error", message: "ไม่พบพนักงาน" };` |
+| `actions.ts:185` | setPinAction | `if (typeof systemId !== "string" \|\| typeof employeeId !== "string") return { status: "error", message: "ไม่พบพนักงาน" };` |
+| `actions.ts:206` | kioskClockAction | `if (typeof systemId !== "string") return { status: "error", message: "ไม่พบพนักงาน" };` |
+| `actions.ts:288` | bulkDecideLeaveAction | `if (typeof systemId !== "string") return { status: "error", message: "ไม่พบระบบ" };` |
+Refusal = the action's ownership-guard refusal. It sits before `assertHrCan` / `assertRequestAdjust` as ruled ("before anything else after requireTenant"): a caller without the HR key who sends a non-string id gets the refusal instead of the Forbidden error — no data either way. A trailing `// HR … ◂` comment is fine. `hr-target.ts` unchanged.
