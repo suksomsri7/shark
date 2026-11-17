@@ -42,7 +42,7 @@ import { DoneCard, type DoneIds } from "@/src/components/secretary/DoneCard";
 import { StepList } from "@/src/components/secretary/StepCard";
 import { ReminderCard } from "@/src/components/calendar/ReminderCard";
 import { ContextConfirmCard, PageRefChip } from "@/src/components/secretary/ContextConfirm";
-import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
+import { KeyboardFrame, LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
 import { LekaaLogo } from "@/src/components/lekaa/LekaaLogo";
 import { RoomCalCard } from "@/src/components/calendar/RoomCalCard";
 import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
@@ -625,7 +625,7 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
   const flashWarn = !!sendErr || !!flash?.warn;
 
   const body = (
-      <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+      <KeyboardFrame inSheet={!!embedded} bottomInset={insets.bottom} style={styles.flex}>
         {embedded ? (
           <View style={styles.ebar}>
             {embedded.onBack ? <IconBtn testID="sec-room-back" icon="chevron-left" label={t("lekaa.back")} onPress={back} /> : null}
@@ -766,7 +766,7 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
           </View>
           </>
         )}
-      </KeyboardAvoidingView>
+      </KeyboardFrame>
   );
 
   return (

@@ -42,6 +42,7 @@ import { useT } from "@/src/i18n";
 import { F, glassStyle, shadow, useTheme } from "@/src/theme/index";
 import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 import { LekaaLogo } from "./LekaaLogo";
+import { KeyboardFrame } from "./core";
 
 const POLL_MS = 15_000;
 const SEARCH_H = 42;
@@ -372,7 +373,8 @@ function NewTask({ onClose, pageContext }: { onClose: () => void; pageContext: P
 
   const denied = err === "denied";
   return (
-    <KeyboardAvoidingView style={[styles.flex, { paddingBottom: insets.bottom }]} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+    <View style={[styles.flex, { paddingBottom: insets.bottom }]}>
+    <KeyboardFrame inSheet bottomInset={insets.bottom} style={styles.flex}>
       <View style={styles.pad}>
         <NewHead onClose={onClose} />
         {err ? (
@@ -402,7 +404,8 @@ function NewTask({ onClose, pageContext }: { onClose: () => void; pageContext: P
         style={[styles.input, { borderColor: c.glass.border }]}
       />
       <AttachSheet visible={attachOpen} onClose={() => setAttachOpen(false)} onPick={(k) => void attach.pick(k)} name={name} testID="lekaa-new-attach-sheet" />
-    </KeyboardAvoidingView>
+    </KeyboardFrame>
+    </View>
   );
 }
 

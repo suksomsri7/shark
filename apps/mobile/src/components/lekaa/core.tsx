@@ -14,8 +14,8 @@
 //   useLekaa().open()             — เปิดแผ่นจากที่อื่น
 // ปุ่มซ่อนเองเมื่อ: แผ่น Lekaa เปิด · มีชีต Airy เปิดอยู่ (Sheet เรียก useLekaaSuppress) · จอนั้นวาง LekaaFabSlot · เส้นทางในรายการ HIDE_ROUTES
 //   (แชท AI รุ่นเดิม /chat/<id> · ตั้งชื่อเลขาครั้งแรก · สร้างกิจการ — จอเหล่านี้มีช่องพิมพ์/ปุ่มหลักล่างและไม่ได้วาง slot)
-import { createContext, useCallback, useContext, useEffect } from "react";
-import { Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { Keyboard, KeyboardAvoidingView, Platform, Pressable, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import { useFocusEffect, useIsFocused, usePathname } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import type { PageContext } from "@/src/api/secretary";
@@ -160,3 +160,39 @@ const styles = StyleSheet.create({
   badge: { position: "absolute", top: -2, right: -2, minWidth: 20, height: 20, borderRadius: 10, borderWidth: 2, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
   badgeT: { fontSize: 10.5, fontWeight: "700", lineHeight: 13 },
 });
+
+/** ความสูงคีย์บอร์ดที่เปิดอยู่ (0 = ปิด) */
+export function useKeyboardHeight(): number {
+  const [h, setH] = useState(0);
+  useEffect(() => {
+    const ios = Platform.OS === "ios";
+    const show = Keyboard.addListener(ios ? "keyboardWillShow" : "keyboardDidShow", (e) => {
+      const kh = e.endCoordinates?.height ?? 0; // อ่านค่าจาก event ทันที (ห้ามอ่านในตัวอัปเดต state)
+      setH(kh);
+    });
+    const hide = Keyboard.addListener(ios ? "keyboardWillHide" : "keyboardDidHide", () => setH(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return h;
+}
+
+/**
+ * กรอบกันคีย์บอร์ดบังช่องพิมพ์ (17 พ.ย. · เจ้าของแจ้งจากเครื่องจริง: สั่งงานในแผ่น Lekaa แล้วคีย์บอร์ดปิดช่องพิมพ์)
+ *   inSheet = อยู่ในแผ่นที่ชิดขอบล่างจอ ⇒ เว้นล่างเท่าความสูงคีย์บอร์ดเอง (ลบ `bottomInset` ที่พ่อเว้นไว้แล้ว)
+ *     — KeyboardAvoidingView คิดจากตำแหน่งของตัวเองในพ่อ ไม่ใช่ในจอ ⇒ ในแผ่นที่เริ่มกลางจอจะเว้นไม่พอ
+ *   ไม่ inSheet = KeyboardAvoidingView แบบเดิมของจอเต็ม
+ */
+export function KeyboardFrame({ inSheet, bottomInset = 0, style, children }: { inSheet: boolean; bottomInset?: number; style?: StyleProp<ViewStyle>; children?: ReactNode }) {
+  const kb = useKeyboardHeight();
+  if (!inSheet) {
+    return (
+      <KeyboardAvoidingView style={style} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        {children}
+      </KeyboardAvoidingView>
+    );
+  }
+  return <View style={[style, { paddingBottom: Math.max(0, kb - bottomInset) }]}>{children}</View>;
+}
