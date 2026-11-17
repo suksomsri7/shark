@@ -804,3 +804,28 @@
 - ทรีผู้คุม shark-hr-c ยังอยู่ `tmp/walk-vis5b` + serve :3226 (unit hr-rewalk-r3) + ข้อมูลเดินหน้าจอบน QC4
 - ลำดับตอนกลับมา: (1) VIS-5a/5b re-merge session/hr + ผู้เขียนข้อสอบ re-pin → ภาพ → merge (2) VIS-5c (3) HF-TENANT hotfix บน main: โค้ด = hr-target.ts + 8 ปุ่มเงินเดือน + 4 ปุ่มพนักงาน · migration ของ main เอง (HrSalaryProfile + HrPayrollRun full unique → มี tenantId · create ก่อน drop IF EXISTS) · แก้ migration V2 20261202 ให้ DROP IF EXISTS และถอดดัชนีของ hotfix ด้วย → ข้อสอบ + ผู้ตรวจ → **ขอ GO เจ้าของ** (4) VIS-5d, VIS-5e (5) ด่าน pm-full (EXTRA ตามบล็อก CHECKPOINT ก่อนพัก + qc-hr-priv-3b · MIGRATE=1 · seed-hr-walk --down ก่อน) → HANDOVER-H4 → push → 41/44 (6) เดินหน้าจอซ้ำ → 42/44 (7) H5.3
 - หนี้เพิ่มจาก PRIV-3: ข้อความ "ไม่พบ…" ในตัวตรวจเป็นสำเนาของชั้นบริการ (ผูกด้วยค่าคงที่ร่วม) · ปุ่มใน ot/swap/roster/lifecycle/line/labor อาศัย "ค้นไม่เจอ" · R13 ต่างเวลา · reports/export 400 vs 404
+
+## ▶️ กลับมาเดินต่อ — 2026-11-17 (เจ้าของสั่ง "ทำงาน HR V2 ต่อ") · 40/44
+- ตรวจตอนเริ่ม: ทุกทรีสะอาด · session/hr ในเครื่อง a49f81829 (นำ origin 104 ยังไม่ push) · unit hr-rewalk-* จบแล้ว · serve :3226 ของ shark-hr-c ยังเปิด
+- ขั้น (1) เปิดแล้ว 2 เลนขนาน (ตัวแทนชุดใหม่ของ session นี้ · ตัวแทนเดิมเรียกต่อไม่ได้):
+  - เลน 3 `wip/hr-vis-5a` — รวม session/hr (ชน: qc-hr-h3.6 / h3.9 / h4.3-lib / priv-2) + migrate ฐานเลน + รันข้อสอบ + typecheck → บันทึก `ledger/wo-notes/hr-VIS-5a-remerge.md`
+  - เลน 1 `wip/hr-vis-5bc` — รวม session/hr (ชน: qc-hr-h4.3-lib / priv-2 / walk-hr-matrix.json) + re-pin hrNavFilter + ปรับ vis-5c S1/S8 + รายงานว่า F5 เหลืออะไร → `ledger/wo-notes/hr-VIS-5b-remerge.md`
+- ถัดไป: เพิ่ม OT ใน seed-hr-walk → build+ถ่ายภาพ VIS-5a รอบยืนยัน → F5 ของ VIS-5b → merge ทั้งสองใบ → VIS-5c → HF-TENANT (ต้องขอ GO) → VIS-5d/5e → ด่าน pm-full
+
+### 2026-11-17T17:00Z · ผล re-merge สองเลน + คำตัดสินผู้คุม (ยังไม่ merge เข้า session/hr)
+- **VIS-5a เลน 3** `wip/hr-vis-5a` e64e15b88: รวม session/hr แล้ว · vis-5a 39/39 · h3.6 62 · h3.9 60 · h4.3 45 · priv-2 47 · priv-3b 20 · h0.6 55 · h1.3 63 · fitness เขียว · typecheck 0 (heap 12288) · ไม่มีการตรึงค่าใหม่ · แก้ import `hrViewerOf` ซ้ำใน payroll/page.tsx (git รวมเงียบ) · priv-3 25/28 แดง S4 S6 P7
+  - **คำตัดสิน P7:** ไม่ตรึงค่าใหม่เป็นตัวเลขของ view เดียว → ให้ P7 เรนเดอร์ทุก view ที่ผู้ชมได้รับแล้วเทียบ "ผลรวม" กับค่า golden เดิม (ถ้าต่างให้รายงานส่วนต่าง ไม่วัดใหม่) · เปิดผู้เขียนข้อสอบแล้ว + เพิ่ม OT ของน้ำฝนใน seed-hr-walk → `ledger/wo-notes/hr-VIS-5a-p7-otseed.md`
+- **VIS-5b เลน 1** `wip/hr-vis-5bc`: re-merge c0cb0bf76 (vis-5b 29/29 · typecheck 0 · re-pin hrNavFilter + ช่วงบรรทัด vis-5-lib + vis-5c S3/S8) → ข้อสอบ F5 c416e3806 (F1–F4 แดงถูกเหตุผล 29/33) → ผู้สร้าง F5 กำลังทำ (เป้า 33/33 · เฉพาะ HrHub ใน ui.tsx)
+  - **คำตัดสิน:** priv-3 S6 รับกรณี migration 20270112000000 อยู่ในฐานแล้ว (ตรึงเนื้อหา 95fb5ad171abc2e3) — แก้แล้วบนเลน 1 · N2 ใช้ `gatedHubOf` (แยกจาก `gatedOf` ของ N1) รับ · N3 ต้องแทน `?day=YYYY-MM-DD` ด้วยตัวยึดก่อนวัดค่าใหม่ (ค่าเปลี่ยนทุกวัน) — ทำหลังผู้สร้าง F5 · S4 ปล่อย (ตรวจตอน merge) · vis-5c S1 = คำถามเปิดข้อ 8 เดิม
+- หมายเหตุ: typecheck ต้องใช้ `--max-old-space-size=12288` (8192 หมดหน่วยความจำ)
+
+### 2026-11-17T20:30Z · HF-TENANT พร้อมขอ GO (ยังไม่ push · ยังไม่แตะ prod) — ทรี `/root/projects/shark-hr-hf` สาขา `hotfix/hr-hf-tenant` head 5bd828aa2 (ฐาน origin/main bda823d22)
+- ใบสั่ง `ledger/hr-briefs/hr-brief-HF-TENANT.md` (session/hr) · บันทึกในทรี hotfix: `ledger/wo-notes/hr-HF-TENANT-{oracle,build,review}.md`
+- ขอบเขตสุดท้าย: `hr-target.ts` (สำเนา V2 ทุกตัวอักษร blob d033fd77) · ตัวตรวจ 22 ปุ่ม (payroll-actions.ts 8 · actions.ts 14) · ปฏิเสธรหัสที่ไม่ใช่ข้อความใน 5 ปุ่มที่รับอาร์กิวเมนต์ตรง · `payroll.prisma` 2 บรรทัด · migration `20261229000000_hr_hf_tenant_unique_keys` · รวม src+prisma 67 บรรทัดเพิ่ม 2 ลบ
+- ข้อสอบ `qc-hr-hf-tenant` 21/21 (ฐานเปล่า `hf_tenant` บน host เลน 5 · ตัวห่อ `scripts/qc-hf.sh`) · ชุด HR ของ main 7 ชุดเขียว · `qc-hf-hr-privacy` 193/194 (L-5 ของเดิม: ตัวปิดบังเลข ≥9 หลักของเครื่องมือ AI จาก 99f3cfea5 ปิดชื่อพนักงานทดสอบ — สรุปจากโค้ด ยังไม่ได้รันบน main ที่ไม่แก้) · fitness 53/53 · typecheck 0 · drift เหลือแค่ DormUtilityRate ของเดิม
+- ผู้ตรวจอิสระ 2 รอบ = MERGE WITH NOTES · รอบ 1 พบ F1 (ชื่อพนักงานข้ามร้านผ่าน clock/requestLeave) F2 (8 ปุ่มใช้แถวปลอมตกค้าง) → ปิดรอบ 2 · รอบ 2 พบ R2-1 (systemId ไม่ใช่ข้อความ) → ปิดรอบ 3 (ยังไม่มีผู้ตรวจดู 5 บรรทัดรอบ 3 — ผู้คุมอ่านส่วนต่างเอง + ข้อสอบ T11/T7)
+- ซ้อม migration บนฐาน V2 (เลน 5 · BEGIN…ROLLBACK) = no-op ครบ · บนฐาน main (hf_tenant) Prisma ลงจริง ~100 ms
+- **ก่อนขึ้น (ต้อง GO):** SQL ตรวจก่อนข้อ 3 ของใบสั่ง (A–E) + คำสั่งค้นแถว "ร้านของแถว ≠ ร้านของพนักงาน" ในรายงานผู้ตรวจรอบ 2 (R2-2) — อ่านอย่างเดียวบน prod · ขึ้นนอกเวลาทำเงินเดือน · hotfix ไม่ลบแถวใด
+- **หลังขึ้น (บังคับก่อน V2 ขึ้น prod):** รวม main เข้า session/hr + แก้ migration 20261202 / 20270112 ตามใบสั่งข้อ 4 + ORACLE-EDIT ค่าตรึง priv-3 S6 (95fb5ad171abc2e3) + S6 นับโฟลเดอร์ hotfix
+- หนี้: ตัวตรวจกลางรับ systemId ไม่ใช่ข้อความ (ปิดที่ปุ่มแล้วบน main · V2 ต้องปิดเหมือนกัน) · กุญแจ rate limit ของตู้ไม่แยกร้าน · L-5 ต้องแก้ชื่อ fixture ในชุดของ main · ฐาน hf_tenant มี tenant ของชุด QC ค้าง
+- VIS-5a/5b: ภาพรอบ 4 ถ่ายแล้ว (build tmp/walk-vis5b 594b109a4 = 5a 1e56a930e + 5b fa624010f · QC4 ลง 20270112 แล้ว · walker 5 CLICK-ERROR + 110 EN-THAI) · รอผู้ตรวจภาพ r4 · เลน 1 head 519477788 (vis-5b 34/34 · priv-3 27/28 เหลือ S4)

@@ -184,6 +184,9 @@ export const hrefsIn = (s: string) => [...s.matchAll(/<a\b[^>]*\shref="([^"]*)"/
 export const fd = (o: Record<string, string | string[]>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) for (const x of [v].flat()) f.append(k, x); return f; };
 export const ROUTE_RE = /\/hr\/(employees|leave|payroll)(?=$|[/?#])/;
 export const gatedOf = (href: string) => (ROUTE_RE.exec(href)?.[1] === "employees" ? "register" : (ROUTE_RE.exec(href)?.[1] as "leave" | "payroll" | undefined));
+// ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N2 hub: /hr/attendance is gated too (page 404 unless roster reader or linked — nav.ts attendance) · gatedOf itself unchanged (N1 hashes the non-gated nav rest with it) ◂
+export const ATT_RE = /\/hr\/attendance(?=$|[/?#])/;
+export const gatedHubOf = (href: string) => gatedOf(href) ?? (ATT_RE.test(href) ? ("attendance" as const) : undefined); // ORACLE-EDIT (HR VIS-5b F5 · controller) ◂
 
 // ═════════════ goldens measured on base ea2b41ea1 (QC_PRIV3_MEASURE=1 · 2 runs identical) — entitled viewers must keep them ═════════════
 //   pages: "<fixture keys seen>|sha16(testids)|n" · leave cells exclude the filing form (R3 changes it) · control/nav/hub: outcome / sha16 of non-gated hrefs / hub links|first "n คน"
@@ -229,5 +232,5 @@ export const GOLD: Gold = {
  }),
  picker: {"O": "e1,e2,e3,e4,e6,e7", "M": "e1,e2,e3,e4,e6,e7", "MB": "e1,e2,e4,e7", "P": "e1,e2,e3,e4,e6,e7", "PB": "e1,e2,e4,e7", "S": "e1,e2,e3,e4,e6,e7", "SR": "e1,e2,e3,e4,e6,e7", "SD": "e1,e2,e3,e4,e6,e7"},
  nav: {"O": "cd91126ce675553b", "O+L": "e17fc8d4f5e9d02f", "M": "cd91126ce675553b", "M+L": "e17fc8d4f5e9d02f", "MB": "cd91126ce675553b", "MB+L": "e17fc8d4f5e9d02f", "P": "14f7814f73aa18c5", "P+L": "ddceeb07bd12eb16", "PB": "14f7814f73aa18c5", "PB+L": "ddceeb07bd12eb16", "S": "040a6263c09e16d7", "S+L": "3c0b3a58827a0e37", "S0": "040a6263c09e16d7", "S0+L": "3c0b3a58827a0e37", "SR": "040a6263c09e16d7", "SR+L": "3c0b3a58827a0e37", "SD": "14f7814f73aa18c5", "SD+L": "ddceeb07bd12eb16", "K": "5376633c94c41a21", "K+L": "8e0daf2454570a2d", "N": "040a6263c09e16d7", "N+L": "3c0b3a58827a0e37", "PR": "040a6263c09e16d7", "PR+L": "3c0b3a58827a0e37", "PA": "14f7814f73aa18c5", "PA+L": "ddceeb07bd12eb16"},
- hub: {"O": "ac4dfe0d4aed6d66|6", "M": "ac4dfe0d4aed6d66|6", "MB": "ac4dfe0d4aed6d66|4", "P": "6369a38186eee9c8|6", "PB": "ef71fdc31ae76d0e|1", "S": "b0a6102daa942ffa|6", "S0": "b0a6102daa942ffa|6", "SR": "b22af5dae3961cd4|6", "SD": "6369a38186eee9c8|6", "K": "4a8c2bd596c43dd3|6", "N": "b22af5dae3961cd4|6", "PR": "3ec4c825dc74ba63|", "PA": "1841919fb3ad1957|"},
+ hub: {"O": "2849f29d4dbd5f17|6", "M": "2849f29d4dbd5f17|6", "MB": "25fc2a318b7b4c5c|4", "P": "62f47059deb22fd0|6", "PB": "62f47059deb22fd0|1", "S": "85b94896be249274|", "S0": "13b1218d06256e7b|", "SR": "9e304f158152b013|", "SD": "2715794236628fc6|6", "K": "ddf360b8d309b1bb|", "N": "040a6263c09e16d7|", "PR": "bd00a6d0e4688df0|", "PA": "4050bd19e7c80af0|"}, // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N3 re-measured (QC_PRIV3_MEASURE=1) on wip/hr-vis-5bc fa624010f with normalised links (dates → D · cuids → #) · diff vs the old golden = VIS-5b header links + F5 removals only (hr-VIS-5b-F5-oracle.md) · was O/M/MB ac4dfe0d4aed6d66 · P 6369a38186eee9c8 · PB ef71fdc31ae76d0e ◂
 };

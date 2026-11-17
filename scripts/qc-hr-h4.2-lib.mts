@@ -140,7 +140,10 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
         continue;
       }
       if (!IN_BASE && need.includes(f) && hs.length === 0) bad.push(`${f.split("/").pop()}:noHunk`);
+      // ORACLE-EDIT (HR VIS-5b · controller) S1.7: explicit file — overview-ui.tsx hunks of HR VIS-5b (mockup 01 shell) carry "HR VIS-5b" (a later ticket's mark, in base mode only) ◂
+      const VIS5_H42 = [F.ov]; // ORACLE-EDIT (HR VIS-5b · controller) ◂
       hs.forEach((h, i) => {
+        if (IN_BASE && VIS5_H42.includes(f) && h.added.some((l) => l.includes("HR VIS-5b"))) return; // ORACLE-EDIT (HR VIS-5b · controller) ◂
         if (!h.added.some((l) => (IN_BASE ? /HR H\d+\.\d+|HR-SET-\d+|POS P\d|HR H4\.2/ : MARK).test(l))) bad.push(`${f.split("/").pop()}#${i}:unmarked`);
       });
     }

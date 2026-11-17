@@ -1631,6 +1631,66 @@
         "hoursN": "{n} h"
       }
     },
+    "hub": {
+      "title": "Team today",
+      "titleOn": "Team on {date}",
+      "roster": "Plan shifts",
+      "addEmployee": "+ Employee",
+      "noShift": "No shifts scheduled for this day",
+      "arrived": "Arrived",
+      "hours": "{h} h",
+      "hoursMin": "{h} h {m} m",
+      "kpi": {
+        "ofPeople": "of {n} people",
+        "lateWho": "{name} {n} min · in {time}",
+        "notInWho": "{name} starts {start}"
+      },
+      "board": {
+        "title": "Today's shifts",
+        "titleOn": "Shifts on {date}",
+        "sub": "Actual clock-ins over planned shifts",
+        "notClocked": "not clocked in",
+        "legendShift": "Planned shift",
+        "now": "Now",
+        "off": "Off today: {names}",
+        "planned": "Planned hours",
+        "plannedSub": "{n} people · breaks included",
+        "worked": "Worked",
+        "workedNow": "Worked until {time}",
+        "workedSub": "{n} clocked in",
+        "thin": "Thinnest cover",
+        "thinSub": "{n} on site",
+        "methods": "Clocked in by"
+      },
+      "month": {
+        "title": "This month",
+        "note": "Counted from recorded attendance results",
+        "unavailable": "This month's summary is not available yet",
+        "openReports": "Open reports",
+        "ot": "OT hours",
+        "otSub": "{a} approved · {p} pending",
+        "others": "others {n}",
+        "talk": "Worth a talk",
+        "talkNone": "Nobody meets the pattern yet",
+        "talkLine": "late {n} times, {min} min in total",
+        "talkAbsent": "absent {n} days",
+        "calendar": "View calendar"
+      },
+      "unit": {
+        "times": "<b>{n}</b> times",
+        "days": "<b>{n}</b> days",
+        "hours": "<b>{n}</b> h"
+      },
+      "due": {
+        "sub": "Reminders before the date",
+        "none": "Nothing due soon",
+        "more": "more"
+      },
+      "kiosk": {
+        "title": "Open the time clock",
+        "desc": "Staff clock in with their PIN on this device"
+      }
+    },
     "bank": {
       "title": "Salary transfer file",
       "untested": "Not yet tested with a real bank",

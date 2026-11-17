@@ -312,7 +312,8 @@ function runStatic(): void {
       builder: /export\s+function\s+inboxSummary\(/.test(sh) && /export\s+function\s+inboxInlineDecide\(/.test(sh),
       one: elsewhere.join() === F.shared,
       used: /inboxSummary\(/.test(cl) && /inboxInlineDecide\(/.test(cl),
-      compact: /InboxBatch[^>]*\bcompact\b/.test(ui) && !/amountSatang/.test(ui),
+      // ORACLE-EDIT (HR VIS-5b · controller): the hub card is now InboxBatch `selectable` = the same compact summary cards + checkboxes + batch bar (brief VIS-5b §5.3) — either prop satisfies "compact" ◂
+      compact: (/InboxBatch[^>]*\bcompact\b/.test(ui) || /InboxBatch[^>]*\bselectable\b/.test(ui)) && !/amountSatang/.test(ui), // ORACLE-EDIT (HR VIS-5b · controller) ◂
       ids: /hr-inbox-summary-\$\{/.test(cl) && /hr-inbox-open-\$\{/.test(cl),
       inv: ["/app/sys/[id]|hr-inbox-summary-*", "/app/sys/[id]|hr-inbox-open-*"].every((k) => inv.includes(k)),
     }, "one builder · link · inventory", `builders=${elsewhere.join(",") || "∅"}`);
