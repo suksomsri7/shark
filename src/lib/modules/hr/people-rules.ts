@@ -98,8 +98,8 @@ export function ageOn(birth: string, today: string): number | null {
   return age >= 0 && age < 150 ? age : null;
 }
 
-/** ตัวอักษรแรกของชื่อ (รูปประจำตัว) */
-export const initialOf = (name: string): string => Array.from(name.trim())[0] ?? "·";
+/** ตัวอักษรแรกของชื่อ (รูปประจำตัว) — ข้ามสระหน้า เ แ โ ใ ไ (โบว์ → บ) */
+export const initialOf = (name: string): string => Array.from(name.trim().replace(/^[\u0e40-\u0e44]+/, ""))[0] ?? Array.from(name.trim())[0] ?? "·";
 
 // ═════════════ ปิดเลขอ่อนไหว (ภาพ 02: x-xxxx-xxxxx-62-1 · xxx-xxx-xx21 · KBank xxx-x-x4321) ═════════════
 const NONE = "—";

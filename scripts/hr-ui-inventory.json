@@ -16861,6 +16861,229 @@
    "wo": "VIS-5c",
    "oracle": "qc-hr-vis-5c",
    "note": "HrScheduleEditor — บันทึกตาราง"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-menu-open-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เมนู ⋯: เปิดโปรไฟล์เต็ม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-edit-name-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:updateEmployeeAction",
+    "db": "HrEmployee.name"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เมนู ⋯: ชื่อ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-edit-position-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:updateEmployeeAction",
+    "db": "HrEmployee.position"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เมนู ⋯: ตำแหน่งงาน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-edit-phone-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:updateEmployeeAction",
+    "db": "HrEmployee.phone"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เมนู ⋯: เบอร์โทร"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-edit-save-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:updateEmployeeAction",
+    "db": "HrEmployee (ชื่อ/ตำแหน่ง/เบอร์)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เมนู ⋯: บันทึกข้อมูล"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-remove-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:removeEmployeeAction",
+    "db": "HrEmployee.active → false (soft delete)"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เมนู ⋯: ลบพนักงาน (ConfirmDialog)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-remove-*-trigger",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-people-remove-*-sheet",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เมนู ⋯: ปุ่มเปิดกล่องยืนยันลบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-remove-*-sheet",
+   "kind": "dialog",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ ของแถวที่เปิดอยู่ · ผู้ถือ hr.employee.create · กดลบแล้ว",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:removeEmployeeAction",
+    "db": "HrEmployee.active → false"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "กล่องยืนยันลบ"
   }
  ]
 }

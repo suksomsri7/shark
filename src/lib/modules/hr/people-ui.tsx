@@ -49,7 +49,7 @@ function Kv({ k, children, testId }: { k: string; children: ReactNode; testId?: 
 export async function ProfileHeader({ systemId, emp, canEdit, onEdit, close }: { systemId: string; emp: EmployeeProfileDto; canEdit: boolean; onEdit?: boolean; close?: string }) {
   const t = await getTranslations("hr.people");
   const head = [emp.nickname || emp.name, emp.code, emp.position].filter(Boolean).join(" · ");
-  const sub = [emp.nickname ? emp.name : null, emp.unitName, emp.department].filter(Boolean).join(" · ");
+  const sub = [emp.nickname && emp.nickname !== emp.name ? emp.name : null, emp.unitName, emp.department].filter(Boolean).join(" · ");
   return (
     <div className="flex items-center gap-3.5">
       <span aria-hidden="true" className="grid h-[52px] w-[52px] shrink-0 place-items-center rounded-[14px] border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] text-xl font-bold text-[color:var(--color-ink-soft)]">
@@ -88,7 +88,7 @@ export async function ProfileTabs({ href, tab, tabs }: { href: (tab: ProfileTab)
           href={href(k)}
           data-testid={`hr-profile-tab-${k}`}
           aria-current={tab === k ? "page" : undefined}
-          className={`inline-flex min-h-[44px] items-center whitespace-nowrap px-3 text-sm ${tab === k ? "border-b-2 border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : muted}`}
+          className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center whitespace-nowrap px-3 text-sm ${tab === k ? "border-b-2 border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : muted}`}
         >
           {t(`prof.tab.${k}`)}
         </Link>
@@ -110,7 +110,7 @@ export async function EmployeeReadView({ systemId, emp, sensitive, canEdit, comp
   const revealHref = profileHref(systemId, emp.id, "?edit=1#hr-profile-sensitive");
   const eye = (k: string) =>
     canEdit ? (
-      <Link href={revealHref} data-testid={`hr-profile-reveal-${k}`} aria-label={t("prof.reveal")} title={t("prof.reveal")} className="ml-auto grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)]">
+      <Link href={revealHref} data-testid={`hr-profile-reveal-${k}`} aria-label={t("prof.reveal")} title={t("prof.reveal")} className="-my-2.5 ml-auto grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)]">
         <svg aria-hidden="true" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
           <path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12Z" />
           <circle cx="12" cy="12" r="3" />

@@ -593,8 +593,8 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
         </nav>
 
         {/* HR VIS-5c ▸ ค้น · แผนก (GET) · สาขา · แสดงที่สิ้นสุด */}
-        <div className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center">
-          <form method="get" action={base} role="search" className="flex min-w-0 flex-1 flex-col gap-2 sm:flex-row sm:items-center">
+        <div className="flex flex-wrap items-center gap-3">
+          <form method="get" action={base} role="search" className={`flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center ${pv ? "" : "xl:w-auto xl:flex-1"}`}>
             {chip && <input type="hidden" name="unit" value={chip} />}
             {tab !== "all" && <input type="hidden" name="tab" value={tab} />}
             {showEnded && <input type="hidden" name="ended" value="1" />}
@@ -625,7 +625,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
               <summary data-testid="hr-people-branch" className="btn btn-ghost min-h-[44px] cursor-pointer list-none whitespace-nowrap text-sm [&::-webkit-details-marker]:hidden">
                 <span className={muted}>{t("branch")}:</span> <b className="inline-block max-w-[12rem] truncate align-bottom">{unitLabel}</b> <span aria-hidden="true">▾</span>
               </summary>
-              <div className="absolute left-0 z-30 mt-2 flex w-64 max-w-[85vw] flex-col rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-1 shadow-lg lg:left-auto lg:right-0">
+              <div className="absolute left-0 z-30 mt-2 flex w-64 max-w-[85vw] flex-col rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-1 shadow-lg">
                 {[{ key: "", label: t("allBranches") }, ...units.map((u) => ({ key: u.id, label: u.name })), ...(unassigned ? [{ key: "none", label: t("noUnit") }] : [])].map((c) => (
                   <Link
                     key={c.key || "all"}
@@ -640,7 +640,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
               </div>
             </details>
           )}
-          <Link href={href({ ended: showEnded ? "" : "1", page: "" })} data-testid="hr-people-ended" aria-pressed={showEnded} className="inline-flex min-h-[44px] items-center gap-2.5 whitespace-nowrap text-sm text-[color:var(--color-ink-soft)] lg:ml-auto">
+          <Link href={href({ ended: showEnded ? "" : "1", page: "" })} data-testid="hr-people-ended" aria-pressed={showEnded} className="ml-auto inline-flex min-h-[44px] items-center gap-2.5 whitespace-nowrap text-sm text-[color:var(--color-ink-soft)]">
             <span aria-hidden="true" className={`relative inline-block h-6 w-10 rounded-full border transition-colors ${showEnded ? "border-[color:var(--color-ink)] bg-[color:var(--color-ink)]" : "border-[color:var(--color-line)] bg-[color:var(--color-surface-2)]"}`}>
               <span className={`absolute top-0.5 h-[18px] w-[18px] rounded-full bg-[color:var(--color-surface)] shadow ${showEnded ? "left-[18px]" : "left-0.5"}`} />
             </span>
@@ -704,7 +704,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                               {initialOf(e.name)}
                             </span>
                             <div className="min-w-0">
-                              <Link href={href({ emp: e.id })} data-testid={`hr-people-name-${e.id}`} className="hidden break-words font-semibold hover:underline xl:inline">
+                              <Link href={href({ emp: e.id })} scroll={false} data-testid={`hr-people-name-${e.id}`} className="hidden break-words font-semibold hover:underline xl:inline">
                                 {e.name}
                               </Link>
                               <Link href={profileHref(systemId, e.id)} data-testid={`hr-people-name-${e.id}`} className="break-words font-semibold hover:underline xl:hidden">
@@ -712,7 +712,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                               </Link>
                               <small className={`block text-xs ${muted}`}>
                                 {e.code || "—"}
-                                <span className={`hidden md:inline ${foldCol}`}> · {typeOf(e.employmentType)}</span>
+                                <span className={`hidden md:block ${foldCol}`}>{typeOf(e.employmentType)}</span>
                               </small>
                             </div>
                           </div>
@@ -739,7 +739,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                         </td>
                         <td className={`hidden whitespace-nowrap ${td}`}>
                           <span className={pinOk ? "font-semibold" : muted}>{pinOk ? `✓ ${t("pinSet")}` : "—"}</span>
-                          <small className={`block text-xs ${muted} ${foldCol}`}>{e.linkedUserId ? `✓ ${t("accountYes")}` : t("accountNo")}</small>
+                          {e.linkedUserId && <small className={`block text-xs ${muted} ${foldCol}`}>{`✓ ${t("accountYes")}`}</small>}
                         </td>
                         <td className={`${wideCol} whitespace-nowrap md:px-2 md:py-3 md:align-middle`}>
                           <span className={e.linkedUserId ? "font-semibold" : muted}>{e.linkedUserId ? `✓ ${t("accountYes")}` : "—"}</span>
@@ -764,7 +764,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                                 ⋯
                               </summary>
                               <div className="absolute right-0 top-full z-30 mt-1 flex max-h-[75vh] w-[min(calc(100vw-3rem),440px)] flex-col gap-4 overflow-y-auto whitespace-normal rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 text-sm text-[color:var(--color-ink)] shadow-lg">
-                                <Link href={profileHref(systemId, e.id)} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
+                                <Link href={profileHref(systemId, e.id)} data-testid={`hr-people-menu-open-${e.id}`} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
                                   {t("more.openProfile")} →
                                 </Link>
                                 {/* แก้ข้อมูลพื้นฐาน (ชื่อ/ตำแหน่ง/เบอร์) — action เดิม */}
@@ -774,20 +774,20 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                                   <input type="hidden" name="employeeId" value={e.id} />
                                   <label className={`flex flex-col gap-1 text-xs ${muted}`}>
                                     {t("more.name")}
-                                    <input name="name" required defaultValue={e.name} className="input min-h-11" />
+                                    <input name="name" required data-testid={`hr-people-edit-name-${e.id}`} defaultValue={e.name} className="input min-h-11" />
                                   </label>
                                   <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                                     <label className={`flex min-w-0 flex-col gap-1 text-xs ${muted}`}>
                                       {t("more.position")}
-                                      <input name="position" defaultValue={e.position ?? ""} placeholder={t("more.positionPh")} className="input min-h-11" />
+                                      <input name="position" data-testid={`hr-people-edit-position-${e.id}`} defaultValue={e.position ?? ""} placeholder={t("more.positionPh")} className="input min-h-11" />
                                     </label>
                                     <label className={`flex min-w-0 flex-col gap-1 text-xs ${muted}`}>
                                       {t("more.phone")}
-                                      <input name="phone" inputMode="tel" defaultValue={e.phone ?? ""} className="input min-h-11" />
+                                      <input name="phone" inputMode="tel" data-testid={`hr-people-edit-phone-${e.id}`} defaultValue={e.phone ?? ""} className="input min-h-11" />
                                     </label>
                                   </div>
                                   <div>
-                                    <SubmitButton variant="ghost" pendingText={t("form.saving")} className="min-h-[44px]">{t("more.saveBasic")}</SubmitButton>
+                                    <SubmitButton variant="ghost" pendingText={t("form.saving")} className="min-h-[44px]" data-testid={`hr-people-edit-save-${e.id}`}>{t("more.saveBasic")}</SubmitButton>
                                   </div>
                                 </form>
                                 <div className="flex flex-col gap-2 border-t border-[color:var(--color-line)] pt-3">
@@ -813,6 +813,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                                     danger
                                     action={removeEmployeeAction}
                                     fields={{ systemId, employeeId: e.id }}
+                                    testId={`hr-people-remove-${e.id}`}
                                   />
                                 </div>
                               </div>
@@ -859,14 +860,14 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
 
       {/* แผงอ่านด้านขวา (?emp=) — DTO ของ loadEmployeeProfileForViewer · เลขอ่อนไหวปิดแล้ว · ≥ 1280 เท่านั้น (จอเล็กกดชื่อ = เปิดโปรไฟล์) */}
       {pv && (
-        <aside data-testid="hr-people-panel" aria-label={pv.profile.name} className="hidden flex-col self-start overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] xl:sticky xl:top-4 xl:flex xl:max-h-[calc(100vh-2rem)]">
+        <aside data-testid="hr-people-panel" aria-label={pv.profile.name} className="hidden flex-col self-start overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] xl:flex">
           <div className="px-5 pb-2 pt-5">
             <ProfileHeader systemId={systemId} emp={pv.profile} canEdit={canEdit} close={href({ emp: "" })} />
           </div>
           <div className="px-3">
             <ProfileTabs href={(k) => profileHref(systemId, pv.profile.id, `?tab=${k}`)} tab="general" tabs={pv.canSeeSensitive ? ["general", "docs", "schedule", "leave", "pay", "history"] : ["general", "docs", "schedule", "leave", "history"]} />
           </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-5">
+          <div className="flex flex-col gap-6 px-5 py-5">
             {pv.profile.employmentStatus === "PROBATION" && pv.profile.probationEndAt && (
               <div className="flex items-center gap-3 rounded-2xl border-[1.5px] border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-4 py-3">
                 <b className="min-w-0 flex-1 text-[color:var(--color-accent)]">
