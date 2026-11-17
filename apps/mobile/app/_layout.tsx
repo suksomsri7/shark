@@ -52,8 +52,9 @@ function Gate({ children }: { children: React.ReactNode }) {
       router.replace("/secretary/onboarding/name");
       return;
     }
-    // 14 พ.ย. (เจ้าของสั่ง): เปิดแอป/login เสร็จ ⇒ หน้าเลขา (เดิม = หน้าระบบ WebView "/(app)") · หน้าระบบเข้าจากปุ่มระบบบนแถบบน
-    if (atLogin || (!inApp && !atDna)) router.replace("/secretary");
+    // 15 พ.ย. (เจ้าของสั่ง · Lekaa FAB): เปิดแอป/login เสร็จ ⇒ หน้าหลักร้าน = dashboard "/" (WebView) · เลขาเข้าจากปุ่มลอย Lekaa ทุกจอ
+    //   (14 พ.ย. เคยเปลี่ยนเป็น /secretary — ถอยกลับตามแบบ fab6)
+    if (atLogin || (!inApp && !atDna)) router.replace("/");
   }, [ready, token, tenants.length, user?.phone, user?.id, segments, router]);
 
   return <>{children}</>;

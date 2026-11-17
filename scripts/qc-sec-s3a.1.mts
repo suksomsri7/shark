@@ -175,7 +175,8 @@ try {
     const roomC = String(r.json.roomId ?? "");
     await proposeSend(String(r.json.conversationId ?? ""), conv.id, "ใบเสนอราคาฉบับใหม่ครับ");
     // ORACLE note: OWNER ตีกลับ = กติกายืนยันทันที (teach.ts) ⇒ ให้ STAFF (สมาชิกห้อง) ตีกลับ → PENDING รอเจ้าของ
-    await call("secretary/rooms/[id]/members", "POST", { userId: U.staff, seeHistory: true }, H, { id: roomC });
+    // ORACLE-EDIT (B27-FAB 17 พ.ย.): ปิดการชวนคนเข้าห้องเลขาแล้ว (POST members 403) — แถวสมาชิกเดิมยังใช้ได้ ⇒ สร้างแถวตรง
+    await prisma.aiRoomMember.create({ data: { tenantId: tid, roomId: roomC, userId: U.staff, addedById: U.owner, seeHistory: true } });
     const pr = await call("secretary/rooms/[id]/proposals", "GET", undefined, HS, { id: roomC });
     const pid = String(items(pr.json).find((x) => x.kind === "chat.send")?.id ?? "");
     const rj = pid ? await call("secretary/proposals/[id]/reject", "POST", { note: "ใบเสนอราคาต้องมีเลขผู้เสียภาษีของลูกค้าเสมอ", remember: "RULE" }, HS, { id: pid }) : { status: 0, json: {} as Record<string, unknown>, text: "" };
@@ -200,7 +201,8 @@ try {
     const msS2 = await call("secretary/rooms/[id]/messages", "GET", undefined, HS, { id: roomA });
     const mine = items(msS2.json).find((m) => m.authorUserId === U.staff);
     bodies.push(msS2.text);
-    chk("U6-1", "ก่อนเพิ่ม STAFF เห็นห้อง 404 · เจ้าของเพิ่ม (ไม่เห็นประวัติ) ⇒ 200 · STAFF เห็นห้อง · ข้อความเก่าน้อยกว่าเจ้าของ · STAFF ส่งได้ · ข้อความมี authorUserId=staff · worker ตอบ", before.status === 404 && add.status === 200 && after.status === 200 && msS.status === 200 && items(msS.json).length < items(msO.json).length && send.status === 200 && !!mine && items(msS2.json).some((m) => m.role === "ASSISTANT"), JSON.stringify({ before: before.status, add: add.status, after: after.status, nS: items(msS.json).length, nO: items(msO.json).length, send: send.status, mine: !!mine }).slice(0, 300));
+    // ORACLE-EDIT (B27-FAB 17 พ.ย. · เจ้าของอนุมัติแบบ fab6): งานเลขาเป็นของแต่ละคน — ปิดการชวนคน ⇒ เพิ่ม 403 · STAFF ยังมองไม่เห็น/ส่งไม่ได้ · เจ้าของยังอ่านห้องตัวเองได้
+    chk("U6-1", "ก่อนเพิ่ม STAFF เห็นห้อง 404 · เจ้าของเพิ่ม ⇒ 403 forbidden (ปิดการชวนคน) · STAFF ยัง 404 (ห้อง/ข้อความ/ส่ง) · เจ้าของอ่านข้อความห้องตัวเองได้", before.status === 404 && add.status === 403 && after.status === 404 && msS.status === 404 && msO.status === 200 && items(msO.json).length > 0 && send.status === 404 && !mine, JSON.stringify({ before: before.status, add: add.status, after: after.status, nS: items(msS.json).length, nO: items(msO.json).length, send: send.status, mine: !!mine }).slice(0, 300));
   }
 
   console.log("── U7: ลูกค้าทัก → Shark ร่าง → ส่ง ──");
@@ -253,7 +255,8 @@ try {
     const d1 = await call("secretary/staff", "GET");
     bodies.push(all.text);
     const staffRow = items(all.json).find((x) => x.id === roomS);
-    chk("U10-1", "owner scope=tenant เห็นห้องของ staff (มีป้ายสั่งโดย) · scope ปริยายไม่เห็น · STAFF scope=tenant ไม่เห็นห้องของ owner · D1 แสดงงานต่อคน", rs.status === 200 && all.status === 200 && !!staffRow && !items(mine.json).some((x) => x.id === roomS) && sAll.status === 200 && !items(sAll.json).some((x) => x.id === roomB) && d1.status === 200, JSON.stringify({ rs: rs.status, all: items(all.json).length, found: !!staffRow, mine: items(mine.json).length, sAll: items(sAll.json).length }).slice(0, 300));
+    // ORACLE-EDIT (B27-FAB 17 พ.ย.): เจ้าของไม่เห็นห้องงานของพนักงานแล้ว (scope ถูกเมิน) — ดูภาระงานต่อคนที่ D1 แทน
+    chk("U10-1", "owner scope=tenant ไม่เห็นห้องของ staff (scope ถูกเมิน) · scope ปริยายไม่เห็น · STAFF scope=tenant ไม่เห็นห้องของ owner · D1 แสดงงานต่อคน", rs.status === 200 && all.status === 200 && !staffRow && !items(mine.json).some((x) => x.id === roomS) && sAll.status === 200 && !items(sAll.json).some((x) => x.id === roomB) && d1.status === 200, JSON.stringify({ rs: rs.status, all: items(all.json).length, found: !!staffRow, mine: items(mine.json).length, sAll: items(sAll.json).length }).slice(0, 300));
   }
 
   console.log("── Q: โควตา ──");

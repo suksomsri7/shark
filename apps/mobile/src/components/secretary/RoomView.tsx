@@ -19,9 +19,17 @@
 // CAL2.7 (แบบ cal-2.png จอ 5): การ์ดเตือน/นัดที่ผู้ดูสั่งในห้องนี้ (RoomDetail.reminders) วางตาม createdAt · แก้ไข = AddCalSheet โหมดแก้ ·
 //   ยกเลิก = ถามยืนยัน → DELETE calendar/items/[id] · DRAFT = ฟองยืนยัน "เตือนประจำ" + ใช่ ตั้งเลย (POST confirm) / แก้เวลา
 //   RoomStatus ตามเซิร์ฟเวอร์ (OPEN|RUNNING|WAITING|DONE · DONE = ปิดห้อง) · แผนของห้องที่ยัง PENDING แสดงเป็นการ์ดอนุมัติใบเดียว (ไม่ซ้ำ)
+// Lekaa FAB (15 พ.ย. · แบบ fab6/fab4 จอ 3):
+//   `embedded` = วาดในแผ่น Lekaa (ไม่มีพื้นจอ/safe area บน · หัว = ‹ กลับรายการ (ถ้ามี) + โลโก้ Lekaa + ชื่องาน + ⋯ + ✕ ปิดแผ่น ·
+//     ทางที่พาไปจออื่น (สั่งซ้ำ/เปิดของจริง/แจ้งปัญหา/กลับหน้าแรก) ปิดแผ่นก่อนแล้วค่อยไป)
+//   ไม่ embedded = จอห้องงานเดิม + ปุ่ม Lekaa ในแถวเดียวกับช่องพิมพ์ (LekaaFabSlot · แบบ team4 จอ 4)
+//   หน้าที่เปิดอยู่ (RoomDetail.pageContext): ข้อความของเลขาที่ถาม (askId · สถานะ ASKED) = การ์ด CONTEXT_CONFIRM ปุ่ม "ใช่ <ป้าย>"/"ไม่ใช่"
+//     (POST rooms/[id]/page-context) · ข้อความที่อ้าง (refIds) = ชิป "📍 อ้างอิง: <ป้าย>" ใต้คำตอบ
+//   ถอดทางเข้า "เพิ่มคน" (ปุ่ม user-plus + เมนู) — งานของใครของมัน (เซิร์ฟเวอร์ปิดการเพิ่มด้วย) · AddMemberSheet ยังอยู่ในโค้ด (ไม่เปิด)
 // ข้อความทั้งหมดผ่าน i18n (sec.room.*) · สีจากธีม · สเกล R-UI1 (ระยะแนวตั้ง × F · ตัวอักษร tokens.type)
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { useFocusEffect, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
 import { AiryScreen, Dot, Glass, Icon, IconBtn, InputBar, LoadError, Loading, Sheet, type DotStatus } from "@/src/components/airy";
@@ -33,6 +41,9 @@ import { MemberBubble, SystemMsg } from "@/src/components/secretary/MemberBubble
 import { DoneCard, type DoneIds } from "@/src/components/secretary/DoneCard";
 import { StepList } from "@/src/components/secretary/StepCard";
 import { ReminderCard } from "@/src/components/calendar/ReminderCard";
+import { ContextConfirmCard, PageRefChip } from "@/src/components/secretary/ContextConfirm";
+import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
+import { LekaaLogo } from "@/src/components/lekaa/LekaaLogo";
 import { RoomCalCard } from "@/src/components/calendar/RoomCalCard";
 import { ConfirmSheet } from "@/src/components/calendar/ConfirmSheet";
 import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
@@ -61,7 +72,7 @@ import {
 } from "@/src/api/secretary";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
-import { F, glassStyle, useTheme } from "@/src/theme/index";
+import { F, glassStyle, shadow, useTheme } from "@/src/theme/index";
 import { cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 const FAST_MS = 5_000;
@@ -114,10 +125,16 @@ type Row = { key: string; at: number; order: number; node: ReactNode; anchor?: b
 /** คำสั่งที่เพิ่งส่งจากจอเริ่มงานใหม่ — แสดงทันทีก่อนห้อง/ข้อความจากเซิร์ฟเวอร์มาถึง */
 export type RoomSeed = { title: string; text: string; attachments: MsgAttachment[]; at: string };
 
-export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | null; lead?: ReactNode }) {
+/** วาดในแผ่น Lekaa (LekaaSheet) — onClose = ปิดแผ่น · onBack = กลับรายการงานในแผ่น (ไม่ใส่ = ไม่มีปุ่ม ‹) · title = หัวก่อนได้ห้อง (เช่น "งานใหม่") */
+export type RoomEmbed = { onClose: () => void; onBack?: () => void; title?: string };
+
+export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: RoomSeed | null; lead?: ReactNode; embedded?: RoomEmbed }) {
   const { c } = useTheme();
   const t = useT();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  /** ไปจออื่นจากในแผ่น = ปิดแผ่นก่อน */
+  const leave = useCallback(() => embedded?.onClose(), [embedded]);
   const { activeTenantId, user, tenants } = useAuth();
   const myId = user?.id ?? null;
   const myName = user?.name?.trim().split(/\s+/)[0] ?? "";
@@ -155,6 +172,9 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
   const [undoAsk, setUndoAsk] = useState<LogItem | null>(null);
   const [undoBusyId, setUndoBusyId] = useState<string | null>(null);
   const [undoNote, setUndoNote] = useState<string | null>(null);
+  // Lekaa FAB ▸ คำตอบการ์ด "หมายถึงหน้านี้ใช่ไหม"
+  const [ctxBusy, setCtxBusy] = useState(false);
+  const [ctxNote, setCtxNote] = useState<string | null>(null);
   const tenantRef = useRef(activeTenantId);
   const inflight = useRef(false);
   /** มีการกระทำระหว่างที่ poll วิ่งอยู่ ⇒ ผลของรอบนั้นเก่า ให้วิ่งซ้ำ (R-S2.4b) */
@@ -381,8 +401,27 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
   };
 
   const back = () => {
+    if (embedded) return (embedded.onBack ?? embedded.onClose)();
     if (router.canGoBack()) router.back();
     else router.navigate("/secretary");
+  };
+
+  // Lekaa FAB ▸ ตอบการ์ด CONTEXT_CONFIRM — เซิร์ฟเวอร์ส่งข้อความ "ใช่ …"/"ไม่ใช่" + งานต่อให้เอง
+  const answerCtx = async (yes: boolean) => {
+    if (ctxBusy || actRef.current) return;
+    actRef.current = true;
+    setCtxBusy(true);
+    setCtxNote(null);
+    try {
+      await secPostId("secretary/rooms/[id]/page-context", id, { answer: yes ? "yes" : "no" });
+      setRoom((x) => (x ? { ...x, status: "RUNNING", rawStatus: "RUNNING", pageContext: x.pageContext ? { ...x.pageContext, state: yes ? "CONFIRMED" : "REJECTED" } : null } : x));
+    } catch (e) {
+      setCtxNote(e instanceof ApiError && e.detail ? e.detail : t("sec.ctx.err"));
+    } finally {
+      actRef.current = false;
+      setCtxBusy(false);
+      void load();
+    }
   };
 
   const teach = () => {
@@ -390,10 +429,15 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
     setFocusKey((k) => k + 1);
   };
   const instruction = msgs.find((m) => m.role === "user")?.content ?? room?.title ?? "";
-  const repeat = () => router.push({ pathname: "/secretary/new", params: { q: instruction } });
+  const repeat = () => {
+    leave();
+    router.push({ pathname: "/secretary/new", params: { q: instruction } });
+  };
   const openEntity = (l: LogItem) => {
     const r = entityRoute(l.entity, String(Date.now()));
-    if (r) router.push(r);
+    if (!r) return;
+    leave();
+    router.push(r);
   };
 
   // ───────── ห้องร่วม (D2) ─────────
@@ -401,7 +445,8 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
   const shared = members.length > 0;
   const people = useMemo(() => new Map(members.map((m) => [m.userId, m])), [members]);
   const closed = !!room?.closed;
-  const canAdd = !!room?.canManage && !closed;
+  // Lekaa FAB (เจ้าของสั่ง "งานของใครของมัน"): ไม่มีทางเข้า "เพิ่มคน" แล้ว — เซิร์ฟเวอร์ปิดการเพิ่มด้วย (สมาชิกเดิมยังเห็นห้อง)
+  const canAdd = false;
   /** ผู้มีสิทธิ์อนุมัติในห้องร่วม: เรา (ถ้าเซิร์ฟเวอร์บอก canApprove) + สมาชิกเจ้าของ/ผู้จัดการ */
   const approverOf = useCallback(
     (a: ApprovalItem): string | null => {
@@ -429,6 +474,7 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
   const lastRole = shown.filter((m) => m.role !== "system").slice(-1)[0]?.role;
   const typing = lastRole === "user" && (seedPhase || !!pendingMsg || room?.status === "RUNNING");
 
+  const pc = room?.pageContext ?? null;
   const rows = useMemo<Row[]>(() => {
     const out: Row[] = [];
     let seq = 0;
@@ -443,7 +489,12 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
       else if (m.role === "user" && !mine) {
         const who = people.get(m.authorId ?? "");
         node = <MemberBubble msg={m} name={who?.name ?? t("sec.room.someone")} role={who?.role ? roleLabel(t, who.role) : null} testID={MEMBER_BUBBLE_ID} />;
-      } else node = <Bubble msg={m} mine={mine} authorName={null} testID="sec-room-bubble" />;
+      } else if (m.role === "assistant" && pc && pc.state === "ASKED" && pc.askId === m.id) {
+        node = <ContextConfirmCard text={m.content} label={pc.label} entityType={pc.entityType} busy={ctxBusy} note={ctxNote} onAnswer={(yes) => void answerCtx(yes)} />;
+      } else {
+        const ref = m.role === "assistant" && pc && pc.refIds.includes(m.id) ? <PageRefChip label={pc.label} /> : undefined;
+        node = <Bubble msg={m} mine={mine} authorName={null} testID="sec-room-bubble" footer={ref} />;
+      }
       // ฟองที่กำลังส่ง = ท้ายสุดเสมอ (เวลาเครื่องอาจเหลื่อมกับเซิร์ฟเวอร์)
       out.push({ key: `m-${m.id}`, at: m.pending ? Number.MAX_SAFE_INTEGER - 2 : at(m.at), order: seq++, node });
     }
@@ -535,7 +586,8 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
       });
     }
     return out;
-  }, [shown, typing, room, approvals, logs, nowMs, name, myId, people, flow, approverOf, undoBusyId, undoNote, c, t, remBusy, calSheet, remAct]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shown, typing, room, approvals, logs, nowMs, name, myId, people, flow, approverOf, undoBusyId, undoNote, c, t, remBusy, calSheet, remAct, pc, ctxBusy, ctxNote]);
 
   // เลื่อนครั้งแรก: มีการ์ดรออนุมัติ ⇒ ไปที่การ์ดแรก (สิ่งที่ต้องทำ) · ไม่มี ⇒ ท้ายสุด · ต่อจากนั้น = ท้ายเมื่อมีของใหม่และอยู่ใกล้ท้าย
   const scroll = useRef<ScrollView>(null);
@@ -572,9 +624,38 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
   const flashText = sendErr ?? flash?.text ?? null;
   const flashWarn = !!sendErr || !!flash?.warn;
 
-  return (
-    <AiryScreen testID="sec-room">
+  const body = (
       <KeyboardAvoidingView style={styles.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
+        {embedded ? (
+          <View style={styles.ebar}>
+            {embedded.onBack ? <IconBtn testID="sec-room-back" icon="chevron-left" label={t("lekaa.back")} onPress={back} /> : null}
+            <View style={[styles.elogo, { backgroundColor: c.lekaa.fabBg }, shadow(c.lekaa.logoRing)]}>
+              <LekaaLogo size={22} />
+            </View>
+            <View style={styles.ecenter}>
+              <Text testID="sec-room-title" style={[styles.etitle, { color: c.text }]} numberOfLines={1}>
+                {room?.title ?? (seed && embedded.title ? embedded.title : seed?.title) ?? embedded.title ?? ""}
+              </Text>
+              <Text testID="sec-room-status" style={[styles.status, { color: c.textMuted }]} numberOfLines={1}>
+                {room ? statusText : tenantName}
+              </Text>
+            </View>
+            {room ? (
+              <IconBtn
+                testID="sec-room-menu"
+                icon="more-horizontal"
+                label={t("sec.room.menu")}
+                onPress={() => {
+                  setMenuNote(null);
+                  setMenu(true);
+                }}
+              />
+            ) : null}
+            <Pressable testID="lekaa-sheet-close" accessibilityRole="button" accessibilityLabel={t("lekaa.close")} onPress={embedded.onClose} style={[styles.ex, { backgroundColor: c.chip.bg }]}>
+              <Icon name="x" size={17} color={c.text} />
+            </Pressable>
+          </View>
+        ) : (
         <View style={styles.bar}>
           <IconBtn testID="sec-room-back" icon="chevron-left" label={t("sec.room.back")} onPress={back} />
           <View style={styles.center}>
@@ -613,12 +694,13 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
             <View style={styles.spacer} />
           )}
         </View>
+        )}
 
         {gone ? (
           <Glass testID="sec-room-gone" style={styles.gone}>
             <Icon name={gone === "denied" ? "lock" : "search"} size={22} color={c.textMuted} />
             <Text style={[styles.goneT, { color: c.text }]}>{gone === "denied" ? t("sec.room.denied") : t("sec.room.notFound")}</Text>
-            <Pressable testID="sec-room-gone-home" accessibilityRole="button" onPress={() => router.navigate("/secretary")} style={[styles.goneBtn, { backgroundColor: c.accent }]}>
+            <Pressable testID="sec-room-gone-home" accessibilityRole="button" onPress={() => (embedded ? back() : router.navigate("/secretary"))} style={[styles.goneBtn, { backgroundColor: c.accent }]}>
               <Text style={[styles.goneBtnT, { color: c.onAccent }]}>{t("sec.room.toHome")}</Text>
             </Pressable>
           </Glass>
@@ -661,6 +743,7 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
         ) : (
           <>
           <AttachTray items={attach.items} note={attach.note} onRemove={attach.remove} testID="sec-room-attach" />
+          <View style={styles.inputRow}>
           <InputBar
             key={focusKey}
             testID="sec-room-input"
@@ -676,11 +759,19 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
             onPlus={() => setAttachOpen(true)}
             plusDisabled={!room}
             sendDisabled={(!draft.trim() && attach.items.length === 0) || !attach.ready || sending || !room}
-            style={styles.input}
+            style={styles.flex}
           />
+          {/* Lekaa FAB ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (ในแผ่น Lekaa ไม่มี — แผ่นเปิดอยู่แล้ว) */}
+          {embedded ? null : <LekaaFabSlot />}
+          </View>
           </>
         )}
       </KeyboardAvoidingView>
+  );
+
+  return (
+    <Frame embedded={!!embedded} bottom={insets.bottom}>
+      {body}
 
       <Sheet visible={menu} onClose={() => setMenu(false)} testID="sec-room-menu-sheet" top={520}>
         <Text style={[styles.menuH, { color: c.text }]}>{t("sec.room.menu.title")}</Text>
@@ -712,6 +803,7 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
           label={t("sec.room.menu.help")}
           onPress={() => {
             setMenu(false);
+            leave();
             router.push({ pathname: "/secretary/help", params: { roomId: id } });
           }}
         />
@@ -785,7 +877,17 @@ export function RoomView({ id, seed, lead }: { id: string; seed?: RoomSeed | nul
       ) : null}
       <AttachSheet visible={attachOpen} onClose={() => setAttachOpen(false)} onPick={(k) => void attach.pick(k)} name={name} testID="sec-room-attach-sheet" />
       {flow.sheets}
-    </AiryScreen>
+    </Frame>
+  );
+}
+
+/** กรอบของห้อง: จอเต็ม (AiryScreen) หรือในแผ่น Lekaa (ไม่มีพื้นจอ/safe area บน · เว้นล่างตาม safe area) */
+function Frame({ embedded, bottom, children }: { embedded: boolean; bottom: number; children?: ReactNode }) {
+  if (!embedded) return <AiryScreen testID="sec-room">{children}</AiryScreen>;
+  return (
+    <View testID="sec-room" style={[styles.flex, { paddingBottom: bottom }]}>
+      {children}
+    </View>
   );
 }
 
@@ -837,7 +939,12 @@ const styles = StyleSheet.create({
   goneBtnT: { fontSize: T.sub, fontWeight: "600" },
   flash: { marginHorizontal: spacing.page, marginBottom: spacing.sm, fontSize: 13, lineHeight: 19, borderRadius: radii.k + 2, paddingVertical: 8, paddingHorizontal: 12, overflow: "hidden", textAlign: "center" },
   closedNote: { fontSize: T.sub, textAlign: "center", marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM, lineHeight: 20 },
-  input: { marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: LEKAA_SLOT_GAP, marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
+  ebar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: spacing.page - 6, paddingTop: 2, paddingBottom: 8 },
+  elogo: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
+  ecenter: { flex: 1, minWidth: 0 },
+  etitle: { fontSize: T.h, fontWeight: "700", lineHeight: 24 },
+  ex: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center" },
   menuH: { fontSize: T.h + 1, fontWeight: "700", lineHeight: 26, marginBottom: 4 },
   menuRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: size.iconBtn + 8, borderBottomWidth: StyleSheet.hairlineWidth },
   menuT: { fontSize: T.body - 1 },

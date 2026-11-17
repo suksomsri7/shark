@@ -37,6 +37,7 @@ import { scheduleZoneBadges } from "@/src/api/secretary";
 import { addDays, addMonths, dayOfIso, daysInMonth, dayOfMs, isDay, monthName, monthYear, shortDate, weekDays, yearLabel, ymOf } from "@/src/lib/cal-date";
 import { useLang, useT } from "@/src/i18n";
 import { useTheme } from "@/src/theme/index";
+import { useLekaaPageContext } from "@/src/components/lekaa/core";
 import { spacing } from "@/src/theme/tokens";
 
 type View3 = "day" | "month" | "remind";
@@ -54,6 +55,8 @@ export default function CalendarScreen() {
   const [today, setToday] = useState(() => dayOfMs(Date.now()));
   const [view, setView] = useState<View3>(params.view === "month" || params.view === "remind" ? params.view : "day");
   const [day, setDay] = useState(() => (isDay(params.day) ? params.day : dayOfMs(Date.now())));
+  // Lekaa FAB (17 พ.ย. · handoff ข้อ 3): วันที่เลือกอยู่ = หน้าที่เปิด (CAL_DAY) — ไม่ต้องรอ ?day= ในเส้นทาง
+  useLekaaPageContext({ route: "secretary/calendar", entity: { type: "CAL_DAY", id: day } });
   const [ym, setYm] = useState(() => ymOf(isDay(params.day) ? params.day : dayOfMs(Date.now())));
   const [months, setMonths] = useState<Record<string, Record<string, ColorKey[]>>>({});
   const [data, setData] = useState<DayData | null>(null);

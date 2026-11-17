@@ -9,6 +9,7 @@ import type { MembershipCtx } from "@/lib/core/rbac";
 import type { AiMemberActor } from "../actor";
 import type { ConvCtx } from "../conversation-owner";
 import { listPendingProposals } from "../proposals";
+import { canConfirmerSeeConversation } from "../conversations";
 import { listPendingPlans } from "../plans";
 import { actorCanConfirmKind, membershipCan } from "../tool-access";
 import { kindAccessOf } from "../kind-tables";
@@ -160,11 +161,21 @@ async function approverPool(tenantId: string, conversationId: string): Promise<{
 
 /** ผู้เรียกอนุมัติข้อเสนอนี้ได้ไหม (dry-run เดียวกับ pendingItemsFor) — ด่านของเส้นแก้ก่อนอนุมัติ (R-S1.14i) · มองไม่เห็น/ไม่ PENDING = null */
 export async function proposalApprovableBy(v: Viewer, proposalId: string): Promise<boolean | null> {
-  const row = await tenantDb({ tenantId: v.tenantId }).aiProposal.findFirst({ where: { id: proposalId }, select: { conversationId: true } });
+  const row = await tenantDb({ tenantId: v.tenantId }).aiProposal.findFirst({
+    where: { id: proposalId },
+    select: { conversationId: true, kind: true, payload: true, status: true, expiresAt: true, resultNote: true },
+  });
   if (!row) return null;
   const items = await pendingItemsFor(v, row.conversationId);
   const it = items.find((x) => x.type === "proposal" && x.id === proposalId);
-  return it ? it.canApprove : null;
+  if (it) return it.canApprove;
+  // Lekaa FAB ▸ ผู้อนุมัติที่อ่านห้องไม่ได้แล้ว (OWNER ↔ ห้องของพนักงาน) — ด่านเดียวกับกล่องรออนุมัติ (canConfirmerSeeConversation + approvalGate) ◂
+  if (row.status !== "PENDING" || row.expiresAt.getTime() <= Date.now()) return null;
+  if (typeof row.resultNote === "string" && row.resultNote.startsWith("WORKING#")) return false;
+  if (!(await canConfirmerSeeConversation(v.tenantId, v.m, v.userId, row.conversationId))) return null;
+  const access = await accessOf(v.tenantId);
+  if (!access || !kindAllowedByAccess(access, row.kind).ok) return false;
+  return (await approvalGate(v.tenantId, v.m, { kind: row.kind, conversationId: row.conversationId, payload: row.payload }, v.userId)).ok;
 }
 
 /** การ์ดห้อง + `pendingProposals` (ข้อเสนอ+แผน PENDING ที่ยังไม่หมดอายุ ต่อห้อง · 2 groupBy ต่อหน้า) */

@@ -137,7 +137,8 @@ try {
   const m3 = await call("rooms/[id]/members/[userId]", "DELETE", undefined, H, { id: roomM, userId: U.staff });
   const pr = await call("rooms/[id]/proposals", "GET", undefined, H, { id: roomM });
   const mem = (m2.body.members ?? m2.body.items ?? []) as { userId: string }[];
-  chk("H-2", "members POST/GET/DELETE 200 · รายชื่อมี staff หลังเพิ่ม · proposals GET 200 array", m1.status === 200 && m2.status === 200 && mem.some((x) => x.userId === U.staff) && m3.status === 200 && pr.status === 200 && Array.isArray(pr.body.items ?? pr.body.proposals ?? pr.body), JSON.stringify({ m1: m1.status, m2: m2.status, m3: m3.status, pr: pr.status }));
+  // ORACLE-EDIT (B27-FAB 17 พ.ย. · เจ้าของอนุมัติแบบ fab6): ปิดการชวนคนเข้าห้องงานเลขา ⇒ POST members 403 forbidden · รายชื่อว่าง · DELETE คนที่ไม่ใช่สมาชิก ⇒ 404
+  chk("H-2", "members POST ⇒ 403 forbidden (ปิดการชวนคน) · GET 200 ไม่มี staff · DELETE ⇒ 404 · proposals GET 200 array", m1.status === 403 && m1.body.error === "forbidden" && m2.status === 200 && !mem.some((x) => x.userId === U.staff) && m3.status === 404 && pr.status === 200 && Array.isArray(pr.body.items ?? pr.body.proposals ?? pr.body), JSON.stringify({ m1: m1.status, m2: m2.status, m3: m3.status, pr: pr.status }));
   // H-3 (R-S1.14a): POST rooms ส่ง clientMessageId ซ้ำ ⇒ duplicate ห้องเดิม · นับงานครั้งเดียว
   const jobsBefore = (await prisma.aiJobCounter.findFirst({ where: { tenantId: tid } }))?.jobs ?? 0;
   const cm = `qc114-${Date.now()}`;

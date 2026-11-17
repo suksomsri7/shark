@@ -16,7 +16,8 @@ export const ROOM_ORB = 24;
 export const ROOM_ORB_GAP = 10;
 export const ROOM_INDENT = ROOM_ORB + ROOM_ORB_GAP;
 
-export function Bubble({ msg, mine, authorName, testID }: { msg: MsgRow; mine: boolean; authorName: string | null; testID: string }) {
+// Lekaa FAB ▸ `footer` = ส่วนท้ายใต้ข้อความของเลขา (ชิป "📍 อ้างอิง: …") ◂
+export function Bubble({ msg, mine, authorName, testID, footer }: { msg: MsgRow; mine: boolean; authorName: string | null; testID: string; footer?: ReactNode }) {
   const { c } = useTheme();
   if (msg.role === "system") {
     return (
@@ -31,6 +32,7 @@ export function Bubble({ msg, mine, authorName, testID }: { msg: MsgRow; mine: b
         <Text style={[styles.aiT, { color: c.text }]} selectable>
           {msg.content}
         </Text>
+        {footer}
       </AssistantRow>
     );
   }

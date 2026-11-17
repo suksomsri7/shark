@@ -42,6 +42,7 @@ import {
   type ReplyAttachment,
   type Thread,
 } from "@/src/api/inbox";
+import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
 import { useAuth } from "@/src/lib/auth-context";
 import th from "@/src/i18n/th";
 import { useT, type I18nKey } from "@/src/i18n";
@@ -836,6 +837,8 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           ))}
         </View>
       ) : null}
+      {/* Lekaa FAB (17 พ.ย.) ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (แบบ team4 จอ 4) — ช่องพิมพ์หดด้านขวา · ปุ่มลอยซ่อนเองบนจอนี้ */}
+      <View style={styles.inputRow}>
       <InputBar
         testID="cust-input"
         sendTestID="cust-send"
@@ -882,8 +885,10 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
             </Pressable>
           ) : undefined
         }
-        style={internal ? [styles.internalBar, { borderColor: c.cust.noteBorder }] : undefined}
+        style={[styles.flex, internal && [styles.internalBar, { borderColor: c.cust.noteBorder }]]}
       />
+      <LekaaFabSlot />
+      </View>
     </View>
   );
 });
@@ -930,6 +935,7 @@ const styles = StyleSheet.create({
   trSheetBtn: { marginTop: 16 },
   trSheetRow: { flexDirection: "row", gap: 10, marginTop: 10 },
   composer: { paddingHorizontal: spacing.page - 6, paddingBottom: 14, paddingTop: 6 },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: LEKAA_SLOT_GAP },
   sendNote: { marginTop: 0, marginBottom: 8 },
   quickRow: { gap: 8, paddingBottom: 10, paddingHorizontal: 2 },
   quick: { borderRadius: radii.pill, paddingVertical: 8, paddingHorizontal: 14, maxWidth: 200 },

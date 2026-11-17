@@ -57,3 +57,19 @@ export function navSystems(
     })),
   ];
 }
+
+/** คีย์ช่อง "หน้าหลัก" (/app) ของแอป — ไม่อยู่ในทะเบียน (เมนูเว็บมีหน้าหลักแยก) แต่จัดลำดับร่วมกับระบบได้บนแถบบนแอป (topbar2) */
+export const NAV_HOME_KEY = "home";
+
+/**
+ * ลำดับของผู้ใช้ (แถบบนแอปเลขา · topbar2 17 พ.ย. · pure) — คีย์ที่บันทึกไว้ก่อนตามลำดับที่บันทึก
+ * คีย์ที่บันทึกแต่ไม่มีแล้ว (ระบบถูกปิด/ลบ) = ไม่สน · ระบบที่ยังไม่อยู่ในลำดับ (เปิดใหม่) = ต่อท้ายตามลำดับทะเบียน
+ * `keys` = ลำดับทะเบียน (เช่น ["home", ...navSystems().key]) · คืนรายการคีย์ครบชุดเดียวกับ `keys`
+ */
+export function orderNavKeys(keys: readonly string[], saved: readonly string[]): string[] {
+  const have = new Set(keys);
+  const out: string[] = [];
+  for (const k of saved) if (have.has(k) && !out.includes(k)) out.push(k);
+  for (const k of keys) if (!out.includes(k)) out.push(k);
+  return out;
+}

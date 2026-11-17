@@ -18,6 +18,8 @@ import { AppState } from "react-native";
 // CRM C3.7 ▸ แตะแจ้งเตือนของ CRM (data.link จาก crmNotifLink) → จอ CRM ในแอป (ตัวแปลงบริสุทธิ์) ◂
 import { crmRouteFromLink } from "@/src/lib/crm-link";
 import { C, R, S } from "@/src/theme";
+// Lekaa FAB (15 พ.ย. เจ้าของอนุมัติแบบ fab6) ▸ ปุ่มลอย Lekaa + แผ่น Lekaa ครอบทุกจอในกิจการ (ติดตั้งครั้งเดียวที่นี่ · ฮุกต่อจอใน src/components/lekaa/core.tsx) ◂
+import { LekaaFabHost } from "@/src/components/lekaa/LekaaFab";
 
 // type ของ props ระหว่าง expo-router/drawer กับ @react-navigation/drawer ชนกัน (identity ซ้ำสองแพ็กเกจ)
 // → ประกาศเฉพาะ structural type ที่ใช้จริง (closeDrawer/navigate) พอ — ปลอด any และไม่ผูก identity ใคร
@@ -178,6 +180,7 @@ export default function AppLayout() {
     return () => sub.remove();
   }, [router]);
   return (
+    <LekaaFabHost>
     <Drawer
       drawerContent={(props) => <DrawerBody {...props} />}
       screenOptions={{
@@ -198,6 +201,7 @@ export default function AppLayout() {
       <Drawer.Screen name="customers" options={{ headerShown: false }} />
       <Drawer.Screen name="business" options={{ headerShown: false }} />
     </Drawer>
+    </LekaaFabHost>
   );
 }
 

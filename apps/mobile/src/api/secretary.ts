@@ -68,6 +68,8 @@ const PATH = {
   "secretary/business/export": "/api/mobile/secretary/business/export",
   // 14 พ.ย. (bizsheet4 ขั้น 2): ระบบของกิจการ active สำหรับตาราง "เปิดระบบ" ในชีตกิจการ — ทะเบียนเดียวกับเมนูเว็บ (navSystems)
   "secretary/systems": "/api/mobile/secretary/systems",
+  // 17 พ.ย. (topbar2): ลำดับไอคอนระบบบนแถบบน "ต่อคน ต่อร้าน" (PUT {keys}) — GET secretary/systems คืน items เรียงแล้ว + `order` (รวม "home")
+  "secretary/systems/order": "/api/mobile/secretary/systems/order",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -78,6 +80,8 @@ const PATH_ID = {
   "secretary/rooms/[id]/proposals": "/api/mobile/secretary/rooms/[id]/proposals",
   "secretary/rooms/[id]/send": "/api/mobile/secretary/rooms/[id]/send",
   "secretary/rooms/[id]/close": "/api/mobile/secretary/rooms/[id]/close",
+  // Lekaa FAB ▸ คำตอบการ์ด "หมายถึงหน้านี้ใช่ไหม" (CONTEXT_CONFIRM)
+  "secretary/rooms/[id]/page-context": "/api/mobile/secretary/rooms/[id]/page-context",
   "secretary/proposals/[id]/approve": "/api/mobile/secretary/proposals/[id]/approve",
   "secretary/proposals/[id]/reject": "/api/mobile/secretary/proposals/[id]/reject",
   "secretary/proposals/[id]/edit": "/api/mobile/secretary/proposals/[id]/edit",
@@ -190,11 +194,12 @@ type GetMap = {
   "secretary/notify": { prefs?: Partial<Record<string, string>>; kinds?: string[]; modes?: string[] };
   "secretary/account/delete/preview": DeletePreview;
   "secretary/business": BusinessProfileRes;
-  "secretary/systems": { items?: NavSystemRow[] };
+  "secretary/systems": { items?: NavSystemRow[]; order?: string[] };
 };
 type PostMap = {
   // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)
-  "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string }; attachments?: AttachRef[] }; res: { roomId: string; conversationId?: string; status?: string } };
+  // Lekaa FAB ▸ pageContext = หน้าที่ผู้ใช้เปิดอยู่ตอนเปิดแผ่น Lekaa (ส่งเงียบ ๆ · เซิร์ฟเวอร์ตรวจสิทธิ์/อ่านป้ายใหม่เอง)
+  "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string }; attachments?: AttachRef[]; pageContext?: PageContext }; res: { roomId: string; conversationId?: string; status?: string } };
   "secretary/scheduled": { body: ScheduleBody; res: { id: string } };
   "secretary/support/cases": { body: HelpOpenBody; res: { id: string; caseNo: number; caseNoText?: string } };
   "secretary/tenants/create": { body: { name: string; type: string; systems: string[] }; res: TenantCreateRes };
@@ -287,6 +292,7 @@ type GetIdMap = {
 type PostIdMap = {
   "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string; attachments?: AttachRef[] }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
   "secretary/rooms/[id]/close": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/rooms/[id]/page-context": { body: { answer: "yes" | "no" }; res: { ok: boolean; state?: string } };
   "secretary/proposals/[id]/approve": { body: { confirm2x?: boolean }; res: ApproveRes };
   "secretary/proposals/[id]/reject": { body: RejectBody; res: { ok: boolean; memoryId?: string } };
   "secretary/proposals/[id]/edit": { body: { patch: Record<string, unknown> }; res: { ok: boolean; input?: Record<string, unknown> | null } };
@@ -302,7 +308,7 @@ type PostIdMap = {
   "secretary/staff/[id]/suspend": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/staff/[id]/remove": { body: Record<string, never>; res: { ok: boolean } };
 };
-type DeleteIdMap = { "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean }; "secretary/scheduled/[id]": { ok: boolean } };
+type DeleteIdMap = { "secretary/rooms/[id]": { ok: boolean }; "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean }; "secretary/scheduled/[id]": { ok: boolean } };
 
 function urlId(path: SecIdPath, id: string, q?: Query): string {
   const base = PATH_ID[path].replace("[id]", encodeURIComponent(id));
@@ -630,7 +636,20 @@ export type RoomDetail = {
   reminders: CalItemDto[];
   /** B1 (cal-review-b · สัญญา §15.2): การ์ดปฏิทินของผู้เรียกในห้องนี้ (เลขาไม่ทวนรายการส่วนตัวในข้อความ · แอปดึงรายละเอียดเอง) · คนอื่นในห้อง = [] */
   calendarCards: { id: string; kind: "AGENDA" | "LIST" | "TRAVEL"; fromDay: string; toDay: string; createdAt: string; pairKey?: string }[];
+  /** Lekaa FAB ▸ หน้าที่เปิดอยู่ตอนสั่ง: ป้าย · สถานะ (ASKED = การ์ดถามใต้ข้อความ askId) · ข้อความเลขาที่อ้าง (refIds → ชิป 📍) · null = ไม่มี */
+  pageContext: RoomPageContext | null;
 };
+export type RoomPageContext = { label: string; state: "PENDING" | "ASKED" | "CONFIRMED" | "REJECTED"; askId: string | null; refIds: string[]; entityType: string | null };
+/** Lekaa FAB ▸ หน้าที่ผู้ใช้เปิดอยู่ (จอ native = route + รหัส · หน้าระบบ WebView = ข้อความ page-context ของเว็บ) — label เป็นแค่คำใบ้ */
+export type PageContext = { system?: string; systemId?: string; path?: string; title?: string; route?: string; entity?: { type: string; id: string; label?: string } };
+function pageContextOf(v: unknown): RoomPageContext | null {
+  const o = rec(v);
+  const label = str(o.label);
+  if (!label) return null;
+  const st = str(o.state).toUpperCase();
+  const state = st === "ASKED" || st === "CONFIRMED" || st === "REJECTED" ? st : "PENDING";
+  return { label, state, askId: str(o.askId) || null, refIds: (Array.isArray(o.refIds) ? o.refIds : []).filter((x): x is string => typeof x === "string"), entityType: str(o.entityType) || null };
+}
 export function normalizeRoomDetail(v: unknown): RoomDetail {
   const o = rec(rec(v).room ?? v);
   const raw = str(o.status).toUpperCase();
@@ -644,6 +663,7 @@ export function normalizeRoomDetail(v: unknown): RoomDetail {
     updatedAt: isoOf(o.updatedAt),
     closed: !!o.closedAt || raw === "CLOSED",
     canManage: o.canManage === true,
+    pageContext: o.pageContext ? pageContextOf(o.pageContext) : null,
     members: (Array.isArray(o.members) ? o.members : [])
       .map((m) => rec(m))
       .filter((m) => str(m.userId))
@@ -981,6 +1001,7 @@ type PutMap = {
   "secretary/rules": { body: { key: RuleKey; enabled?: boolean; limitSatang?: number | null }; res: RulesView };
   "secretary/after-hours": { body: Partial<AfterHours>; res: AfterHours };
   "secretary/notify": { body: { kind: NotifyKind; mode: NotifyMode }; res: { prefs?: Partial<Record<string, string>>; scope?: string } };
+  "secretary/systems/order": { body: { keys: string[] }; res: { order?: string[] } };
 };
 /** บันทึกตัวตนเลขา (PUT secretary · ระดับผู้ใช้ — B2 + C1) */
 export function updateSecretary(body: PutMap["secretary"]["body"]): Promise<SecretaryIdentity> {
@@ -1017,6 +1038,8 @@ export type InboxRow = {
   kind: string;
   module: string;
   canApprove: boolean;
+  /** Lekaa FAB ▸ อ่านห้องได้ไหม (ผู้สั่ง/สมาชิก) — false = ผู้อนุมัติเห็นแค่รายการ แตะแล้วไม่เปิดห้อง · เซิร์ฟเวอร์เก่าไม่ส่ง = true */
+  canOpenRoom: boolean;
   /** เหตุผลที่ต้องอนุมัติจากเซิร์ฟเวอร์ (มีเมื่อ canApprove) — ไม่มี = ไม่แสดง */
   why: string | null;
   cls: InboxClass;
@@ -1063,6 +1086,7 @@ export function normalizeInbox(v: unknown): InboxRow[] {
         kind,
         module: moduleOfKind(kind),
         canApprove: o.canApprove === true,
+        canOpenRoom: o.canOpenRoom !== false,
         why: whyOf(o.why),
         cls: inboxClassOf(kind, risk, o.class ?? o.classes),
         createdAt: isoOf(o.createdAt),

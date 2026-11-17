@@ -4,6 +4,7 @@
 //    (ยกเว้น `input` ของ kind ที่แก้ก่อนอนุมัติได้ — ข้อมูลที่ผู้อนุมัติต้องเห็นเพื่อแก้) · เวลาเป็น ISO (Response.json แปลง Date เอง) · เงินเป็นสตางค์
 // route (`src/app/api/mobile/secretary/**`) และ server actions (`./server-actions.ts`) ใช้ตัวเดียวกัน — รูปเดียวทั้งแอปและเว็บ
 import { attachmentsOf } from "./attachments-shared";
+import { pageContextDto } from "./page-context";
 import type { AiActionLog, AiLesson, AiMessage, AiPlan, AiProposal, AiScheduledTask } from "@prisma/client";
 import { classOfKind } from "./kind-class";
 import { FREE_PACK } from "./pack";
@@ -56,7 +57,7 @@ export function memberDto(m: RoomMemberRow) {
 
 /** ห้องเดียว — contextJson ส่งเฉพาะรหัสห้องลูกค้า/ผู้ติดต่อ (ids) */
 export function roomDto(
-  r: { id: string; conversationId: string; title: string; startedById: string; systems: string[]; contextJson: unknown; closedAt: Date | null; createdAt: Date; updatedAt: Date; status: RoomStatus; members: RoomMemberRow[] },
+  r: { id: string; conversationId: string; title: string; startedById: string; systems: string[]; contextJson: unknown; pageContext?: unknown; closedAt: Date | null; createdAt: Date; updatedAt: Date; status: RoomStatus; members: RoomMemberRow[] },
   viewer: { userId: string; role: string },
 ) {
   const c = obj(r.contextJson);
@@ -64,7 +65,8 @@ export function roomDto(
     typeof c.chatConversationId === "string"
       ? { chatConversationId: c.chatConversationId, ...(typeof c.contactId === "string" ? { contactId: c.contactId } : {}) }
       : null;
-  const manage = viewer.role === "OWNER" || viewer.userId === r.startedById;
+  void viewer.role; // Lekaa FAB: ผู้ดูแลห้อง = ผู้เปิดห้องเท่านั้น (ไม่ใช่ OWNER ทุกห้องแล้ว)
+  const manage = viewer.userId === r.startedById;
   return {
     id: r.id,
     conversationId: r.conversationId,
@@ -75,6 +77,10 @@ export function roomDto(
     context,
     members: r.members.map(memberDto),
     canManage: manage,
+    /** Lekaa FAB ▸ ชวนคนเข้าห้องไม่ได้แล้ว (แอปซ่อนปุ่มเพิ่มคน) */
+    canAddMembers: false,
+    /** Lekaa FAB ▸ หน้าที่เปิดอยู่ตอนสั่ง (ป้าย · สถานะ · ข้อความที่อ้าง/ถาม) — null = ไม่มี */
+    pageContext: pageContextDto(r.pageContext),
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     closedAt: r.closedAt,
@@ -220,6 +226,7 @@ export function inboxItemDto(i: InboxItem) {
     classes: classesOf(i.kind ? [i.kind] : (i.kinds ?? [])),
     ...(i.risk ? { risk: i.risk } : {}),
     canApprove: i.canApprove,
+    canOpenRoom: i.canOpenRoom, // Lekaa FAB: false = ผู้อนุมัติไม่ได้อ่านห้อง (แอปไม่เปิดห้อง)
     ...(i.why ? { why: i.why } : {}),
     createdAt: i.createdAt,
     expiresAt: i.expiresAt,

@@ -89,3 +89,48 @@ export async function setUserPreferences(
   await prisma.user.update({ where: { id: userId }, data: { prefs: next } });
   return parsePreferences(next);
 }
+
+// ─────────────────────────────────────────────────────────────
+// แถบบนแอปเลขา (เจ้าของอนุมัติแบบ topbar2 · 17 พ.ย.) — ลำดับไอคอนระบบ "ต่อคน ต่อร้าน"
+//   เก็บที่ prefs.secSystemOrder = { [tenantId]: string[] } (คีย์ของ navSystems + "home") · ไม่มีไมเกรชัน (ใช้ User.prefs เดิม)
+//   เจ้าของ/พนักงานแต่ละคนมีลำดับของตัวเอง · ลบแอปติดตั้งใหม่ยังอยู่ · เมนูเว็บไม่อ่านค่านี้ (ลำดับเว็บไม่เปลี่ยน)
+//   🔴 เขียนด้วย UPDATE เดียวแบบ jsonb (ไม่อ่าน-แล้ว-เขียนทั้งก้อน) — คีย์อื่นใน prefs และร้านอื่นของคนเดียวกันไม่ถูกทับ
+//   ไม่อยู่ใน UserPreferences (หน้าตั้งค่าเว็บไม่ต้องรู้จัก) · ค่าพังรูป = [] (ใช้ลำดับทะเบียน)
+// ─────────────────────────────────────────────────────────────
+export const SYSTEM_ORDER_MAX = 200;
+const ORDER_KEY_RE = /^[A-Za-z0-9_:-]{1,80}$/;
+
+/** ลำดับที่บันทึกของร้านนี้จาก prefs ดิบ (pure) — ไม่ใช่ array/คีย์แปลก = ตัดทิ้ง · ซ้ำ = ตัวแรก */
+export function parseSystemOrder(raw: unknown, tenantId: string): string[] {
+  const src = raw !== null && typeof raw === "object" && !Array.isArray(raw) ? (raw as Record<string, unknown>) : {};
+  const all = src.secSystemOrder !== null && typeof src.secSystemOrder === "object" && !Array.isArray(src.secSystemOrder) ? (src.secSystemOrder as Record<string, unknown>) : {};
+  const list = all[tenantId];
+  if (!Array.isArray(list)) return [];
+  const out: string[] = [];
+  for (const k of list) if (typeof k === "string" && ORDER_KEY_RE.test(k) && !out.includes(k)) out.push(k);
+  return out.slice(0, SYSTEM_ORDER_MAX);
+}
+
+export async function getSystemOrder(userId: string, tenantId: string): Promise<string[]> {
+  if (!userId || !tenantId) return [];
+  const row = await prisma.user.findUnique({ where: { id: userId }, select: { prefs: true } });
+  return parseSystemOrder(row?.prefs ?? null, tenantId);
+}
+
+/** บันทึกลำดับของร้านนี้ (แทนที่ทั้งรายการของร้านนี้เท่านั้น) — ผู้เรียกกรองคีย์ให้เหลือของร้านนี้ก่อน */
+export async function setSystemOrder(userId: string, tenantId: string, keys: readonly string[]): Promise<string[]> {
+  const clean: string[] = [];
+  for (const k of keys) if (ORDER_KEY_RE.test(k) && !clean.includes(k)) clean.push(k);
+  const list = JSON.stringify(clean.slice(0, SYSTEM_ORDER_MAX));
+  await prisma.$executeRaw`
+    UPDATE "User" SET
+      "prefs" = jsonb_set(
+        CASE WHEN jsonb_typeof("prefs") = 'object' THEN "prefs" ELSE '{}'::jsonb END,
+        '{secSystemOrder}',
+        (CASE WHEN jsonb_typeof("prefs"->'secSystemOrder') = 'object' THEN "prefs"->'secSystemOrder' ELSE '{}'::jsonb END)
+          || jsonb_build_object(${tenantId}::text, ${list}::jsonb),
+        true),
+      "updatedAt" = NOW()
+    WHERE "id" = ${userId}`;
+  return JSON.parse(list) as string[];
+}

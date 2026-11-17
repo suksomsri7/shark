@@ -14,30 +14,44 @@
 //   zone="calendar" = จอปฏิทิน (ปุ่มปฏิทินทึบสี accent แบบเดียวกับเลขา) · ช่องปุ่มซ้ายแคบลงเป็น 6 (จอ ≥ 375 ไม่ล้น)
 // S2.14 badge 3 ไอคอนจาก `GET secretary/badges` เส้นเดียว: เลขา = approvals (กิจการนี้) · ลูกค้า = customers (ห้องที่ยังไม่อ่าน) ·
 //   ทีม = team.invites + team.help + team.support · โหลดที่ layout ของโซน (focus/foreground) + หลัง action (scheduleZoneBadges) · ปุ่ม ? ทุกจอที่มีแถบนี้
-import { Image, Pressable, StyleSheet, View, useWindowDimensions } from "react-native";
+// 17 พ.ย. (เจ้าของอนุมัติแบบ topbar2 · /root/mockups/topbar-systems): แถบบน = ทุกระบบที่ร้านเปิด + แผ่นดึงลงแทนชีตล่าง
+//   ซ้าย = ไอคอนกิจการ (อยู่กับที่ ไม่เลื่อน) · ถัดไป = แถบเลื่อนแนวนอนแถวเดียว (ไม่มีแถบเลื่อน): [ทีม][ปฏิทิน] (คงที่ ลำดับเดิม badge เดิม)
+//     → ไอคอนกลม 1 ปุ่มต่อ 1 ระบบที่เปิด (ชุดเดียวกับตารางในแผ่น รวม "หน้าหลัก" · ลำดับที่ผู้ใช้จัดเอง ต่อคน ต่อร้าน) → [?] ท้ายสุด
+//     ยาวเกินจอ = ขอบขวาจาง (เลื่อนแล้ว = ขอบซ้ายจางด้วย) · ปุ่ม + ของโซน (ถ้าจอนั้นมี) อยู่กับที่ทางขวานอกแถบเลื่อน
+//   ไอคอนระบบ = สีของระบบนั้น (ธีม c.navSys · สว่าง/มืด) · ระบบที่เปิดอยู่ = วงกลมทึบเข้มไอคอนขาว (แบบเดียวกับโซนที่ active) · แชทลูกค้าคง badge ยังไม่อ่าน
+//     แตะ = เหมือนแตะช่องเดียวกันในตาราง (ระบบเว็บ = หน้าระบบ "/" ?open= · แชทลูกค้าที่อ่านได้ = จอ native /customers)
+//     "เปิดอยู่": หน้าระบบ (zone="systems") = ช่องที่ href ตรงพาธเว็บ (`activePath` จากข้อความ page-context) · โซนลูกค้า = ระบบแชทช่องแรก
+//   แตะไอคอนกิจการ หรือ "ลากแถบบนลง" = แผ่นดึงลงจากขอบบน (BusinessSwitcherSheet · แถบนี้ยังเห็นอยู่บนแผ่น) · ลำดับ/รายการระบบอ่านจาก store กลาง ./navSystems
+//   (ลากจัดลำดับในแผ่น = แถบนี้เรียงตามทันที) · badge ทุกปุ่มบนแถบ = แดง (แบบ topbar2 · เดิมทีม = ส้ม) · testID เดิม sec-top-* คงไว้ · ใหม่: sec-top-strip · sec-top-sys-<key> · sec-top-fade-l/-r
+import { useCallback, useMemo, useRef, useState } from "react";
+import { Image, Pressable, StyleSheet, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { useRouter } from "expo-router";
+import { Gesture, GestureDetector, ScrollView } from "react-native-gesture-handler";
+import { scheduleOnRN } from "react-native-worklets";
 import { Text } from "@/src/components/ui/text";
-import { Icon, IconBtn, TopBar, type IconName } from "@/src/components/airy";
+import { Icon, IconBtn, type IconName } from "@/src/components/airy";
 import { useAuth } from "@/src/lib/auth-context";
 import { useCustomersAccess, useZoneBadgeCounts } from "@/src/api/secretary";
 import { useT, type I18nKey } from "@/src/i18n";
-import { F, useTheme, type ZoneKey } from "@/src/theme/index";
+import { F, bgImage, linear, shadow, useTheme, zoneColor, type ZoneKey } from "@/src/theme/index";
 import { size, type as T } from "@/src/theme/tokens";
 import { useBusinessSwitcher } from "./BusinessSwitcherSheet";
+import { activeTileKey, useNavTiles, type NavTile } from "./navSystems";
+import { useOpenSystem } from "./openSystem";
+// 15 พ.ย. (เจ้าของอนุมัติแบบ fab6 · Lekaa FAB): ถอดไอคอนเลขา (คน) ⇒ แถบ = [กิจการ][ทีม][ปฏิทิน][?] · สั่งงานใหม่/รายการงาน = ปุ่มลอย Lekaa (ไม่มี + ของโซนเลขาแล้ว)
 import { useCalSheet } from "@/src/components/calendar/AddCalSheet";
 
 export type SecZone = ZoneKey | "systems" | "calendar"; // "secretary" | "customers" | "team" | "systems" (หน้าระบบ WebView · ไม่มีปุ่มโซนใดทึบ) | "calendar" (CAL2.1)
 export type ZoneBadges = { secretary?: number; customers?: number; team?: number; calendar?: number };
 
 const ZONES: { zone: ZoneKey | "calendar"; icon: IconName; path: string; label: I18nKey }[] = [
-  { zone: "secretary", icon: "user", path: "/secretary", label: "sec.zone.secretary" },
   { zone: "team", icon: "users", path: "/secretary/staff", label: "sec.zone.team" },
   { zone: "calendar", icon: "calendar", path: "/secretary/calendar", label: "cal.zone" },
 ];
 
 /** ปุ่ม + ของแต่ละโซน (ลูกค้า/ระบบ = ไม่มี) */
 const PLUS: Record<SecZone, { path: string; label: I18nKey } | null> = {
-  secretary: { path: "/secretary/new", label: "sec.top.new" },
+  secretary: null, // Lekaa FAB: งานใหม่เข้าจากแผ่น Lekaa
   customers: null,
   systems: null,
   calendar: { path: "/secretary/calendar", label: "cal.plus.cal" },
@@ -50,20 +64,11 @@ export function badgeText(n: number | undefined): string | null {
   return n > 99 ? "99+" : String(Math.floor(n));
 }
 
-export function SecTopBar({
-  zone,
-  badges,
-  center = "tenant",
-  testID = "sec-top",
-  showPlus = true,
-  helpOn = false,
-  onPlus,
-  plusLabel,
-}: {
+export type SecTopBarProps = {
   zone: SecZone;
   /** ใส่มา = ใช้ค่านี้ (ไม่ดึงเอง) */
   badges?: ZoneBadges;
-  /** "tenant" = ชื่อกิจการแตะได้ · "none" = ว่าง */
+  /** เดิม: "tenant" = ชื่อกิจการกลางแถบ — topbar2 ไม่มีที่ว่างกลางแถบแล้ว (แถบเลื่อนเต็มกว้าง) ค่านี้ไม่มีผล คงไว้ให้จอเดิมคอมไพล์ได้ */
   center?: "tenant" | "none";
   testID?: string;
   /** false = ซ่อนปุ่ม + ของโซน (เช่น STAFF ในโซนทีม = อ่านอย่างเดียว · S2.10) */
@@ -73,7 +78,14 @@ export function SecTopBar({
   /** help-cases (15 พ.ย.): ปุ่ม + ของจอนั้นเอง (จอช่วยเหลือ = แจ้งปัญหาใหม่) — ใส่มา = แทนเส้นทางของโซน */
   onPlus?: () => void;
   plusLabel?: I18nKey;
-}) {
+  /** topbar2: พาธเว็บของหน้าระบบที่เปิดอยู่ (zone="systems") — ไฮไลต์ไอคอนระบบนั้น */
+  activePath?: string | null;
+  /** ภายใน: สำเนาแถบที่วาดบนแผ่นดึงลง (แตะไอคอนกิจการ = ปิดแผ่น · ไม่มีท่าลากลง) */
+  inPanel?: boolean;
+};
+
+export function SecTopBar(props: SecTopBarProps) {
+  const { zone, badges, testID = "sec-top", showPlus = true, helpOn = false, onPlus, plusLabel, activePath, inPanel = false } = props;
   const { c } = useTheme();
   const t = useT();
   const router = useRouter();
@@ -81,58 +93,133 @@ export function SecTopBar({
   const calSheet = useCalSheet(); // CAL2.6: + ของโซนเลขา = แผ่นเลือก (สั่งงาน / เพิ่มเตือน/นัด) · โซนปฏิทิน = แผ่นเพิ่มเตือนตรง · นอก Host = เส้นเดิม
   const shared = useZoneBadgeCounts(); // R-S2.1e: store กลาง (โหลดที่ layout ของโซน) ไม่ยิงต่อ mount
   const counts = badges ?? shared;
-  // CAL2.1: 6 ปุ่มซ้าย × 44 + ช่อง 5 ช่อง + ปุ่ม + ขวา 44: ช่อง 6 = 338 ≤ 390 − 36 · จอแคบกว่า 360 ช่อง 2 (iPhone รุ่นเล็กสุดที่รองรับ = 375)
-  const narrow = useWindowDimensions().width < 360;
   const plus = !showPlus ? null : onPlus ? { path: "", label: plusLabel ?? PLUS[zone]?.label ?? "sec.top.new" } : PLUS[zone];
   // S2.17: ไม่มีสิทธิ์ดูแชทลูกค้า (inbox 403) ⇒ ไม่มีไอคอน "ลูกค้า" ทุกโซน (จอ /customers แสดง "ไม่มีสิทธิ์" เอง)
   const custOk = useCustomersAccess();
   const zones = custOk ? ZONES : ZONES.filter((z) => z.zone !== "customers");
+  const { tiles } = useNavTiles();
+  const openSystem = useOpenSystem();
+  const activeKey = helpOn
+    ? null
+    : zone === "systems"
+      ? activeTileKey(tiles, activePath)
+      : zone === "customers"
+        ? (tiles.find((x) => x.code === "CHAT")?.key ?? null)
+        : null;
+
+  // ── เปิดแผ่น: แตะไอคอนกิจการ / ลากแถบลง — ส่งตำแหน่งแถบ (วางสำเนาบนแผ่นตรงที่เดิม) + props ของแถบ ──
+  const rowRef = useRef<View>(null);
+  const measure = useCallback((cb: (r: { x: number; y: number; w: number; h: number }) => void) => {
+    const v = rowRef.current;
+    if (!v) return cb({ x: 0, y: 0, w: 0, h: 0 });
+    v.measureInWindow((x, y, w, h) => cb({ x, y, w, h }));
+  }, []);
+  const panelOpts = useMemo(() => ({ bar: { ...props, inPanel: true }, measure }), [props, measure]);
+  const openPanel = useCallback(() => (inPanel ? switcher.close() : switcher.open(panelOpts)), [inPanel, switcher, panelOpts]);
+  const beginDrag = useCallback(() => switcher.begin(panelOpts), [switcher, panelOpts]);
+  const drag = switcher.drag;
+  const pan = useMemo(() => {
+    const g = Gesture.Pan().activeOffsetY(12).failOffsetX([-14, 14]).enabled(!!drag && !inPanel);
+    if (!drag) return g;
+    const { progress, travel, settle } = drag;
+    return g
+      .onStart(() => {
+        scheduleOnRN(beginDrag);
+      })
+      .onUpdate((e) => {
+        progress.value = Math.min(1, Math.max(0, e.translationY / Math.max(1, travel.value)));
+      })
+      .onEnd((e) => {
+        scheduleOnRN(settle, progress.value > 0.35 || e.velocityY > 700);
+      });
+  }, [drag, inPanel, beginDrag]);
+
+  // ── ขอบจางของแถบเลื่อน ──
+  const [box, setBox] = useState({ w: 0, cw: 0, x: 0 });
+  const onScroll = (e: NativeSyntheticEvent<NativeScrollEvent>) => {
+    const x = e.nativeEvent.contentOffset.x;
+    setBox((b) => (Math.abs(b.x - x) < 1 ? b : { ...b, x }));
+  };
+  const fadeL = box.x > 1;
+  const fadeR = box.cw > box.w + 1 && box.x < box.cw - box.w - 1;
+
+  const sysBtn = (x: NavTile) => {
+    const on = x.key === activeKey;
+    const n = badgeText(x.badge);
+    return (
+      <View key={x.key} style={styles.slot}>
+        <StripBtn
+          testID={`sec-top-sys-${x.key}`}
+          icon={x.icon}
+          color={x.fg}
+          on={on}
+          label={n ? `${x.label} · ${t("sec.sheet.unread", { n: x.badge })}` : x.label}
+          onPress={() => openSystem(x.href, x.code)}
+        />
+        {n ? (
+          <View testID={`sec-top-sys-${x.key}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
+            <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
+          </View>
+        ) : null}
+      </View>
+    );
+  };
 
   return (
-    <TopBar
-      testID={testID}
-      left={
-        <View style={[styles.left, narrow && styles.leftNarrow]}>
-        <BizIcon testID="sec-top-biz" onPress={() => switcher.open()} />
-        {zones.map((z) => {
-        const n = badgeText(counts[z.zone]);
-        if (z.zone === "calendar") {
-          const on = !helpOn && zone === "calendar";
-          return (
-            <View key="calendar" style={styles.slot}>
-              <IconBtn testID="sec-top-calendar" icon="calendar" zone="secretary" on={on} label={t("cal.zone")} onPress={() => router.navigate("/secretary/calendar")} />
-              {n ? (
-                <View testID="sec-top-calendar-badge" pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
-                  <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
+    <GestureDetector gesture={pan}>
+      <View ref={rowRef} testID={testID} style={styles.bar} collapsable={false}>
+        <BizIcon testID="sec-top-biz" onPress={openPanel} />
+        <View style={styles.stripBox} onLayout={(e: LayoutChangeEvent) => setBox((b) => ({ ...b, w: e.nativeEvent.layout.width }))}>
+          <ScrollView
+            testID="sec-top-strip"
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            onScroll={onScroll}
+            scrollEventThrottle={32}
+            onContentSizeChange={(w) => setBox((b) => ({ ...b, cw: w }))}
+            contentContainerStyle={styles.strip}
+            accessibilityLabel={t("sec.top.systems")}
+          >
+            {zones.map((z) => {
+              const n = badgeText(counts[z.zone]);
+              if (z.zone === "calendar") {
+                const on = !helpOn && zone === "calendar";
+                return (
+                  <View key="calendar" style={styles.slot}>
+                    <StripBtn testID="sec-top-calendar" icon="calendar" on={on} label={t("cal.zone")} onPress={() => router.navigate("/secretary/calendar")} />
+                    {n ? (
+                      <View testID="sec-top-calendar-badge" pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
+                        <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                );
+              }
+              return (
+                <View key={z.zone} style={styles.slot}>
+                  <StripBtn
+                    testID={`sec-top-${z.zone}`}
+                    icon={z.icon}
+                    onBg={zoneColor(c, z.zone as ZoneKey)}
+                    on={!helpOn && z.zone === zone}
+                    label={t(z.label)}
+                    onPress={() => router.navigate(z.path)}
+                  />
+                  {n ? (
+                    <View testID={`sec-top-${z.zone}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
+                      <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
+                    </View>
+                  ) : null}
                 </View>
-              ) : null}
-            </View>
-          );
-        }
-        return (
-          <View key={z.zone} style={styles.slot}>
-            <IconBtn
-              testID={`sec-top-${z.zone}`}
-              icon={z.icon}
-              zone={z.zone as ZoneKey}
-              on={!helpOn && z.zone === zone}
-              label={t(z.label)}
-              onPress={() => router.navigate(z.path)}
-            />
-            {n ? (
-              <View testID={`sec-top-${z.zone}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.status.wait, borderColor: c.surface }]}>
-                <Text style={[styles.badgeT, { color: c.zone.onZone }]}>{n}</Text>
-              </View>
-            ) : null}
-          </View>
-        );
-      })}
-        <IconBtn testID="sec-top-help" icon="help-circle" on={helpOn} label={t("sec.top.help")} onPress={helpOn ? undefined : () => router.push("/secretary/help")} />
+              );
+            })}
+            {tiles.map(sysBtn)}
+            <StripBtn testID="sec-top-help" icon="help-circle" on={helpOn} label={t("sec.top.help")} onPress={helpOn ? undefined : () => router.push("/secretary/help")} />
+          </ScrollView>
+          {fadeL ? <View testID="sec-top-fade-l" pointerEvents="none" style={[styles.fade, styles.fadeL, bgImage(inPanel ? linear(c.topPanel.panelFade, c.topPanel.bg, 270) : linear(c.topPanel.fade, c.topPanel.fadeTo, 270))]} /> : null}
+          {fadeR ? <View testID="sec-top-fade-r" pointerEvents="none" style={[styles.fade, styles.fadeR, bgImage(inPanel ? linear(c.topPanel.panelFade, c.topPanel.bg, 90) : linear(c.topPanel.fade, c.topPanel.fadeTo, 90))]} /> : null}
         </View>
-      }
-      center={center === "tenant" ? <TenantTitle onPress={() => switcher.open()} /> : undefined}
-      right={
-        plus ? (
+        {plus ? (
           <IconBtn
             testID="sec-top-new"
             icon="plus"
@@ -144,19 +231,38 @@ export function SecTopBar({
               else if (zone !== "calendar") router.push(plus.path);
             }}
           />
-        ) : undefined
-      }
-    />
+        ) : null}
+      </View>
+    </GestureDetector>
+  );
+}
+
+/** ปุ่มกลมบนแถบเลื่อน (แบบ topbar2 .btn): พื้นขาวเงาบาง (เงากระจกเดิมฟุ้ง 30px โดนขอบแถบเลื่อนตัดเป็นแผ่นเทา) · `on` = ทึบเข้ม (หรือสีโซน) ไอคอนขาว */
+function StripBtn({ testID, icon, color, on = false, onBg, label, onPress }: { testID: string; icon: IconName; color?: string; on?: boolean; onBg?: string; label: string; onPress?: () => void }) {
+  const { c } = useTheme();
+  const bg = onBg ?? c.accent;
+  return (
+    <Pressable
+      testID={testID}
+      accessibilityRole="button"
+      accessibilityLabel={label}
+      accessibilityState={{ selected: on }}
+      hitSlop={4}
+      onPress={onPress}
+      style={[styles.btn, { backgroundColor: on ? bg : c.topPanel.btn }, shadow(c.topPanel.btnShadow)]}
+    >
+      <Icon name={icon} color={on ? (onBg ? c.zone.onZone : c.onAccent) : (color ?? c.icon)} />
+    </Pressable>
   );
 }
 
 /** สีพื้นไอคอนกิจการ: สีแบรนด์ของร้าน (branding.accent) · ไม่มี = เลือกจากชุดสีตามชื่อ (คงที่ต่อร้าน) */
-const BIZ_COLORS = ["#1E7A8F", "#E07A1F", "#5B5FD6", "#2F9E5B", "#C2456B", "#8A5CD1", "#B8860B", "#3A7BD5"];
-export function bizColor(name: string, accent?: string | null): string {
+//   ชุดสี = ธีม c.biz.palette (17 พ.ย. ย้ายออกจากไฟล์นี้ · ค่าเดิม)
+export function bizColor(name: string, accent: string | null | undefined, palette: readonly string[]): string {
   if (accent) return accent;
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return BIZ_COLORS[h % BIZ_COLORS.length];
+  return palette[h % palette.length] ?? palette[0] ?? "";
 }
 /** ตัวย่อ 2 ตัว: หลายคำ = อักษรแรกของ 2 คำแรก ("SIAM DIVE CENTER" → SD) · คำเดียว = 2 ตัวแรก ("GoodFood" → GO) */
 export function bizInitials(name: string): string {
@@ -177,8 +283,8 @@ export function BizIcon({ tenantId, onPress, testID, sz = size.iconBtn, chevron 
   const row = tenants.find((x) => x.tenantId === (tenantId ?? activeTenantId));
   const name = row?.name ?? t("sec.tenant.fallback");
   const logo = row?.branding?.logoUrl ?? row?.logoUrl ?? null; // ธีมมือถือก่อน · ปิดธีม = โลโก้ร้านจาก /me (ตั้งค่ากิจการ)
-  const bg = bizColor(name, row?.branding?.accent);
-  const fg = row?.branding?.accentFg ?? "#FFFFFF";
+  const bg = bizColor(name, row?.branding?.accent, c.biz.palette);
+  const fg = row?.branding?.accentFg ?? c.biz.fg;
   const box = { width: sz, height: sz, borderRadius: sz / 2 };
   const body = (
     <View style={[styles.biz, box, { backgroundColor: logo ? c.surface : bg }]}>
@@ -190,7 +296,7 @@ export function BizIcon({ tenantId, onPress, testID, sz = size.iconBtn, chevron 
     <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={`${name} · ${t("sec.top.switch")}`} onPress={onPress} style={{ width: sz, height: sz }}>
       {body}
       {chevron ? (
-        <View pointerEvents="none" style={[styles.bizChev, { backgroundColor: c.surface }]}>
+        <View pointerEvents="none" style={[styles.bizChev, { backgroundColor: c.surface, shadowColor: c.biz.chevShadow }]}>
           <Icon name="chevron-down" size={11} color={c.text} />
         </View>
       ) : null}
@@ -222,12 +328,18 @@ export function TenantTitle({ onPress, big = false, testID }: { onPress?: () => 
 }
 
 const styles = StyleSheet.create({
+  // topbar2: [กิจการ] + แถบเลื่อน (ปุ่มกลม 44 ห่าง 6 · แบบ .btn/.in gap 6) + [+] · ขอบจาง 34
+  bar: { height: 52, flexDirection: "row", alignItems: "center", gap: 6 },
+  stripBox: { flex: 1, minWidth: 0, alignSelf: "stretch", justifyContent: "center", marginVertical: -8 },
+  strip: { flexDirection: "row", alignItems: "center", gap: 6, paddingVertical: 12, paddingRight: 4, paddingLeft: 2 },
   slot: { width: size.iconBtn, height: size.iconBtn },
-  left: { flexDirection: "row", alignItems: "center", gap: 6 },
-  leftNarrow: { gap: 2 },
+  btn: { width: size.iconBtn, height: size.iconBtn, borderRadius: size.iconBtn / 2, alignItems: "center", justifyContent: "center" },
+  fade: { position: "absolute", top: 0, bottom: 0, width: 34 },
+  fadeL: { left: 0 },
+  fadeR: { right: 0 },
   biz: { alignItems: "center", justifyContent: "center", overflow: "hidden" },
   bizT: { fontWeight: "800", letterSpacing: 0.3 },
-  bizChev: { position: "absolute", right: -3, bottom: -3, width: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  bizChev: { position: "absolute", right: -3, bottom: -3, width: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   badge: { position: "absolute", top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, borderWidth: 1.5, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
   badgeT: { fontSize: 10.5, fontWeight: "700", lineHeight: 13 },
   tenant: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%" },

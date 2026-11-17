@@ -10,6 +10,7 @@ import { NavRail, isRailPath } from "./NavRail";
 import { SwipeEdge } from "./SwipeEdge";
 import { IssueReportSheet } from "./IssueReportSheet";
 import { useInApp, useNativeTopBar } from "./use-in-app";
+import { entityFromPath, PAGE_ENTITY_EVENT, systemFromPath, type PageContextMsg, type PageEntity } from "@/lib/ui/page-context";
 import { loadNavBadgesAction } from "@/lib/support/actions";
 import { setNavCollapsedAction } from "@/lib/core/preferences-actions";
 
@@ -129,6 +130,29 @@ export function AppShell({
       JSON.stringify({ ev: "chat-fullscreen", on: chatFullscreen }),
     );
   }, [chatFullscreen]);
+
+  // Lekaa FAB (15 พ.ย.) ▸ บอกแอปว่าผู้ใช้อยู่หน้าไหน {ev:"page-context", system, systemId, path, title, entity?} ทุกครั้งที่เปลี่ยนหน้า
+  //   (เฉพาะในแอป · ฝั่งรับ apps/mobile/app/(app)/index.tsx → ปุ่ม Lekaa ส่งไปกับคำสั่งแรก · เซิร์ฟเวอร์อ่าน entity ใหม่ด้วยสิทธิ์ผู้สั่ง)
+  //   entity จากพาธ (entityFromPath) หรือจากหน้าที่ลงทะเบียนเอง (usePageEntity → "app:page-entity") ◂
+  const [pageEntity, setPageEntity] = useState<PageEntity | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setPageEntity(((e as CustomEvent).detail as PageEntity | null) ?? null);
+    window.addEventListener(PAGE_ENTITY_EVENT, on);
+    return () => window.removeEventListener(PAGE_ENTITY_EVENT, on);
+  }, []);
+  const search = searchParams.toString();
+  useEffect(() => {
+    if (!inApp) return;
+    const rn = (window as { ReactNativeWebView?: { postMessage: (s: string) => void } }).ReactNativeWebView;
+    if (!rn) return;
+    // รอชื่อหน้า (document.title) ของหน้าใหม่ตั้งเสร็จก่อนส่ง
+    const h = setTimeout(() => {
+      const entity = pageEntity ?? entityFromPath(pathname, search ? `?${search}` : "");
+      const msg: PageContextMsg = { ev: "page-context", ...systemFromPath(pathname), path: search ? `${pathname}?${search}` : pathname, title: document.title.slice(0, 120), ...(entity ? { entity } : {}) };
+      rn.postMessage(JSON.stringify(msg));
+    }, 300);
+    return () => clearTimeout(h);
+  }, [inApp, pathname, search, pageEntity]);
 
   // 🔴 สัญญาข้ามชั้น: โมดูลแชทห้าม import จาก app-shell และ shell ห้าม import จากโมดูล
   //    ⇒ ปุ่ม ☰ ในหัวรายการแชทยิง CustomEvent ชื่อเดียว แล้ว shell เปิด drawer ให้
