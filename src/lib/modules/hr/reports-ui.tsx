@@ -6,6 +6,7 @@ import { getLocale, getTranslations } from "next-intl/server";
 import { REPORT_CATALOG, reportTextFor, type ReportId } from "./reports-rules";
 import { getReportSettings, loadRegisterFields, type ReportDto, type ReportViewer } from "./reports";
 import { canManageHrSettings } from "./settings";
+import { dayLabel, periodLabel } from "./period-label"; // HR VIS-5a ▸ F9 ◂
 import { saveRegisterFieldsAction, saveReportSettingsAction } from "./reports-actions";
 
 const card = "flex flex-col gap-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4";
@@ -54,7 +55,12 @@ export async function HrReportsSection(p: ReportPageProps) {
   const exportHref = (fmt: "csv" | "xlsx") => `${base}/export?${q({ report: p.report, period: p.period, format: fmt, unit: p.unitId })}`;
   const dto = p.dto.ok ? p.dto : null;
   const cls = new Map(def.columns.map((c) => [c.key, c.cls] as const));
-  const shown = (key: string, v: string) => (cls.get(key) === "$" ? bahtShown(v) : v);
+  // HR VIS-5a ▸ 13b (screen only — DTO/CSV unchanged, reports-rules frozen): run status in words (hr.run2.st_*) · engine column not shown · net column pinned right ◂
+  const tRun = await getTranslations("hr.run2");
+  const RUN_ST = ["DRAFT", "APPROVED", "PAID", "REVERSED"];
+  const shown = (key: string, v: string) => (cls.get(key) === "$" ? bahtShown(v) : p.report === "payroll-month" && key === "status" && RUN_ST.includes(v) ? tRun(`st_${v}`) : v); // HR VIS-5a ◂
+  const cols = dto ? dto.columns.filter((c) => !(p.report === "payroll-month" && c.key === "engine")) : []; // HR VIS-5a ◂
+  const pin = (key: string) => (key === "net" ? "sticky right-0 bg-[color:var(--color-surface)]" : ""); // HR VIS-5a ◂
   return (
     <div className="flex flex-col gap-4">
       {p.flash && (
@@ -101,7 +107,7 @@ export async function HrReportsSection(p: ReportPageProps) {
       <section className={card} aria-labelledby="hrrep-title">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 id="hrrep-title" className="text-base font-semibold">
-            {tx[`title.${p.report}` as keyof typeof tx]} · {p.period}
+            {tx[`title.${p.report}` as keyof typeof tx]} · {/^\d{4}-\d{2}-\d{2}$/.test(p.period) ? dayLabel(p.period, locale) : periodLabel(p.period, locale)} {/* HR VIS-5a ▸ F9: no ISO period in the 13b title ◂ */}
           </h2>
           {dto && (
             <div className="flex flex-wrap gap-2">
@@ -135,8 +141,8 @@ export async function HrReportsSection(p: ReportPageProps) {
             <table data-testid="hr-report-table" className="w-full min-w-max border-collapse text-sm">
               <thead>
                 <tr>
-                  {dto.columns.map((c, i) => (
-                    <th key={c.key} scope="col" className={`border-b border-[color:var(--color-line)] px-2 py-2 text-left font-medium ${i === 1 ? "sticky left-0 bg-[color:var(--color-surface)]" : ""}`}>
+                  {cols.map((c, i) => ( // HR VIS-5a ▸ cols · pin ◂
+                    <th key={c.key} scope="col" className={`border-b border-[color:var(--color-line)] px-2 py-2 text-left font-medium ${i === 1 ? "sticky left-0 bg-[color:var(--color-surface)]" : ""} ${pin(c.key)}`}>
                       {c.label}
                     </th>
                   ))}
@@ -145,8 +151,8 @@ export async function HrReportsSection(p: ReportPageProps) {
               <tbody>
                 {dto.rows.map((r, ri) => (
                   <tr key={`${r.employeeId}-${ri}`} data-testid={`hr-report-row-${r.employeeId}`} className="border-b border-[color:var(--color-line)]">
-                    {dto.columns.map((c, i) => (
-                      <td key={c.key} className={`px-2 py-2 ${i === 1 ? "sticky left-0 bg-[color:var(--color-surface)]" : ""} ${i > 2 ? "tabular-nums" : ""}`}>
+                    {cols.map((c, i) => ( // HR VIS-5a ▸ cols · pin ◂
+                      <td key={c.key} className={`px-2 py-2 ${i === 1 ? "sticky left-0 bg-[color:var(--color-surface)]" : ""} ${i > 2 ? "tabular-nums" : ""} ${pin(c.key)}`}>
                         {shown(c.key, r.values[c.key] ?? "")}
                       </td>
                     ))}
@@ -156,8 +162,8 @@ export async function HrReportsSection(p: ReportPageProps) {
               {dto.totals && (
                 <tfoot>
                   <tr data-testid="hr-report-totals" className="font-semibold">
-                    {dto.columns.map((c, i) => (
-                      <td key={c.key} className={`px-2 py-2 tabular-nums ${i === 1 ? "sticky left-0 bg-[color:var(--color-surface)]" : ""}`}>
+                    {cols.map((c, i) => ( // HR VIS-5a ▸ cols · pin ◂
+                      <td key={c.key} className={`px-2 py-2 tabular-nums ${i === 1 ? "sticky left-0 bg-[color:var(--color-surface)]" : ""} ${pin(c.key)}`}>
                         {i === 0 ? tx.total : shown(c.key, dto.totals?.[c.key] ?? "")}
                       </td>
                     ))}

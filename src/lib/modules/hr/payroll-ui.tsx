@@ -22,6 +22,7 @@ import {
   reverseRunAction,
   setSalaryProfileAction,
 } from "./payroll-actions";
+import { dayLabel, periodLabel } from "./period-label"; // HR VIS-5a ▸ F9 · P3 ◂
 import { HrSalaryOtRateField } from "./ui"; // HR H2.9 ▸ #18 ช่องอัตรา OT ต่อชั่วโมง (ui.tsx) ◂
 
 const muted = "text-[color:var(--color-muted)]";
@@ -68,8 +69,12 @@ const PARTIAL_MONTH_TEXT = "ต้องตรวจ · เข้า/ออก�
 const NEGATIVE_NET_TEXT = "ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — อนุมัติไม่ได้ ลบหรือแก้รายการหักแล้วกด “ดึงข้อมูลใหม่”";
 
 // ───────────── PayrollSection (หน้าย่อย /app/sys/[id]/hr/payroll) ─────────────
-export async function PayrollSection({ systemId }: { systemId: string }) {
+// HR VIS-5a ▸ parts = which legacy parts to render (views of /hr/payroll) · omitted = every part (old output) · loaders unchanged; reads that feed only hidden parts are skipped ◂
+export type PayrollPart = "profiles" | "attendance" | "adjust" | "create" | "runs";
+export async function PayrollSection({ systemId, parts, locale = "th" }: { systemId: string; parts?: PayrollPart[]; locale?: string }) { // HR VIS-5a ▸ F9: locale for period labels (page passes it) ◂
   const auth = await requireTenant();
+  const show = (p: PayrollPart) => !parts || parts.includes(p); // HR VIS-5a ◂
+  const pl = (k: string) => periodLabel(k, locale); // HR VIS-5a ▸ F9: "มิ.ย. 2569" / "Jun 2026" instead of ISO on screen ◂
 
   // 🔒 PDPA: เงินเดือน + เลขผู้เสียภาษี = ข้อมูลอ่อนไหว — เห็นเฉพาะ OWNER หรือผู้มีสิทธิ์ hr.payroll.read
   const membership = {
@@ -105,7 +110,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
   const payIds = await payScopeEmployeeIds(ctx, scope); // HR PRIV-2 ▸ id ทุกคนในขอบเขตค่าจ้าง รวมคนที่ออกแล้ว (null = ทุกคน) — แถวในรอบ · รายการค้าง · คนที่ไม่อยู่ในรอบ ◂
   const inPay = (employeeId: string) => payIds === null || payIds.includes(employeeId); // HR PRIV-2 ◂
   // HR H4.6 ▸ r2 m8: เลขที่/วันที่ลงนามหนังสือยินยอม ของรายการที่มาจากการเบิกของ/ค่าเสียหาย (ผู้ดูเงินเดือน — ผ่านด่านข้างบนแล้ว) ◂
-  const stockConsent = await stockConsentByAdjustment(ctx, { ...membership, userId: auth.user.id }, adjustments.filter((a) => a.sourceType === "INVENTORY_ISSUE").map((a) => a.id));
+  const stockConsent = show("adjust") ? await stockConsentByAdjustment(ctx, { ...membership, userId: auth.user.id }, adjustments.filter((a) => a.sourceType === "INVENTORY_ISSUE").map((a) => a.id)) : new Map<string, { ref: string; at: string; employeeEnded: boolean }>(); // HR VIS-5a ▸ adjust part only ◂
   const shownItems = (items: (typeof runs)[number]["items"]) => (allBranches ? items : items.filter((it) => inPay(it.employeeId))); // HR PRIV-2 ◂
   // การเข้างานเดือนนี้ + เดือนก่อน (งวดที่มักจะกำลังจ่าย) — ใช้ประกอบการตัดสินใจ
   // 🔴 ระบบไม่หักเงินอัตโนมัติจากการสาย/ขาด: เป็นนโยบายของร้าน + มีผลทางกฎหมาย ต้องให้คนตัดสิน
@@ -114,8 +119,8 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
   const prevMonth = new Date(Date.UTC(byy!, bmm! - 2, 1));
   const monthName = (d: Date) =>
     d.toLocaleDateString("th-TH", { month: "long", year: "numeric", timeZone: "UTC" });
-  const attendance = await Promise.all(
-    employees.map(async (e) => ({
+  const attendance = await Promise.all( // HR VIS-5a ▸ attendance part only (empty list otherwise) ◂
+    (show("attendance") ? employees : []).map(async (e) => ({
       emp: e,
       now: await monthlyAttendance(ctx, e.id, thisMonth),
       prev: await monthlyAttendance(ctx, e.id, prevMonth),
@@ -131,11 +136,12 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
   ]);
   const draftRunIds = new Set(runs.filter((r) => r.status === "DRAFT").map((r) => r.id));
   // HR H3.7 ▸ fix r3 (3): period offered by "คืนเงิน" = next open period of that employee (null ⇒ no form — e.g. after the end-date period) ◂
-  const giveBackPeriods = new Map(await Promise.all(adjustments.slice(0, 30).filter((a) => a.kind === "DEDUCTION" && a.status === "APPROVED" && !!a.runId && !draftRunIds.has(a.runId)).map(async (a) => [a.id, await giveBackPeriodOf({ tenantId: auth.active.tenantId, systemId }, a.id)] as const)));
+  const giveBackPeriods = new Map(await Promise.all((show("adjust") ? adjustments.slice(0, 30) : []).filter((a) => /* HR VIS-5a ▸ adjust part only ◂ */ a.kind === "DEDUCTION" && a.status === "APPROVED" && !!a.runId && !draftRunIds.has(a.runId)).map(async (a) => [a.id, await giveBackPeriodOf({ tenantId: auth.active.tenantId, systemId }, a.id)] as const)));
 
   return (
     <div className="flex flex-col gap-6">
       {/* โปรไฟล์เงินเดือนต่อพนักงาน */}
+      {show("profiles") && ( // HR VIS-5a ▸ part profiles ◂
       <Section title="เงินเดือนพนักงาน">
         {employees.length === 0 ? (
           <p className={`text-xs ${muted}`}>เพิ่มพนักงานก่อน แล้วจึงตั้งเงินเดือนได้</p>
@@ -200,8 +206,10 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
           </div>
         )}
       </Section>
+      )} {/* HR VIS-5a ◂ */}
 
       {/* การเข้างาน (สาย/ขาด) ประกอบการจ่าย — ไม่หักเงินให้อัตโนมัติ */}
+      {show("attendance") && ( // HR VIS-5a ▸ part attendance ◂
       <Section title="การเข้างานประกอบการจ่าย">
         {employees.length === 0 ? (
           <p className={`text-xs ${muted}`}>เพิ่มพนักงานก่อน</p>
@@ -233,8 +241,10 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
           </div>
         )}
       </Section>
+      )} {/* HR VIS-5a ◂ */}
 
       {/* OT / คอมมิชชั่น / หักเงิน — ยื่นแล้วรออนุมัติ (คนยื่น ≠ คนอนุมัติ) */}
+      {show("adjust") && ( // HR VIS-5a ▸ part adjust ◂
       <Section title="OT · คอมมิชชั่น · หักเงิน">
         <div className="flex flex-col gap-3">
           <p className={`text-xs ${muted}`}>
@@ -260,7 +270,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                       {formatBaht(a.amountSatang)}
                     </span>
                     <span className={`block truncate text-xs ${muted}`}>
-                      งวด {a.periodKey}
+                      งวด {pl(a.periodKey)} {/* HR VIS-5a ◂ */}
                       {a.hours ? ` · ${a.hours} ชม.` : ""}
                       {a.note ? ` · ${a.note}` : ""}
                       {a.runId ? " · เข้ารอบจ่ายแล้ว" : ""}
@@ -269,11 +279,11 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                     {a.sourceType === "INVENTORY_ISSUE" && (
                       <span
                         data-testid="hr-pay-src-stock"
-                        title={stockConsent.get(a.id) ? `หนังสือยินยอม ${stockConsent.get(a.id)!.ref} ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบหนังสือยินยอม — ตรวจก่อนอนุมัติ"}
+                        title={stockConsent.get(a.id) ? `หนังสือยินยอม ${stockConsent.get(a.id)!.ref} ลงนาม ${dayLabel(stockConsent.get(a.id)!.at, locale)}` : "ไม่พบหนังสือยินยอม — ตรวจก่อนอนุมัติ"} // HR VIS-5a ▸ P3 ◂
                         className="mt-0.5 inline-block rounded-full border border-[color:var(--color-line)] px-2 py-0.5 text-xs"
                       >
                         เบิกของ/ค่าเสียหาย · หนังสือยินยอม (ม.76/77):{" "}
-                        {stockConsent.get(a.id) ? `${stockConsent.get(a.id)!.ref} · ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบ — ตรวจก่อนอนุมัติ"}
+                        {stockConsent.get(a.id) ? `${stockConsent.get(a.id)!.ref} · ลงนาม ${dayLabel(stockConsent.get(a.id)!.at, locale)}` : "ไม่พบ — ตรวจก่อนอนุมัติ"} {/* HR VIS-5a ▸ P3 ◂ */}
                         {stockConsent.get(a.id)?.employeeEnded && a.status === "PENDING" ? " · พนักงานสิ้นสุดการจ้างแล้ว — ตรวจก่อนอนุมัติ (ทวงจากค่าจ้างงวดสุดท้ายหรือตัดหนี้ = นักบัญชี)" : ""}
                       </span>
                     )}
@@ -292,8 +302,10 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
           </div>
         </div>
       </Section>
+      )} {/* HR VIS-5a ◂ */}
 
       {/* สร้างรอบจ่าย */}
+      {show("create") && ( // HR VIS-5a ▸ part create ◂
       <Section title="สร้างรอบจ่ายเงินเดือน">
         {!allBranches ? (
           <p className={`text-xs ${muted}`}>รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้</p>
@@ -304,8 +316,10 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
           <CreateRunForm systemId={systemId} />
         )}
       </Section>
+      )} {/* HR VIS-5a ◂ */}
 
       {/* รายการรอบจ่าย */}
+      {show("runs") && ( // HR VIS-5a ▸ part runs ◂
       <Section title={`รอบจ่ายเงินเดือน (${runs.length})`}>
         {/* H0.2 ▸ R1: คนที่มีโปรไฟล์เงินเดือนแต่ไม่อยู่ในรอบร่าง (ไม่จ่ายเงียบ ๆ และไม่ตัดเงียบ ๆ) — เฉพาะผู้ดูเงินเดือน (หลังด่านข้างบน) ◂ */}
         {exclusionsOfDrafts
@@ -318,7 +332,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
               className="mb-2 rounded-lg border bg-[color:var(--color-surface-2)] px-3 py-2 text-xs"
             >
               <div className="font-medium">
-                งวด {x.periodKey}: ไม่รวม {x.list.length} คนในรอบนี้
+                งวด {pl(x.periodKey)}: {/* HR VIS-5a ◂ */}ไม่รวม {x.list.length} คนในรอบนี้
               </div>
               <ul className={`mt-1 flex flex-col gap-0.5 ${muted}`}>
                 {x.list.map((e) => (
@@ -339,7 +353,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                 <div key={a.id} className="flex flex-wrap items-center justify-between gap-2">
                   <span className={muted}>
                     {nameByEmp.get(a.employeeId) ?? "—"} · {ADJUST_KIND_LABEL[a.kind] ?? a.kind} {ADJUST_ADD.has(a.kind) ? "+" : "−"}
-                    {formatBaht(a.amountSatang)} · งวด {a.periodKey} · {ADJUST_STATUS_LABEL[a.status] ?? a.status}
+                    {formatBaht(a.amountSatang)} · งวด {pl(a.periodKey)} · {/* HR VIS-5a ◂ */}{ADJUST_STATUS_LABEL[a.status] ?? a.status}
                   </span>
                   {a.crmCommissionId ? (
                     <span className={muted}>คอมมิชชันจาก CRM — ระบบ CRM ย้ายงวดให้เอง</span>
@@ -362,7 +376,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
             key: r.id,
             primary: (
               <span>
-                งวด {r.periodKey} · {formatBaht(fig.net)}{/* HR PRIV-2 ◂ */}
+                งวด {pl(r.periodKey)} · {formatBaht(fig.net)}{/* HR PRIV-2 ◂ */}{/* HR VIS-5a ▸ F9 ◂ */}
               </span>
             ),
             // H0.2 ▸ R1/R3: แถวที่มี flag — NEGATIVE_NET (แดง · อนุมัติไม่ได้) · PARTIAL_MONTH (ต้องตรวจ · ยังไม่คิดตามสัดส่วน) ◂
@@ -409,7 +423,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                   <ConfirmDialog
                     triggerLabel="จ่ายแล้ว"
                     triggerClassName="rounded-full border px-3 py-1.5 text-xs hover:bg-[color:var(--color-surface-2)]"
-                    title={`บันทึกจ่ายเงินเดือนงวด ${r.periodKey}?`}
+                    title={`บันทึกจ่ายเงินเดือนงวด ${pl(r.periodKey)}?`} // HR VIS-5a ◂
                     detail={`ยืนยันว่าจ่ายเงินเดือนสุทธิ ${formatBaht(r.totalNetSatang)} เรียบร้อยแล้ว`}
                     confirmLabel="ยืนยันจ่ายแล้ว"
                     action={markPaidAction}
@@ -420,7 +434,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
                   <ConfirmDialog
                     triggerLabel="กลับรายการ"
                     triggerClassName="rounded-full border px-3 py-1.5 text-xs text-[color:var(--color-danger)] hover:bg-[color:var(--color-surface-2)]"
-                    title={`กลับรายการเงินเดือนงวด ${r.periodKey}?`}
+                    title={`กลับรายการเงินเดือนงวด ${pl(r.periodKey)}?`} // HR VIS-5a ◂
                     detail={`ระบบจะลงบัญชีกลับรายการ (JV ตรงข้าม) ของเงินเดือนงวดนี้ — เงินเดือนรวม ${formatBaht(r.totalGrossSatang)} · จ่ายสุทธิ ${formatBaht(r.totalNetSatang)} · ใช้เมื่อลงเงินเดือนผิดงวด/ผิดยอด (รายการเดิมยังอยู่ตามหลักบัญชี — ไม่ลบ)`}
                     confirmLabel="ยืนยันกลับรายการ"
                     danger
@@ -440,7 +454,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
         {runs.map((r) =>
           shownItems(r.items).length === 0 ? null : (
             <div key={r.id} className="mt-1 flex flex-wrap items-center gap-2">
-              <span className={`text-xs ${muted}`}>สลิปงวด {r.periodKey}:</span>
+              <span className={`text-xs ${muted}`}>สลิปงวด {pl(r.periodKey)}:</span>{/* HR VIS-5a ◂ */}
               {shownItems(r.items).map((it) => {
                 // H0.2 ▸ R3: แถวสุทธิติดลบ = ขอบ/ตัวอักษรแดง + "ติดลบ" · R1: เข้า/ออกกลางเดือน = "ต้องตรวจ" ◂
                 const f = flagsOf(it.snapshotJson);
@@ -462,6 +476,7 @@ export async function PayrollSection({ systemId }: { systemId: string }) {
           ),
         )}
       </Section>
+      )} {/* HR VIS-5a ◂ */}
     </div>
   );
 }

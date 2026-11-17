@@ -9,6 +9,9 @@
 // ผลลัพธ์ (มติผู้คุมงาน 14 พ.ย.): /root/qc/hr-h5.1/<state>/<viewer>-<WxH>-<lang>.png · clicks/ (dialog ที่เปิดแล้วปิด) · refusals/ ·
 //   results.jsonl (1 บรรทัด/ช่อง · ต่อท้าย) · sheets/<state>.html + .png (1440 | 1024 | 390 · MOCKUP | RENDER) · summary.json
 // 🔴 ไม่กดส่งอะไรเลย: ทุกคำขอที่ไม่ใช่ GET/HEAD/OPTIONS ถูกตัดที่ระดับเครือข่าย (server action = POST) และบันทึกเป็น POST-BLOCKED
+// ORACLE-EDIT (HR VIS-5a · controller r4): state.pressProbe = ปุ่ม submit ที่ walker กดจริง (POST ยังถูกตัดทุกคำขอ — ไม่มีอะไรถึงเซิร์ฟเวอร์) เพื่อจับหน้าพังก่อนส่งคำขอ (PAGE-CRASH) · --no-press ปิด ◂
+//   PAGE-CRASH = หน้า error ของ Next ("This page couldn't load" / "A server error occurred" / Application error) หลังโหลดหรือหลังกด — ระบุปุ่มที่ถูกกดจริง (elementFromPoint) ·
+//   FIT-CLIP = state.fit: เซลล์ตารางที่มองเห็นต้องอยู่ในกรอบ box ทั้งเซลล์ + เซลล์ใน must ไม่ถูกตัดข้อความ · ขนาดจอ extra (1280/1366/1536) ใช้เฉพาะ state ที่ระบุ sizes ◂
 // 🔴 session ที่ mint ปักธง userAgent "qc-walk-hr" ลบเฉพาะแถวของรอบนี้ใน finally · ไม่มี process.exit() ในกรอบ try
 // 🔴 ไม่ import visual-hr.mts (ไฟล์นั้นรันทันทีเมื่อ import) — ทำตามแบบของมัน (คุกกี้ตาม APP_ENV · puppeteer-core ของ /root/dive3d · /usr/bin/chromium-browser)
 //    playwright ไม่อยู่ใน node_modules ของทรีนี้ (ตรวจ 14 พ.ย.) ⇒ ใช้ puppeteer-core ตัวเดียวกับ visual-hr · เปลี่ยนได้ด้วย WALK_PUPPETEER / WALK_CHROMIUM
@@ -34,6 +37,7 @@ const F_LANG = opt("--lang");
 const CLICKS = (opt("--clicks") ?? "primary") as "primary" | "all" | "none";
 const NO_REF = argv.includes("--no-refusals");
 const REF_ONLY = argv.includes("--refusals-only");
+const NO_PRESS = argv.includes("--no-press"); // ORACLE-EDIT (HR VIS-5a · controller r4): ปิด press probe ◂
 const OUT = opt("--out") ?? "/root/qc/hr-h5.1";
 const ROOT = process.cwd();
 const MATRIX_PATH = "scripts/walk-hr-matrix.json";
@@ -48,12 +52,13 @@ if (!["primary", "all", "none"].includes(CLICKS)) {
 }
 
 // ═══════════════════ 2. เมทริกซ์ + ทะเบียน ═══════════════════
-type Size = { id: string; w: number; h: number; mobile: boolean; touch: boolean };
+type Size = { id: string; w: number; h: number; mobile: boolean; touch: boolean; extra?: boolean }; // ORACLE-EDIT (HR VIS-5a · controller r4): extra = ไม่อยู่ในชุดขนาดปริยาย ◂
 type ViewerDef = { key: string; inventoryRole: string | null; money: boolean | "branch"; pii: "full" | "payroll" | "masked"; homeUnit?: string; selfEmployee?: string };
 type State = {
   id: string; row: string; page: string; path: string; viewers: string[]; mockup: string | null; pairViewer?: string;
   pathBy?: Record<string, string>; expectFinal?: Record<string, string>; moneyOk?: string[]; limitedNote?: { viewers: string[]; selector: string };
   allowScroll?: string[]; click?: string; extra?: boolean; configMoneyOk?: string[]; why?: string; langs?: string[]; sizes?: string[]; todoInventoryPrefix?: string; coverage?: boolean;
+  fit?: { box: string; cells: string; must?: string }; pressProbe?: string[]; // ORACLE-EDIT (HR VIS-5a · controller r4): FIT-CLIP + press probe ◂
 };
 type Refusal = { id: string; page: string; path: string; unknown: string; viewers: string[]; pathBy?: Record<string, string> };
 type Matrix = { sizes: Size[]; langs: string[]; viewers: Record<string, ViewerDef>; allow: { enumsTh: string[]; thaiInEnExtra: string[]; readOnlyActions?: string[] }; states: State[]; refusals: Refusal[]; excludedInventoryPages: Record<string, string> };
@@ -102,6 +107,7 @@ const fill = (tpl: string, ids: Ids) =>
 // ═══════════════════ 5. ขยายเป็นช่อง ═══════════════════
 type Cell = { key: string; kind: "state" | "refusal"; state: string; row: string; page: string; v: string; viewer: ViewerDef; size: Size; lang: string; tpl: string; unknownTpl?: string; def: State | Refusal; primary: boolean };
 const sizeOf = (id: string) => M.sizes.find((s) => s.id === id || s.id.startsWith(id))!;
+const DEF_SIZES = M.sizes.filter((s) => !s.extra); // ORACLE-EDIT (HR VIS-5a · controller r4): ขนาดปริยาย = ไม่ใช่ extra ◂
 function cells(): { all: Cell[]; skippedTodo: string[] } {
   const all: Cell[] = [];
   const skippedTodo: string[] = [];
@@ -110,7 +116,7 @@ function cells(): { all: Cell[]; skippedTodo: string[] } {
       skippedTodo.push(`${s.id} (no inventory rows ${s.todoInventoryPrefix}* yet)`);
       continue;
     }
-    const sizes = (s.sizes ?? M.sizes.map((x) => x.id)).map(sizeOf);
+    const sizes = (s.sizes ?? DEF_SIZES.map((x) => x.id)).map(sizeOf); // ORACLE-EDIT (HR VIS-5a · controller r4) ◂
     for (const v of s.viewers)
       for (const size of sizes)
         for (const lang of s.langs ?? M.langs)
@@ -157,8 +163,8 @@ const counts = (cs: Cell[]) => {
     extraShots: st.length - brief.length - cov,
     refusalShots: cs.length - st.length,
     totalShots: cs.length,
-    mockupPairs: M.states.filter((s) => s.mockup && !s.todoInventoryPrefix && !s.extra).length * M.sizes.length,
-    mockupPairsWithExtra: M.states.filter((s) => s.mockup && !(s.todoInventoryPrefix && skippedTodo.some((x) => x.startsWith(s.id)))).length * M.sizes.length,
+    mockupPairs: M.states.filter((s) => s.mockup && !s.todoInventoryPrefix && !s.extra).length * DEF_SIZES.length, // ORACLE-EDIT (HR VIS-5a · controller r4) ◂
+    mockupPairsWithExtra: M.states.filter((s) => s.mockup && !(s.todoInventoryPrefix && skippedTodo.some((x) => x.startsWith(s.id)))).length * DEF_SIZES.length,
   };
 };
 
@@ -205,6 +211,10 @@ if (DRY) {
     }
     if ("mockup" in s && s.mockup && !existsSync(s.mockup)) errs.push(`${s.id}: ไม่พบภาพ mockup ${s.mockup}`);
     if ("click" in s && s.click && !/^\[data-testid/.test(s.click)) warns.push(`${s.id}: click ไม่ใช้ data-testid (${s.click})`);
+    // ORACLE-EDIT (HR VIS-5a · controller r4): sizes ต้องมีในเมทริกซ์ · fit/pressProbe ต้องชี้ testid ในทะเบียนของหน้านั้น ◂
+    if ("sizes" in s) for (const z of s.sizes ?? []) if (!M.sizes.some((x) => x.id === z || x.id.startsWith(z))) errs.push(`${s.id}: ขนาด ${z} ไม่อยู่ใน sizes`);
+    if ("fit" in s && s.fit) for (const q of [s.fit.box, s.fit.must ?? ""].filter(Boolean)) { const t = /data-testid="([^"]+)"/.exec(q)?.[1]; if (!t || !invOf(s.page).some((r) => r.re.test(t) || r.testid === t)) errs.push(`${s.id}: fit ${q} ไม่มีในทะเบียน ${s.page}`); }
+    if ("pressProbe" in s) for (const t of s.pressProbe ?? []) if (!invOf(s.page).some((r) => r.testid === t)) errs.push(`${s.id}: pressProbe ${t} ไม่มีในทะเบียน ${s.page}`);
   }
   const covered = new Set([...M.states.filter((s) => !s.todoInventoryPrefix).map((s) => s.page), ...M.refusals.map((r) => r.page)]);
   const notCovered = invPages.filter((p) => !covered.has(p) && !M.excludedInventoryPages[p]);
@@ -289,10 +299,11 @@ async function buildSheets(browser: Any): Promise<string[]> {
     }
     for (const lang of s.langs ?? M.langs)
       for (const v of s.viewers) {
-        const rs = M.sizes.map((z) => res.get(`${s.id}|${v}|${z.id}|${lang}`));
+        const zs = (s.sizes ?? DEF_SIZES.map((x) => x.id)).map(sizeOf); // ORACLE-EDIT (HR VIS-5a · controller r4): คอลัมน์ = ขนาดของ state นั้น ◂
+        const rs = zs.map((z) => res.get(`${s.id}|${v}|${z.id}|${lang}`));
         if (!rs.some(Boolean)) continue;
         const bad = rs.flatMap((r) => (r?.findings ?? []).filter((f) => f.sev === "FAIL" || f.sev === "BLOCKER")).length;
-        html += `<h2>${esc(M.viewers[v]!.key)} · ${lang}${bad ? ` <span class="f">· ${bad} FAIL/BLOCKER</span>` : ""}</h2><div class="r">${M.sizes.map((z, i) => img(rs[i]?.png ?? null, z.w, z.id)).join("")}</div>`;
+        html += `<h2>${esc(M.viewers[v]!.key)} · ${lang}${bad ? ` <span class="f">· ${bad} FAIL/BLOCKER</span>` : ""}</h2><div class="r">${zs.map((z, i) => img(rs[i]?.png ?? null, z.w, z.id)).join("")}</div>`; // ORACLE-EDIT (HR VIS-5a · controller r4): zs ◂
       }
     const htmlPath = join(OUT, "sheets", `${s.id}.html`);
     writeFileSync(htmlPath, html);
@@ -605,6 +616,7 @@ async function openPage(browser: Any, c: Cell, ctx: Ctx2): Promise<Any> {
     if (/net::ERR_BLOCKED_BY_CLIENT/.test(t)) (ctx.walkerCaused ??= []).push(t);
     else ctx.errors.push(t);
   });
+  page.on("dialog", (d: Any) => void d.dismiss().catch(() => {})); // ORACLE-EDIT (HR VIS-5a · controller r4): confirm/alert ของปุ่มที่ probe กด = ยกเลิก (ไม่ค้าง) ◂
   page.on("requestfailed", (r: Any) => {
     const t = r.failure()?.errorText ?? "";
     if (/ERR_BLOCKED_BY_CLIENT|ERR_ABORTED/.test(t)) return;
@@ -616,6 +628,38 @@ async function openPage(browser: Any, c: Cell, ctx: Ctx2): Promise<Any> {
   return page;
 }
 const slug = (s: string) => s.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 80);
+// ORACLE-EDIT (HR VIS-5a · controller r4) ▸ หน้า error ของ Next (A1: ปุ่มรอบจ่ายทุกปุ่มพังเป็น "This page couldn't load · A server error occurred") ◂
+const CRASH_RE = /This page couldn[’']t load|A server error occurred|Application error: a (?:client|server)-side exception has occurred|Internal Server Error/;
+const crashOf = async (page: Any): Promise<string> => { const t = String(await page.evaluate("document.body ? document.body.innerText.slice(0, 600) : ''").catch(() => "")); return CRASH_RE.exec(t)?.[0] ?? ""; };
+/** เปิด <details> ที่ปิดอยู่รอบปุ่ม (กด summary แบบผู้ใช้) · เลื่อนเข้าจอ · คืนสิ่งที่อยู่จริงใต้จุดกึ่งกลาง (ชื่อปุ่มที่จะถูกกด) */
+async function reveal(page: Any, el: Any): Promise<{ opened: number; visible: boolean; hit: string; self: boolean }> {
+  const opened = (await el.evaluate((n: Any) => { let k = 0; for (let d = n.closest("details:not([open])"); d && k < 5; d = n.closest("details:not([open])")) { const s = d.querySelector(":scope > summary"); if (s) s.click(); else d.open = true; k++; } return k; })) as number;
+  if (opened) await new Promise((x) => setTimeout(x, 250));
+  return (await el.evaluate((n: Any) => {
+    n.scrollIntoView({ block: "center", inline: "center" });
+    const r = n.getBoundingClientRect(), visible = (typeof n.checkVisibility === "function" ? n.checkVisibility() : true) && r.width > 0 && r.height > 0;
+    const at = visible ? document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2) : null;
+    const t = at ? (at.closest("[data-testid]") as Any) : null;
+    return { visible, self: !!at && (at === n || n.contains(at)), hit: at ? `${t?.dataset?.testid ?? at.tagName.toLowerCase()} "${String((at as Any).innerText ?? "").trim().slice(0, 40)}"` : "nothing" };
+  }).then((x: Any) => ({ opened, ...x }))) as { opened: number; visible: boolean; hit: string; self: boolean };
+}
+/** FIT-CLIP: ทุกเซลล์ที่มองเห็นอยู่ในกรอบ box ทั้งเซลล์ · เซลล์ must ไม่ถูกตัดข้อความ (B1: คอลัมน์สถานะถูกตัดเมื่อเปิด drawer) */
+const fitOf = (o: { box: string; cells: string; must: string }) => {
+  const box = document.querySelector(o.box) as HTMLElement | null;
+  if (!box) return { missing: true, out: [] as string[] };
+  const br = box.getBoundingClientRect(), out: string[] = [];
+  const tbl = box.querySelector("table") as HTMLElement | null;
+  if (tbl && tbl.scrollWidth > box.clientWidth + 1) out.push(`table ${tbl.scrollWidth} > box ${box.clientWidth}`);
+  const heads = Array.from(box.querySelectorAll("thead th")).filter((h) => (h as HTMLElement).getBoundingClientRect().width > 0).map((h) => (h as HTMLElement).innerText.trim());
+  for (const c of Array.from(box.querySelectorAll(o.cells)) as HTMLElement[]) {
+    const r = c.getBoundingClientRect();
+    if (!r.width || getComputedStyle(c).display === "none") continue;
+    const col = c.tagName === "TH" ? c.innerText.trim() : heads[Array.from(c.parentElement?.children ?? []).filter((x) => (x as HTMLElement).getBoundingClientRect().width > 0).indexOf(c)] ?? "?";
+    if (r.right > br.right + 1 || r.left < br.left - 1) out.push(`${col}: cell ${Math.round(r.left)}–${Math.round(r.right)} outside box ${Math.round(br.left)}–${Math.round(br.right)} «${c.innerText.trim().slice(0, 24)}»`);
+  }
+  if (o.must) for (const c of Array.from(document.querySelectorAll(o.must)) as HTMLElement[]) if (c.getBoundingClientRect().width > 0 && c.scrollWidth > c.clientWidth + 1) out.push(`clipped text «${c.innerText.trim().slice(0, 30)}» ${c.scrollWidth}>${c.clientWidth}`);
+  return { missing: false, out };
+}; // ◂ HR VIS-5a
 // H5.1 tuning ▸ เทียบเป็นชุดก้อน RSC เรียงแล้ว + ตัด </body></html>: forbidden กับ unknown ต่างกันแค่ตำแหน่งที่ก้อน "6:E{NEXT_HTTP_ERROR_FALLBACK;404}" ถูกสตรีม (ก่อน/หลัง </body>) — เนื้อหาเท่ากัน ◂
 const stripIds = (html: string, ids: string[]) =>
   ids.reduce((s, id) => (id ? s.split(id).join("<ID>") : s), html).replace(/nonce="[^"]*"/g, 'nonce=""').replace("</body></html>", "").split(/(?=<script)/).sort().join("");
@@ -648,6 +692,14 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
       await page.click(st.click).then(() => new Promise((r) => setTimeout(r, 500)), () => add("FAIL", "STATE-CLICK", `ไม่พบ ${st.click}`));
     }
     const a = (await page.evaluate(analyze, { allowScroll: isRef ? [] : (st.allowScroll ?? []), mobile: c.size.mobile })) as ReturnType<typeof analyze>;
+    // ORACLE-EDIT (HR VIS-5a · controller r4) ▸ หน้า error ของ Next ตอนโหลด · FIT-CLIP ◂
+    const crash0 = await crashOf(page);
+    if (crash0) add("FAIL", "PAGE-CRASH", `on load${st.click ? ` after ${st.click}` : ""}: "${crash0}" (${finalPath})`);
+    if (!isRef && st.fit) {
+      const f = (await page.evaluate(fitOf, { box: st.fit.box, cells: st.fit.cells, must: st.fit.must ?? "" })) as ReturnType<typeof fitOf>;
+      if (f.missing) add("FAIL", "FIT-CLIP", `ไม่พบ ${st.fit.box}`);
+      for (const x of f.out.slice(0, 12)) add("FAIL", "FIT-CLIP", x);
+    }
     const source = `${(await page.content()) as string}\n${(await page.evaluate("JSON.stringify(self.__next_f || [])")) as string}`;
 
     // HTTP / ปลายทาง
@@ -767,6 +819,18 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
           clicks.push({ testid: tid, outcome: "absent-after-reset" });
           continue;
         }
+        // ORACLE-EDIT (HR VIS-5a · controller r4) ▸ เปิดกล่อง <details> ที่ซ่อนลิงก์ก่อน (hr-run2-ytd-link อยู่ในกล่อง "ต้องตรวจ") · กดเฉพาะเมื่อสิ่งที่อยู่ใต้จุดกดคือปุ่มนั้นจริง ◂
+        const rv = await reveal(page, el);
+        if (rv.opened) dirty = true;
+        if (!rv.visible) {
+          clicks.push({ testid: tid, outcome: `not-visible${rv.opened ? " (after opening details)" : ""}` });
+          continue;
+        }
+        if (!rv.self) {
+          clicks.push({ testid: tid, outcome: `obscured by ${rv.hit}` });
+          add("WARN", "CLICK-OBSCURED", `${tid}: the click point is covered by ${rv.hit} — not pressed`);
+          continue;
+        }
         const box = await el.boundingBox();
         if (!box) {
           clicks.push({ testid: tid, outcome: "not-visible" });
@@ -792,7 +856,14 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
         await new Promise((x) => setTimeout(x, 700));
         await page.waitForNetworkIdle({ idleTime: 300, timeout: 8_000 }).catch(() => {});
         if (ctx.blocked.length > blockedBefore) add(r.expect?.type === "mutation" ? "INFO" : "WARN", "POST-BLOCKED", `click ${tid}: ${ctx.blocked.slice(blockedBefore).join(" ; ")}`);
+        const crashC = await crashOf(page); // ORACLE-EDIT (HR VIS-5a · controller r4): หน้า error หลังกด = PAGE-CRASH ระบุปุ่มที่ถูกกดจริง ◂
+        if (crashC) add("FAIL", "PAGE-CRASH", `pressed ${rv.hit} (inventory ${tid}) → "${crashC}"${ctx.blocked.length > blockedBefore ? " after a blocked request" : " before any request left"}`);
         if (ctx.errors.length > errBefore) add("FAIL", "CLICK-ERROR", `${tid}: ${ctx.errors.slice(errBefore).join(" ; ")}`);
+        if (crashC) { // ORACLE-EDIT (HR VIS-5a · controller r4): หน้าพังแล้ว ไม่ตีความต่อ ◂
+          clicks.push({ testid: tid, outcome: `page-crash ${crashC}` });
+          dirty = true;
+          continue;
+        }
         if (page.url() !== before) {
           clicks.push({ testid: tid, outcome: `navigated ${page.url().replace(BASE, "")}` });
           const body = (await page.evaluate("document.body.innerText")) as string;
@@ -829,6 +900,42 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
           clicks.push({ testid: tid, outcome: "ui" });
           dirty = true;
         }
+      }
+    }
+    // ORACLE-EDIT (HR VIS-5a · controller r4) ▸ press probe: กดปุ่ม submit ของ state.pressProbe ทีละปุ่ม (POST ถูกตัดเสมอ) · หน้าพังก่อนมีคำขอ = PAGE-CRASH (ปิดผนึก closure ของ server action — A1) ◂
+    const doPress = !isRef && !NO_PRESS && !!st.pressProbe?.length && c.lang === "th" && !c.size.mobile;
+    if (doPress) {
+      const startUrl = `${BASE}${path}`;
+      for (const pat of st.pressProbe!) {
+        const re = tidRe(pat);
+        const tid = a.testids.find((t) => re.test(t));
+        if (!tid) {
+          clicks.push({ testid: pat, outcome: "press-probe: absent" });
+          continue;
+        }
+        await page.goto(startUrl, { waitUntil: "networkidle2", timeout: 60_000 }).catch(() => null);
+        await new Promise((x) => setTimeout(x, 300));
+        const el = await page.$(`[data-testid="${tid}"]`);
+        if (!el) {
+          clicks.push({ testid: tid, outcome: "press-probe: absent-after-reset" });
+          continue;
+        }
+        const rv = await reveal(page, el);
+        const dis = (await el.evaluate((n: Any) => !!(n.disabled || n.getAttribute("aria-disabled") === "true"))) as boolean;
+        if (!rv.visible || !rv.self || dis) {
+          clicks.push({ testid: tid, outcome: `press-probe: ${dis ? "disabled" : !rv.visible ? "not-visible" : `obscured by ${rv.hit}`}` });
+          continue;
+        }
+        const bB = ctx.blocked.length, eB = ctx.errors.length;
+        await el.click({ delay: 20 }).catch(() => {});
+        await new Promise((x) => setTimeout(x, 1_200));
+        await page.waitForNetworkIdle({ idleTime: 300, timeout: 8_000 }).catch(() => {});
+        const crash = await crashOf(page), sent = ctx.blocked.length > bB;
+        if (crash && !sent) add("FAIL", "PAGE-CRASH", `pressed ${rv.hit} (${tid}) → "${crash}" before any request left — the form's server action cannot be serialised (inline "use server" closure)`);
+        else if (crash) add("WARN", "BLOCKED-BY-WALKER", `pressed ${tid} → "${crash}" after the walker blocked its request`);
+        else if (!sent) add("WARN", "PRESS-PROBE", `pressed ${tid}: no request and no crash (validation / confirm?) — inconclusive`);
+        if (ctx.errors.length > eB && !crash) add("FAIL", "CLICK-ERROR", `${tid} (press probe): ${ctx.errors.slice(eB).join(" ; ")}`);
+        clicks.push({ testid: tid, outcome: `press-probe: ${crash ? `page-crash ${sent ? "after" : "before"} request` : sent ? "request built (blocked)" : "no request"}` });
       }
     }
   } catch (e) {

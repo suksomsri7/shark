@@ -280,6 +280,15 @@ try {
   const REFUSED: Record<string, VK[]> = { register: ["K", "N", "S", "S0", "SR", "PR", "PA"], leave: ["K", "N", "S0"], payroll: ["K", "N", "S", "S0", "SR", "SD", "PA"] };
   const ENT: Record<string, VK[]> = { register: ["O", "M", "MB", "P", "PB", "SD"], leave: ["O", "M", "MB", "P", "PB", "S", "SR", "SD", "PR", "PA"], payroll: ["O", "M", "MB", "P", "PB", "PR"] };
   const ID: Record<string, [string, string]> = { register: ["P1", "P5"], leave: ["P2", "P6"], payroll: ["P3", "P7"] };
+  // ORACLE-EDIT (HR VIS-5a · controller) P7 of HR PRIV-3: VIS-5a splits /hr/payroll into ?view= sub-views ⇒ the entitled cell = UNION over every view the viewer's sub-nav offers
+  //   (hr-pay-view-* on the default render, as qc-hr-vis-5a W2) of names + testids, the sub-nav ids themselves left out (not on the base page) · goldens unchanged ◂
+  const payUnion = async (k: VK, r0: Rendered) => { // ORACLE-EDIT (HR VIS-5a · controller) P7 of HR PRIV-3 ◂
+   const NAV = "hr-pay-view-", views = testids(r0.html).filter((t) => t.startsWith(NAV)).map((t) => t.slice(NAV.length)), rs: Rendered[] = views.length ? [] : [r0];
+   for (const v of views) { mute(); try { rs.push(await renderPage(M.pay, W[k].cookie, pathOf("payroll"), { id: HRS }, { view: v })); } finally { unmute(); } }
+   const names = keys.filter((n) => rs.some((r) => seen(r).includes(n))), ids = [...new Set(rs.flatMap((r) => testids(r.html)))].filter((t) => !t.startsWith(NAV)).sort();
+   if (process.env.QC_PRIV3_P7_IDS === "1") console.log(`P7 ${k} views=${views.join(",") || "-"} ids=${ids.join(",")}`);
+   return { bad: rs.filter((r) => kind(r) !== "ok").map(kind), c: `${names.join("")}|${sha16(ids.join(","))}|${ids.length}`, views };
+  }; // ORACLE-EDIT (HR VIS-5a · controller) P7 of HR PRIV-3 ◂
   for (const [pg, [mod, seg]] of Object.entries(MODS)) {
    for (const k of VKS) {
     await counted(mod, k, UNK_SYS, seg); // warm-up
@@ -291,9 +300,10 @@ try {
      const same = real.r.digest === un.r.digest && real.r.err === un.r.err && real.q === un.q && !real.r.html && !real.r.client.length;
      if (!same) refuse[ID[pg]![0]]!.push(`${k}:${kind(real.r)} q${real.q}/${un.q} names${seen(real.r).length}`);
     } else if (ENT[pg]!.includes(k)) {
-     const html = pg === "leave" ? real.r.html.replace(leaveForm(real.r.html), "") : real.r.html, c = cell(real.r, html), key = `${pg}.${k}`;
+     const html = pg === "leave" ? real.r.html.replace(leaveForm(real.r.html), "") : real.r.html, key = `${pg}.${k}`;
+     const pu = pg === "payroll" ? await payUnion(k, real.r) : null, c = pu ? pu.c : cell(real.r, html); // ORACLE-EDIT (HR VIS-5a · controller) P7 of HR PRIV-3: payroll = union over offered views ◂
      gold[key] = c;
-     if (kind(real.r) !== "ok" || GOLD.pages?.[key] !== c) gBad[ID[pg]![1]]!.push(`${k}:${kind(real.r)} ${c} want ${GOLD.pages?.[key]}`);
+     if (kind(real.r) !== "ok" || (pu?.bad.length ?? 0) > 0 || GOLD.pages?.[key] !== c) gBad[ID[pg]![1]]!.push(`${k}:${kind(real.r)}${pu ? `[${pu.views.join(",")}]${pu.bad.join(",")}` : ""} ${c} want ${GOLD.pages?.[key]}`); // ORACLE-EDIT (HR VIS-5a · controller) P7 of HR PRIV-3 ◂
     }
    }
   }

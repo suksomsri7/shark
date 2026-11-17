@@ -403,7 +403,28 @@ try {
     if (st === "REVERSED") await step("run.REVERSED.reverse", () => pay.reverseRun(ctx, id, "QC walk: สถานะกลับรายการ", ownerActor), (r: Any) => r?.ok, (r: Any) => `${r?.code ?? ""} ${r?.note ?? ""}`);
     if (st === "PAID") await step("run.PAID.markPaid", () => pay.markPaidRun(ctx, id, { actor: ownerActor, paidOn: lastDayOf(PER.PAID), ...(man.ids.financeAccountId ? { financeAccountId: man.ids.financeAccountId } : {}) }), (r: Any) => r?.ok, (r: Any) => `${r?.code ?? ""} ${r?.note ?? ""}`);
   }
+  // HR VIS-5a ▸ OT 1 รายการในงวดร่าง (น้ำฝน · 6 ชม. ตามอัตราเงินเดือน ฿16,000) — ยื่นในนามฝ่ายเงินเดือน แล้วเจ้าของอนุมัติ (service จริง) ก่อนสร้างรอบร่าง ⇒
+  //   แถวน้ำฝนในรอบร่างรุ่น 2 มีบรรทัด OT ให้เดินดูกติกาคอลัมน์ "เพิ่ม/OT" (มติ r3) · คนอื่นไม่มี OT · --down ลบตามภาพฐาน (id ไม่อยู่ในภาพฐาน) ◂
+  {
+    const rq = await step(`ot.namfon.request ${PER.DRAFT}`, () => pay.requestAdjustment(ctx, { employeeId: emp.namfon, periodKey: PER.DRAFT, kind: "OT", hours: 6, note: "OT วันทำงาน 3 วัน วันละ 2 ชม. (QC walk)", requestedById: uid("payroll") }), (r: Any) => r?.ok, (r: Any) => (r?.ok ? `${r.id} · ${r.amountSatang} สต.` : `${r?.code ?? ""} ${r?.reason}`)); // HR VIS-5a ◂
+    if ((rq as Any)?.ok) {
+      man.ids.otNamfon = (rq as Any).id; // HR VIS-5a ◂
+      writeManifest(man);
+      await step("ot.namfon.approve", () => pay.decideAdjustment(ctx, (rq as Any).id, "APPROVED", ownerActor), (r: Any) => r?.ok && !r?.movedTo, (r: Any) => (r?.ok ? (r?.movedTo ? `ย้ายไป ${r.movedTo}` : "ok") : r?.reason)); // HR VIS-5a ◂
+    }
+  }
   const dr = await step(`run.DRAFT.create ${PER.DRAFT}`, () => create("DRAFT"), (r: Any) => r?.ok, (r: Any) => (r?.ok ? `${r.id} · ${r.employees} คน` : `${r?.code} ${r?.reason}`));
+  if ((dr as Any)?.ok && man.ids.otNamfon) {
+    // HR VIS-5a ▸ ตรวจผลจริงในแถวที่เก็บ: รายการ OT ผูกรอบร่าง · แถวน้ำฝนมีบรรทัด OT ยอดเท่ารายการ และ addSatang ≥ ยอดนั้น ◂
+    await step("run.DRAFT.otNamfon", async () => {
+      const adj = await P.hrPayAdjustment.findFirst({ where: { id: man.ids.otNamfon }, select: { amountSatang: true, runId: true, status: true } });
+      const it = await P.hrPayrollItem.findFirst({ where: { runId: (dr as Any).id, employeeId: emp.namfon }, select: { addSatang: true, snapshotJson: true } });
+      const lines = (((it?.snapshotJson as Any)?.lines ?? (it?.snapshotJson as Any)?.adjustments ?? []) as Any[]).filter((l) => (l?.code ?? l?.kind) === "OT");
+      const otSum = lines.reduce((a, l) => a + Number(l?.amountSatang ?? 0), 0);
+      const ok = !!adj && adj.status === "APPROVED" && adj.runId === (dr as Any).id && !!it && otSum === adj.amountSatang && it.addSatang >= adj.amountSatang;
+      return { ok, reason: `OT ${adj?.amountSatang ?? "-"} สต. · ${adj?.status}/${adj?.runId === (dr as Any).id ? "ผูกรอบร่าง" : "ไม่ผูก"} · แถว add ${it?.addSatang ?? "-"} · บรรทัด OT ${lines.length}=${otSum}` };
+    }, (r) => r.ok, (r) => r.reason); // HR VIS-5a ◂
+  }
   if ((dr as Any)?.ok) {
     await step("run.DRAFT.ytdWarning", async () => {
       const pv = await pay.previewPayrollRunV2(ctx, owner, { runId: (dr as Any).id });
