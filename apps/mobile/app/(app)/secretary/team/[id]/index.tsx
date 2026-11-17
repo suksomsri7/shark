@@ -1,7 +1,8 @@
 // ห้องแชททีม (B27 · แบบ /root/mockups/team-invite/team2.png จอ 3 + team4.png จอ 4) — แชท 1:1 (และกลุ่ม · ใช้จอเดียวกัน)
-//   หัว: ‹ กลับ · อวตาร + ชื่อชิดซ้าย + บทบาทใต้ชื่อ (กลุ่ม = "N คน") · ⚙ ขวาบน = กำหนดสิทธิ์ของคนนี้ (OWNER/MANAGER เท่านั้น → /secretary/staff/<membershipId>)
+//   หัว: ‹ กลับ · อวตาร + ชื่อชิดซ้าย + บทบาทใต้ชื่อ · ⚙ ขวาบน = กำหนดสิทธิ์ของคนนี้ (1:1 · OWNER/MANAGER เท่านั้น → /secretary/staff/<membershipId>)
 //     แตะชื่อ = แผ่นตัวเลือก (ปิด/เปิดเสียงแชทนี้)
-//     TODO(b27-group): ⚙ ของกลุ่ม = ตั้งค่ากลุ่ม (team4.png จอ 5) — รอเจ้าของอนุมัติแบบ · ตอนนี้กลุ่มไม่มี ⚙
+//     กลุ่ม (team4.png จอ 4 · อนุมัติ 17 พ.ย.): อวตารกลุ่ม (รูปกลุ่มถ้ามี) · บรรทัดรอง "5 คน · คุณ ครูนิว ครูบอส พี่ต้น +1" · ⚙ = ตั้งค่ากลุ่ม (ทุกสมาชิก → /secretary/team/<id>/settings)
+//       ชื่อผู้ส่งสีเหนือฟองของคนอื่น · ฟองของเรา "อ่านแล้ว N"
 //   ข้อมูล: GET team/threads/[id] (หัว/สมาชิก) · GET …/messages (ล่าสุด 50 · เลื่อนขึ้น = before) · poll after= ทุก 5 วิ ขณะจออยู่+แอปอยู่หน้า
 //     อ่าน = POST …/read ตอนเข้าจอ/มีข้อความใหม่จากคนอื่น (อีกฝ่ายเห็น "อ่านแล้ว" · badge ทีมลด)
 //     "อ่านแล้ว" ของเรา = จาก reads ทุกรอบ poll (1:1 = อ่านแล้ว · กลุ่ม = อ่านแล้ว N)
@@ -26,6 +27,7 @@ import {
   getMessages,
   getThread,
   markTeamRead,
+  memberSummaryOf,
   mergeMsgs,
   msgTimeOf,
   patchThread,
@@ -215,9 +217,15 @@ export default function TeamRoomScreen() {
   };
 
   const group = thread?.kind === "GROUP";
-  const sub = thread ? (group ? t("team.room.members", { n: thread.members.length }) : thread.peer?.tag ? t(`team.tag.${thread.peer.tag}` as I18nKey) : "") : "";
-  // ⚙ = กำหนดสิทธิ์ของอีกฝ่าย (1:1 · OWNER/MANAGER · มี membershipId = ยังอยู่ในร้าน)
-  const gearTo = thread && !group && manager && thread.peer?.membershipId ? `/secretary/staff/${thread.peer.membershipId}` : null;
+  const sub = thread
+    ? group
+      ? memberSummaryOf(thread.members, t("team.room.you"), t("team.room.members", { n: thread.members.length }))
+      : thread.peer?.tag
+        ? t(`team.tag.${thread.peer.tag}` as I18nKey)
+        : ""
+    : "";
+  // ⚙ = 1:1: กำหนดสิทธิ์ของอีกฝ่าย (OWNER/MANAGER · มี membershipId = ยังอยู่ในร้าน) · กลุ่ม: ตั้งค่ากลุ่ม (ทุกสมาชิก)
+  const gearTo = !thread ? null : group ? `/secretary/team/${thread.id}/settings` : manager && thread.peer?.membershipId ? `/secretary/staff/${thread.peer.membershipId}` : null;
   const colorOf = (uid: string) => {
     const keys = Object.keys(c.sys) as (keyof typeof c.sys)[];
     let h = 0;
@@ -239,7 +247,7 @@ export default function TeamRoomScreen() {
         <View style={styles.bar}>
           <IconBtn testID="team-room-back" icon="chevron-left" label={t("team.room.back")} onPress={back} />
           <Pressable testID="team-room-head" accessibilityRole="button" accessibilityLabel={t("team.room.menu")} onPress={() => thread && setMenu(true)} style={styles.head}>
-            {group ? <GroupAvatar size={HEAD_AV} /> : <Avatar name={thread?.name ?? ""} seed={thread?.peer?.userId ?? id} size={HEAD_AV} />}
+            {group ? <GroupAvatar size={HEAD_AV} threadId={thread?.id} photoFileId={thread?.photoFileId} /> : <Avatar name={thread?.name ?? ""} seed={thread?.peer?.userId ?? id} size={HEAD_AV} />}
             <View style={styles.headX}>
               <Text testID="team-room-name" style={[styles.name, { color: c.text }]} numberOfLines={1}>
                 {thread?.name ?? ""}
@@ -250,7 +258,7 @@ export default function TeamRoomScreen() {
             </View>
             {thread?.muted ? <Icon name="bell-off" size={14} color={c.iconDim} /> : null}
           </Pressable>
-          {gearTo ? <IconBtn testID="team-room-gear" icon="settings" label={t("team.room.settings")} onPress={() => router.push(gearTo)} /> : <View style={styles.barSpacer} />}
+          {gearTo ? <IconBtn testID="team-room-gear" icon="settings" label={group ? t("team.gs.title") : t("team.room.settings")} onPress={() => router.push(gearTo)} /> : <View style={styles.barSpacer} />}
         </View>
 
         {gone ? (

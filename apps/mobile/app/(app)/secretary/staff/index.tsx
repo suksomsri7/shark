@@ -2,14 +2,15 @@
 //   แทนรายชื่อพนักงานเดิม (S2.10 D1): ทุกคนในร้านเห็นทีม (สมาชิก "คุยอย่างเดียว" ด้วย) · แตะคน = แชท 1:1 · แตะกลุ่ม = แชทกลุ่ม
 //   ข้อมูล: GET secretary/team (threads + people + pending) · poll 15 วิ ขณะจออยู่ · badge ทีมรวมข้อความยังไม่อ่าน (secretary/badges team.messages)
 //   ลำดับ: แชทที่มีข้อความ (ใหม่→เก่า) → คนที่ยังไม่เคยคุย → รอยอมรับคำเชิญ (จาง · OWNER/MANAGER แตะ = ยกเลิกคำเชิญ)
-//   ช่องค้นหา "ค้นหาคนในทีม" + ปุ่มกลมดำ + ท้ายแถว (OWNER/MANAGER) → เพิ่มคนด้วยเบอร์ (/secretary/team/add)
-//     TODO(b27-group): + = เมนูเล็ก 2 ทาง "เพิ่มคนเข้าทีม" / "สร้างกลุ่ม" (team4.png จอ 2) — รอเจ้าของอนุมัติแบบก่อนสร้าง
+//   ช่องค้นหา "ค้นหาคนในทีม" + ปุ่มกลมดำ + ท้ายแถว (ทุกคนในทีม)
+//     17 พ.ย. (team4.png จอ 2 อนุมัติแล้ว): + = เมนูเล็ก 2 ทาง "เพิ่มคนเข้าทีม" (/secretary/team/add) / "สร้างกลุ่ม" (/secretary/team/new-group)
+//     สิทธิ์ตามเซิร์ฟเวอร์: เพิ่มคน = OWNER/MANAGER (canManage) · สร้างกลุ่ม = สมาชิกทุกคน ⇒ ทำได้ทางเดียว (ไม่ใช่ผู้จัดการ) = + ไปจอสร้างกลุ่มตรง
 //   คำเชิญถึงตัวเรา (ผู้ใช้เดิม) = การ์ด ReceivedInvites บนสุด (รับแล้วเข้าร้านนั้น)
 //   ปุ่ม Lekaa มุมขวาล่าง = โฮสต์กลางของเลน b27-fab — จอนี้เว้นท้ายรายการไว้ (TEAM_LIST_FAB_CLEARANCE · TODO(b27-fab))
 //   ปุ่ม + ของแถบบน (SecTopBar) ปิดในโซนนี้ — + อยู่ท้ายช่องค้นหาตามแบบ
 // ข้อความผ่าน i18n (team.*) · สีจากธีม (c.team) · สเกล R-UI1
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
+import { AppState, Pressable, RefreshControl, ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
@@ -22,12 +23,13 @@ import { scheduleZoneBadges, secDeleteId, serverNote } from "@/src/api/secretary
 import { getTeam, listTimeOf, openDirect, previewOf, type TeamList, type TeamPending, type TeamPerson, type TeamThread } from "@/src/api/team";
 import { useAuth } from "@/src/lib/auth-context";
 import { useLang, useT } from "@/src/i18n";
-import { F, glassStyle, useTheme } from "@/src/theme/index";
+import { F, glassStyle, shadow, useTheme } from "@/src/theme/index";
 import { radii, size, spacing, type as T } from "@/src/theme/tokens";
 
 const POLL_MS = 15_000;
 const SEARCH_H = 52;
 const DAY = 86_400_000;
+const MENU_W = 272;
 
 type Row =
   | { kind: "thread"; key: string; th: TeamThread }
@@ -52,6 +54,10 @@ export default function TeamListScreen() {
   const busyRef = useRef(false);
   const tenantRef = useRef(activeTenantId);
   const [now, setNow] = useState(() => Date.now());
+  const [plusMenu, setPlusMenu] = useState(false);
+  const [menuTop, setMenuTop] = useState(0);
+  const searchBottom = useRef(0);
+  const scrollY = useRef(0);
 
   useEffect(() => {
     tenantRef.current = activeTenantId;
@@ -139,6 +145,23 @@ export default function TeamListScreen() {
     }
   };
 
+  // + : ผู้จัดการ = เมนู 2 ทาง · คนอื่น = สร้างกลุ่มตรง (เพิ่มคนเข้าทีมไม่ได้ · เซิร์ฟเวอร์ 403)
+  const onPlus = () => {
+    if (!manage) {
+      router.push("/secretary/team/new-group");
+      return;
+    }
+    setMenuTop(Math.max(0, searchBottom.current - scrollY.current + 8));
+    setPlusMenu(true);
+  };
+  const go = (to: "/secretary/team/add" | "/secretary/team/new-group") => {
+    setPlusMenu(false);
+    router.push(to);
+  };
+  const onSearchLayout = (e: LayoutChangeEvent) => {
+    searchBottom.current = e.nativeEvent.layout.y + e.nativeEvent.layout.height;
+  };
+
   const tag = (th: TeamThread) => (th.kind === "GROUP" ? "GROUP" : (th.peer?.tag ?? null));
 
   return (
@@ -147,11 +170,15 @@ export default function TeamListScreen() {
         contentContainerStyle={[styles.page, { paddingBottom: TEAM_LIST_FAB_CLEARANCE + insets.bottom }]}
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
+        scrollEventThrottle={64}
+        onScroll={(e) => {
+          scrollY.current = e.nativeEvent.contentOffset.y;
+        }}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => void onRefresh()} tintColor={c.textMuted} />}
       >
         <SecTopBar zone="team" center="none" showPlus={false} />
 
-        <View style={styles.searchRow}>
+        <View style={styles.searchRow} onLayout={onSearchLayout}>
           <View style={[glassStyle(c, SEARCH_H / 2), styles.search]}>
             <TextInput
               testID="team-search"
@@ -163,8 +190,8 @@ export default function TeamListScreen() {
               style={[styles.searchField, { color: c.text }]}
             />
           </View>
-          {manage ? (
-            <Pressable testID="team-plus" accessibilityRole="button" accessibilityLabel={t("team.add")} onPress={() => router.push("/secretary/team/add")} style={[styles.plus, { backgroundColor: c.accent }]}>
+          {data ? (
+            <Pressable testID="team-plus" accessibilityRole="button" accessibilityLabel={manage ? t("team.plus") : t("team.menu.group")} onPress={onPlus} style={[styles.plus, { backgroundColor: c.accent }]}>
               <Icon name="plus" size={22} color={c.onAccent} />
             </Pressable>
           ) : null}
@@ -194,6 +221,7 @@ export default function TeamListScreen() {
                   name={r.th.name || t("sec.room.someone")}
                   seed={r.th.peer?.userId ?? r.th.id}
                   group={r.th.kind === "GROUP"}
+                  photo={r.th.kind === "GROUP" && r.th.photoFileId ? { threadId: r.th.id, fileId: r.th.photoFileId } : null}
                   tag={tag(r.th)}
                   tagLabel={r.th.kind === "GROUP" ? t("team.group", { n: r.th.memberCount }) : undefined}
                   preview={previewOf(r.th.last, r.th.kind, t)}
@@ -236,6 +264,29 @@ export default function TeamListScreen() {
         )}
       </ScrollView>
 
+      {plusMenu ? (
+        <View testID="team-plus-menu" style={StyleSheet.absoluteFill}>
+          <Pressable testID="team-plus-menu-dim" accessibilityRole="button" accessibilityLabel={t("team.menu.close")} onPress={() => setPlusMenu(false)} style={[StyleSheet.absoluteFill, { backgroundColor: c.dim }]} />
+          <View style={[styles.menu, { top: menuTop, backgroundColor: c.surface }, shadow(c.tabShadow)]}>
+            <Pressable testID="team-menu-add" accessibilityRole="button" onPress={() => go("/secretary/team/add")} style={styles.mi}>
+              <Icon name="user-plus" size={20} color={c.zone.team} />
+              <View style={styles.miX}>
+                <Text style={[styles.miT, { color: c.text }]}>{t("team.menu.add")}</Text>
+                <Text style={[styles.miS, { color: c.textMuted }]}>{t("team.menu.addSub")}</Text>
+              </View>
+            </Pressable>
+            <View style={[styles.miLine, { backgroundColor: c.divider }]} />
+            <Pressable testID="team-menu-group" accessibilityRole="button" onPress={() => go("/secretary/team/new-group")} style={styles.mi}>
+              <Icon name="users" size={20} color={c.zone.team} />
+              <View style={styles.miX}>
+                <Text style={[styles.miT, { color: c.text }]}>{t("team.menu.group")}</Text>
+                <Text style={[styles.miS, { color: c.textMuted }]}>{t("team.menu.groupSub")}</Text>
+              </View>
+            </Pressable>
+          </View>
+        </View>
+      ) : null}
+
       <Sheet visible={!!cancelling} onClose={() => setCancelling(null)} testID="team-cancel-sheet" top={520}>
         <Text style={[styles.sh, { color: c.text }]}>{t("sec.staff.cancelTitle", { name: cancelling?.name || t("sec.staff.invitee") })}</Text>
         <View style={styles.acts}>
@@ -264,4 +315,11 @@ const styles = StyleSheet.create({
   btn: { flex: 1, height: size.iconBtn, borderRadius: size.iconBtn / 2, alignItems: "center", justifyContent: "center", paddingHorizontal: 10 },
   main: { flex: 1.6 },
   btnT: { fontSize: T.sub + 1, fontWeight: "600" },
+  // เมนูเล็กของ + (team4.png จอ 2): การ์ดขาวมน 18 กว้าง 272 ชิดขวาใต้ช่องค้นหา
+  menu: { position: "absolute", right: spacing.page, width: MENU_W, borderRadius: 18, padding: 6 },
+  mi: { flexDirection: "row", alignItems: "center", gap: 12, padding: 12, borderRadius: 12 },
+  miX: { flex: 1, minWidth: 0 },
+  miT: { fontSize: T.sub + 1, fontWeight: "700", lineHeight: 21 },
+  miS: { fontSize: T.cap, lineHeight: 17, marginTop: 1 },
+  miLine: { height: StyleSheet.hairlineWidth, marginHorizontal: 12 },
 });

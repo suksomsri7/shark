@@ -2,19 +2,22 @@
 //   พิมพ์เบอร์ครบ 10 หลัก ⇒ POST secretary/team/lookup (ผู้ใช้ Lekaa ที่ยืนยันเบอร์แล้วเท่านั้น · คืนแค่ชื่อแสดง)
 //     เจอ = การ์ดชื่อ + "✓ ใช้ Lekaa อยู่แล้ว" → ปุ่ม "เพิ่มเข้าทีม" (POST secretary/team/members · คุยอย่างเดียว · อีกฝ่ายต้องกดยอมรับในแอป)
 //     ไม่เจอ = "เบอร์นี้ยังไม่มี Lekaa …" + ปุ่ม "ส่งลิงก์ดาวน์โหลดแอป" (แผ่นแชร์ของเครื่อง · Share ของ react-native · ไม่สร้างบัญชี/ไม่ส่ง SMS)
-//   "เลือกจากรายชื่อในเครื่อง" (แบบ) — ยังไม่มีโมดูล expo-contacts ในแอป ⇒ ไม่แสดง (เพิ่มโมดูล native ต้อง build ใหม่ · รอผู้คุมตัดสิน)
+//   "เลือกจากรายชื่อในเครื่อง" (แบบ · เจ้าของเลือกติดตั้ง expo-contacts 17 พ.ย.) — ขอสิทธิ์รายชื่อตอนแตะเท่านั้น → ตัวเลือกรายชื่อของเครื่อง (Contact.presentPicker)
+//     เอาเฉพาะเบอร์มือถือไทย (normalizeThaiMobile) · 1 เบอร์ = ใส่ช่องทันที · หลายเบอร์ = แผ่นให้เลือก · ไม่มี/ไม่อนุญาต/เปิดไม่ได้ = ข้อความ ให้พิมพ์เอง
+//     🔴 โมดูล native ใหม่ ⇒ ใช้ได้ตั้งแต่ build ถัดไป (build 26 ยังไม่มี — แตะแล้วขึ้นข้อความ "เปิดรายชื่อไม่ได้" ไม่พัง)
 //   OWNER/MANAGER เท่านั้น (เซิร์ฟเวอร์ 403 ⇒ ข้อความ) · ข้อความผ่าน i18n (team.add.*)
 import { useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, Share, StyleSheet, View } from "react-native";
+import * as Contacts from "expo-contacts";
 import { useRouter } from "expo-router";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { AiryScreen, IconBtn, Note, PrimaryButton, TopBar } from "@/src/components/airy";
+import { AiryScreen, Icon, IconBtn, Note, PrimaryButton, Sheet, TopBar } from "@/src/components/airy";
 import { Avatar } from "@/src/components/secretary/MemberBubble";
 import { ApiError } from "@/src/api/client";
 import { serverNote } from "@/src/api/secretary";
 import { addToTeam, LEKAA_APP_URL, lookupPhone, type TeamLookup } from "@/src/api/team";
-import { formatThaiMobileInput, normalizeThaiMobile } from "@/src/lib/phone";
+import { formatThaiMobileInput, localThaiMobile, normalizeThaiMobile } from "@/src/lib/phone";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
 import { F, glassStyle, useTheme } from "@/src/theme/index";
@@ -37,6 +40,41 @@ export default function TeamAddScreen() {
   const [note, setNote] = useState<{ text: string; warn: boolean } | null>(null);
   const seq = useRef(0);
   const e164 = normalizeThaiMobile(phone);
+  const [choices, setChoices] = useState<{ name: string; phones: { label: string; local: string }[] } | null>(null);
+
+  const applyPhone = (local: string) => {
+    setChoices(null);
+    setPhone(formatThaiMobileInput(local));
+  };
+
+  /** เลือกจากรายชื่อในเครื่อง — ขอสิทธิ์ตอนแตะ · ปฏิเสธ/ยกเลิก/ไม่มีโมดูล (build เก่า) = ข้อความ ไม่ throw */
+  const pickContact = async () => {
+    setNote(null);
+    try {
+      const perm = await Contacts.requestPermissionsAsync();
+      if (!perm.granted) {
+        setNote({ text: t("team.add.contactsDenied"), warn: true });
+        return;
+      }
+      const ct = await Contacts.Contact.presentPicker();
+      if (!ct) return; // ยกเลิก
+      const [raw, name] = await Promise.all([ct.getPhones(), ct.getFullName().catch(() => "")]);
+      const seen = new Set<string>();
+      const phones: { label: string; local: string }[] = [];
+      for (const ph of raw) {
+        const local = localThaiMobile(ph.number ?? "");
+        if (local && !seen.has(local)) {
+          seen.add(local);
+          phones.push({ label: ph.label ?? "", local });
+        }
+      }
+      if (phones.length === 0) setNote({ text: t("team.add.contactsNoPhone"), warn: true });
+      else if (phones.length === 1) applyPhone(phones[0]!.local);
+      else setChoices({ name: name || "", phones });
+    } catch {
+      setNote({ text: t("team.add.contactsErr"), warn: true });
+    }
+  };
 
   // เบอร์ครบ = ค้นทันที (ครั้งเดียวต่อเบอร์ · พิมพ์ต่อ = ผลเก่าทิ้ง)
   useEffect(() => {
@@ -101,6 +139,11 @@ export default function TeamAddScreen() {
             />
           </View>
 
+          <Pressable testID="team-add-contacts" accessibilityRole="button" onPress={() => void pickContact()} style={styles.ctc} hitSlop={6}>
+            <Icon name="sidebar" size={16} color={c.team.tagFg} />
+            <Text style={[styles.ctcT, { color: c.team.tagFg }]}>{t("team.add.contacts")}</Text>
+          </Pressable>
+
           {searching ? <Text style={[styles.hint, { color: c.textMuted }]}>{t("team.add.searching")}</Text> : null}
 
           {result?.found ? (
@@ -137,6 +180,18 @@ export default function TeamAddScreen() {
           <PrimaryButton testID="team-add-submit" label={adding ? t("team.add.adding") : t("team.add.submit")} disabled={!canAdd} onPress={() => void add()} />
         </View>
       </KeyboardAvoidingView>
+
+      <Sheet visible={!!choices} onClose={() => setChoices(null)} testID="team-add-phones" top={480}>
+        <Text style={[styles.sh, { color: c.text }]} numberOfLines={1}>
+          {t("team.add.pickPhone", { name: choices?.name ?? "" })}
+        </Text>
+        {(choices?.phones ?? []).map((ph) => (
+          <Pressable key={ph.local} testID="team-add-phone-choice" accessibilityRole="button" onPress={() => applyPhone(ph.local)} style={[styles.choice, { borderBottomColor: c.divider }]}>
+            <Text style={[styles.choiceT, { color: c.text }]}>{formatThaiMobileInput(ph.local)}</Text>
+            {ph.label ? <Text style={[styles.choiceL, { color: c.textMuted }]}>{ph.label}</Text> : null}
+          </Pressable>
+        ))}
+      </Sheet>
     </AiryScreen>
   );
 }
@@ -159,4 +214,11 @@ const styles = StyleSheet.create({
   shareT: { fontSize: T.sub, fontWeight: "700" },
   note: { marginTop: 14, textAlign: "left" },
   bottom: { paddingHorizontal: spacing.page, paddingTop: 8 },
+  // "เลือกจากรายชื่อในเครื่อง" (team2.png จอ 2 .ctc): ลิงก์ฟ้าใต้ช่องเบอร์
+  ctc: { flexDirection: "row", alignItems: "center", gap: 8, alignSelf: "flex-start", marginTop: 12, marginLeft: 4 },
+  ctcT: { fontSize: T.sub, fontWeight: "600" },
+  sh: { fontSize: T.h + 1, fontWeight: "700", lineHeight: 26, marginBottom: 6 },
+  choice: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", minHeight: 52, borderBottomWidth: StyleSheet.hairlineWidth },
+  choiceT: { fontSize: T.body, letterSpacing: 0.5 },
+  choiceL: { fontSize: T.cap },
 });

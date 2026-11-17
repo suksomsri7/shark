@@ -89,6 +89,26 @@ export async function markTeamRead(id: string): Promise<void> {
 }
 export const deleteTeamMessage = (id: string, messageId: string) => api<{ ok: boolean }>(`${B}/threads/${enc(id)}/messages/${enc(messageId)}`, { method: "DELETE" });
 
+// ───────── กลุ่ม (B27 · team4.png จอ 3/5 · อนุมัติแบบ 17 พ.ย.) — เซิร์ฟเวอร์ตัดสินสิทธิ์ (ผู้ดูแลกลุ่ม) เอง ─────────
+export const createGroup = (body: { name: string; userIds: string[]; photoFileId?: string | null }) => api<{ threadId: string }>(`${B}/threads`, { method: "POST", body });
+export const addGroupMembers = (id: string, userIds: string[]) => api<{ ok: boolean; added: number }>(`${B}/threads/${enc(id)}/members`, { method: "POST", body: { userIds } });
+export const removeGroupMember = (id: string, userId: string) => api<{ ok: boolean }>(`${B}/threads/${enc(id)}/members/${enc(userId)}`, { method: "DELETE" });
+export const setGroupAdmin = (id: string, userId: string, admin: boolean) => api<{ ok: boolean }>(`${B}/threads/${enc(id)}/members/${enc(userId)}`, { method: "PUT", body: { admin } });
+export async function leaveGroup(id: string): Promise<void> {
+  await api(`${B}/threads/${enc(id)}/leave`, { method: "POST", body: {} });
+  scheduleZoneBadges();
+}
+/** เส้นไฟล์ของห้อง (รูปกลุ่ม/ไฟล์แนบ · ตรวจสิทธิ์สมาชิก) — ต่อ BASE_URL ด้วย secFileSource */
+export const teamFileUrl = (threadId: string, fileId: string) => `${B}/threads/${enc(threadId)}/files/${enc(fileId)}`;
+
+/** บรรทัดรองหัวห้องกลุ่ม: "5 คน · คุณ ครูนิว ครูบอส พี่ต้น +1" (ชื่อเรียงตามวันที่เข้า · เราขึ้นก่อน · โชว์ ≤ 4 ชื่อ) — pure */
+export function memberSummaryOf(members: Pick<TeamMember, "name" | "me">[], you: string, count: string, max = 4): string {
+  const names = [...members.filter((m) => m.me).map(() => you), ...members.filter((m) => !m.me).map((m) => m.name)];
+  const shown = names.slice(0, max);
+  const more = names.length - shown.length;
+  return [count, [...shown, ...(more > 0 ? [`+${more}`] : [])].join(" ")].filter(Boolean).join(" · ");
+}
+
 /** cursor คู่ของข้อความ (แบบ pairCursor ของเซิร์ฟเวอร์) */
 export const cursorOfMsg = (m: Pick<TeamMsg, "at" | "id">) => `${m.at}|${m.id}`;
 
