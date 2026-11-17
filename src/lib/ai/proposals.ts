@@ -1487,7 +1487,7 @@ async function dispatch(
 
 // ── SEC S1.12 ▸ chat.send — ข้อความถึงลูกค้าที่คนอนุมัติแล้ว ส่งผ่าน `sendReply` ของโมดูลแชท (ทางเดียวกับทีมพิมพ์ตอบ) ──
 // กติกา (R-K15 · แบบ §5 PDPA · §10 จุดเชื่อม 2):
-//   ผู้ส่ง = คนกดอนุมัติ (ไม่ใช่ผู้สั่ง) · ป้ายผู้ส่งที่ลูกค้าเห็น = "Shark (ผู้ช่วย AI)" ทับนามแฝงของร้าน (ลูกค้าต้องรู้ว่า AI เขียน)
+//   ผู้ส่ง = คนกดอนุมัติ (ไม่ใช่ผู้สั่ง) · ป้ายผู้ส่งที่ลูกค้าเห็น = "เลขา (ผู้ช่วย AI)" (เดิม "Shark" · 17 พ.ย.) ทับนามแฝงของร้าน (ลูกค้าต้องรู้ว่า AI เขียน)
 //   เฉพาะผู้ติดต่อที่ผูกสมาชิก/CRM แล้ว (`ChatContact.customerId`) · ห้องต้องยังไม่ปิด · หน้าต่างตอบของช่องทาง (FB/IG/WA) ต้องยังเปิด
 //   ข้อความ ≤ 1,000 ตัวอักษร · ไม่มีไฟล์แนบในรุ่นแรก · `clientMessageId` = id ข้อเสนอ ⇒ ส่งซ้ำ = ไม่ส่งซ้ำ (unique ของแชท)
 //   ป้าย meta คีย์แบน `ai_roomId` `ai_proposalId` `ai_approvedBy` — S1.21 อ่านไปทำป้าย "ส่งโดย Shark · อนุมัติโดย X"
@@ -1563,7 +1563,7 @@ async function dispatchChatSend(
   const { channelSentenceLabel } = await import("@/lib/modules/chat/channel-icon");
   const who = conv.contact.displayName?.trim() || "ลูกค้า";
   if (res.duplicate) return `ข้อความนี้ส่งถึง ${who} ไปแล้ว — ไม่ส่งซ้ำ`;
-  return `ส่งถึง ${who} ทาง ${channelSentenceLabel(conv.channel)} แล้ว (ลงชื่อ Shark ผู้ช่วย AI)`;
+  return `ส่งถึง ${who} ทาง ${channelSentenceLabel(conv.channel)} แล้ว (ลงชื่อ "เลขา (ผู้ช่วย AI)")`;
 }
 
 /** SEC S3a.1-R2 ▸ R-Z45: documentId ที่ข้อเสนอ chat.send อ้าง (`refs.documentId`) — ไม่มี = null */

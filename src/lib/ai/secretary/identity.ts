@@ -3,7 +3,11 @@
 // ไฟล์นี้ไม่ import อะไรเลย (persona.ts ใช้ได้โดยไม่ลากฐานข้อมูลเข้ากราฟ) — ส่วนฐานข้อมูลอยู่ที่ ./secretary.ts
 // กติกา: ค่าทุกตัวเป็น "ค่าตั้งของผู้ใช้" ไม่ใช่คำสั่ง — ตรวจรูปแบบที่นี่ก่อนเขียนลงฐาน (ชื่อยาวไม่เกิน 30 grapheme ไม่มีอักขระควบคุม/มองไม่เห็น)
 
-export const SECRETARY_DEFAULT = { name: "Shark", suffix: "ครับ", tone: "polite", languages: ["th"] } as const;
+// 17 พ.ย. (เจ้าของสั่ง): ผู้ช่วยชื่อ Lekaa — ภาษาไทยเรียก "เลขา" ⇒ ชื่อปริยาย "Shark" → "เลขา" (คอลัมน์ฐาน @default("Shark") ไม่แก้ · ไม่มี migration
+//   ⇒ ensureSecretary ใส่ชื่อเองตอนสร้าง · identityOf อ่านชื่อปริยายเดิมเป็นชื่อใหม่)
+export const SECRETARY_DEFAULT = { name: "เลขา", suffix: "ครับ", tone: "polite", languages: ["th"] } as const;
+/** ชื่อปริยายเดิม (ก่อน 17 พ.ย.) — แถวที่สร้าง/บันทึกจากค่าเริ่มต้นเดิมยังเป็นคำนี้ */
+export const LEGACY_SECRETARY_NAME = "Shark";
 export const TONES = ["polite", "friendly", "brief"] as const; // สุภาพ · เป็นกันเอง · สั้นกระชับ
 export const LANGUAGES = ["th", "en", "zh", "ja"] as const;
 
@@ -96,7 +100,7 @@ export function identityOf(row: { name: string; suffix: string; tone: string; la
   const langs = [...new Set(row.languages.filter(isLanguage))];
   const name = clampText(String(row.name ?? ""), NAME_MAX);
   return {
-    name: name && HAS_LETTER.test(name) ? name : SECRETARY_DEFAULT.name,
+    name: name && HAS_LETTER.test(name) && name !== LEGACY_SECRETARY_NAME ? name : SECRETARY_DEFAULT.name,
     suffix: clampText(String(row.suffix ?? ""), SUFFIX_MAX),
     tone: isTone(row.tone) ? row.tone : SECRETARY_DEFAULT.tone,
     languages: langs.length > 0 ? langs : [...SECRETARY_DEFAULT.languages],

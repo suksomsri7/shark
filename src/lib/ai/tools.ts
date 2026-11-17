@@ -1473,7 +1473,7 @@ const sendCustomerMessage: AiTool = {
   def: {
     name: "send_customer_message",
     description:
-      `Propose a message to a customer in the shop's customer chat (LINE / web chat). Nothing is sent until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์); the customer sees it signed "Shark (ผู้ช่วย AI)" with a fixed signature line added by the system. Only for customers linked to a member/CRM record. conversationId = the customer chat conversation from the room context (ask the user if you do not have it). body = the exact message, at most ${CHAT_SEND_BODY_MAX} characters, no promises about money or discounts the owner did not ask for. kind = reply | followup (service follow-up, not marketing) | quote.`,
+      `Propose a message to a customer in the shop's customer chat (LINE / web chat). Nothing is sent until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์); the customer sees it signed "เลขา (ผู้ช่วย AI)" with a fixed signature line added by the system. Only for customers linked to a member/CRM record. conversationId = the customer chat conversation from the room context (ask the user if you do not have it). body = the exact message, at most ${CHAT_SEND_BODY_MAX} characters, no promises about money or discounts the owner did not ask for. kind = reply | followup (service follow-up, not marketing) | quote.`,
     parameters: {
       type: "object",
       properties: {
@@ -1495,7 +1495,7 @@ const sendCustomerMessage: AiTool = {
       return JSON.stringify({ error: "ยังไม่รู้ว่าจะส่งถึงลูกค้าห้องไหน", suggestion: "ถามผู้ใช้ด้วย ask_clarify ว่าลูกค้าคนไหน หรือเปิดงานจากห้องแชทลูกค้า" });
     }
     if (!body) return JSON.stringify({ error: "ข้อความถึงลูกค้าว่างอยู่ — เขียนข้อความที่จะส่งก่อน" });
-    if (body.length > CHAT_SEND_BODY_MAX) return JSON.stringify({ error: `ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร (สำรองที่ให้บรรทัดลงชื่อ Shark) — ย่อให้สั้นลงแล้วเสนอใหม่` });
+    if (body.length > CHAT_SEND_BODY_MAX) return JSON.stringify({ error: `ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร (สำรองที่ให้บรรทัดลงชื่อของเลขา) — ย่อให้สั้นลงแล้วเสนอใหม่` });
     const kindRaw = a.kind === undefined || a.kind === null || a.kind === "" ? "reply" : String(a.kind).trim().toLowerCase();
     if (!(CUSTOMER_MESSAGE_KINDS as readonly string[]).includes(kindRaw)) {
       return JSON.stringify({ error: `ไม่รู้จักชนิดข้อความ "${kindRaw}"`, suggestion: "ใช้ reply (ตอบ) followup (ติดตาม) หรือ quote (ส่งใบเสนอราคา)" });

@@ -103,7 +103,7 @@ export async function notifyTeamInvite(args: { inviteeUserId: string; tenantName
   try {
     const r = await sendPushToUser(
       args.inviteeUserId,
-      { title: `${args.tenantName} ชวนคุณเข้าทีม`, body: `${args.inviterName} เพิ่มคุณเข้าทีมใน Lekaa — เปิดแอปเพื่อยอมรับคำเชิญ`, data: { link: "/secretary/staff" } },
+      { title: `${args.tenantName} ชวนคุณเข้าทีม`, body: `${args.inviterName} เพิ่มคุณเข้าทีมในแอปเลขา — เปิดแอปเพื่อยอมรับคำเชิญ`, data: { link: "/secretary/staff" } },
       deps?.post ? { post: deps.post } : undefined,
     );
     return r.sent;
