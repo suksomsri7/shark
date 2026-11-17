@@ -19,6 +19,7 @@ import {
   type Ctx,
 } from "./payroll";
 import { adjustmentReplyForViewer, screenOtHoursForViewer } from "./privacy";
+import { hrTargetOwned } from "./hr-target"; // HR HF-TENANT ▸ ระบบ HR + แถวที่ระบุต้องเป็นของร้านผู้กด (resolver เดียว · สำเนา V2) ◂
 
 // Actions โมดูล Payroll (system-scoped HR) — assertCan "hr.payroll.<verb>" ทุกจุดที่แตะเงิน
 // convention action = "hr.<entity>.<verb>" · OWNER/MANAGER ผ่าน · STAFF ตาม permission
@@ -43,6 +44,7 @@ export async function setSalaryProfileAction(formData: FormData) {
   const employeeId = String(formData.get("employeeId") ?? "");
   const baseBaht = Number(String(formData.get("baseSalaryBaht") ?? "").replace(/,/g, "").trim());
   if (!systemId || !employeeId || !Number.isFinite(baseBaht) || baseBaht < 0) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่/พนักงานไม่ใช่ของร้านนี้ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
 
   const children = Math.max(0, Math.trunc(Number(formData.get("children") ?? 0)) || 0);
   const spouse = String(formData.get("spouse") ?? "") === "on";
@@ -67,6 +69,7 @@ export async function createPayrollRunAction(formData: FormData) {
   const periodKey = String(formData.get("periodKey") ?? "").trim();
   const payDateStr = String(formData.get("payDate") ?? "").trim();
   if (!systemId || !/^\d{4}-\d{2}$/.test(periodKey) || !payDateStr) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
 
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   await createPayrollRun(ctx, { periodKey, payDate: new Date(`${payDateStr}T00:00:00Z`) });
@@ -80,6 +83,7 @@ export async function approvePayrollRunAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = ไม่เขียนอะไร · รอบที่ไม่พบในระบบของเราเอง = ประวัติปฏิเสธเดิม ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   const res = await approveRun(ctx, runId);
   await writeAudit({
@@ -101,6 +105,7 @@ export async function reverseRunAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = ไม่เขียนอะไร · รอบที่ไม่พบในระบบของเราเอง = ประวัติปฏิเสธเดิม ◂
   const reason = String(formData.get("reason") ?? "").trim() || undefined;
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   const res = await reverseRun(ctx, runId, reason);
@@ -122,6 +127,7 @@ export async function markPaidAction(formData: FormData) {
   const systemId = String(formData.get("systemId") ?? "");
   const runId = String(formData.get("runId") ?? "");
   if (!systemId || !runId) return;
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = ไม่เขียนอะไร · รอบที่ไม่พบในระบบของเราเอง = ประวัติปฏิเสธเดิม ◂
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
   const res = await markPaid(ctx, runId);
   await writeAudit({
@@ -169,6 +175,7 @@ export async function requestAdjustmentAction(
   const hoursRaw = String(formData.get("hours") ?? "").trim();
   const amountRaw = String(formData.get("amountBaht") ?? "").replace(/,/g, "").trim();
   if (!employeeId || !periodKey) return { status: "error", message: "เลือกพนักงานและงวดก่อน" };
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return { status: "error", message: "ไม่พบพนักงาน" }; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   const hours = hoursRaw ? Number(hoursRaw) : undefined;
   // HF-HR-0 ▸ รอบ 5 (R5.2): ผู้ไม่ดูเงินเดือน — ชั่วโมง OT นอกตาราง 0.25 (0.25–744) ⇒ คำปฏิเสธกลาง ก่อนอ่านอะไรที่ขึ้นกับเงินเดือน ◂
   const offGrid = screenOtHoursForViewer(canViewPayroll(membershipOf(auth)), { kind, hours });
@@ -207,6 +214,7 @@ export async function decideAdjustmentAction(formData: FormData): Promise<{ ok: 
   const id = String(formData.get("id") ?? "");
   const status = String(formData.get("status") ?? "");
   if (!systemId || !id || (status !== "APPROVED" && status !== "REJECTED")) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return { ok: false, reason: "ไม่พบรายการ" }; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   try {
     const res = await decideAdjustment({ tenantId: auth.active.tenantId, systemId }, id, status, {
       userId: auth.active.userId,
@@ -237,6 +245,7 @@ export async function cancelAdjustmentAction(formData: FormData): Promise<{ ok: 
   const systemId = String(formData.get("systemId") ?? "");
   const id = String(formData.get("id") ?? "");
   if (!systemId || !id) return { ok: false, reason: "คำสั่งไม่ถูกต้อง" };
+  if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }))) return { ok: false, reason: "ไม่พบรายการ" }; // HR HF-TENANT ▸ ระบบ HR ของร้านอื่น/ไม่มีอยู่ = คำตอบเดิมของรหัสที่ไม่มี (ไม่เขียนอะไร) ◂
   try {
     // HF-HR-0 ▸ รอบ 5c (F1): ส่งผู้ใช้จริง ⇒ service ตรวจ "แถวของตัวเอง" + เขียนประวัติการลบ ◂
     const res = await cancelAdjustment({ tenantId: auth.active.tenantId, systemId }, id, { userId: auth.active.userId, isOwner: auth.active.role === "OWNER" });
