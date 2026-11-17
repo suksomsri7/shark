@@ -5,7 +5,7 @@
 //   R  เส้นทาง badges GET
 //   L  ลิงก์ push: grep routing.ts/push.ts/service.ts ไม่มี /inbox/ ใน data.link · ทุก payload มี tenantId · runtime: callHelper ⇒ post ได้ link /customers/<id>?e=helper + tenantId
 //   B  badges shape + ตัวเลขจาก fixture (invite ค้าง 1 · helper 1 · STAFF invites=0) · total = ผลรวม
-//   C  can.aiSuggest boolean ตามคีย์
+//   C  can.aiSuggest boolean ตามคีย์ ∧ สวิตช์ร้าน (B27 17 พ.ย.)
 //   X  ไม่มีความลับ · D fitness
 // รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 SHARK_AI_MOCK=1 pnpm exec tsx scripts/qc-sec-s1.14c.mts
 import { existsSync, readFileSync } from "node:fs";
@@ -142,11 +142,18 @@ try {
   }
   console.log("── C: can.aiSuggest ──");
   {
+    // ORACLE-EDIT (B27 17 พ.ย. 2026 · ตั้งใจ): can.aiSuggest = คีย์ ∧ ร้านเปิด aiSuggestEnabled (แบบเดียวกับ can.translate) ⇒ C-1 เปิดสวิตช์ร้านก่อน · C-2 ปิด ⇒ false ทุกคน
+    await prisma.chatSetting.update({ where: { systemId: sid }, data: { aiSuggestEnabled: true } as never }).catch((e) => console.log("  ⚠️ enable: " + errMsg(e)));
     const gs = await call("inbox/conversations/[id]", "GET", HS, { id: conv.id }, `?systemId=${sid}`);
     const gn = await call("inbox/conversations/[id]", "GET", HN, { id: conv.id }, `?systemId=${sid}`);
     const cs = ((gs.json.conversation ?? {}) as AnyMod).can ?? {}, cn = ((gn.json.conversation ?? {}) as AnyMod).can ?? {};
     bodies.push(gs.text, gn.text);
     chk("C-1", "can.aiSuggest: STAFF มีคีย์ = true · STAFF ไม่มีคีย์ = false (ยัง reply=true)", gs.status === 200 && cs.aiSuggest === true && gn.status === 200 && cn.aiSuggest === false && cn.reply === true, JSON.stringify({ cs, cn }));
+    await prisma.chatSetting.update({ where: { systemId: sid }, data: { aiSuggestEnabled: false } as never }).catch((e) => console.log("  ⚠️ disable: " + errMsg(e)));
+    const go = await call("inbox/conversations/[id]", "GET", H, { id: conv.id }, `?systemId=${sid}`);
+    const gs2 = await call("inbox/conversations/[id]", "GET", HS, { id: conv.id }, `?systemId=${sid}`);
+    const co = ((go.json.conversation ?? {}) as AnyMod).can ?? {}, cs2 = ((gs2.json.conversation ?? {}) as AnyMod).can ?? {};
+    chk("C-2", "ร้านปิด AI แนะนำคำตอบ ⇒ can.aiSuggest = false ทั้ง OWNER และ STAFF ที่มีคีย์ (reply ยัง true)", go.status === 200 && co.aiSuggest === false && gs2.status === 200 && cs2.aiSuggest === false && cs2.reply === true, JSON.stringify({ co, cs2 }));
   }
   console.log("── X ──");
   { const leak = bodies.filter((b) => /"phone":"\+66|codeHash|accessToken|"token":"|secret/i.test(b)); chk("X-1", "ไม่มีเบอร์เต็ม/ความลับใน DTO", leak.length === 0, leak.map((b) => b.slice(0, 80)).join(" | ").slice(0, 200)); }

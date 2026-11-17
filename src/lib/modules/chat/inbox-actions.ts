@@ -20,7 +20,8 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { assertCan, evaluate, filterAccessibleUnitIds } from "@/lib/core/rbac";
-import { requireChatRead, membershipOf } from "./guard";
+import { requireChatRead, membershipOf, CHAT_SETTING_ACTION } from "./guard";
+import { staffLangFromForm, writeChatAiSettings } from "./ai-settings";
 import {
   canAccessConvUnit,
   getThread,
@@ -533,18 +534,14 @@ export async function retrySendAction(
  */
 export async function setChatAiSettingsAction(formData: FormData): Promise<void> {
   const auth = await requireChatRead();
-  assertCan(membershipOf(auth), { module: "chat", action: "chat.setting.setMemberSystem" });
+  assertCan(membershipOf(auth), { module: "chat", action: CHAT_SETTING_ACTION });
   const systemId = String(formData.get("systemId") ?? "");
   if (!systemId) redirect("/app");
-  const staffLangRaw = String(formData.get("staffLang") ?? "").trim().toLowerCase();
-  const staffLang = /^[a-z]{2}$/.test(staffLangRaw) ? staffLangRaw : "th";
-  await db(auth.active.tenantId, systemId).chatSetting.updateMany({
-    where: {},
-    data: {
-      aiSuggestEnabled: String(formData.get("aiSuggestEnabled") ?? "") === "on",
-      translateEnabled: String(formData.get("translateEnabled") ?? "") === "on",
-      staffLang,
-    },
+  // 17 พ.ย.: ตัวเขียนร่วมกับแอป (ai-settings.ts · PUT /api/mobile/inbox/ai-settings) — ค่าที่ฟอร์มส่งและกติกาภาษาเหมือนเดิม
+  await writeChatAiSettings(auth.active.tenantId, systemId, {
+    aiSuggestEnabled: String(formData.get("aiSuggestEnabled") ?? "") === "on",
+    translateEnabled: String(formData.get("translateEnabled") ?? "") === "on",
+    staffLang: staffLangFromForm(formData.get("staffLang")),
   });
   const path = `/app/sys/${systemId}/chat/channels`;
   revalidatePath(path);

@@ -3,6 +3,7 @@
 //           linkedMember = `{ id, name, phoneMasked }` (maskPhone · ไม่มีเบอร์เต็ม — ตั๋ว R-S2.17)
 //   S3a.6: messages + `translatedBody/translatedLang/needsTranslation` · conversation + `staffLang/contactLang/can.translate`
 //   S1.14c (LOW-3): `can.aiSuggest` = คีย์ `chat.ai.suggest` (ด่านเดียวกับ POST …/ai-suggest · R-S1.14b-a)
+//   B27 (17 พ.ย. 2026): `can.aiSuggest` = คีย์ ∧ ร้านเปิด "AI แนะนำคำตอบ" (ChatSetting.aiSuggestEnabled) — แบบเดียวกับ `can.translate` ⇒ แอปซ่อนปุ่ม ✨ เมื่อร้านปิด
 // DELETE /api/mobile/inbox/conversations/[id]?systemId — ลบแชทออกจากรายการ (ปัดซ้ายในแอป · 14 พ.ย. 2026 · ห่อ `hideConversation`)
 //   🔴 ซ่อน ไม่ลบข้อมูล (ข้อความ/ประวัติอยู่ครบ · PDPA) · ลูกค้าทักใหม่ = ห้องกลับมา · ด่าน = คีย์ปิดห้อง (SET_STATUS) **และ** ตอบลูกค้า (REPLY)
 //   ขาดอย่างใดอย่างหนึ่ง = 403 · หน่วยอื่น = 404 · 30/นาที · ผล `{ ok: true }` (ซ่อนอยู่แล้ว = ok เหมือนกัน)
@@ -44,13 +45,13 @@ async function GET_(req: Request, ctx: RouteCtx) {
     ids.length ? tenantDb({ tenantId: c.tenantId, systemId: sid }).chatAttachment.findMany({ where: { tenantId: c.tenantId, systemId: sid, messageId: { in: ids } }, orderBy: { createdAt: "asc" }, select: { messageId: true, fileName: true, url: true, kind: true, mimeType: true, durationMs: true } }) : [],
     t.conversation.contact.customerId ? getLinkedMember(c.tenantId, t.conversation.contact.customerId) : null,
   ]);
-  // S3a.6 ▸ ภาษาทีม/ลูกค้า + สวิตช์แปลของร้าน ◂
-  const setting = await tenantDb({ tenantId: c.tenantId, systemId: sid }).chatSetting.findFirst({ where: { tenantId: c.tenantId, systemId: sid }, select: { staffLang: true, translateEnabled: true } });
+  // S3a.6 ▸ ภาษาทีม/ลูกค้า + สวิตช์แปลของร้าน ◂ · B27 17 พ.ย.: + สวิตช์ AI แนะนำคำตอบ
+  const setting = await tenantDb({ tenantId: c.tenantId, systemId: sid }).chatSetting.findFirst({ where: { tenantId: c.tenantId, systemId: sid }, select: { staffLang: true, translateEnabled: true, aiSuggestEnabled: true } });
   const staffLang = normalizeLang(setting?.staffLang) ?? "th";
   const conversation: InboxConversationDetailDto = {
     ...conversationDto(t.conversation, { now: new Date(), names, aiDraft: x.aiDraft.has(t.conversation.id), helpers: x.helpers.get(t.conversation.id) ?? [] }),
     replyWindowEndsAt: isoOrNull(t.conversation.replyWindowExpiresAt),
-    can: { reply: can(c, REPLY), assign: can(c, ASSIGN), setStatus: can(c, SET_STATUS), linkCustomer: can(c, LINK_CUSTOMER), aiSuggest: can(c, AI_SUGGEST), translate: !!setting?.translateEnabled && can(c, TRANSLATE) },
+    can: { reply: can(c, REPLY), assign: can(c, ASSIGN), setStatus: can(c, SET_STATUS), linkCustomer: can(c, LINK_CUSTOMER), aiSuggest: !!setting?.aiSuggestEnabled && can(c, AI_SUGGEST), translate: !!setting?.translateEnabled && can(c, TRANSLATE) },
     staffLang,
     contactLang: normalizeLang(t.conversation.contact.lang),
   };
