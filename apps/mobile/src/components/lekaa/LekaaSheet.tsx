@@ -15,7 +15,7 @@ import { Animated, BackHandler, KeyboardAvoidingView, PanResponder, Platform, Pr
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import ReanimatedSwipeable, { type SwipeableMethods } from "react-native-gesture-handler/ReanimatedSwipeable";
 import { Text, TextInput } from "@/src/components/ui/text";
-import { Icon, InputBar, LoadError, Loading, Note } from "@/src/components/airy";
+import { Icon, IconBtn, InputBar, LoadError, Loading, Note } from "@/src/components/airy";
 import { RoomCard, isTodayBkk } from "@/src/components/secretary/RoomCard";
 import { RoomFilters, type RoomFilterKey, type RoomFilterOption } from "@/src/components/secretary/RoomFilters";
 import { RoomView, type RoomSeed } from "@/src/components/secretary/RoomView";
@@ -123,7 +123,7 @@ export function LekaaSheet({ visible, onClose, pageContext }: { visible: boolean
         ) : view.kind === "room" ? (
           <RoomView key={view.id} id={view.id} embedded={{ onClose, onBack: toList }} />
         ) : (
-          <NewTask onClose={onClose} pageContext={pageContext} />
+          <NewTask onClose={onClose} onBack={toList} pageContext={pageContext} />
         )}
       </Animated.View>
     </View>
@@ -320,8 +320,12 @@ function ListView({ pan, onClose, onNew, onOpen }: { pan: ReturnType<typeof PanR
 type ErrKind = "quota" | "rate" | "denied" | "other";
 const ERR_KEY = { rate: "sec.new.err.rate", denied: "sec.new.err.denied", other: "sec.new.err.other", quota: "sec.new.quota.title" } as const;
 
-/** งานใหม่ในแผ่น (fab6 จอ 3) — ช่องพิมพ์ "สั่งงาน…" + ปุ่ม + แนบ · ส่งแล้วคุยต่อในแผ่นเดิม (RoomView seed) */
-function NewTask({ onClose, pageContext }: { onClose: () => void; pageContext: PageContext | null }) {
+/**
+ * งานใหม่ในแผ่น (fab6 จอ 3) — ช่องพิมพ์ "สั่งงาน…" + ปุ่ม + แนบ · ส่งแล้วคุยต่อในแผ่นเดิม (RoomView seed)
+ *   17 พ.ย. (เจ้าของสั่งจากเครื่องจริง) ▸ หัวมีปุ่ม ‹ (lekaa-new-back · ตัวเดียวกับหัวห้อง) = กลับรายการงานในแผ่น (ไม่ปิดแผ่น · ✕ ยังปิด) ·
+ *   ห้องที่มาแทนหลังส่ง (seed) ได้ onBack ด้วย · ปุ่มย้อนของ Android = เหมือนกัน (LekaaSheet: มุมมองที่ไม่ใช่รายการ → รายการ) ◂
+ */
+function NewTask({ onClose, onBack, pageContext }: { onClose: () => void; onBack: () => void; pageContext: PageContext | null }) {
   const t = useT();
   const insets = useSafeAreaInsets();
   const { activeTenantId } = useAuth();
@@ -374,14 +378,14 @@ function NewTask({ onClose, pageContext }: { onClose: () => void; pageContext: P
     }
   };
 
-  if (seed) return <RoomView id={roomId} seed={seed} embedded={{ onClose, title: t("lekaa.newTitle") }} />;
+  if (seed) return <RoomView id={roomId} seed={seed} embedded={{ onClose, onBack, title: t("lekaa.newTitle") }} />;
 
   const denied = err === "denied";
   return (
     <View style={[styles.flex, { paddingBottom: insets.bottom }]}>
     <KeyboardFrame inSheet bottomInset={insets.bottom} style={styles.flex}>
       <View style={styles.pad}>
-        <NewHead onClose={onClose} />
+        <NewHead onClose={onClose} onBack={onBack} />
         {err ? (
           <Note warn testID="lekaa-new-error">
             {t(ERR_KEY[err])}
@@ -414,13 +418,14 @@ function NewTask({ onClose, pageContext }: { onClose: () => void; pageContext: P
   );
 }
 
-function NewHead({ onClose }: { onClose: () => void }) {
+function NewHead({ onClose, onBack }: { onClose: () => void; onBack: () => void }) {
   const { c } = useTheme();
   const t = useT();
   const { tenants, activeTenantId } = useAuth();
   const biz = tenants.find((x) => x.tenantId === activeTenantId)?.name ?? t("sec.tenant.fallback");
   return (
-    <View testID="lekaa-new-head" style={styles.head}>
+    <View testID="lekaa-new-head" style={[styles.head, styles.newHead]}>
+      <IconBtn testID="lekaa-new-back" icon="chevron-left" label={t("lekaa.back")} onPress={onBack} />
       <View style={[styles.logo, { backgroundColor: c.lekaa.fabBg }, shadow(c.lekaa.logoRing)]}>
         <LekaaLogo size={22} />
       </View>
@@ -446,6 +451,8 @@ const styles = StyleSheet.create({
   grab: { width: 40, height: size.grab, borderRadius: 3 },
   pad: { paddingHorizontal: spacing.page - 2 },
   head: { flexDirection: "row", alignItems: "center", gap: 10, paddingBottom: 4 },
+  // 17 พ.ย. ▸ หัวงานใหม่มีปุ่ม ‹ — ขอบซ้าย/ขวาเท่าหัวห้อง (RoomView ebar = spacing.page - 6 · ที่นี่อยู่ใน pad = spacing.page - 2)
+  newHead: { marginHorizontal: -4 },
   logo: { width: 40, height: 40, borderRadius: 20, alignItems: "center", justifyContent: "center" },
   headX: { flex: 1, minWidth: 0 },
   headT: { fontSize: T.h, fontWeight: "700", lineHeight: 24 },

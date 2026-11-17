@@ -345,6 +345,15 @@
   "POST /api/mobile/secretary/rooms/r1/retry": {
    "ok": true,
    "jobId": "j1"
+  },
+  "POST /api/mobile/secretary/rooms": {
+   "ok": true,
+   "roomId": "r1",
+   "conversationId": "c-r1",
+   "messageId": "m1",
+   "jobId": "j1",
+   "jobsUsed": 3,
+   "jobsLimit": 100
   }
  },
  "shots": [
@@ -396,6 +405,114 @@
     },
     {
      "wait": "sec-room-retry"
+    },
+    {
+     "sleep": 1200
+    }
+   ]
+  },
+  {
+   "name": "new-task",
+   "route": "/",
+   "steps": [
+    {
+     "gone": "launch-overlay"
+    },
+    {
+     "wait": "lekaa-fab"
+    },
+    {
+     "tap": "lekaa-fab"
+    },
+    {
+     "wait": "lekaa-card"
+    },
+    {
+     "tap": "lekaa-new"
+    },
+    {
+     "wait": "lekaa-new-back"
+    },
+    {
+     "sleep": 900
+    }
+   ]
+  },
+  {
+   "name": "new-task-back",
+   "route": "/",
+   "steps": [
+    {
+     "gone": "launch-overlay"
+    },
+    {
+     "wait": "lekaa-fab"
+    },
+    {
+     "tap": "lekaa-fab"
+    },
+    {
+     "wait": "lekaa-card"
+    },
+    {
+     "tap": "lekaa-new"
+    },
+    {
+     "wait": "lekaa-new-back"
+    },
+    {
+     "sleep": 500
+    },
+    {
+     "tap": "lekaa-new-back"
+    },
+    {
+     "wait": "lekaa-card"
+    },
+    {
+     "sleep": 800
+    }
+   ]
+  },
+  {
+   "name": "new-task-sent",
+   "route": "/",
+   "steps": [
+    {
+     "gone": "launch-overlay"
+    },
+    {
+     "wait": "lekaa-fab"
+    },
+    {
+     "tap": "lekaa-fab"
+    },
+    {
+     "wait": "lekaa-card"
+    },
+    {
+     "tap": "lekaa-new"
+    },
+    {
+     "wait": "lekaa-new-input"
+    },
+    {
+     "type": [
+      "lekaa-new-input",
+      "ลบแชททั้งหมด"
+     ]
+    },
+    {
+     "sleep": 300
+    },
+    {
+     "tap": "lekaa-new-send"
+    },
+    {
+     "wait": "sec-room-back"
+    },
+    {
+     "wait": "sec-room-failed"
     },
     {
      "sleep": 1200
