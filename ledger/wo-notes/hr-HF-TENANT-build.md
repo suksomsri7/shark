@@ -31,3 +31,31 @@ No code uses the Prisma compound keys `systemId_employeeId` / `systemId_periodKe
 - Migration idempotency on a V2 database (V2 indexes already present) not exercised here — only main's state.
 - L-5 baseline on unfixed main not run (see above).
 - Same-tenant behaviour: only intended change is C3 (own system + non-existent employee on setSalaryProfile is now refused). Covered by C1/C2/C3 + the 8 existing suites.
+
+## Round 2 (after review F1/F2/F6 · oracle d33cee12c · 20 checks)
+Only `src/lib/modules/hr/actions.ts` changed; `hr-target.ts` untouched (blob still `d033fd77…`); oracle not edited. Guards follow the oracle notes' round-2 table verbatim (line numbers after the fix):
+| action | line | ids | refusal |
+|---|---|---|---|
+| clockAction | :71 (edited) | `{ employeeId }` | `return;` |
+| saveEmployeeProfileAction | :138 (after `assertHrCan`, before service validation) | `{ employeeId }` | `{ status: "error", message: "ไม่พบพนักงาน" }` |
+| addEmployeeDocAction | :158 | `{ employeeId }` | `return;` |
+| removeEmployeeDocAction | :176 | system only | `return;` |
+| setPinAction | :187 (after `assertHrCan`, before PIN validation) | `{ employeeId }` | `{ status: "error", message: "ไม่พบพนักงาน" }` |
+| kioskClockAction | :212 (after PIN-format check, **before `checkRateLimit`**) | `{ employeeId }` | `{ status: "error", message: "ไม่พบพนักงาน" }` |
+| requestLeaveAction | :248 (edited) | `{ employeeId }` | `return;` |
+| decideLeaveAction | :268 | system only | `return;` |
+| bulkDecideLeaveAction | :297 | system only | `{ status: "error", message: "ไม่พบระบบ" }` |
+| setWorkScheduleAction | :313 | `{ employeeId }` | `return;` |
+
+Results (hf_tenant via iso.sh + qc-hf.sh + with-gate-lock.sh):
+- `--static` T7 ✅ (22 actions) · full oracle `QC_FORCE=1` **20/20**, exit 0, Z1 residue 0.
+- main's HR suites: qc-hr 9/9 · qc-hr-attendance 31/31 · qc-hr-leave-booking 14/14 · qc-hr-roster 24/24 · qc-hr-payadjust 27/27 · qc-payroll 19/19 · qc-payroll-reverse 14/14 · qc-hf-hr-privacy 193/194 (only L-5, confirmed pre-existing by the controller: AI tool masks 9+ digit runs, fixture name has 13 digits).
+- fitness 53/53 · fitness-pos 8/8 · typecheck (iso.sh, ISO_MEM=14000M, heap 12288, MemAvailable 25.7 GB) exit 0.
+
+UI caller check (legit user regression):
+- `clockAction` (ui.tsx:133/139) · `setWorkScheduleAction` (ui.tsx:370) · `addEmployeeDocAction`/`removeEmployeeDocAction` (employees/[employeeId]/page.tsx:92/101): plain `<form action>`, hidden systemId = page's system, employeeId = an employee listed from that system → guard passes; void return unchanged in shape.
+- `requestLeaveAction` (ui.tsx:246): employee `<select>` filled from the same system's employees → passes.
+- `saveEmployeeProfileAction` (EmployeeProfileForm.tsx:34), `setPinAction` (PinField.tsx:18), `kioskClockAction` (KioskClock.tsx:13), `bulkDecideLeaveAction` (BulkLeaveApprovals.tsx:12): `useActionState` wrappers; the guard refusal is a state object of the action's own type (`status: "error"`), never `undefined` → no client break.
+- `decideLeaveAction`: no UI caller in `src` (only exported).
+- Inactive (soft-removed) employees: `HrEmployee` scope is `sys()` with no active/deleted filter, so `hrTargetOwned(..., { employeeId })` still finds them → profile/doc/schedule pages for removed employees keep working.
+- Not driven in a browser (static read of callers + oracle C4/C1 which drive the actions as owner/staff A).
