@@ -499,7 +499,7 @@ try {
       /team-menu-add/.test(list) && /team-menu-group/.test(list) && /\/secretary\/team\/new-group/.test(list) && /if \(!manage\)[\s\S]{0,80}new-group/.test(list), "", "MAJOR");
     chk("S-7", "จอสร้างกลุ่ม (จอ 3): createGroup · คำเชิญค้างจาง (dim) เลือกไม่ได้ · ตัวนับ team.group.picked", /createGroup\(/.test(ng) && /pending[\s\S]{0,400}dim/.test(ng) && /team\.group\.picked/.test(ng), "", "MAJOR");
     chk("S-8", "จอตั้งค่ากลุ่ม (จอ 5): แก้ชื่อ/รูป · เพิ่ม/เอาออก/แอดมิน · ปิดเสียง · ออกจากกลุ่มมีแผ่นยืนยัน", ["patchThread", "addGroupMembers", "removeGroupMember", "setGroupAdmin", "leaveGroup", "team-gs-leave-sheet", "team-gs-mute"].every((k) => gs.includes(k)), "", "MAJOR");
-    chk("S-9", "ห้องกลุ่ม (จอ 4): ⚙ → /settings · บรรทัดรอง memberSummaryOf · ที่วางปุ่ม Lekaa TODO(b27-fab) + TEAM_COMPOSER คงอยู่", /\/settings`/.test(room) && /memberSummaryOf/.test(room) && /TODO\(b27-fab\)/.test(room) && /TEAM_COMPOSER/.test(room), "", "MAJOR");
+    chk("S-9", "ห้องกลุ่ม (จอ 4): ⚙ → /settings · บรรทัดรอง memberSummaryOf · ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (<LekaaFabSlot/> + TEAM_COMPOSER · รวมเลน b27-fab 17 พ.ย.)", /\/settings`/.test(room) && /memberSummaryOf/.test(room) && /<LekaaFabSlot /.test(room) && /TEAM_COMPOSER/.test(room), "", "MAJOR");
     const sum = api.match(/export function memberSummaryOf[\s\S]*?\n}\n/)?.[0] ?? "";
     chk("S-10", "เส้นกลุ่มของแอปตรงเส้นเซิร์ฟเวอร์ (threads · members · leave)", /\$\{B\}\/threads`/.test(api) && /\/members\/\$\{enc\(userId\)\}/.test(api) && /\/leave`/.test(api) && sum.length > 0, "", "MAJOR");
   }
