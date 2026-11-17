@@ -189,6 +189,8 @@ const en: Record<I18nKey, string> = {
   "sec.home.line.WAITING": "Needs approval",
   "sec.home.line.waitingN": "{n} items wait for your approval",
   "sec.home.line.DONE": "Done",
+  // 17 Nov ▸ latest job failed (card/room)
+  "sec.home.line.FAILED": "Failed",
   "sec.home.by": "Given by {name}",
   "sec.home.byUnknown": "Given by a teammate",
   "sec.home.withOne": "With {name}",
@@ -439,6 +441,14 @@ const en: Record<I18nKey, string> = {
   "sec.room.status.WAITING": "Needs approval · {time}",
   "sec.room.status.DONE": "Done · {time}",
   "sec.room.status.closed": "Closed · {time}",
+  // 17 Nov ▸ failed-job notice in the room + retry button
+  "sec.room.status.FAILED": "Failed · {time}",
+  "sec.room.failed.title": "{name} couldn't finish this task",
+  "sec.room.failed.ai_unavailable": "The AI service is temporarily unavailable — our team has been notified. Please try again later.",
+  "sec.room.failed.gave_up": "{name} tried several times but couldn't finish — tap Try again.",
+  "sec.room.failed.retry": "Try again",
+  "sec.room.failed.retryErr": "Couldn't retry — please try again later",
+  "sec.room.failed.ownerOnly": "Only the person who gave this task can try it again",
   "sec.room.input": "Add to this task…",
   "sec.room.inputDone": "Continue from this task…",
   "sec.room.send": "Send",

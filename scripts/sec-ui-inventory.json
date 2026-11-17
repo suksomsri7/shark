@@ -2555,6 +2555,41 @@
    "screen": "ตั้งค่าปฏิทิน · ยืนยันลบ",
    "action": "ปิดแผ่น",
    "wo": "Q8"
+  },
+  {
+   "testID": "sec-room-failed",
+   "file": "apps/mobile/src/components/secretary/RoomView.tsx",
+   "screen": "ห้องงาน (/secretary/room/[id] + แผ่น Lekaa) — งานล่าสุดไม่สำเร็จ",
+   "action": "แสดงผล: ประกาศ \"เลขา ทำงานนี้ไม่สำเร็จ\" + ข้อความ (แทนจุด 3 จุด · RoomDetail.failed)",
+   "wo": "B27-FAILED 17 พ.ย."
+  },
+  {
+   "testID": "sec-room-failed-text",
+   "file": "apps/mobile/src/components/secretary/RoomView.tsx",
+   "screen": "ห้องงาน (/secretary/room/[id] + แผ่น Lekaa) — งานล่าสุดไม่สำเร็จ",
+   "action": "แสดงผล: ข้อความของงานที่ล้ม (reason th/en หรือข้อความไทยของเซิร์ฟเวอร์)",
+   "wo": "B27-FAILED 17 พ.ย."
+  },
+  {
+   "testID": "sec-room-retry",
+   "file": "apps/mobile/src/components/secretary/RoomView.tsx",
+   "screen": "ห้องงาน (/secretary/room/[id] + แผ่น Lekaa) — งานล่าสุดไม่สำเร็จ",
+   "action": "POST secretary/rooms/<id>/retry {jobId} — job เดิมกลับคิว (ไม่สร้างข้อความซ้ำ · ผู้เปิดห้องเท่านั้น)",
+   "wo": "B27-FAILED 17 พ.ย."
+  },
+  {
+   "testID": "sec-room-failed-note",
+   "file": "apps/mobile/src/components/secretary/RoomView.tsx",
+   "screen": "ห้องงาน (/secretary/room/[id] + แผ่น Lekaa) — งานล่าสุดไม่สำเร็จ",
+   "action": "แสดงผล: ลองใหม่ไม่ผ่าน / ผู้สั่งงานเท่านั้นที่กดได้",
+   "wo": "B27-FAILED 17 พ.ย."
+  },
+  {
+   "testID": "sec-home-failed",
+   "file": "apps/mobile/src/components/secretary/RoomCard.tsx",
+   "screen": "รายการงาน (หน้าเลขา + แผ่น Lekaa)",
+   "action": "แสดงผล: บรรทัดรอง \"ไม่สำเร็จ\" ของการ์ดที่งานล่าสุดล้ม",
+   "wo": "B27-FAILED 17 พ.ย."
   }
  ]
 }

@@ -9,7 +9,7 @@ import type { AiActionLog, AiLesson, AiMessage, AiPlan, AiProposal, AiScheduledT
 import { classOfKind } from "./kind-class";
 import { FREE_PACK } from "./pack";
 import { CHAT_SEND_SIGNATURE } from "./chat-send";
-import type { RoomCard, RoomStatus } from "./rooms";
+import type { RoomCard, RoomFailed, RoomStatus } from "./rooms";
 import type { RoomMemberRow } from "./members";
 import type { InboxItem } from "./inbox";
 import type { QuotaStatus } from "./quota";
@@ -45,6 +45,8 @@ export function roomCardDto(r: RoomCard, pendingProposals = 0) {
     startedByName: r.startedByName,
     memberIds: r.memberIds,
     unread: r.unread,
+    /** 17 พ.ย. ▸ งานล่าสุดล้มและยังไม่มีคำตอบ (แอปรุ่นเก่าไม่อ่าน · `status` คงค่าเดิม) */
+    failed: r.failed,
     pendingProposals,
     updatedAt: r.updatedAt,
     closedAt: r.closedAt,
@@ -59,6 +61,7 @@ export function memberDto(m: RoomMemberRow) {
 export function roomDto(
   r: { id: string; conversationId: string; title: string; startedById: string; systems: string[]; contextJson: unknown; pageContext?: unknown; closedAt: Date | null; createdAt: Date; updatedAt: Date; status: RoomStatus; members: RoomMemberRow[] },
   viewer: { userId: string; role: string },
+  failed: RoomFailed | null = null,
 ) {
   const c = obj(r.contextJson);
   const context =
@@ -81,6 +84,12 @@ export function roomDto(
     canAddMembers: false,
     /** Lekaa FAB ▸ หน้าที่เปิดอยู่ตอนสั่ง (ป้าย · สถานะ · ข้อความที่อ้าง/ถาม) — null = ไม่มี */
     pageContext: pageContextDto(r.pageContext),
+    /**
+     * 17 พ.ย. ▸ งานล่าสุดของห้องล้ม (ยังไม่มีคำตอบหลังข้อความนั้น) — ข้อความไทยของ job (ไม่มีชื่อผู้ให้บริการ/รหัส) ·
+     *   `reason` = ai_unavailable | gave_up | other (แอปแปล th/en เอง · other = แสดง `error` ไทยของเซิร์ฟเวอร์) ·
+     *   `canRetry` = ผู้เปิดห้อง ∧ ห้องยังเปิด ∧ ยังขึ้นรุ่นได้ · null = ไม่ล้ม · `status` คงค่าเดิม (แอปรุ่นเก่าไม่อ่านช่องนี้) ◂
+     */
+    failed: failed && !r.closedAt ? { jobId: failed.jobId, messageId: failed.messageId, error: failed.error, reason: failed.reason, at: failed.at, canRetry: manage && failed.retryable } : null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     closedAt: r.closedAt,

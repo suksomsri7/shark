@@ -1,7 +1,8 @@
 // Lekaa FAB (15 พ.ย.) ▸ DELETE = ปัดลบห้อง (soft delete · ผู้เปิดห้องเท่านั้น · `hideRoom`) — มองไม่เห็น 404 · ไม่ใช่ผู้เปิด 403 ·
 //   GET ส่ง `pageContext` (ป้าย/สถานะการอ้างอิงหน้า) + `canAddMembers:false` ใน roomDto ◂
+// 17 พ.ย. ▸ GET ส่ง `failed` {jobId, messageId, error, at, canRetry} | null — งานล่าสุดล้มและยังไม่มีคำตอบ (แอปรุ่นเก่าไม่อ่าน) ◂
 // GET /api/mobile/secretary/rooms/[id] — ห้องเดียว (สถานะ · สมาชิก · บริบทลูกค้า · `plans` PENDING/RUNNING + สถานะต่อขั้นสำหรับการ์ด A3) · มองไม่เห็น/ร้านอื่น = 404 (R-K1)
-import { getRoom, hideRoom } from "@/lib/ai/secretary/rooms";
+import { getRoom, hideRoom, roomFailedJobs } from "@/lib/ai/secretary/rooms";
 import { roomDto } from "@/lib/ai/secretary/dto";
 import { roomPlansFor } from "@/lib/ai/secretary/views";
 import { roomReminders } from "@/lib/modules/calendar/items";
@@ -19,7 +20,9 @@ async function GET_(req: Request, ctx: RouteCtx) {
   const reminders = await roomReminders(viewer, room.id);
   // calendar_b ▸ review b B1: การ์ด agenda/รายการเตือนที่เครื่องมือเลขาบันทึก (ช่วงวันเท่านั้น) — เฉพาะของผู้เรียก · แอปดึง GET calendar/agenda เอง ◂
   const calendarCards = await roomCards(viewer, room.id);
-  return ok({ ...roomDto(room, { userId: a.c.userId, role: a.c.m.role }), plans: await roomPlansFor(a.c.conv, room.conversationId), reminders, calendarCards });
+  // 17 พ.ย. ▸ งานล่าสุดล้ม (ไม่มีคำตอบตามมา) ⇒ `failed` (ประกาศในห้อง + ปุ่มลองอีกครั้ง) ◂
+  const failed = (await roomFailedJobs(a.c.tenantId, [room])).get(room.id) ?? null;
+  return ok({ ...roomDto(room, { userId: a.c.userId, role: a.c.m.role }, failed), plans: await roomPlansFor(a.c.conv, room.conversationId), reminders, calendarCards });
 }
 
 // SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂

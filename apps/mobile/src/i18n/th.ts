@@ -190,6 +190,8 @@ const th = {
   "sec.home.line.WAITING": "รออนุมัติ",
   "sec.home.line.waitingN": "รอคุณอนุมัติ {n} รายการ",
   "sec.home.line.DONE": "เสร็จแล้ว",
+  // 17 พ.ย. ▸ งานล่าสุดไม่สำเร็จ (การ์ด/ห้อง)
+  "sec.home.line.FAILED": "ไม่สำเร็จ",
   "sec.home.by": "สั่งโดย {name}",
   "sec.home.byUnknown": "สั่งโดยคนในทีม",
   "sec.home.withOne": "ร่วมกับ {name}",
@@ -440,6 +442,14 @@ const th = {
   "sec.room.status.WAITING": "รออนุมัติ · {time}",
   "sec.room.status.DONE": "เสร็จ · {time}",
   "sec.room.status.closed": "ปิดแล้ว · {time}",
+  // 17 พ.ย. ▸ ประกาศงานไม่สำเร็จในห้อง + ปุ่มลองอีกครั้ง
+  "sec.room.status.FAILED": "ไม่สำเร็จ · {time}",
+  "sec.room.failed.title": "{name} ทำงานนี้ไม่สำเร็จ",
+  "sec.room.failed.ai_unavailable": "ระบบ AI ยังใช้งานไม่ได้ชั่วคราว — ทีมงานได้รับแจ้งแล้ว ลองใหม่อีกครั้งภายหลัง",
+  "sec.room.failed.gave_up": "{name} ลองแล้วหลายครั้งแต่ยังทำไม่สำเร็จ — กดลองอีกครั้งได้เลย",
+  "sec.room.failed.retry": "ลองอีกครั้ง",
+  "sec.room.failed.retryErr": "ลองใหม่ไม่สำเร็จ ลองอีกครั้งภายหลัง",
+  "sec.room.failed.ownerOnly": "ผู้ที่สั่งงานนี้เท่านั้นที่กดลองอีกครั้งได้",
   "sec.room.input": "สั่งเพิ่มในงานนี้…",
   "sec.room.inputDone": "สั่งต่อจากงานนี้…",
   "sec.room.send": "ส่งคำสั่ง",

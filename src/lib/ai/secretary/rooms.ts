@@ -21,6 +21,8 @@ import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
 import { balancePeek, LOW_BALANCE_MICRO } from "../credit";
 import { resolveProvider } from "../provider";
+import { ROOM_JOB_GEN, ROOM_JOB_MAX_GENS } from "./job-gen";
+import { failReasonOf, type RoomFailReason } from "./job-errors";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
 import { NOT_SYSTEM_MESSAGE, roomMemberRows, type RoomMemberRow } from "./members";
 import { visibleCustomerConversation } from "./customer-context";
@@ -40,7 +42,14 @@ export type RoomCard = {
   updatedAt: Date;
   closedAt: Date | null;
   unread: boolean;
+  /** 17 พ.ย. ▸ งานล่าสุดของห้อง FAILED และยังไม่มีคำตอบเลขาหลังข้อความนั้น (`roomFailedJobs`) */
+  failed: boolean;
 };
+
+/** 17 พ.ย. ▸ ความล้มของงานล่าสุดในห้อง — ห้องแสดงประกาศ + ปุ่ม "ลองอีกครั้ง" (retryable = ยังขึ้นรุ่นถัดไปได้ · R-Z33) ◂ */
+export type RoomFailed = { jobId: string; messageId: string; authorUserId: string | null; error: string; reason: RoomFailReason; at: Date; retryable: boolean };
+/** job.error ว่าง (ไม่ควรเกิด) ⇒ ข้อความกลาง */
+export const ROOM_FAILED_FALLBACK = "เลขาทำงานนี้ไม่สำเร็จ — ลองอีกครั้งได้เลย";
 
 export type StartRoomInput = {
   instruction: string;
@@ -245,6 +254,51 @@ function statusFrom(c: StatusCounts, r: { id: string; conversationId: string; cl
   });
 }
 
+/**
+ * 17 พ.ย. ▸ ห้องที่ "งานล่าสุด" (createdAt ใหม่สุด) จบ FAILED และยังไม่มีคำตอบเลขา (ASSISTANT ไม่ใช่ข้อความระบบ) หลังข้อความสั่งงานของงานนั้น ·
+ *   ห้องปิดแล้ว = ไม่นับ (สั่งต่อไม่ได้) · 3 query รวมต่อชุด (ไม่ N+1) · ร้านเดียว (tenantDb) ◂
+ */
+export async function roomFailedJobs(tenantId: string, rooms: { id: string; conversationId: string; closedAt: Date | null }[]): Promise<Map<string, RoomFailed>> {
+  const out = new Map<string, RoomFailed>();
+  const open = rooms.filter((r) => !r.closedAt);
+  if (open.length === 0) return out;
+  const db = tenantDb({ tenantId });
+  const latest = await db.aiRoomJob.findMany({
+    where: { roomId: { in: open.map((r) => r.id) } },
+    orderBy: [{ roomId: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+    distinct: ["roomId"],
+    select: { id: true, roomId: true, status: true, error: true, messageId: true, authorUserId: true, attempts: true, finishedAt: true, updatedAt: true },
+  });
+  const failed = latest.filter((j) => j.status === "FAILED");
+  if (failed.length === 0) return out;
+  const convOf = new Map(open.map((r) => [r.id, r.conversationId]));
+  const [msgs, replies] = await Promise.all([
+    db.aiMessage.findMany({ where: { id: { in: failed.map((j) => j.messageId) } }, select: { id: true, createdAt: true } }),
+    db.aiMessage.groupBy({
+      by: ["conversationId"],
+      where: { conversationId: { in: [...new Set(failed.map((j) => convOf.get(j.roomId) ?? ""))] }, role: "ASSISTANT", ...NOT_SYSTEM_MESSAGE },
+      _max: { createdAt: true },
+    }),
+  ]);
+  const msgAt = new Map(msgs.map((m) => [m.id, m.createdAt]));
+  const lastReply = new Map(replies.map((r) => [r.conversationId, r._max.createdAt]));
+  for (const j of failed) {
+    const at = msgAt.get(j.messageId);
+    const reply = lastReply.get(convOf.get(j.roomId) ?? "") ?? null;
+    if (at && reply && reply > at) continue; // เลขาตอบหลังข้อความนี้แล้ว (เช่น ทางอื่นตอบ) = ไม่ใช่สถานะล้ม
+    out.set(j.roomId, {
+      jobId: j.id,
+      messageId: j.messageId,
+      authorUserId: j.authorUserId ?? null,
+      error: (j.error ?? "").trim() || ROOM_FAILED_FALLBACK,
+      reason: failReasonOf(j.error),
+      at: j.finishedAt ?? j.updatedAt,
+      retryable: Math.floor(j.attempts / ROOM_JOB_GEN) + 1 < ROOM_JOB_MAX_GENS,
+    });
+  }
+  return out;
+}
+
 /** สถานะของห้อง (ตามรหัสบทสนทนา) จาก DB — ไม่มีห้อง = OPEN */
 export async function roomStatus(tenantId: string, conversationId: string, now: Date = new Date()): Promise<RoomStatus> {
   const room = await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId }, select: { id: true, conversationId: true, closedAt: true } });
@@ -317,10 +371,11 @@ export async function listRooms(
 
   const convIds = rows.map((r) => r.conversationId);
   const starterIds = [...new Set(rows.map((r) => r.startedById))];
-  const [counts, users, lastReplies] = await Promise.all([
+  const [counts, users, lastReplies, failedOf] = await Promise.all([
     statusCounts(ctx.tenantId, rows, now),
     prisma.user.findMany({ where: { id: { in: starterIds } }, select: { id: true, name: true, email: true } }),
     db.aiMessage.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, role: "ASSISTANT", ...NOT_SYSTEM_MESSAGE }, _max: { createdAt: true } }), // R-S1.6b: ข้อความระบบไม่นับ unread
+    roomFailedJobs(ctx.tenantId, rows), // 17 พ.ย. ▸ การ์ด "ไม่สำเร็จ" ◂
   ]);
   const nameOf = new Map(users.map((u) => [u.id, publicNameOf(u)])); // SEC S3a.1-S2 R-Z34: placeholder ⇒ "สมาชิก" ◂
   const lastReplyOf = new Map(lastReplies.map((m) => [m.conversationId, m._max.createdAt]));
@@ -340,6 +395,7 @@ export async function listRooms(
       updatedAt: r.updatedAt,
       closedAt: r.closedAt,
       unread: last !== null && (readAt === null || last > readAt),
+      failed: failedOf.has(r.id),
     };
   });
 }

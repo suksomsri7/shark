@@ -1,0 +1,407 @@
+{
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "suk@qc.invalid",
+    "name": "สมชาย ใจดี",
+    "phone": "+66800000101",
+    "appleLinked": true
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "SIAM DIVE CENTER",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "OWNER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "เลขา",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 3,
+    "approvedClean": 3,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [
+    {
+     "module": "booking",
+     "level": "READ"
+    },
+    {
+     "module": "account",
+     "level": "READ"
+    },
+    {
+     "module": "crm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "kanban",
+     "level": "DRAFT"
+    }
+   ]
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 40
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 0,
+   "customers": 40,
+   "team": {
+    "invites": 2,
+    "help": 0,
+    "support": 0
+   },
+   "total": 42,
+   "calendar": 6
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 0,
+   "canApprove": 0
+  },
+  "GET /api/mobile/secretary/systems": {
+   "items": [
+    {
+     "key": "u-q",
+     "kind": "unit",
+     "code": "QUEUE",
+     "href": "/app/u/queue",
+     "label": "บัตรคิว",
+     "badge": 0
+    },
+    {
+     "key": "s-hr",
+     "kind": "system",
+     "code": "HR",
+     "href": "/app/sys/hr",
+     "label": "พนักงาน HR",
+     "badge": 0
+    },
+    {
+     "key": "s-chat",
+     "kind": "system",
+     "code": "CHAT",
+     "href": "/app/sys/chat",
+     "label": "แชทลูกค้า",
+     "badge": 40
+    },
+    {
+     "key": "s-acc",
+     "kind": "system",
+     "code": "ACCOUNT",
+     "href": "/app/sys/acc",
+     "label": "บัญชี",
+     "badge": 0
+    },
+    {
+     "key": "s-inv",
+     "kind": "system",
+     "code": "INVENTORY",
+     "href": "/app/sys/inv",
+     "label": "บริการ",
+     "badge": 0
+    },
+    {
+     "key": "s-crm",
+     "kind": "system",
+     "code": "CRM",
+     "href": "/app/sys/crm",
+     "label": "CRM",
+     "badge": 0
+    },
+    {
+     "key": "s-kb",
+     "kind": "system",
+     "code": "KANBAN",
+     "href": "/app/sys/kb",
+     "label": "บอร์ดงาน",
+     "badge": 0
+    },
+    {
+     "key": "s-mem",
+     "kind": "system",
+     "code": "MEMBER",
+     "href": "/app/sys/mem",
+     "label": "สมาชิก",
+     "badge": 0
+    },
+    {
+     "key": "s-cp",
+     "kind": "system",
+     "code": "COUPON",
+     "href": "/app/sys/cp",
+     "label": "คูปอง",
+     "badge": 0
+    },
+    {
+     "key": "s-rw",
+     "kind": "system",
+     "code": "REWARD",
+     "href": "/app/sys/rw",
+     "label": "รางวัล",
+     "badge": 0
+    },
+    {
+     "key": "fp-KB",
+     "kind": "fixed",
+     "code": "KB",
+     "href": "/app/kb",
+     "label": "คลังความรู้",
+     "badge": 0
+    },
+    {
+     "key": "fp-PAGES",
+     "kind": "fixed",
+     "code": "PAGES",
+     "href": "/app/pages",
+     "label": "เพจ",
+     "badge": 0
+    }
+   ],
+   "order": [
+    "home",
+    "u-q",
+    "s-hr",
+    "s-chat",
+    "s-acc",
+    "s-inv",
+    "s-crm",
+    "s-kb",
+    "s-mem",
+    "s-cp",
+    "s-rw",
+    "fp-KB",
+    "fp-PAGES"
+   ]
+  },
+  "PUT /api/mobile/secretary/systems/order": {
+   "order": [
+    "home",
+    "u-q",
+    "s-hr",
+    "s-chat",
+    "s-acc",
+    "s-inv",
+    "s-crm",
+    "s-kb",
+    "s-mem",
+    "s-cp",
+    "s-rw",
+    "fp-KB",
+    "fp-PAGES"
+   ]
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-web"
+  },
+  "GET /api/mobile/secretary/rooms": {
+   "items": [
+    {
+     "id": "r1",
+     "title": "ลบแชททั้งหมด",
+     "status": "OPEN",
+     "systems": [
+      "chat"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-17T02:47:00.000Z",
+     "failed": true
+    },
+    {
+     "id": "r2",
+     "title": "ยอดขายสัปดาห์นี้",
+     "status": "DONE",
+     "systems": [
+      "pos"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-15T09:00:00.000Z"
+    },
+    {
+     "id": "r3",
+     "title": "ตั้งเตือนตามเงิน Ocean Tour",
+     "status": "WAITING",
+     "systems": [
+      "account"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 1
+     },
+     "updatedAt": "2026-11-14T09:00:00.000Z"
+    },
+    {
+     "id": "r4",
+     "title": "ลูกค้าใหม่เดือนนี้กี่คน",
+     "status": "DONE",
+     "systems": [
+      "crm"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-12T09:00:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "id": "r1",
+   "conversationId": "c-r1",
+   "title": "ลบแชททั้งหมด",
+   "status": "OPEN",
+   "systems": [
+    "chat"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [],
+   "canManage": true,
+   "canAddMembers": false,
+   "createdAt": "2026-11-17T02:45:00.000Z",
+   "updatedAt": "2026-11-17T02:47:00.000Z",
+   "closedAt": null,
+   "plans": [],
+   "reminders": [],
+   "calendarCards": [],
+   "pageContext": null,
+   "failed": {
+    "jobId": "j1",
+    "messageId": "m1",
+    "error": "ระบบ AI ยังใช้งานไม่ได้ชั่วคราว — ทีมงานได้รับแจ้งแล้ว ลองใหม่อีกครั้งภายหลัง",
+    "reason": "ai_unavailable",
+    "at": "2026-11-17T02:47:00.000Z",
+    "canRetry": true
+   }
+  },
+  "GET /api/mobile/secretary/rooms/r1/messages": {
+   "items": [
+    {
+     "id": "m1",
+     "role": "USER",
+     "content": "ลบแชททั้งหมด",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-17T02:45:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1/proposals": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/log": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/rooms/r1/members": {
+   "items": []
+  },
+  "POST /api/mobile/secretary/rooms/r1/retry": {
+   "ok": true,
+   "jobId": "j1"
+  }
+ },
+ "shots": [
+  {
+   "name": "failed-list",
+   "route": "/",
+   "steps": [
+    {
+     "gone": "launch-overlay"
+    },
+    {
+     "wait": "lekaa-fab"
+    },
+    {
+     "tap": "lekaa-fab"
+    },
+    {
+     "wait": "lekaa-card"
+    },
+    {
+     "wait": "sec-home-failed"
+    },
+    {
+     "sleep": 800
+    }
+   ]
+  },
+  {
+   "name": "failed-room",
+   "route": "/",
+   "steps": [
+    {
+     "gone": "launch-overlay"
+    },
+    {
+     "wait": "lekaa-fab"
+    },
+    {
+     "tap": "lekaa-fab"
+    },
+    {
+     "wait": "lekaa-card"
+    },
+    {
+     "tap": "lekaa-card"
+    },
+    {
+     "wait": "sec-room-failed"
+    },
+    {
+     "wait": "sec-room-retry"
+    },
+    {
+     "sleep": 1200
+    }
+   ]
+  }
+ ],
+ "_about": "17 พ.ย. — งานไม่สำเร็จ (402 → ประกาศในห้อง + ปุ่มลองอีกครั้ง · การ์ด 'ไม่สำเร็จ') · ใช้กับ shoot-b27.mjs ผ่าน FIXTURE=… QC_OUT=/root/qc/b27-failed"
+}

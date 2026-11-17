@@ -22,16 +22,23 @@
 //   R-Z4 ไม่มีผู้ให้บริการ ⇒ ไม่ claim / ai_disabled ⇒ กลับคิว (attempts ไม่เพิ่ม) · ตัวเก็บตกรายนาทีหยิบ QUEUED ที่อายุ ≥ 45 วิ
 //   R-Z9 ห้องปิดแล้ว ⇒ FAILED ไม่เรียกโมเดล · ต้นทุนของทาง worker ติดป้าย `note = room-worker:<jobId>` (เพดาน assist ไม่นับ)
 //   R-Z10 job แรกของห้อง FAILED ก่อนมีคำตอบ ⇒ คืนโควตางาน (ครั้งเดียว) · R-Z12 ห้องละ 1 งานที่ RUNNING · กุญแจกันสแปม push รวม jobId ◂
+//
+// 17 พ.ย. 2026 (เจ้าของเห็นบนเครื่องจริง: งาน "ลบแชททั้งหมด" ค้าง "กำลังทำ" 2 นาทีแล้วเงียบเป็น "รอคำสั่งเพิ่ม" — OpenRouter 402 เครดิตหมด) ▸
+//   (1) ผู้ให้บริการล้มระดับบัญชี (401/402/403 · `classifyAiProviderError` ใน ../provider) ⇒ FAILED ตั้งแต่ครั้งแรก ไม่ลองซ้ำ ·
+//       ข้อความถึงร้านเป็นไทยล้วน (ไม่มีชื่อผู้ให้บริการ/รหัส/คำว่าเครดิต) · ผู้ดูแลแพลตฟอร์มได้ logOps ERROR แหล่ง `ai.provider-account`
+//       พร้อมสาเหตุจริง (ERROR = อีเมล OPS_ALERT_EMAIL · throttle 60 นาที/แหล่ง ผ่าน OpsAlertState — ทางเดิมของ logOps)
+//   (2) ล้มชั่วคราว (timeout · 429 · 5xx · ตอบว่าง) = ลองซ้ำ 3 ครั้งเหมือนเดิม
+//   (3) `roomFailedJobs` (ห้องแสดงความล้ม) + `retryRoomJob` (ปุ่ม "ลองอีกครั้ง" = job เดิมกลับคิวรุ่นถัดไป · ไม่สร้างข้อความ USER ซ้ำ) ◂
 
 import { Prisma, type AiRoomJob } from "@prisma/client";
 import { prisma, tenantDb } from "@/lib/core/db";
-import { logOps } from "@/lib/core/ops";
+import { errDetail, logOps } from "@/lib/core/ops";
 import { sendPushToUser } from "@/lib/core/push";
 import { registerMinuteJob, SECRETARY_ROOM_JOBS_BUDGET_MS, type MinuteJobControl } from "@/lib/platform/minute-jobs";
 import { actorProblem, aiMemberActor, type AiMemberActor } from "../actor";
 import { findVisibleConversation } from "../conversations";
 import { ROOM_WORKER_NOTE_PREFIX } from "../credit";
-import { resolveProvider, type AiProvider } from "../provider";
+import { classifyAiProviderError, resolveProvider, type AiProvider } from "../provider";
 import { sendMessage, type SendResult } from "../service";
 import { quotaMessage } from "../usage";
 import { NOT_SYSTEM_MESSAGE, roomPushRecipients } from "./members";
@@ -39,10 +46,12 @@ import { notifyUser } from "./notify";
 import { monthKeyBangkok } from "./pack";
 import { ROOM_JOB_GEN, ROOM_JOB_MAX_GENS, attemptsInGen } from "./job-gen";
 import { attachmentsOf, turnAttachments, type SecAttachment } from "./attachments";
+import { roomFailedJobs } from "./rooms";
+import { ERR_AI_UNAVAILABLE, ERR_GAVE_UP, ROOM_JOB_MAX_ATTEMPTS } from "./job-errors";
 
 export const ROOM_JOB_LEASE_MS = 120_000; // 2 นาที (ต่ออายุด้วย heartbeat ระหว่างทำงาน)
 export const ROOM_JOB_HEARTBEAT_MS = 30_000;
-export const ROOM_JOB_MAX_ATTEMPTS = 3;
+export { ROOM_JOB_MAX_ATTEMPTS }; // 17 พ.ย. ▸ ย้ายไป ./job-errors (rooms.ts ใช้ร่วม) ◂
 // SEC S3a.1-S2 ▸ R-Z33 (RC2 MINOR-2): จำนวนครั้งนับ "ต่อรุ่น" (`./job-gen`) — ops ลองใหม่ = ขึ้นรุ่น ไม่รีเซ็ต attempts (fence ไม่ย้อน) ◂
 /** where ของ attempts ที่ยังลองได้ (ทุกรุ่น) / ที่ลองครบแล้วในรุ่นนั้น */
 function attemptsLeftWhere(): Prisma.AiRoomJobWhereInput {
@@ -82,7 +91,10 @@ const ERR_CLOSED = "ห้องงานนี้ปิดไปแล้ว �
 const ERR_AI_DISABLED = "ผู้ช่วย AI ยังไม่เปิดใช้งานในตอนนี้ ระบบจะลองใหม่ให้เมื่อพร้อม";
 const ERR_EMPTY = "ข้อความว่าง ไม่มีงานให้ทำ";
 const ERR_RETRY = "เลขาติดขัดชั่วคราว ระบบจะลองใหม่ให้อัตโนมัติ";
-const ERR_GAVE_UP = `เลขาทำงานนี้ไม่สำเร็จหลังลอง ${ROOM_JOB_MAX_ATTEMPTS} ครั้ง — ลองสั่งใหม่อีกครั้ง`;
+// 17 พ.ย. ▸ ERR_GAVE_UP / ERR_AI_UNAVAILABLE อยู่ที่ ./job-errors (rooms.ts แปลงเป็น `reason` ให้แอปแปลภาษา) ◂
+export { ERR_AI_UNAVAILABLE };
+/** แหล่งของ OpsEvent ERROR เมื่อผู้ให้บริการล้มระดับบัญชี (throttle อีเมลแยกจากแหล่ง "ai" ทั่วไป) */
+export const OPS_SOURCE_PROVIDER_ACCOUNT = "ai.provider-account";
 const PUSH_FAILED_PREFIX = "ทำไม่ได้: ";
 
 /** fence หลุด (อีกรอบหยิบงานนี้ไปแล้ว) — โยนจาก `persistGuard` ใน tx ของ sendMessage ⇒ ทั้ง tx ย้อน (ไม่มีคำตอบซ้ำ) */
@@ -182,6 +194,49 @@ export async function sendRoomMessage(
     return { messageId: msg.id, jobId: job.id };
   });
   return { ok: true, ...res };
+}
+
+export type RetryRoomJobResult =
+  | { ok: true; jobId: string }
+  | { ok: false; error: "not_found" | "forbidden" | "closed" | "not_failed" | "exhausted"; message: string };
+
+const MSG_RETRY_FORBIDDEN = "ลองใหม่ได้เฉพาะงานที่คุณสั่งเอง";
+const MSG_NOT_FAILED = "งานนี้ไม่ได้อยู่ในสถานะไม่สำเร็จแล้ว";
+const MSG_RETRY_EXHAUSTED = "งานนี้ลองใหม่ครบแล้ว — พิมพ์สั่งงานใหม่อีกครั้งได้เลย";
+
+/**
+ * 17 พ.ย. ▸ ปุ่ม "ลองอีกครั้ง" ในห้อง — งานล่าสุดของห้องที่ FAILED (ยังไม่มีคำตอบตามมา · `roomFailedJobs`) กลับ QUEUED
+ *   แถว job เดิม (messageId @unique) = ไม่สร้างข้อความ USER ซ้ำ · ขึ้น "รุ่น" ถัดไปแบบ ops retry (R-Z33 · attempts = รุ่น×100 · fence ไม่ย้อน)
+ *   มองไม่เห็นห้อง ⇒ not_found · ไม่ใช่ผู้เปิดห้อง ⇒ forbidden · ห้องปิด ⇒ closed · ไม่ล้ม/ไม่ใช่งานล่าสุด/มีคำตอบแล้ว ⇒ not_failed ·
+ *   ครบ 9 รุ่น ⇒ exhausted · conditional updateMany ที่ attempts เดิม (กดสองครั้งพร้อมกัน = กลับคิวครั้งเดียว) ·
+ *   ไม่นับงาน/ไม่คิดโควตาใหม่ (สั่งต่อในห้องเดิมไม่นับอยู่แล้ว — R-K6) · route รัน `runRoomJobs` ต่อใน `after()` ◂
+ */
+export async function retryRoomJob(ctx: { tenantId: string; actor: AiMemberActor }, roomId: string, jobId?: string | null): Promise<RetryRoomJobResult> {
+  const id = typeof roomId === "string" ? roomId.trim() : "";
+  if (!id || actorProblem(ctx) || ctx.actor.kind !== "member") return { ok: false, error: "not_found", message: MSG_NOT_FOUND };
+  const tenantId = ctx.tenantId;
+  const db = tenantDb({ tenantId });
+  const room = await db.aiRoom.findFirst({ where: { id, hiddenAt: null }, select: { id: true, conversationId: true, closedAt: true, startedById: true } });
+  if (!room || !(await findVisibleConversation(ctx, room.conversationId))) return { ok: false, error: "not_found", message: MSG_NOT_FOUND };
+  if (room.startedById !== ctx.actor.userId) return { ok: false, error: "forbidden", message: MSG_RETRY_FORBIDDEN };
+  if (room.closedAt) return { ok: false, error: "closed", message: MSG_CLOSED };
+  const failed = (await roomFailedJobs(tenantId, [room])).get(room.id);
+  if (!failed || (jobId && jobId !== failed.jobId)) return { ok: false, error: "not_failed", message: MSG_NOT_FAILED };
+  if (!failed.retryable) return { ok: false, error: "exhausted", message: MSG_RETRY_EXHAUSTED };
+  const cur = await db.aiRoomJob.findFirst({ where: { id: failed.jobId, status: "FAILED" }, select: { attempts: true } });
+  if (!cur) return { ok: false, error: "not_failed", message: MSG_NOT_FAILED };
+  const nextGen = Math.floor(cur.attempts / ROOM_JOB_GEN) + 1;
+  if (nextGen >= ROOM_JOB_MAX_GENS) return { ok: false, error: "exhausted", message: MSG_RETRY_EXHAUSTED };
+  const got = await prisma.$transaction(async (tx) => {
+    const r = await tx.aiRoomJob.updateMany({
+      where: { id: failed.jobId, tenantId, status: "FAILED", attempts: cur.attempts },
+      data: { status: "QUEUED", attempts: nextGen * ROOM_JOB_GEN, error: null, leaseUntil: null, startedAt: null, finishedAt: null },
+    });
+    if (r.count === 1) await tx.aiRoom.updateMany({ where: { id: room.id, tenantId }, data: { updatedAt: new Date() } });
+    return r.count;
+  });
+  if (got !== 1) return { ok: false, error: "not_failed", message: MSG_NOT_FAILED };
+  return { ok: true, jobId: failed.jobId };
 }
 
 type Outcome = { kind: "done"; reply: string } | { kind: "failed"; error: string; push: boolean } | { kind: "requeued" } | { kind: "lost" };
@@ -286,6 +341,15 @@ async function processJob(job: AiRoomJob, fence: number, deps: RoomJobDeps): Pro
     return { kind: "done", reply: res.reply }; // DONE เขียนแล้วใน persistGuard
   } catch (e) {
     if (e instanceof RoomJobLostError) return { kind: "lost" };
+    // 17 พ.ย. ▸ ล้มระดับบัญชีของผู้ให้บริการ (401/402/403) — ลองซ้ำไม่หาย ⇒ FAILED ครั้งแรก + แจ้งผู้ดูแลแพลตฟอร์ม (ERROR = อีเมลแจ้งเตือนของ logOps) ◂
+    const pf = classifyAiProviderError(e);
+    if (pf.kind === "account") {
+      await logOps("ERROR", OPS_SOURCE_PROVIDER_ACCOUNT, `ผู้ให้บริการ AI ใช้ไม่ได้ระดับบัญชี (HTTP ${pf.status ?? "?"}) — งานห้องเลขาล้มทันทีไม่ลองซ้ำ`, {
+        tenantId,
+        detail: `งาน ${job.id} · ห้อง ${job.roomId} · ครั้งที่ ${attemptsInGen(fence)}\n${errDetail(e)}`,
+      }).catch(() => {});
+      return await fail(ERR_AI_UNAVAILABLE).catch(() => ({ kind: "lost" }) as Outcome);
+    }
     await logOps("WARN", "ai", `secretary.roomJobs: งาน ${job.id} ล้ม (ครั้งที่ ${attemptsInGen(fence)} · fence ${fence})`, {
       tenantId,
       detail: e instanceof Error ? (e.stack ?? e.message) : String(e),

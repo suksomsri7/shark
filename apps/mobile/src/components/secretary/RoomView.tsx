@@ -26,6 +26,9 @@
 //   หน้าที่เปิดอยู่ (RoomDetail.pageContext): ข้อความของเลขาที่ถาม (askId · สถานะ ASKED) = การ์ด CONTEXT_CONFIRM ปุ่ม "ใช่ <ป้าย>"/"ไม่ใช่"
 //     (POST rooms/[id]/page-context) · ข้อความที่อ้าง (refIds) = ชิป "📍 อ้างอิง: <ป้าย>" ใต้คำตอบ
 //   ถอดทางเข้า "เพิ่มคน" (ปุ่ม user-plus + เมนู) — งานของใครของมัน (เซิร์ฟเวอร์ปิดการเพิ่มด้วย) · AddMemberSheet ยังอยู่ในโค้ด (ไม่เปิด)
+// 17 พ.ย. (เจ้าของเห็นบนเครื่องจริง: งานล้มแล้วห้องเงียบเป็น "รอคำสั่งเพิ่ม") ▸ RoomDetail.failed (งานล่าสุดล้ม · ไม่มีคำตอบตามมา) ⇒
+//   ประกาศ "ไม่สำเร็จ" ในไทม์ไลน์แทนจุด 3 จุด (sec-room-failed · ข้อความตาม reason th/en หรือข้อความไทยของเซิร์ฟเวอร์) + ปุ่ม "ลองอีกครั้ง"
+//   (sec-room-retry → POST rooms/[id]/retry {jobId} · job เดิมกลับคิว ไม่สร้างข้อความซ้ำ · เฉพาะผู้เปิดห้อง canRetry) · บรรทัดสถานะ "ไม่สำเร็จ · เวลา" ◂
 // ข้อความทั้งหมดผ่าน i18n (sec.room.*) · สีจากธีม · สเกล R-UI1 (ระยะแนวตั้ง × F · ตัวอักษร tokens.type)
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View, type LayoutChangeEvent } from "react-native";
@@ -68,10 +71,11 @@ import {
   type MsgAttachment,
   type MsgRow,
   type RoomDetail,
+  type RoomFailed,
   type RoomStatus,
 } from "@/src/api/secretary";
 import { useAuth } from "@/src/lib/auth-context";
-import { useT } from "@/src/i18n";
+import { useLang, useT } from "@/src/i18n";
 import { F, glassStyle, shadow, useTheme } from "@/src/theme/index";
 import { cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
 
@@ -140,6 +144,9 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
   const myName = user?.name?.trim().split(/\s+/)[0] ?? "";
   const tenantName = tenants.find((x) => x.tenantId === activeTenantId)?.name ?? t("sec.tenant.fallback");
   const name = useSecretaryMe()?.name ?? DEFAULT_SECRETARY_NAME;
+  const lang = useLang();
+  /** 17 พ.ย. ▸ ชื่อในข้อความอังกฤษ: ชื่อปริยาย "เลขา" ⇒ "Lekaa" (กติกาชื่อ) */
+  const nameEn = lang === "en" && name === DEFAULT_SECRETARY_NAME ? "Lekaa" : name;
 
   const [room, setRoom] = useState<RoomDetail | null>(null);
   const [msgs, setMsgs] = useState<MsgRow[]>([]);
@@ -175,6 +182,9 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
   // Lekaa FAB ▸ คำตอบการ์ด "หมายถึงหน้านี้ใช่ไหม"
   const [ctxBusy, setCtxBusy] = useState(false);
   const [ctxNote, setCtxNote] = useState<string | null>(null);
+  // 17 พ.ย. ▸ ปุ่ม "ลองอีกครั้ง" ของงานที่ล้ม
+  const [retryBusy, setRetryBusy] = useState(false);
+  const [retryErr, setRetryErr] = useState<string | null>(null);
   const tenantRef = useRef(activeTenantId);
   const inflight = useRef(false);
   /** มีการกระทำระหว่างที่ poll วิ่งอยู่ ⇒ ผลของรอบนั้นเก่า ให้วิ่งซ้ำ (R-S2.4b) */
@@ -368,7 +378,7 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
       cmid.current = null;
       failedText.current = null;
       if (r.duplicate) setFlash(t("sec.room.dup"));
-      else setRoom((x) => (x ? { ...x, status: "RUNNING", rawStatus: "RUNNING" } : x));
+      else setRoom((x) => (x ? { ...x, status: "RUNNING", rawStatus: "RUNNING", failed: null } : x));
       if (r.duplicate) setPendingMsg(null);
       void load();
     } catch (e) {
@@ -424,6 +434,26 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
     }
   };
 
+  // 17 พ.ย. ▸ ลองอีกครั้ง: job เดิมกลับคิว (เซิร์ฟเวอร์ตรวจผู้เปิดห้อง/ห้องปิด/เพดานถี่) — สำเร็จ = จุด 3 จุดทันที · ไม่ผ่าน = ข้อความใต้ปุ่ม
+  //   (ไม่อ่าน event ใน callback — ปุ่มไม่ส่งอะไรมา) ◂
+  const retry = async () => {
+    const f = room?.failed;
+    if (!f || retryBusy || actRef.current) return;
+    actRef.current = true;
+    setRetryBusy(true);
+    setRetryErr(null);
+    try {
+      await secPostId("secretary/rooms/[id]/retry", id, { jobId: f.jobId });
+      setRoom((x) => (x ? { ...x, failed: null, status: "RUNNING", rawStatus: "RUNNING" } : x));
+    } catch (e) {
+      setRetryErr(e instanceof ApiError && e.detail ? e.detail : t("sec.room.failed.retryErr"));
+    } finally {
+      actRef.current = false;
+      setRetryBusy(false);
+      void load();
+    }
+  };
+
   const teach = () => {
     setDraft(t("sec.room.teachPrefix"));
     setFocusKey((k) => k + 1);
@@ -472,7 +502,9 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
   }, [msgs, seed, seedPhase, pendingMsg, myId]);
   // รอคำตอบของคำสั่งล่าสุด (ข้อความสุดท้ายเป็นของผู้ใช้ + กำลังทำ/เพิ่งส่ง) ⇒ จุด 3 จุดแทนแถบเบื้องหลัง
   const lastRole = shown.filter((m) => m.role !== "system").slice(-1)[0]?.role;
-  const typing = lastRole === "user" && (seedPhase || !!pendingMsg || room?.status === "RUNNING");
+  // 17 พ.ย. ▸ งานล่าสุดล้ม (ห้องยังเปิด · ไม่ได้กำลังส่งใหม่) ⇒ ประกาศแทนจุด 3 จุด
+  const failed: RoomFailed | null = room && !room.closed && !pendingMsg && !sending && room.status !== "RUNNING" ? room.failed : null;
+  const typing = !failed && lastRole === "user" && (seedPhase || !!pendingMsg || room?.status === "RUNNING");
 
   const pc = room?.pageContext ?? null;
   const rows = useMemo<Row[]>(() => {
@@ -563,7 +595,25 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
       });
     }
     out.sort((a, b) => a.at - b.at || a.order - b.order);
-    if (typing) {
+    if (failed) {
+      const body = failed.reason === "ai_unavailable" ? t("sec.room.failed.ai_unavailable") : failed.reason === "gave_up" ? t("sec.room.failed.gave_up", { name: nameEn }) : failed.error || t("sec.room.failed.retryErr");
+      out.push({
+        key: "failed",
+        at: Number.MAX_SAFE_INTEGER,
+        order: seq++,
+        node: (
+          <FailedNotice
+            title={t("sec.room.failed.title", { name: nameEn })}
+            body={body}
+            canRetry={failed.canRetry}
+            busy={retryBusy}
+            note={retryErr ?? (failed.canRetry ? null : t("sec.room.failed.ownerOnly"))}
+            retryLabel={t("sec.room.failed.retry")}
+            onRetry={() => void retry()}
+          />
+        ),
+      });
+    } else if (typing) {
       out.push({
         key: "typing",
         at: Number.MAX_SAFE_INTEGER,
@@ -587,7 +637,7 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [shown, typing, room, approvals, logs, nowMs, name, myId, people, flow, approverOf, undoBusyId, undoNote, c, t, remBusy, calSheet, remAct, pc, ctxBusy, ctxNote]);
+  }, [shown, typing, failed, retryBusy, retryErr, nameEn, room, approvals, logs, nowMs, name, myId, people, flow, approverOf, undoBusyId, undoNote, c, t, remBusy, calSheet, remAct, pc, ctxBusy, ctxNote]);
 
   // เลื่อนครั้งแรก: มีการ์ดรออนุมัติ ⇒ ไปที่การ์ดแรก (สิ่งที่ต้องทำ) · ไม่มี ⇒ ท้ายสุด · ต่อจากนั้น = ท้ายเมื่อมีของใหม่และอยู่ใกล้ท้าย
   const scroll = useRef<ScrollView>(null);
@@ -613,12 +663,14 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
     scroll.current?.scrollTo({ y: Math.max(0, firstAnchorY.current - F.v(130)), animated: false });
   };
 
+  // 17 พ.ย. ▸ งานล่าสุดล้ม ⇒ "ไม่สำเร็จ · เวลา" (ไม่ใช่ "รอคำสั่งเพิ่ม")
+  const baseStatus = room ? (failed ? t("sec.room.status.FAILED", { time: hhmm(failed.at || room.updatedAt) }) : t(`sec.room.status.${room.status}`, { time: hhmm(room.status === "RUNNING" ? room.createdAt : room.updatedAt) })) : "";
   const statusText = room
     ? closed
       ? t("sec.room.status.closed", { time: hhmm(room.updatedAt) })
       : shared
-        ? t("sec.room.status.shared", { status: t(`sec.room.status.${room.status}`, { time: hhmm(room.status === "RUNNING" ? room.createdAt : room.updatedAt) }), n: members.length + 1 })
-        : t(`sec.room.status.${room.status}`, { time: hhmm(room.status === "RUNNING" ? room.createdAt : room.updatedAt) })
+        ? t("sec.room.status.shared", { status: baseStatus, n: members.length + 1 })
+        : baseStatus
     : "";
   const firstAnchorKey = rows.find((r) => r.anchor)?.key;
   const flashText = sendErr ?? flash?.text ?? null;
@@ -672,7 +724,7 @@ export function RoomView({ id, seed, lead, embedded }: { id: string; seed?: Room
             ) : null}
             {room ? (
               <View style={styles.statusRow}>
-                <Dot status={closed ? "done" : DOT[room.status]} />
+                <Dot status={closed ? "done" : failed ? "fail" : DOT[room.status]} />
                 <Text testID="sec-room-status" style={[styles.status, { color: c.textMuted }]} numberOfLines={1}>
                   {statusText}
                 </Text>
@@ -891,6 +943,43 @@ function Frame({ embedded, bottom, children }: { embedded: boolean; bottom: numb
   );
 }
 
+/** 17 พ.ย. ▸ ประกาศงานไม่สำเร็จในไทม์ไลน์ (แทนจุด 3 จุด) — ไอคอนแดง + หัว + ข้อความ + ปุ่ม "ลองอีกครั้ง" (เฉพาะผู้เปิดห้อง) + ข้อความใต้ปุ่ม */
+function FailedNotice({ title, body, canRetry, busy, note, retryLabel, onRetry }: { title: string; body: string; canRetry: boolean; busy: boolean; note: string | null; retryLabel: string; onRetry: () => void }) {
+  const { c } = useTheme();
+  return (
+    <View style={styles.indent}>
+      <Glass testID="sec-room-failed" pad={{ v: 14, h: 16 }} radius={18} style={styles.failBox}>
+        <View style={styles.failHead}>
+          <Icon name="alert-circle" size={18} color={c.bad.fg} />
+          <Text style={[styles.failT, { color: c.text }]}>{title}</Text>
+        </View>
+        <Text testID="sec-room-failed-text" style={[styles.failB, { color: c.textDim }]}>
+          {body}
+        </Text>
+        {canRetry ? (
+          <Pressable
+            testID="sec-room-retry"
+            accessibilityRole="button"
+            accessibilityLabel={retryLabel}
+            accessibilityState={{ disabled: busy, busy }}
+            disabled={busy}
+            onPress={onRetry}
+            style={[styles.failBtn, { backgroundColor: c.accent }, busy && styles.failBusy]}
+          >
+            <Icon name="refresh-cw" size={15} color={c.onAccent} />
+            <Text style={[styles.failBtnT, { color: c.onAccent }]}>{retryLabel}</Text>
+          </Pressable>
+        ) : null}
+        {note ? (
+          <Text testID="sec-room-failed-note" style={[styles.failNote, { color: c.textMuted }]}>
+            {note}
+          </Text>
+        ) : null}
+      </Glass>
+    </View>
+  );
+}
+
 /** เลขากำลังทำงาน (แบบ Ⓑ): ลูกแก้ว + ฟองจุด 3 จุด + บรรทัดสถานะ */
 function TypingRow({ testID, label }: { testID: string; label: string }) {
   const { c } = useTheme();
@@ -932,6 +1021,14 @@ const styles = StyleSheet.create({
   remNote: { position: "absolute", left: 16, right: 16, top: 110, paddingVertical: 10, paddingHorizontal: 14 },
   bg: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: F.v(22) },
   bgT: { flex: 1, minWidth: 0, fontSize: 13.5, lineHeight: 19 },
+  failBox: { marginTop: F.v(22), gap: 8 },
+  failHead: { flexDirection: "row", alignItems: "center", gap: 8 },
+  failT: { flex: 1, minWidth: 0, fontSize: T.sub + 1, fontWeight: "700", lineHeight: 21 },
+  failB: { fontSize: 13.5, lineHeight: 20 },
+  failBtn: { alignSelf: "flex-start", flexDirection: "row", alignItems: "center", gap: 7, height: 38, borderRadius: 19, paddingHorizontal: 16, marginTop: 4 },
+  failBusy: { opacity: 0.55 },
+  failBtnT: { fontSize: T.sub, fontWeight: "600" },
+  failNote: { fontSize: T.cap, lineHeight: 17 },
   offline: { fontSize: T.cap, textAlign: "center", marginTop: spacing.lg },
   gone: { marginHorizontal: spacing.page, marginTop: F.v(60), alignItems: "center", gap: spacing.sm },
   goneT: { fontSize: T.body, fontWeight: "600", lineHeight: 23, textAlign: "center" },

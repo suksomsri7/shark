@@ -82,6 +82,8 @@ const PATH_ID = {
   "secretary/rooms/[id]/proposals": "/api/mobile/secretary/rooms/[id]/proposals",
   "secretary/rooms/[id]/send": "/api/mobile/secretary/rooms/[id]/send",
   "secretary/rooms/[id]/close": "/api/mobile/secretary/rooms/[id]/close",
+  // 17 พ.ย. ▸ ปุ่ม "ลองอีกครั้ง" ของประกาศงานไม่สำเร็จในห้อง (job เดิมกลับคิว · ไม่สร้างข้อความซ้ำ)
+  "secretary/rooms/[id]/retry": "/api/mobile/secretary/rooms/[id]/retry",
   // Lekaa FAB ▸ คำตอบการ์ด "หมายถึงหน้านี้ใช่ไหม" (CONTEXT_CONFIRM)
   "secretary/rooms/[id]/page-context": "/api/mobile/secretary/rooms/[id]/page-context",
   "secretary/proposals/[id]/approve": "/api/mobile/secretary/proposals/[id]/approve",
@@ -138,6 +140,8 @@ export type RoomRaw = {
   pendingProposals?: number;
   badge?: { pendingProposals?: number; unread?: number } | null;
   updatedAt?: string;
+  /** 17 พ.ย. ▸ งานล่าสุดล้มและยังไม่มีคำตอบ (เซิร์ฟเวอร์เก่า = ไม่มี) */
+  failed?: boolean;
 };
 /** แถวห้องที่จอใช้ (ผ่าน normalizeRoom แล้ว) */
 export type RoomCard = {
@@ -152,6 +156,8 @@ export type RoomCard = {
   pending: number;
   unread: boolean;
   updatedAt: string;
+  /** 17 พ.ย. ▸ งานล่าสุดไม่สำเร็จ (การ์ด "ไม่สำเร็จ" · นับในชิป "กำลังทำ") */
+  failed: boolean;
 };
 
 export type Suggestion = { key: string; system: string; title: string; instruction: string };
@@ -302,6 +308,7 @@ type GetIdMap = {
 type PostIdMap = {
   "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string; attachments?: AttachRef[] }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
   "secretary/rooms/[id]/close": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/rooms/[id]/retry": { body: { jobId?: string }; res: { ok: boolean; jobId?: string } };
   "secretary/rooms/[id]/page-context": { body: { answer: "yes" | "no" }; res: { ok: boolean; state?: string } };
   "secretary/proposals/[id]/approve": { body: { confirm2x?: boolean }; res: ApproveRes };
   "secretary/proposals/[id]/reject": { body: RejectBody; res: { ok: boolean; memoryId?: string } };
@@ -439,6 +446,7 @@ export function normalizeRoom(r: RoomRaw, myUserId: string | null | undefined): 
     pending,
     unread,
     updatedAt: r.updatedAt ?? "",
+    failed: r.failed === true,
   };
 }
 
@@ -648,7 +656,18 @@ export type RoomDetail = {
   calendarCards: { id: string; kind: "AGENDA" | "LIST" | "TRAVEL"; fromDay: string; toDay: string; createdAt: string; pairKey?: string }[];
   /** Lekaa FAB ▸ หน้าที่เปิดอยู่ตอนสั่ง: ป้าย · สถานะ (ASKED = การ์ดถามใต้ข้อความ askId) · ข้อความเลขาที่อ้าง (refIds → ชิป 📍) · null = ไม่มี */
   pageContext: RoomPageContext | null;
+  /** 17 พ.ย. ▸ งานล่าสุดของห้องล้ม (ยังไม่มีคำตอบตามมา) — ประกาศในห้อง + ปุ่มลองอีกครั้ง (canRetry) · null = ไม่ล้ม/เซิร์ฟเวอร์เก่า */
+  failed: RoomFailed | null;
 };
+/** reason: ai_unavailable / gave_up = แอปแปลเอง (th/en) · other = แสดง `error` ไทยของเซิร์ฟเวอร์ */
+export type RoomFailed = { jobId: string; error: string; reason: "ai_unavailable" | "gave_up" | "other"; at: string; canRetry: boolean };
+function failedOf(v: unknown): RoomFailed | null {
+  const o = rec(v);
+  const jobId = str(o.jobId);
+  if (!jobId) return null;
+  const reason = o.reason === "ai_unavailable" || o.reason === "gave_up" ? o.reason : "other";
+  return { jobId, error: str(o.error), reason, at: isoOf(o.at), canRetry: o.canRetry === true };
+}
 export type RoomPageContext = { label: string; state: "PENDING" | "ASKED" | "CONFIRMED" | "REJECTED"; askId: string | null; refIds: string[]; entityType: string | null };
 /** Lekaa FAB ▸ หน้าที่ผู้ใช้เปิดอยู่ (จอ native = route + รหัส · หน้าระบบ WebView = ข้อความ page-context ของเว็บ) — label เป็นแค่คำใบ้ */
 export type PageContext = { system?: string; systemId?: string; path?: string; title?: string; route?: string; entity?: { type: string; id: string; label?: string } };
@@ -674,6 +693,7 @@ export function normalizeRoomDetail(v: unknown): RoomDetail {
     closed: !!o.closedAt || raw === "CLOSED",
     canManage: o.canManage === true,
     pageContext: o.pageContext ? pageContextOf(o.pageContext) : null,
+    failed: o.closedAt ? null : failedOf(o.failed),
     members: (Array.isArray(o.members) ? o.members : [])
       .map((m) => rec(m))
       .filter((m) => str(m.userId))

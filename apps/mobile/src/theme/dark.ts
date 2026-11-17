@@ -57,6 +57,9 @@ export const dark: Palette = {
     waitHalo: "rgba(255,176,32,0.22)",
     done: "#4c4c5c",
     doneHalo: "rgba(0,0,0,0)",
+    // 17 พ.ย. ▸ งานที่ล้ม (ห้อง/การ์ด "ไม่สำเร็จ")
+    fail: "#ff6b6b",
+    failHalo: "rgba(255,107,107,0.22)",
   },
   // ป้ายระบบในโหมดมืด = สีที่ตาราง INLINE ของ gen_airy_dark.py สลับให้ (crm/kb/acc สว่างขึ้น)
   sys: {

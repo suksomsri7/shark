@@ -36,6 +36,38 @@ export interface AiProvider {
   chat(messages: AiChatMessage[], opts?: { maxTokens?: number; tools?: AiToolDef[] }): Promise<AiReply>;
 }
 
+/**
+ * 17 พ.ย. ▸ ผู้ให้บริการตอบ HTTP ไม่ ok — เก็บรหัสสถานะไว้ให้ `classifyAiProviderError` (ข้อความเดิมทุกไบต์ "AI provider <code>: <body>") ◂
+ */
+export class AiProviderHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, body: string) {
+    super(`AI provider ${status}: ${body.slice(0, 200)}`);
+    this.name = "AiProviderHttpError";
+    this.status = status;
+  }
+}
+
+/** ชนิดของความล้มจากผู้ให้บริการ — "account" = ลองซ้ำไม่หาย (เครดิตหมด/คีย์ผิด/ถูกห้าม) · "transient" = ลองใหม่ได้ (timeout · 429 · 5xx · ตอบว่าง · อื่น ๆ) */
+export type AiProviderFailure = { kind: "account" | "transient"; status: number | null };
+/** 401 คีย์ผิด/หมดอายุ · 402 เครดิตไม่พอ · 403 ถูกห้าม (บัญชี/นโยบาย) — ระดับบัญชี ลองซ้ำก็ไม่หาย */
+const ACCOUNT_STATUSES = new Set([401, 402, 403]);
+
+/**
+ * 17 พ.ย. ▸ จัดชนิด error ของผู้ให้บริการ "ที่เดียว" (worker ห้องเลขาใช้ตัดสินว่าจะลองซ้ำหรือล้มทันที) ·
+ *   อ่าน `status` ของ AiProviderHttpError ก่อน · ไม่ใช่ (ผู้ให้บริการจำลอง/ห่อชั้นอื่น) = อ่านจากข้อความรูป "AI provider <code>:" ·
+ *   ไม่รู้จัก = transient (พฤติกรรมเดิม: ลองซ้ำ 3 ครั้ง) ◂
+ */
+export function classifyAiProviderError(e: unknown): AiProviderFailure {
+  let status: number | null = null;
+  if (e instanceof AiProviderHttpError) status = e.status;
+  else {
+    const m = /AI provider (\d{3}):/.exec(e instanceof Error ? e.message : typeof e === "string" ? e : "");
+    if (m) status = Number(m[1]);
+  }
+  return { kind: status !== null && ACCOUNT_STATUSES.has(status) ? "account" : "transient", status };
+}
+
 // ── ROUTING 2 ชั้น ── คุม cost: คำถามอ่านสั้น → FAST (haiku ถูก/เร็ว) · งานหนัก/มีรูป → SMART (sonnet)
 export const FAST_MODEL = "anthropic/claude-haiku-4.5";
 export const SMART_MODEL = "anthropic/claude-sonnet-5";
@@ -182,7 +214,7 @@ export class OpenRouterProvider implements AiProvider {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new Error(`AI provider ${res.status}: ${body.slice(0, 200)}`);
+      throw new AiProviderHttpError(res.status, body); // 17 พ.ย. ▸ ข้อความเดิม + รหัสสถานะ ◂
     }
     const data = (await res.json()) as {
       choices?: {
@@ -415,7 +447,7 @@ export class AnthropicProvider implements AiProvider {
     });
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
-      throw new Error(`AI provider ${res.status}: ${errBody.slice(0, 200)}`);
+      throw new AiProviderHttpError(res.status, errBody); // 17 พ.ย. ▸ ข้อความเดิม + รหัสสถานะ ◂
     }
     return parseAnthropicReply(await res.json(), this.model);
   }

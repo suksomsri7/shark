@@ -1,7 +1,7 @@
 // แผ่น Lekaa (เจ้าของอนุมัติแบบ fab6 จอ 2–3 + fab4 จอ 3 · 15 พ.ย.) — เปิดจากปุ่มลอย Lekaa (LekaaFabHost)
 //
 // มุมมอง "list" (fab6 จอ 2): หัว = โลโก้ Lekaa วงกลม + "Lekaa" + ชื่อกิจการ + ✕ · ช่องค้นหา "ค้นหาชื่องานที่เคยสั่ง" + ปุ่มกลมดำ + ท้ายแถว
-//   ชิป ทั้งหมด / กำลังทำ (n) / รออนุมัติ / เสร็จ (ไม่มี "ของฉัน/ทุกคนในกิจการ" — งานของใครของมัน) · การ์ดงาน = RoomCard เดิมของหน้าเลขา
+//   ชิป ทั้งหมด / กำลังทำ (n · รวมงานไม่สำเร็จ 17 พ.ย.) / รออนุมัติ / เสร็จ (ไม่มี "ของฉัน/ทุกคนในกิจการ" — งานของใครของมัน) · การ์ดงาน = RoomCard เดิมของหน้าเลขา
 //   ปัดการ์ดไปซ้าย = ปุ่มแดง "ลบ" → ชีตยืนยัน → DELETE secretary/rooms/[id] (soft delete · ผู้เปิดห้องเท่านั้น) · ข้อมูล: GET secretary/rooms (ของตัวเอง ∪ ที่เป็นสมาชิก)
 //   โหลดทุกครั้งที่เปิด + ทุก 15 วิ ระหว่างเปิดอยู่
 // มุมมอง "task": แตะการ์ด = ห้องงานในแผ่นเดียวกัน (RoomView embedded · ‹ กลับรายการ) · + = งานใหม่ในแผ่น (fab6 จอ 3: หัว "งานใหม่" ·
@@ -48,6 +48,11 @@ const POLL_MS = 15_000;
 const SEARCH_H = 42;
 const DEL_W = 76;
 const FILTER_OF: Record<RoomStatus, RoomFilterKey> = { OPEN: "working", RUNNING: "working", WAITING: "approval", DONE: "done" };
+/**
+ * 17 พ.ย. ▸ งานไม่สำเร็จ (`failed` · ห้องยังเปิด) นับในชิป "กำลังทำ" — งานยังไม่จบและรอผู้ใช้กด "ลองอีกครั้ง" (ไม่ใช่ "รออนุมัติ" · ไม่ใช่ "เสร็จ") ·
+ *   เท่ากับพฤติกรรมเดิม (สถานะเซิร์ฟเวอร์ = OPEN) แต่เขียนไว้ชัดไม่ให้หลุดเมื่อแผนที่สถานะเปลี่ยน ◂
+ */
+const filterOf = (r: Room): RoomFilterKey => (r.failed && r.status !== "DONE" ? "working" : FILTER_OF[r.status]);
 type View_ = { kind: "list" } | { kind: "new" } | { kind: "room"; id: string };
 
 export function LekaaSheet({ visible, onClose, pageContext }: { visible: boolean; onClose: () => void; pageContext: PageContext | null }) {
@@ -196,11 +201,11 @@ function ListView({ pan, onClose, onNew, onOpen }: { pan: ReturnType<typeof PanR
 
   const counts = useMemo(() => {
     const list = rooms ?? [];
-    return { working: list.filter((r) => FILTER_OF[r.status] === "working").length, doneToday: list.filter((r) => r.status === "DONE" && isTodayBkk(r.updatedAt, nowMs)).length };
+    return { working: list.filter((r) => filterOf(r) === "working").length, doneToday: list.filter((r) => r.status === "DONE" && isTodayBkk(r.updatedAt, nowMs)).length };
   }, [rooms, nowMs]);
   const visibleRooms = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return (rooms ?? []).filter((r) => (filter === "all" || FILTER_OF[r.status] === filter) && (!q || r.title.toLowerCase().includes(q)));
+    return (rooms ?? []).filter((r) => (filter === "all" || filterOf(r) === filter) && (!q || r.title.toLowerCase().includes(q)));
   }, [rooms, filter, query]);
   // แบบ fab6: ชิป "กำลังทำ" มีตัวเลข · ชิปอื่นไม่มี
   const filters: RoomFilterOption[] = [

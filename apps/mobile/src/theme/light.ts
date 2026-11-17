@@ -59,6 +59,9 @@ export const light = {
     waitHalo: "rgba(255,176,32,0.22)",
     done: "#c5c8d4",
     doneHalo: "rgba(0,0,0,0)",
+    // 17 พ.ย. ▸ งานที่ล้ม (ห้อง/การ์ด "ไม่สำเร็จ")
+    fail: "#e5484d",
+    failHalo: "rgba(229,72,77,0.20)",
   },
   // สีระบบ = KC ใน gen_sec.py
   sys: {
