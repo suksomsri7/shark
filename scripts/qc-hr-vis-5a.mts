@@ -21,6 +21,9 @@ const ALLOW_SRC = [F.page, F.payUi, F.runUi, F.repUi, F.label, F.view, ATT_PAGE]
 const ALLOW_DATA = [F.th, F.en, F.inv, F.mx];
 const OWN = ["scripts/qc-hr-vis-5a.mts", "scripts/qc-hr-vis-5a-lib.mts"];
 const TOOL = ["scripts/seed-hr-walk.mts", "scripts/walk-hr.mts"]; // ORACLE-EDIT (HR VIS-5a · controller r4): + walker PAGE-CRASH / press probe / FIT-CLIP / ytd-link reveal ◂ // ORACLE-EDIT (HR VIS-5a · controller): walk seed OT row for the r3 add/OT column (every hunk "HR VIS-5a" + ◂, checked in S2) ◂
+// ORACLE-EDIT (HR VIS-5d · controller) S1/S2/S3/S5: explicit allowlist — the later ticket VIS-5d (brief §8): its src files + walk tools when every hunk adds a line with "HR VIS-5d" and "◂" (new settings-view.ts · settings-ui.tsx · *TemplateRowsEditor*.tsx: marker in lines 1–3) · its oracle + the older oracles it edited when every hunk adds "HR VIS-5d" · unmarked still fails ◂
+const V5D_EDIT = ["src/app/app/sys/[id]/hr/settings/page.tsx", "src/app/app/sys/[id]/hr/settings/law/page.tsx", "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx", ...["law-ui", "lifecycle-ui", "line-ui", "work-entries-ui", "labor-ui", "attendance-pay-ui", "payroll-run-ui", "payroll-accounting-ui", "bank-files/ui", "filings/ui", "leave-presets-ui"].map((x) => `${H}${x}.tsx`), "scripts/walk-hr.mts", "scripts/seed-hr-walk.mts"], V5D_OR = ["vis-5d", "vis-5-lib", "vis-5a", "h3.6", "h3.9", "h4.2-lib", "h4.3-lib", "priv-2", "leave-3", "preprod-1"].map((x) => `scripts/qc-hr-${x}.mts`); // ORACLE-EDIT (HR VIS-5d · controller) ◂
+const v5dOk = (f: string): boolean => { const hs = diffHunks(BASE, f) ?? []; if (/^src\/lib\/modules\/hr\/(settings-view\.ts|settings-ui\.tsx|[\w-]*TemplateRowsEditor[\w-]*\.tsx)$/.test(f)) return fileAt(BASE, f) === null && rd(f).split("\n").slice(0, 3).join("\n").includes("HR VIS-5d"); return (V5D_EDIT.includes(f) || V5D_OR.includes(f)) && hs.length > 0 && hs.every((h) => h.added.some((l) => l.includes("HR VIS-5d") && (V5D_OR.includes(f) || l.includes("◂")))); }; // ORACLE-EDIT (HR VIS-5d · controller) ◂
 /** brief §7 "Untouched" — whole files/dirs */
 const UNTOUCHED = [F.payroll, F.rr, `${H}privacy.ts`, `${H}privacy-shared.ts`, `${H}bank-files`, `${H}filings`, `${H}reports.ts`, `${H}reports-rules.ts`, `${H}scope.ts`, "src/lib/core", "prisma", ...srcFiles("src/lib/modules/hr").filter((f) => /actions\.ts$/.test(f))];
 /** loaders/gates the payroll page reads — bodies hashed vs base (privacy + I/O pins) */
@@ -117,11 +120,11 @@ const isNew = (f: string) => fileAt(BASE, f) === null;
 // ═════════════ statics ═════════════
 const CH = changedFiles(BASE).filter((f) => !/^(ledger|scratchpad)\//.test(f));
 {
- const r = { sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, runRules: !!rd(F.rr) && rd(F.rr) === fileAt(BASE, F.rr), untouched: changedVsBase(BASE, UNTOUCHED) === "unchanged" };
+ const r = { sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, runRules: !!rd(F.rr) && rd(F.rr) === fileAt(BASE, F.rr), untouched: ((u: string) => u === "unchanged" || (u.startsWith("changed: ") && u.slice(9).split(",").every(v5dOk)))(changedVsBase(BASE, UNTOUCHED)) }; // ORACLE-EDIT (HR VIS-5d · controller) S1: bank-files/ui.tsx · filings/ui.tsx (VIS-5d card files) ◂
  chk("S1", all(r), "", `${fails(r)} ${changedVsBase(BASE, UNTOUCHED).slice(0, 120)}`);
- const out = CH.filter((f) => ![...ALLOW_SRC, ...ALLOW_DATA, ...OWN].includes(f) && !(/^scripts\/qc-.*\.mts$/.test(f) && !isNew(f) && oracleEditOk(BASE, f)) && !(TOOL.includes(f) && !isNew(f) && !vis5aUnmarked(BASE, [f], isNew).length)); // ORACLE-EDIT (HR VIS-5a · controller): + TOOL ◂
+ const out = CH.filter((f) => !v5dOk(f) /* ORACLE-EDIT (HR VIS-5d · controller) S2 ◂ */ && ![...ALLOW_SRC, ...ALLOW_DATA, ...OWN].includes(f) && !(/^scripts\/qc-.*\.mts$/.test(f) && !isNew(f) && oracleEditOk(BASE, f)) && !(TOOL.includes(f) && !isNew(f) && !vis5aUnmarked(BASE, [f], isNew).length)); // ORACLE-EDIT (HR VIS-5a · controller): + TOOL ◂
  chk("S2", !out.length, "none", `outside=${L(out)} base=${BASE.slice(0, 9)}`);
- const bad = vis5aUnmarked(BASE, CH.filter((f) => ALLOW_SRC.includes(f)), isNew);
+ const bad = vis5aUnmarked(BASE, CH.filter((f) => ALLOW_SRC.includes(f) && !v5dOk(f)), isNew); // ORACLE-EDIT (HR VIS-5d · controller) S3: payroll-run-ui.tsx PayrollEngineCard hunks of VIS-5d ◂
  chk("S3", !bad.length, "", L(bad));
  const s4: string[] = [];
  for (const [f, ns] of BODIES) { const a = stripComments(rd(f)), b = stripComments(fileAt(BASE, f) ?? ""); for (const n of ns) { const x = bodyOf(a, n), y = bodyOf(b, n); if (!x || sha(x) !== sha(y)) s4.push(`${f.split("/").pop()}:${n}${x ? "" : "∅"}`); } }
@@ -133,7 +136,7 @@ const CH = changedFiles(BASE).filter((f) => !/^(ledger|scratchpad)\//.test(f));
   const hs = diffHunks(BASE, f) ?? [], extra = minus(satArith(hs.flatMap((h) => h.added)), satArith(hs.flatMap((h) => h.removed)));
   if (extra.length) s5.push(`${f.split("/").pop()}: ${extra.slice(0, 3).join(" ; ")}`);
  }
- for (const f of CH.filter((p) => p.startsWith("src/") && isNew(p))) if (/^\s*["']use client["']/.test(rd(f))) s5.push(`new client ${f}`);
+ for (const f of CH.filter((p) => p.startsWith("src/") && isNew(p) && !(/^src\/lib\/modules\/hr\/(settings-view\.ts|settings-ui\.tsx|[\w-]*TemplateRowsEditor[\w-]*\.tsx)$/.test(p) && v5dOk(p)))) if (/^\s*["']use client["']/.test(rd(f))) s5.push(`new client ${f}`); // ORACLE-EDIT (HR VIS-5d · controller) S5: Q8 TemplateRowsEditor (brief §7.9) ◂
  chk("S5", !s5.length, "", L(s5));
 }
 {

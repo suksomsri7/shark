@@ -113,20 +113,23 @@ function runStatic(): void {
   if (V5_SRC.includes(f)) return hs.every((h) => h.added.some((l) => l.includes("HR VIS-5a") && l.includes("◂")));
   return V5_OR.includes(f) && hs.every((h) => h.added.some((l) => l.includes("ORACLE-EDIT (HR VIS-5a · controller)")));
  };
+ // ORACLE-EDIT (HR VIS-5d · controller) ST2/ST3: explicit allowlist — the later ticket VIS-5d (brief §8): its src files + walk tools when every hunk adds a line with "HR VIS-5d" and "◂" (new settings-view.ts · settings-ui.tsx · *TemplateRowsEditor*.tsx: marker in lines 1–3) · its oracle + the older oracles it edited (every hunk "HR VIS-5d") · messages th/en only when every changed key is under hr.setview.* · unmarked still fails ◂
+ const V5D_EDIT = ["src/app/app/sys/[id]/hr/settings/page.tsx", "src/app/app/sys/[id]/hr/settings/law/page.tsx", "src/app/app/sys/[id]/hr/settings/ApiKeysCard.tsx", ...["law-ui", "lifecycle-ui", "line-ui", "work-entries-ui", "labor-ui", "attendance-pay-ui", "payroll-run-ui", "payroll-accounting-ui", "bank-files/ui", "filings/ui", "leave-presets-ui"].map((x) => `${H}${x}.tsx`), "scripts/walk-hr.mts", "scripts/seed-hr-walk.mts"], V5D_OR = ["vis-5d", "vis-5-lib", "vis-5a", "h3.6", "h3.9", "h4.2-lib", "h4.3-lib", "priv-2", "leave-3", "preprod-1"].map((x) => `scripts/qc-hr-${x}.mts`); // ORACLE-EDIT (HR VIS-5d · controller) ◂
+ const v5dOk = (f: string): boolean => { if (/^src\/messages\/(th|en)\/common\.json$/.test(f)) { const ks = v5Keys(f); return ks.length > 0 && ks.every((k) => /^hr\.setview\./.test(k)); } if (/^src\/lib\/modules\/hr\/(settings-view\.ts|settings-ui\.tsx|[\w-]*TemplateRowsEditor[\w-]*\.tsx)$/.test(f)) return !inBase(f) && rd(f).split("\n").slice(0, 3).join("\n").includes("HR VIS-5d"); const hs = diffHunks(BASE, f) ?? []; return (V5D_EDIT.includes(f) || V5D_OR.includes(f)) && hs.length > 0 && hs.every((h) => h.added.some((l) => l.includes("HR VIS-5d") && (V5D_OR.includes(f) || l.includes("◂")))); }; // ORACLE-EDIT (HR VIS-5d · controller) ◂
  const p3Ok = (f: string) => P3_DATA.includes(f) || (P3_FILES.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR PRIV-3")))); // ORACLE-EDIT (HR PRIV-3 · controller merge) ◂
  {
   const markedOracle = (f: string) => {
    const hs = diffHunks(BASE, f) ?? [];
    return hs.length > 0 && hs.every((h) => h.added.length > 0 && h.added.some((l) => /ORACLE-EDIT[^\n]*LEAVE-3/.test(l)));
   };
-  const bad = changed.filter((f) => !(ALLOWED.includes(f) || OWN.includes(f) || (/^scripts\/qc-[^/]+\.mts$/.test(f) && inBase(f) && markedOracle(f)) || p3Ok(f) || v5Ok(f))); // ORACLE-EDIT (HR PRIV-3 · controller merge): + p3Ok ◂ · ORACLE-EDIT (HR VIS-5a · controller): + v5Ok ◂
+  const bad = changed.filter((f) => !(ALLOWED.includes(f) || OWN.includes(f) || (/^scripts\/qc-[^/]+\.mts$/.test(f) && inBase(f) && markedOracle(f)) || p3Ok(f) || v5Ok(f) || v5dOk(f))); // ORACLE-EDIT (HR VIS-5d · controller) ST2: + v5dOk ◂ // ORACLE-EDIT (HR PRIV-3 · controller merge): + p3Ok ◂ · ORACLE-EDIT (HR VIS-5a · controller): + v5Ok ◂
   const frozen = [...srcFiles("src/lib/modules/hr").filter((f) => /\/(judge-rules|work-entries|leave|leave-rules|rules|lifecycle|attendance-pay[^/]*|payroll[^/]*|correction[^/]*|swap[^/]*)\.tsx?$/.test(f)), "prisma", "src/lib/core"];
-  const fz = git(["diff", "--name-only", BASE, "--", ...frozen]).split("\n").filter((f) => f && !p3Ok(f) && !v5Ok(f)).join("\n"); // ORACLE-EDIT (HR PRIV-3 · controller merge): + p3Ok ◂ · ORACLE-EDIT (HR VIS-5a · controller): + v5Ok ◂
+  const fz = git(["diff", "--name-only", BASE, "--", ...frozen]).split("\n").filter((f) => f && !p3Ok(f) && !v5Ok(f) && !v5dOk(f)).join("\n"); // ORACLE-EDIT (HR VIS-5d · controller) ST2 frozen: attendance-pay-ui · payroll-run-ui · payroll-accounting-ui ◂ // ORACLE-EDIT (HR PRIV-3 · controller merge): + p3Ok ◂ · ORACLE-EDIT (HR VIS-5a · controller): + v5Ok ◂
   ck("ST2", { allowed: !!BASE && !bad.length, frozen: fz === "" }, "only allowed files", `base=${BASE.slice(0, 9)} outside=${bad.slice(0, 6).join(",") || "none"} frozen=${fz.replace(/\n/g, ",").slice(0, 120) || "none"}`);
  }
  {
   const bad: string[] = [];
-  for (const f of changed.filter((x) => x.startsWith("src/") && !p3Ok(x) && !v5Ok(x))) { // ORACLE-EDIT (HR PRIV-3 · controller merge) ST3: + p3Ok ◂ · ORACLE-EDIT (HR VIS-5a · controller) ST3: + v5Ok ◂
+  for (const f of changed.filter((x) => x.startsWith("src/") && !p3Ok(x) && !v5Ok(x) && !v5dOk(x))) { // ORACLE-EDIT (HR VIS-5d · controller) ST3: + v5dOk ◂ // ORACLE-EDIT (HR PRIV-3 · controller merge) ST3: + p3Ok ◂ · ORACLE-EDIT (HR VIS-5a · controller) ST3: + v5Ok ◂
    const hs = diffHunks(BASE, f);
    if (!hs) { bad.push(`${f}:git`); continue; }
    hs.forEach((h, i) => {

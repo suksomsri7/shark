@@ -12,6 +12,9 @@
 // ORACLE-EDIT (HR VIS-5a · controller r4): state.pressProbe = ปุ่ม submit ที่ walker กดจริง (POST ยังถูกตัดทุกคำขอ — ไม่มีอะไรถึงเซิร์ฟเวอร์) เพื่อจับหน้าพังก่อนส่งคำขอ (PAGE-CRASH) · --no-press ปิด ◂
 //   PAGE-CRASH = หน้า error ของ Next ("This page couldn't load" / "A server error occurred" / Application error) หลังโหลดหรือหลังกด — ระบุปุ่มที่ถูกกดจริง (elementFromPoint) ·
 //   FIT-CLIP = state.fit: เซลล์ตารางที่มองเห็นต้องอยู่ในกรอบ box ทั้งเซลล์ + เซลล์ใน must ไม่ถูกตัดข้อความ · ขนาดจอ extra (1280/1366/1536) ใช้เฉพาะ state ที่ระบุ sizes ◂
+// ORACLE-EDIT (HR VIS-5d · controller) ◂ state.maxHeight {size: px} = PAGE-HEIGHT · state.fold {size: [selector …]} = FOLD (บนสุดของ element อยู่ในจอแรก · ท้าย " !full" = ทั้ง element · "@hrtabs" = แถบแท็บ HR) ·
+//   state.tabStrip [size …] = TABS-CLIP (แถบแท็บ HR ไม่มีแท็บถูกตัด/เลื่อนซ่อน) · state.disabledFail = DISABLED-NO-REASON เป็น FAIL + รวมช่องใน <fieldset disabled> ·
+//   state.cleanSeed [ตาราง …] = SEED-DIRTY ถ้าลายนิ้วมือของตารางเหล่านั้น (ร้าน QC) ต่างจาก manifest.after ของ seed-hr-walk (ของค้างจากการกดจริง) ◂
 // 🔴 session ที่ mint ปักธง userAgent "qc-walk-hr" ลบเฉพาะแถวของรอบนี้ใน finally · ไม่มี process.exit() ในกรอบ try
 // 🔴 ไม่ import visual-hr.mts (ไฟล์นั้นรันทันทีเมื่อ import) — ทำตามแบบของมัน (คุกกี้ตาม APP_ENV · puppeteer-core ของ /root/dive3d · /usr/bin/chromium-browser)
 //    playwright ไม่อยู่ใน node_modules ของทรีนี้ (ตรวจ 14 พ.ย.) ⇒ ใช้ puppeteer-core ตัวเดียวกับ visual-hr · เปลี่ยนได้ด้วย WALK_PUPPETEER / WALK_CHROMIUM
@@ -59,6 +62,7 @@ type State = {
   pathBy?: Record<string, string>; expectFinal?: Record<string, string>; moneyOk?: string[]; limitedNote?: { viewers: string[]; selector: string };
   allowScroll?: string[]; click?: string; extra?: boolean; configMoneyOk?: string[]; why?: string; langs?: string[]; sizes?: string[]; todoInventoryPrefix?: string; coverage?: boolean;
   fit?: { box: string; cells: string; must?: string }; pressProbe?: string[]; // ORACLE-EDIT (HR VIS-5a · controller r4): FIT-CLIP + press probe ◂
+  maxHeight?: Record<string, number>; fold?: Record<string, string[]>; tabStrip?: string[]; disabledFail?: boolean; cleanSeed?: string[]; // ORACLE-EDIT (HR VIS-5d · controller): PAGE-HEIGHT · FOLD · TABS-CLIP · DISABLED-NO-REASON FAIL · SEED-DIRTY ◂
 };
 type Refusal = { id: string; page: string; path: string; unknown: string; viewers: string[]; pathBy?: Record<string, string> };
 type Matrix = { sizes: Size[]; langs: string[]; viewers: Record<string, ViewerDef>; allow: { enumsTh: string[]; thaiInEnExtra: string[]; readOnlyActions?: string[] }; states: State[]; refusals: Refusal[]; excludedInventoryPages: Record<string, string> };
@@ -215,6 +219,8 @@ if (DRY) {
     if ("sizes" in s) for (const z of s.sizes ?? []) if (!M.sizes.some((x) => x.id === z || x.id.startsWith(z))) errs.push(`${s.id}: ขนาด ${z} ไม่อยู่ใน sizes`);
     if ("fit" in s && s.fit) for (const q of [s.fit.box, s.fit.must ?? ""].filter(Boolean)) { const t = /data-testid="([^"]+)"/.exec(q)?.[1]; if (!t || !invOf(s.page).some((r) => r.re.test(t) || r.testid === t)) errs.push(`${s.id}: fit ${q} ไม่มีในทะเบียน ${s.page}`); }
     if ("pressProbe" in s) for (const t of s.pressProbe ?? []) if (!invOf(s.page).some((r) => r.testid === t)) errs.push(`${s.id}: pressProbe ${t} ไม่มีในทะเบียน ${s.page}`);
+    for (const z of [...Object.keys(("maxHeight" in s && s.maxHeight) || {}), ...Object.keys(("fold" in s && s.fold) || {}), ...(("tabStrip" in s && s.tabStrip) || [])]) if (!M.sizes.some((x) => x.id === z)) errs.push(`${s.id}: maxHeight/fold/tabStrip ขนาด ${z} ไม่อยู่ใน sizes`); // ORACLE-EDIT (HR VIS-5d · controller) ◂
+    if ("cleanSeed" in s && (!Array.isArray(s.cleanSeed) || s.cleanSeed.some((t) => !/^[A-Z][A-Za-z]+$/.test(t)))) errs.push(`${s.id}: cleanSeed ต้องเป็นชื่อตาราง`); // ORACLE-EDIT (HR VIS-5d · controller) ◂
   }
   const covered = new Set([...M.states.filter((s) => !s.todoInventoryPrefix).map((s) => s.page), ...M.refusals.map((r) => r.page)]);
   const notCovered = invPages.filter((p) => !covered.has(p) && !M.excludedInventoryPages[p]);
@@ -409,6 +415,14 @@ for (const [k, v] of Object.entries((W.ids.runs ?? {}) as Record<string, string>
 for (const [k, v] of Object.entries((W.ids.periods ?? {}) as Record<string, string>)) IDS[`period.${k}`] = v;
 const USERS: Record<string, string> = { ...Object.fromEntries(Object.entries(E.users as Record<string, { userId: string }>).map(([k, v]) => [k, v.userId])), ...Object.fromEntries(Object.entries((W.users ?? {}) as Record<string, { userId: string }>).map(([k, v]) => [k, v.userId])) };
 const SECURE = (process.env.APP_ENV ?? "") !== "development";
+// ORACLE-EDIT (HR VIS-5d · controller) ▸ SEED-DIRTY: ลายนิ้วมือตารางของร้าน QC (สูตรเดียวกับ seed-hr-walk digestOf) เทียบ manifest.after — คำนวณครั้งเดียวก่อนเดิน ◂
+const SEED_DIRTY = new Map<string, string>();
+for (const t of [...new Set(SEL.flatMap((c) => (c.kind === "state" ? ((c.def as State).cleanSeed ?? []) : [])))]) {
+  const r = (await prisma.$queryRawUnsafe(`SELECT count(*)::int AS n, md5(coalesce(string_agg(h, ',' ORDER BY h), '')) AS h FROM (SELECT md5((to_jsonb(x) - 'updatedAt')::text) AS h FROM "${t}" x WHERE "tenantId" = $1) s`, E.tenant.id).catch((e: Error) => [{ n: -1, h: `ERR ${e.message.slice(0, 60)}` }])) as { n: number; h: string }[];
+  const now = (r[0]?.n ?? 0) > 0 ? r[0]! : null, was = (W.after ?? {})[t] as { n: number; h: string } | undefined;
+  if (!W.after) SEED_DIRTY.set(t, "manifest has no `after` digest — run seed-hr-walk --down then up");
+  else if ((now?.h ?? "") !== (was?.h ?? "")) SEED_DIRTY.set(t, `${was?.n ?? 0}→${now?.n ?? 0} rows${was?.n === now?.n ? " (rows changed)" : ""}`);
+} // ◂ HR VIS-5d
 
 // ── ตัวชี้ความเป็นส่วนตัว (sentinels) ──
 const empName = Object.fromEntries(HQC.employees.map((e) => [e.key, e.name])) as Record<string, string>;
@@ -664,6 +678,41 @@ const fitOf = (o: { box: string; cells: string; must: string }) => {
 const stripIds = (html: string, ids: string[]) =>
   ids.reduce((s, id) => (id ? s.split(id).join("<ID>") : s), html).replace(/nonce="[^"]*"/g, 'nonce=""').replace("</body></html>", "").split(/(?=<script)/).sort().join("");
 
+// ORACLE-EDIT (HR VIS-5d · controller) ▸ FOLD: บนสุดของ element ต้องอยู่ในจอแรก (" !full" = ทั้ง element) · "@hrtabs" = แถบแท็บ HR (กลุ่มลิงก์ ≥ 4 ตัวที่มีลิงก์ /hr/settings นอกเมนูซ้าย) ·
+//   TABS-CLIP: แถบนั้นเลื่อนซ่อน (scrollWidth > clientWidth) หรือมีแท็บที่ขอบเกินกรอบ ◂
+const v5dLayout = (o: { fold: string[] }) => {
+  const H = window.innerHeight, out = { fold: [] as string[], strip: [] as string[] };
+  const strip = (Array.from(document.querySelectorAll('a[href$="/hr/settings"]')).find((a) => !a.closest('[data-testid="hr-set-nav"]') && !!a.parentElement && a.parentElement.querySelectorAll(":scope > a").length >= 4)?.parentElement ?? null) as HTMLElement | null;
+  for (const raw of o.fold) {
+    const full = raw.endsWith(" !full"), sel = raw.replace(/ !full$/, "");
+    const el = (sel === "@hrtabs" ? strip : document.querySelector(sel)) as HTMLElement | null;
+    if (!el) { out.fold.push(`${sel}: absent`); continue; }
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height) out.fold.push(`${sel}: not visible`);
+    else if (r.top + window.scrollY >= H) out.fold.push(`${sel}: top ${Math.round(r.top + window.scrollY)} ≥ fold ${H}`);
+    else if (full && r.bottom + window.scrollY > H) out.fold.push(`${sel}: bottom ${Math.round(r.bottom + window.scrollY)} > fold ${H} (whole element wanted)`);
+  }
+  if (!strip) out.strip.push("HR tab strip not found");
+  else {
+    const sr = strip.getBoundingClientRect();
+    if (strip.scrollWidth > strip.clientWidth + 1) out.strip.push(`strip scrolls ${strip.scrollWidth}>${strip.clientWidth}`);
+    for (const a of Array.from(strip.querySelectorAll(":scope > a")) as HTMLElement[]) { const r = a.getBoundingClientRect(); if (!r.width || r.right > sr.right + 1 || r.left < sr.left - 1) out.strip.push(`tab "${a.innerText.trim()}" outside ${Math.round(sr.left)}–${Math.round(sr.right)}`); }
+  }
+  return out;
+};
+/** DISABLED-NO-REASON (disabledFail): ทุกช่อง :disabled ที่มองเห็น (รวมช่องใน <fieldset disabled>) ต้องมี title / aria-describedby / data-reason ที่ตัวเองหรือ fieldset */
+const v5dDisabled = () => {
+  const has = (e: Element | null) => !!e && (!!e.getAttribute("title") || !!e.getAttribute("aria-describedby") || !!e.getAttribute("data-reason"));
+  const out: string[] = [];
+  for (const el of Array.from(document.querySelectorAll("input:disabled, select:disabled, textarea:disabled, button:disabled, fieldset:disabled, [aria-disabled=\"true\"]")) as HTMLElement[]) {
+    const r = el.getBoundingClientRect();
+    if (!r.width || !r.height || (el as HTMLInputElement).type === "hidden") continue;
+    if (el.getAttribute("data-testid") && ((el as HTMLInputElement).disabled || el.getAttribute("aria-disabled") === "true")) continue; // analyze() already reports own-disabled testid elements
+    if (has(el) || has(el.closest("fieldset[disabled]"))) continue;
+    out.push(`${el.tagName.toLowerCase()}${el.getAttribute("data-testid") ? `[${el.getAttribute("data-testid")}]` : el.getAttribute("name") ? `[name=${el.getAttribute("name")}]` : ""} in ${el.parentElement?.closest("[data-testid]")?.getAttribute("data-testid") ?? "-"}`);
+  }
+  return out;
+}; // ◂ HR VIS-5d
 async function runCell(browser: Any, c: Cell): Promise<Result> {
   const findings: Finding[] = [];
   const add = (sev: Finding["sev"], kind: string, detail: string) => findings.push({ sev, kind, detail: detail.slice(0, 300) });
@@ -700,6 +749,19 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
       if (f.missing) add("FAIL", "FIT-CLIP", `ไม่พบ ${st.fit.box}`);
       for (const x of f.out.slice(0, 12)) add("FAIL", "FIT-CLIP", x);
     }
+    // ORACLE-EDIT (HR VIS-5d · controller) ▸ PAGE-HEIGHT · FOLD · TABS-CLIP · DISABLED-NO-REASON (fieldset) · SEED-DIRTY — not on refusal / coverage (cov-*) cells ◂
+    if (!isRef && !st.coverage) {
+      const lim = st.maxHeight?.[c.size.id];
+      if (lim) { const ph = (await page.evaluate("Math.max(document.documentElement.scrollHeight, document.body ? document.body.scrollHeight : 0)")) as number; if (ph > lim) add("FAIL", "PAGE-HEIGHT", `${ph}px > ${lim}px`); }
+      const fsel = st.fold?.[c.size.id] ?? [], wantStrip = (st.tabStrip ?? []).includes(c.size.id);
+      if (fsel.length || wantStrip) {
+        const v5d = (await page.evaluate(v5dLayout, { fold: fsel })) as ReturnType<typeof v5dLayout>;
+        for (const x of v5d.fold) add("FAIL", "FOLD", x);
+        if (wantStrip) for (const x of v5d.strip) add("FAIL", "TABS-CLIP", x);
+      }
+      if (st.disabledFail) for (const x of (await page.evaluate(v5dDisabled)) as string[]) add("FAIL", "DISABLED-NO-REASON", x);
+      for (const t of st.cleanSeed ?? []) if (SEED_DIRTY.has(t)) add("FAIL", "SEED-DIRTY", `${t}: ${SEED_DIRTY.get(t)} since seed-hr-walk — press-probe/real-press leftovers on the page; seed --down → up before the shots`);
+    } // ◂ HR VIS-5d
     const source = `${(await page.content()) as string}\n${(await page.evaluate("JSON.stringify(self.__next_f || [])")) as string}`;
 
     // HTTP / ปลายทาง
@@ -738,7 +800,7 @@ async function runCell(browser: Any, c: Cell): Promise<Result> {
     for (const s of a.scrollers) add(s.allowed ? "WARN" : "FAIL", "HSCROLL-EL", `${s.el} ${s.sw}>${s.cw}${s.allowed ? " (declared scroller)" : ""}`);
     for (const x of a.clipped.slice(0, 20)) add("WARN", "CLIPPED", x);
     for (const x of a.small.slice(0, 20)) add("WARN", "TAP-44", x);
-    for (const x of a.disabledNoReason) add("WARN", "DISABLED-NO-REASON", x);
+    for (const x of a.disabledNoReason) add(!isRef && !st.coverage && st.disabledFail ? "FAIL" : "WARN", "DISABLED-NO-REASON", x); // ORACLE-EDIT (HR VIS-5d · controller): disabledFail ◂
     // ข้อความ: i18n / enum / error
     const text = a.mainText;
     if (/MISSING_MESSAGE/.test(source) || /MISSING_MESSAGE/.test(a.bodyText)) add("FAIL", "I18N-MISSING", "MISSING_MESSAGE in page");

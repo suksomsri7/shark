@@ -144,6 +144,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
       const VIS5_H42 = [F.ov]; // ORACLE-EDIT (HR VIS-5b · controller) ◂
       hs.forEach((h, i) => {
         if (IN_BASE && VIS5_H42.includes(f) && h.added.some((l) => l.includes("HR VIS-5b"))) return; // ORACLE-EDIT (HR VIS-5b · controller) ◂
+        if (IN_BASE && f === F.setPage && h.added.some((l) => l.includes("HR VIS-5d") && l.includes("◂"))) return; // ORACLE-EDIT (HR VIS-5d · controller) S1.7: explicit file — settings page hunks of VIS-5d (in base only) ◂
         if (!h.added.some((l) => (IN_BASE ? /HR H\d+\.\d+|HR-SET-\d+|POS P\d|HR H4\.2/ : MARK).test(l))) bad.push(`${f.split("/").pop()}#${i}:unmarked`);
       });
     }

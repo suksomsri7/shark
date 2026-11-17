@@ -1,0 +1,45 @@
+  ✅ [S1] [static] changed files ⊆ brief §8 list (+ messages · inventory · matrix · this oracle · tools/older oracles with ORACLE-EDIT hunks)
+  ✅ [S2] [static] every src hunk adds "HR VIS-5d" + ◂ · card files only inside the named card functions/imports · new files marked in lines 1–3
+  ✅ [S3] [static] untouched files = base · payroll-rules sha
+  ✅ [S4] [static] no new "use client" file except TemplateRowsEditor (Q8) · no hex/rgba/bg-blue-/emoji added · no *Satang arithmetic added · no min-w-[ in law page/law-ui
+  ✅ [S5] [static] [control] page.tsx keeps its base testid literals (stub-note excepted) + the imports old suites read · law page/law-ui: no form/action/"use server" · keeps hr-law-table/-row-/loadLawView
+  ❌ [S6] [static] both pages pass `wrap` to ModuleTabs · frame max-w-7xl (no max-w-2xl / max-w-3xl root) — expected all | actual wrapSettings,wrapLaw,wide,noNarrow
+  ✅ [X1] [static] [control] 22 inline wrappers (TS AST): same names · each calls the same action with the same arguments · no new captured local · `back` module-level · no inline "use server" in any other VIS-5d file
+  ❌ [I1] [static] hr.setview: th = en keys · non-empty · en no Thai · right after hr.settings · no other message key changed — expected all | actual thAfter,enAfter,parity
+  ❌ [I2] [static] hr.setview th values carry the mockup 08 wording (exact strings) — expected all mockup strings | actual missing=ตั้งค่าพนักงาน | กะและตารางงาน | ประเภทลาและโควตา | วันหยุด | กฎสาย/OT | รอบจ่าย (+9)
+  ✅ [M1] [tooling] walk matrix: 14-settings + 14v-settings-<6 tabs> (O M MB · 3 sizes · th/en) · 15-law · x7 → ?tab=connect · fold/maxHeight/tabStrip/disabledFail/cleanSeed · walker
+  ❌ [V1] [pure] settingsTabOf vectors (explicit tab · result params of every card · unknown/empty/array) — expected 34 vectors | actual 1 bad: settingsTabOf: ∅ src/lib/modules/hr/settings-view.ts
+[env] qc-hr-vis-5d · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-vis-5d] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+client components known: 532
+(node:1072610) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [G0] [db] [control] P / PS (payroll keys, no settings key): both pages 404
+  ✅ [W2] [control] per viewer (O M MK MB MKB MP): ids on today's page = union over the viewer's menu tabs (named exceptions only)
+  ❌ [N1] [db] menu per viewer: hr-set-nav · mockup order + exact labels · ?tab= links · one aria-current · ≥44 px · law = hr-settings-law-link · managers item OWNER only → /app/settings/staff · footnote — expected menu per viewer | actual O: no hr-set-nav | M: no hr-set-nav | MK: no hr-set-nav | MB: no hr-set-nav | MKB: no hr-set-nav | MP: no hr-set-nav
+  ❌ [N2] [db] law page: same menu with hr-settings-law-link aria-current · back link kept — expected law menu | actual O: menu/current | MB: menu/current
+  ❌ [P1] [db] owner: each tab panel hr-set-panel-<tab> holds only its own sections · no section id in two panels · connections card on every panel — expected own sections only | actual shifts: no panel | shifts: +leave/holidays/rules/pay/connect/life | shifts: no connections card | leave: no panel | leave: +shifts/holidays/rules/pay/connect/life | leave: no connections card (+16)
+  ❌ [P2] [db] tab the viewer lacks (M/MB ?tab=life) → menu + hr-set-empty, no other panel content — expected menu + empty note | actual M: empty=false nav=false content=shifts/leave/holidays/rules/pay/connect | MB: empty=false nav=false content=shifts/leave/holidays/rules/pay/connect
+  ❌ [G1] [db] per viewer no control whose action would refuse (role matrix) · row archive/delete only where allowed · read-only cards carry hr-set-readonly-* reason text — expected role matrix | actual MB: hr-line-settings-enabled <input> | MB: hr-line-settings-mode <select> | MB: hr-line-settings-digest <input> | MB: hr-line-settings-cap <input> | MB: hr-line-settings-unit <select> | MB: hr-line-settings-card no hr-set-readonly-* reason | MKB: hr-life-lead-probation <input> | MKB: hr-life-lead-contract <input> (+27)
+  ❌ [G2] [db] no disabled control without a readable reason (aria-describedby → text · title · data-reason) on any tab of any viewer — expected every disabled has a reason | actual O: <button> hr-settings-law-preset-off-childcare | O: <button> hr-apikeys-issue | M: <button> hr-settings-law-preset-off-childcare | MK: <button> hr-settings-law-preset-off-childcare | MK: <input> autoRevokePin | MK: <input> revokeAppAccess | MB: <button> hr-settings-law-preset-off-childcare | MB: <input> hr-line-settings-enabled (+40)
+  ❌ [F1] [db] result flashes land in the right panel: ?tab=leave&msg=ok · ?run2=ok · ?pacct=ok · ?life=ok · ?fmsg=saved — expected flash in panel | actual tab=leave&msg=ok&year=2026: no panel leave | run2=ok: no panel pay | pacct=ok: no panel pay | life=ok: no panel life | fmsg=saved: no panel pay
+  ❌ [X2] [db] each of the 22 wrappers (invoked as owner) redirects to /hr/settings with its result code and lands on its tab (settingsTabOf of the redirect) — expected 22 land on their tab | actual 14 bad: onCreatePolicy: lands shifts ≠ leave (?year=2026&msg=s.category) | onArchivePolicy: lands shifts ≠ leave (?year=2026&msg=s.notFound) | onAddLeavePreset: lands shifts ≠ leave (?year=2026&msg=lp.unknown) | onAddHoliday: lands shifts ≠ holidays (?year=2026&msg=t.badDay) | onDeleteHoliday: lands shifts ≠ holidays (?year=2026&msg=s.notFound) | onApplyPreset: lands shifts ≠ holidays (?year=2026&msg=l.presetNone) (+8)
+  ❌ [X3] [db] holiday year GET form carries tab=holidays · LeavePresetSection forms only in the leave panel — expected GET form + presets | actual year form: no tab=holidays | law preset forms in shifts | law preset forms in holidays | law preset forms in rules | law preset forms in pay | law preset forms in connect | law preset forms in life
+  ❌ [C1] [db] hr-set-connections: all-link → /app/settings/connections · 2 rows hr-set-conn-* (accounting · LINE) → pay#hr-pay-accounting / connect#hr-line-settings · no POS/booking/stock rows — expected 2 rows + all link | actual O: no card | MB: no card
+  ❌ [L1] [db] law page: title + howPicked + warn (exact) · SSO card = table (mockup columns, one row per effective date) · tax columns · card titles exact · exceptions absent — expected wording + SSO table | actual missing "OT และค่าแรงขั้นต่ำ" | SSO cols no table
+  ❌ [I3] [db] en settings tabs + law page: no Thai value of hr.setview in the text (sentinel bundle) · no missing hr.setview key — expected all | actual block
+  ❌ [I4] [db] th page desc without "ชั่วคราว" (Q4) · no Thai literal in added code lines — expected all | actual desc
+  ❌ [K1] [static] rows wo VIS-5d for hr-set-* (both pages) · every rendered hr-set-* id has a row · stub-note + law-link rows' conditional changed · base ids of both pages still in source — expected rows + conditional + kept | actual hr-settings-stub-note: conditional unchanged | hr-settings-law-link: conditional unchanged | settings: no VIS-5d hr-set-nav rows | law: no VIS-5d hr-set-nav rows · no hr-set-* rendered
+RESIDUE none (tenants=1 users=8)
+  ✅ [Z1] residue · outbound · no missing message at render
+BASE-EXPECTATION 28/28 as registered (RED-by-design 18 · GREEN controls 10)
+
+===== qc-hr-vis-5d ===== passed 10/28 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-vis-5d","total":28,"passed":10,"failed":["S6","I1","I2","V1","N1","N2","P1","P2","G1","G2","F1","X2","X3","C1","L1","I3","I4","K1"],"findings":[{"id":"S6","sev":"MAJOR"},{"id":"I1","sev":"MAJOR"},{"id":"I2","sev":"MAJOR"},{"id":"V1","sev":"CRITICAL"},{"id":"N1","sev":"MAJOR"},{"id":"N2","sev":"MAJOR"},{"id":"P1","sev":"MAJOR"},{"id":"P2","sev":"MAJOR"},{"id":"G1","sev":"MAJOR"},{"id":"G2","sev":"MAJOR"},{"id":"F1","sev":"MAJOR"},{"id":"X2","sev":"MAJOR"},{"id":"X3","sev":"MAJOR"},{"id":"C1","sev":"MAJOR"},{"id":"L1","sev":"MAJOR"},{"id":"I3","sev":"MAJOR"},{"id":"I4","sev":"MAJOR"},{"id":"K1","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":18,"baseGreen":10,"offBase":[]}
