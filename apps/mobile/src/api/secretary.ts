@@ -164,8 +164,16 @@ export type ZoneBadgesRes = { approvals: number; customers: number; team: { invi
 /** GET secretary/systems — 1 แถว = 1 ระบบในเมนูเว็บ (ลำดับเดียวกัน) · href ขึ้นต้น /app (เปิดใน WebView หน้าระบบ) · badge = แชทลูกค้าที่ยังไม่อ่าน (ระบบแชท) */
 export type NavSystemRow = { key: string; kind: "unit" | "system" | "fixed"; code: string; href: string; label: string; badge: number };
 
-/** ชื่อเลขาปริยายก่อนโหลด/เมื่อโหลดไม่ได้ (ค่าเริ่มต้นของระบบ · C1) */
-export const DEFAULT_SECRETARY_NAME = "Shark";
+/** ชื่อเลขาปริยายก่อนโหลด/เมื่อโหลดไม่ได้ (ค่าเริ่มต้นของระบบ · C1)
+ *  17 พ.ย. (เจ้าของสั่ง): ผู้ช่วยเปลี่ยนชื่อจาก "Shark" เป็น Lekaa — ภาษาไทยเรียก "เลขา" ⇒ ค่าปริยาย = "เลขา" */
+export const DEFAULT_SECRETARY_NAME = "เลขา";
+/** ชื่อปริยายเดิม (ก่อน 17 พ.ย.) — แถวที่บันทึกจากค่าเริ่มต้นเดิมยังเป็นคำนี้ ⇒ อ่านเป็นค่าปริยายใหม่ */
+export const LEGACY_SECRETARY_NAME = "Shark";
+/** ชื่อที่แสดง: ว่าง/ชื่อปริยายเดิม "Shark" ⇒ DEFAULT_SECRETARY_NAME (เซิร์ฟเวอร์รุ่นใหม่แปลงให้แล้ว · กันเซิร์ฟเวอร์รุ่นเก่า) */
+export const secretaryNameOf = (name: string | null | undefined): string => {
+  const n = (name ?? "").trim();
+  return !n || n === LEGACY_SECRETARY_NAME ? DEFAULT_SECRETARY_NAME : n;
+};
 
 type GetMap = {
   "secretary/me": SecretaryMe;
@@ -718,6 +726,7 @@ export function loadSecretaryMe(userId: string | null | undefined, force = false
     .then((r) => {
       if (inflight?.p !== p) return r; // ถูก reset ระหว่างรอ — ไม่เขียนทับ
       inflight = null;
+      if (r) r = { ...r, name: secretaryNameOf(r.name) }; // 17 พ.ย. ชื่อปริยายเดิม "Shark" ⇒ "เลขา"
       me = { userId, data: r };
       const l = langFrom(r.languages?.[0]);
       if (l) setLang(l);

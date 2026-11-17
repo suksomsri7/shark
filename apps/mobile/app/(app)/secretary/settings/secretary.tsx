@@ -11,6 +11,7 @@ import { AiryScreen, Chip, Glass, LoadError, Loading, Note, Orb, PrimaryButton, 
 import { SettingRow, SettingsTop } from "@/src/components/secretary/SettingRow";
 import {
   DEFAULT_SECRETARY_NAME,
+  secretaryNameOf,
   SEC_LANGUAGES,
   SUFFIXES,
   TONES,
@@ -37,7 +38,7 @@ const WEEK_MS = 7 * 86_400_000;
 const NAME_MAX = 30;
 
 const formOf = (s: SecretaryIdentity | null): Form => ({
-  name: s?.name ?? DEFAULT_SECRETARY_NAME,
+  name: s ? secretaryNameOf(s.name) : DEFAULT_SECRETARY_NAME, // 17 พ.ย. ชื่อปริยายเดิม "Shark" ⇒ "เลขา"
   tone: s?.tone && (TONES as readonly string[]).includes(s.tone) ? s.tone : "polite",
   suffix: suffixKeyOf(s?.suffix),
   languages: s?.languages?.length ? [...s.languages] : ["th"],

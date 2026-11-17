@@ -1,13 +1,13 @@
 {
   "ios": {
-    "NSContactsUsageDescription": "Lekaa ใช้รายชื่อในเครื่องเฉพาะตอนคุณกดเลือกเบอร์เพื่อเพิ่มคนเข้าทีม — รายชื่อไม่ถูกส่งออกจากเครื่อง",
+    "NSContactsUsageDescription": "เลขาใช้รายชื่อในเครื่องเฉพาะตอนคุณกดเลือกเบอร์เพื่อเพิ่มคนเข้าทีม — รายชื่อไม่ถูกส่งออกจากเครื่อง",
     "NSPhotoLibraryUsageDescription": "แอปขอเข้าถึงรูปภาพเพื่อส่งรูปให้ผู้ช่วย AI ดู",
     "NSCameraUsageDescription": "แอปขอใช้กล้องเพื่อถ่ายรูป (เช่น สลิป ใบเสร็จ สินค้า) ส่งให้ผู้ช่วย AI ดู",
-    "NSMicrophoneUsageDescription": "อนุญาตให้ Lekaa เข้าถึงไมโครโฟน",
-    "NSCalendarsUsageDescription": "Lekaa ใช้ปฏิทินในเครื่องเพื่อแสดงนัดของคุณรวมกับงานร้าน และบันทึกนัดส่วนตัวที่คุณสร้าง — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
-    "NSCalendarsFullAccessUsageDescription": "Lekaa ใช้ปฏิทินในเครื่องเพื่อแสดงนัดของคุณรวมกับงานร้าน และบันทึกนัดส่วนตัวที่คุณสร้าง — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
-    "NSRemindersUsageDescription": "Lekaa ไม่ได้ใช้รายการเตือนของเครื่อง (Reminders) — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
-    "NSRemindersFullAccessUsageDescription": "Lekaa ไม่ได้ใช้รายการเตือนของเครื่อง (Reminders) — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
-    "NSFaceIDUsageDescription": "อนุญาตให้ Lekaa ใช้ Face ID"
+    "NSMicrophoneUsageDescription": "อนุญาตให้เลขาเข้าถึงไมโครโฟน",
+    "NSCalendarsUsageDescription": "เลขาใช้ปฏิทินในเครื่องเพื่อแสดงนัดของคุณรวมกับงานร้าน และบันทึกนัดส่วนตัวที่คุณสร้าง — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
+    "NSCalendarsFullAccessUsageDescription": "เลขาใช้ปฏิทินในเครื่องเพื่อแสดงนัดของคุณรวมกับงานร้าน และบันทึกนัดส่วนตัวที่คุณสร้าง — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
+    "NSRemindersUsageDescription": "เลขาไม่ได้ใช้รายการเตือนของเครื่อง (Reminders) — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
+    "NSRemindersFullAccessUsageDescription": "เลขาไม่ได้ใช้รายการเตือนของเครื่อง (Reminders) — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
+    "NSFaceIDUsageDescription": "อนุญาตให้เลขาใช้ Face ID"
   }
 }

@@ -11,6 +11,7 @@ import { AiryScreen, BottomDock, Glass, IconBtn, Note, Orb, PrimaryButton, Segme
 import {
   DEFAULT_SECRETARY_NAME,
   SUFFIXES,
+  secretaryNameOf,
   TONES,
   loadSecretaryMe,
   secGet,
@@ -27,8 +28,8 @@ import { radii, size, spacing, type as T, CTA_BOTTOM, DOCK_FADE, LIST_BOTTOM } f
 
 
 const NAME_MAX = 30;
-/** ค่าเริ่มต้นของชื่อ = ชื่อระบบ (ไม่มีรายการชื่อตัวอย่างให้เลือก · R9) */
-const DEFAULT_NAME: "Shark" = DEFAULT_SECRETARY_NAME;
+/** ค่าเริ่มต้นของชื่อ = ชื่อระบบ (ไม่มีรายการชื่อตัวอย่างให้เลือก · R9) · 17 พ.ย.: "Shark" → "เลขา" */
+const DEFAULT_NAME: string = DEFAULT_SECRETARY_NAME;
 const STEP = 3;
 const STEPS = 3;
 
@@ -46,13 +47,13 @@ export default function SecretaryOnboardingNameScreen() {
   const [err, setErr] = useState<string | null>(null);
   const touched = useRef(false);
 
-  // เคยตั้งแล้ว ⇒ เติมค่าเดิม (ยังไม่เคย = ค่าเริ่มต้น "Shark" · ครับ · สุภาพ)
+  // เคยตั้งแล้ว ⇒ เติมค่าเดิม (ยังไม่เคย = ค่าเริ่มต้น "เลขา" · ครับ · สุภาพ · ชื่อปริยายเดิม "Shark" = ค่าเริ่มต้นใหม่)
   useEffect(() => {
     let live = true;
     secGet("secretary")
       .then((s) => {
         if (!live || touched.current || !s.saved) return;
-        setName(s.name || DEFAULT_NAME);
+        setName(secretaryNameOf(s.name));
         setSuffix(suffixKeyOf(s.suffix));
         if ((TONES as readonly string[]).includes(s.tone)) setTone(s.tone);
       })
