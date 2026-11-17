@@ -22,7 +22,7 @@
 //     แตะ = เหมือนแตะช่องเดียวกันในตาราง (ระบบเว็บ = หน้าระบบ "/" ?open= · แชทลูกค้าที่อ่านได้ = จอ native /customers)
 //     "เปิดอยู่": หน้าระบบ (zone="systems") = ช่องที่ href ตรงพาธเว็บ (`activePath` จากข้อความ page-context) · โซนลูกค้า = ระบบแชทช่องแรก
 //   แตะไอคอนกิจการ หรือ "ลากแถบบนลง" = แผ่นดึงลงจากขอบบน (BusinessSwitcherSheet · แถบนี้ยังเห็นอยู่บนแผ่น) · ลำดับ/รายการระบบอ่านจาก store กลาง ./navSystems
-//   (ลากจัดลำดับในแผ่น = แถบนี้เรียงตามทันที) · testID เดิม sec-top-* คงไว้ · ใหม่: sec-top-strip · sec-top-sys-<key> · sec-top-fade-l/-r
+//   (ลากจัดลำดับในแผ่น = แถบนี้เรียงตามทันที) · badge ทุกปุ่มบนแถบ = แดง (แบบ topbar2 · เดิมทีม = ส้ม) · testID เดิม sec-top-* คงไว้ · ใหม่: sec-top-strip · sec-top-sys-<key> · sec-top-fade-l/-r
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Image, Pressable, StyleSheet, View, type LayoutChangeEvent, type NativeScrollEvent, type NativeSyntheticEvent } from "react-native";
 import { useRouter } from "expo-router";
@@ -209,8 +209,8 @@ export function SecTopBar(props: SecTopBarProps) {
                     onPress={() => router.navigate(z.path)}
                   />
                   {n ? (
-                    <View testID={`sec-top-${z.zone}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.status.wait, borderColor: c.surface }]}>
-                      <Text style={[styles.badgeT, { color: c.zone.onZone }]}>{n}</Text>
+                    <View testID={`sec-top-${z.zone}-badge`} pointerEvents="none" style={[styles.badge, { backgroundColor: c.danger.bg, borderColor: c.surface }]}>
+                      <Text style={[styles.badgeT, { color: c.danger.fg }]}>{n}</Text>
                     </View>
                   ) : null}
                 </View>
@@ -241,12 +241,12 @@ export function SecTopBar(props: SecTopBarProps) {
 }
 
 /** สีพื้นไอคอนกิจการ: สีแบรนด์ของร้าน (branding.accent) · ไม่มี = เลือกจากชุดสีตามชื่อ (คงที่ต่อร้าน) */
-const BIZ_COLORS = ["#1E7A8F", "#E07A1F", "#5B5FD6", "#2F9E5B", "#C2456B", "#8A5CD1", "#B8860B", "#3A7BD5"];
-export function bizColor(name: string, accent?: string | null): string {
+//   ชุดสี = ธีม c.biz.palette (17 พ.ย. ย้ายออกจากไฟล์นี้ · ค่าเดิม)
+export function bizColor(name: string, accent: string | null | undefined, palette: readonly string[]): string {
   if (accent) return accent;
   let h = 0;
   for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-  return BIZ_COLORS[h % BIZ_COLORS.length];
+  return palette[h % palette.length] ?? palette[0] ?? "";
 }
 /** ตัวย่อ 2 ตัว: หลายคำ = อักษรแรกของ 2 คำแรก ("SIAM DIVE CENTER" → SD) · คำเดียว = 2 ตัวแรก ("GoodFood" → GO) */
 export function bizInitials(name: string): string {
@@ -267,8 +267,8 @@ export function BizIcon({ tenantId, onPress, testID, sz = size.iconBtn, chevron 
   const row = tenants.find((x) => x.tenantId === (tenantId ?? activeTenantId));
   const name = row?.name ?? t("sec.tenant.fallback");
   const logo = row?.branding?.logoUrl ?? row?.logoUrl ?? null; // ธีมมือถือก่อน · ปิดธีม = โลโก้ร้านจาก /me (ตั้งค่ากิจการ)
-  const bg = bizColor(name, row?.branding?.accent);
-  const fg = row?.branding?.accentFg ?? "#FFFFFF";
+  const bg = bizColor(name, row?.branding?.accent, c.biz.palette);
+  const fg = row?.branding?.accentFg ?? c.biz.fg;
   const box = { width: sz, height: sz, borderRadius: sz / 2 };
   const body = (
     <View style={[styles.biz, box, { backgroundColor: logo ? c.surface : bg }]}>
@@ -280,7 +280,7 @@ export function BizIcon({ tenantId, onPress, testID, sz = size.iconBtn, chevron 
     <Pressable testID={testID} accessibilityRole="button" accessibilityLabel={`${name} · ${t("sec.top.switch")}`} onPress={onPress} style={{ width: sz, height: sz }}>
       {body}
       {chevron ? (
-        <View pointerEvents="none" style={[styles.bizChev, { backgroundColor: c.surface }]}>
+        <View pointerEvents="none" style={[styles.bizChev, { backgroundColor: c.surface, shadowColor: c.biz.chevShadow }]}>
           <Icon name="chevron-down" size={11} color={c.text} />
         </View>
       ) : null}
@@ -323,7 +323,7 @@ const styles = StyleSheet.create({
   fadeR: { right: 0 },
   biz: { alignItems: "center", justifyContent: "center", overflow: "hidden" },
   bizT: { fontWeight: "800", letterSpacing: 0.3 },
-  bizChev: { position: "absolute", right: -3, bottom: -3, width: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", shadowColor: "#000", shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
+  bizChev: { position: "absolute", right: -3, bottom: -3, width: 17, height: 17, borderRadius: 9, alignItems: "center", justifyContent: "center", shadowOpacity: 0.18, shadowRadius: 2, shadowOffset: { width: 0, height: 1 }, elevation: 2 },
   badge: { position: "absolute", top: -3, right: -3, minWidth: 18, height: 18, borderRadius: 9, borderWidth: 1.5, paddingHorizontal: 4, alignItems: "center", justifyContent: "center" },
   badgeT: { fontSize: 10.5, fontWeight: "700", lineHeight: 13 },
   tenant: { flexDirection: "row", alignItems: "center", gap: 4, maxWidth: "100%" },

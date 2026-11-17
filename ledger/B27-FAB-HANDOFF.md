@@ -1,6 +1,6 @@
 # B27-FAB — Lekaa floating button + Lekaa sheet + page context (handoff · checkpoint 15 Nov 2026)
 
-Branch `wip/b27-fab` (worktree /root/projects/shark-b27-fab). Paused on the lead's order (weekly quota). **Nothing has been typechecked or QC'd yet.**
+Branch `wip/b27-fab` (worktree /root/projects/shark-b27-fab). Resumed 17 Nov 2026 (Job A = items below + Job B = topbar2). See the **17 Nov session** block at the end for the current state.
 Mockups: /root/mockups/lekaa-fab/fab6.png (screens 1–3), fab4.png screen 3, /root/mockups/team-invite/team4.png screen 4 (inline FAB beside the composer).
 
 ## Migration
@@ -82,3 +82,20 @@ Mockups: /root/mockups/lekaa-fab/fab6.png (screens 1–3), fab4.png screen 3, /r
 - `service.ts` now sets an explicit UUID id on every ASSISTANT message, not only in secretary rooms. This is harmless for Prisma, but any test that asserts the cuid format will fail.
 - `hideRoom` rejects the room's pending proposals and plans. Confirm this with the owner.
 - The page-context route reuses the "send" rate-limit bucket (10/min).
+
+## 17 Nov session (resume) — status
+Commits: c1f0deb07 (Job A fixes) · 4fc4b138b (topbar2) · later commits listed in git log.
+### Job A
+- Item 1 done: `app/(app)/index.tsx` handles `{ev:"page-context"}` → `useLekaaPageContext` (cleaned, `/app` paths only) and passes `activePath` to SecTopBar.
+- Item 2 done: `LekaaFabSlot` beside the composer in `secretary/new.tsx`, `customers/[id]/index.tsx`, `secretary/help/[caseId].tsx`.
+- Item 3 done: calendar registers `CAL_DAY` of the selected day.
+- Item 4 done: unused `access` state removed from `secretary/index.tsx`.
+- Item 5: server `pnpm typecheck` EXIT 0; mobile `tsc --noEmit` EXIT 0 (both via iso.sh, 17 Nov). Fixes needed: raw U+2028/2029 inside a regex in page-context.ts; web `usePageEntity` cleanup returned boolean.
+- Item 9 left as is (switch business still lands on /secretary).
+### Job B (topbar2) — decisions
+- Order store: **no migration** — reuses existing `User.prefs` (per user) with key `secSystemOrder[tenantId]` (per user per business). Written by one atomic jsonb UPDATE (`setSystemOrder` in src/lib/core/user-preferences.ts) so other prefs keys and other tenants are untouched. 20261228001200 was NOT used.
+- `GET secretary/systems` → items sorted by the caller's order + `order` (full list incl. "home"). "home" is not in `items` so old app builds (which prepend Home themselves) do not show it twice.
+- `PUT secretary/systems/order {keys}` (zod, max 200, gate null, 30/min) keeps only keys valid for the tenant now; missing ones appended in registry order.
+- Mobile: `src/components/secretary/navSystems.ts` (store shared by strip + panel, live order while dragging), `openSystem.ts`, new SecTopBar strip, BusinessSwitcherSheet rewritten as the pull-down panel (gesture-handler + reanimated, no new native dep).
+- Closing the panel while in reorder mode saves (same as "เสร็จ") — owner to confirm.
+- Team badge colour: see final report.

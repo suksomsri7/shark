@@ -136,7 +136,8 @@ try {
     await prisma.aiRoomMember.create({ data: { tenantId: tid, roomId: staffRoomId, userId: U.staff2, addedById: U.staff, seeHistory: true } }); // ORACLE-EDIT R-S1.1c · S1.6 G-3 (seeHistory กติกาใหม่)
     const lo = await rooms.listRooms(ctxOf(OWNER), { scope: "tenant" });
     const lm = await rooms.listRooms(ctxOf(OWNER), { scope: "mine" });
-    chk("L-1", "OWNER scope tenant เห็นทุกห้อง (รวมของ staff/staff2) · scope mine เห็นเฉพาะที่ตัวเองเปิด · การ์ดมี startedByName/memberIds/status", lo.some((c: AnyMod) => c.conversationId === staffConv) && lo.some((c: AnyMod) => c.startedById === U.staff2) && lm.every((c: AnyMod) => c.startedById === U.owner) && lm.length >= 2 && lo.find((c: AnyMod) => c.conversationId === staffConv)?.memberIds?.includes(U.staff2) && typeof lo[0]?.startedByName === "string" && ["OPEN", "RUNNING", "WAITING", "DONE"].includes(lo[0]?.status), `tenant=${lo.length} mine=${lm.length}`);
+// ORACLE-EDIT (B27-FAB 17 พ.ย. · เจ้าของอนุมัติแบบ fab6): งานเลขาเป็นของแต่ละคน — OWNER ไม่เห็นห้องของคนอื่นแล้ว · scope ถูกเมิน (ทุกบทบาท = ของตัวเอง ∪ ห้องที่เป็นสมาชิก)
+    chk("L-1", "OWNER scope tenant = เท่ากับ mine (ไม่เห็นห้องของ staff/staff2) · mine เห็นเฉพาะที่ตัวเองเปิด · การ์ดมี startedByName/memberIds/status", !lo.some((c: AnyMod) => c.conversationId === staffConv) && !lo.some((c: AnyMod) => c.startedById === U.staff2) && lo.length === lm.length && lm.every((c: AnyMod) => c.startedById === U.owner) && lm.length >= 2 && Array.isArray(lo[0]?.memberIds) && typeof lo[0]?.startedByName === "string" && ["OPEN", "RUNNING", "WAITING", "DONE"].includes(lo[0]?.status), `tenant=${lo.length} mine=${lm.length}`);
     const ls = await rooms.listRooms(ctxOf(STAFF), { scope: "tenant" });
     const ls2 = await rooms.listRooms(ctxOf(STAFF2), { scope: "mine" });
     const lmg = await rooms.listRooms(ctxOf(MGR), { scope: "tenant" });
@@ -149,14 +150,23 @@ try {
     await prisma.aiRoomJob.create({ data: { tenantId: tid, roomId: ownerRoomId, messageId: `qcs14-msg-${Date.now()}`, status: "QUEUED" } }); // ORACLE-EDIT R-S1.1c
     const rN2 = rN.roomId as string;
     await prisma.aiRoom.update({ where: { id: rN2 }, data: { closedAt: new Date() } });
-    const st = async (convId: string) => (await rooms.listRooms(ctxOf(OWNER), { scope: "tenant", take: 100 })).find((c: AnyMod) => c.conversationId === convId)?.status;
+// ORACLE-EDIT (B27-FAB 17 พ.ย. · เจ้าของอนุมัติแบบ fab6): งานเลขาเป็นของแต่ละคน — OWNER ไม่เห็นห้องของคนอื่นแล้ว · scope ถูกเมิน (ทุกบทบาท = ของตัวเอง ∪ ห้องที่เป็นสมาชิก)
+    const st = async (convId: string) => {
+      for (const a of [OWNER, STAFF, STAFF2]) {
+        const hit = (await rooms.listRooms(ctxOf(a), { take: 100 })).find((c: AnyMod) => c.conversationId === convId);
+        if (hit) return hit.status;
+      }
+      return undefined;
+    };
     chk("L-3", "สถานะ: ห้อง staff มี proposal PENDING = WAITING · ห้อง owner มี job QUEUED = RUNNING · ห้องที่ปิด = DONE · ห้องอื่น = OPEN · roomStatus(db) ตรงกัน", (await st(staffConv)) === "WAITING" && (await st(ownerConv)) === "RUNNING" && (await st(rN.conversationId)) === "DONE" && (await st(rS2.conversationId)) === "OPEN" && (await rooms.roomStatus(tid, staffConv)) === "WAITING" && (await rooms.roomStatus(tid, ownerConv)) === "RUNNING", `${await st(staffConv)} ${await st(ownerConv)} ${await st(rN.conversationId)} ${await st(rS2.conversationId)}`);
-    const lw = await rooms.listRooms(ctxOf(OWNER), { scope: "tenant", status: "WAITING" });
-    const lq = await rooms.listRooms(ctxOf(OWNER), { scope: "tenant", q: "ยอดขาย" });
+    // ORACLE-EDIT (B27-FAB): ห้อง WAITING/ยอดขาย เป็นของ staff ⇒ ตรวจตัวกรองในมุมของ staff (OWNER มองไม่เห็นแล้ว)
+    const lw = await rooms.listRooms(ctxOf(STAFF), { scope: "tenant", status: "WAITING" });
+    const lq = await rooms.listRooms(ctxOf(STAFF), { scope: "tenant", q: "ยอดขาย" });
     const lt = await rooms.listRooms(ctxOf(OWNER), { scope: "tenant", take: 2 });
     chk("L-4", "ตัวกรอง status=WAITING · q='ยอดขาย' · take=2 · เรียง updatedAt desc", lw.length === 1 && lw[0].conversationId === staffConv && lq.length === 1 && lq[0].conversationId === staffConv && lt.length === 2 && lt[0].updatedAt >= lt[1].updatedAt, `w=${lw.length} q=${lq.length} t=${lt.length}`);
     const gr = await rooms.getRoom(ctxOf(STAFF2), staffRoomId), gr2 = await rooms.getRoom(ctxOf(MGR), staffRoomId), gr3 = await rooms.getRoom(ctxOf(OWNER), staffRoomId);
-    chk("L-5", "getRoom: สมาชิก (staff2) เห็น · MANAGER ไม่เห็น (null) · OWNER เห็น · มี status", gr?.id === staffRoomId && gr?.status === "WAITING" && gr2 === null && gr3?.id === staffRoomId, `gr=${!!gr} gr2=${gr2} gr3=${!!gr3}`);
+// ORACLE-EDIT (B27-FAB 17 พ.ย. · เจ้าของอนุมัติแบบ fab6): งานเลขาเป็นของแต่ละคน — OWNER ไม่เห็นห้องของคนอื่นแล้ว · scope ถูกเมิน (ทุกบทบาท = ของตัวเอง ∪ ห้องที่เป็นสมาชิก)
+    chk("L-5", "getRoom: สมาชิก (staff2) เห็น · MANAGER ไม่เห็น (null) · OWNER ไม่เห็น (null) · มี status", gr?.id === staffRoomId && gr?.status === "WAITING" && gr2 === null && gr3 === null, `gr=${!!gr} gr2=${gr2} gr3=${gr3}`);
     const c1 = await rooms.closeRoom(ctxOf(STAFF2), staffRoomId), c2 = await rooms.closeRoom(ctxOf(STAFF), staffRoomId), c3 = await rooms.closeRoom(ctxOf(STAFF), staffRoomId);
     const rn1 = await rooms.renameRoom(ctxOf(MGR), ownerRoomId, "x"), rn2 = await rooms.renameRoom(ctxOf(OWNER), ownerRoomId, "ชื่อใหม่");
     const rowO = await prisma.aiRoom.findUnique({ where: { id: ownerRoomId } }), convO = await prisma.aiConversation.findUnique({ where: { id: ownerConv } });
@@ -166,12 +176,14 @@ try {
     // ═══════════════ G. ด่านจริง ═══════════════
     console.log("── G: ด่านจริง ──");
     const fv = async (a: ReturnType<typeof actor>, id: string) => (await convs.findVisibleConversation(ctxOf(a), id)) !== null;
-    chk("G-1", "findVisibleConversation: ห้อง staff — staff ✓ staff2(สมาชิก) ✓ OWNER ✓ MANAGER ✗ · ห้อง owner — staff ✗", (await fv(STAFF, staffConv)) && (await fv(STAFF2, staffConv)) && (await fv(OWNER, staffConv)) && !(await fv(MGR, staffConv)) && !(await fv(STAFF, ownerConv)), "ดู findVisibleConversation");
+// ORACLE-EDIT (B27-FAB 17 พ.ย. · เจ้าของอนุมัติแบบ fab6): งานเลขาเป็นของแต่ละคน — OWNER ไม่เห็นห้องของคนอื่นแล้ว · scope ถูกเมิน (ทุกบทบาท = ของตัวเอง ∪ ห้องที่เป็นสมาชิก)
+    chk("G-1", "findVisibleConversation: ห้อง staff — staff ✓ staff2(สมาชิก) ✓ OWNER ✗ MANAGER ✗ · ห้อง owner — staff ✗", (await fv(STAFF, staffConv)) && (await fv(STAFF2, staffConv)) && !(await fv(OWNER, staffConv)) && !(await fv(MGR, staffConv)) && !(await fv(STAFF, ownerConv)), "ดู findVisibleConversation");
     // ห้อง u~ เดิมของ staff ที่ไม่มี AiRoom ⇒ OWNER ยังมองไม่เห็น (baseline)
     const legacyStaff = await prisma.aiConversation.create({ data: { id: owner.newConversationId(ctxOf(STAFF)), tenantId: tid, title: "ห้องเดิม" } });
     chk("G-2", "ห้อง u~staff เดิม (ไม่มี AiRoom): OWNER ไม่เห็น · staff เห็น · listRooms ไม่รวม (ไม่ใช่ห้องงาน)", !(await fv(OWNER, legacyStaff.id)) && (await fv(STAFF, legacyStaff.id)) && !(await rooms.listRooms(ctxOf(OWNER), { scope: "tenant", take: 100 })).some((c: AnyMod) => c.conversationId === legacyStaff.id), "ดู baseline");
     const m2 = await service.listMessages(ctxOf(STAFF2), staffConv), mM = await service.listMessages(ctxOf(MGR), staffConv), mO = await service.listMessages(ctxOf(OWNER), staffConv);
-    chk("G-3", "listMessages: สมาชิก staff2 เห็นข้อความห้อง staff · OWNER เห็น · MANAGER ว่าง", m2.length >= 1 && mO.length >= 1 && mM.length === 0, `${m2.length} ${mO.length} ${mM.length}`);
+// ORACLE-EDIT (B27-FAB 17 พ.ย. · เจ้าของอนุมัติแบบ fab6): งานเลขาเป็นของแต่ละคน — OWNER ไม่เห็นห้องของคนอื่นแล้ว · scope ถูกเมิน (ทุกบทบาท = ของตัวเอง ∪ ห้องที่เป็นสมาชิก)
+    chk("G-3", "listMessages: สมาชิก staff2 เห็นข้อความห้อง staff · OWNER ว่าง · MANAGER ว่าง", m2.length >= 1 && mO.length === 0 && mM.length === 0, `${m2.length} ${mO.length} ${mM.length}`);
     const p = new Scripted([{ text: "โอเคครับ" }]);
     const sm = await service.sendMessage(ctxOf(STAFF2), { conversationId: staffConv, text: "ช่วยดูด้วย" }, { provider: p });
     const msgs = await prisma.aiMessage.findMany({ where: { conversationId: staffConv }, orderBy: { createdAt: "asc" } });
@@ -179,7 +191,8 @@ try {
     const smM = await service.sendMessage(ctxOf(MGR), { conversationId: staffConv, text: "แอบส่ง" }, { provider: pM });
     chk("G-4", "sendMessage: staff2 (สมาชิก) ต่อห้อง staff ได้ — ข้อความลงห้องเดิม · USER ใหม่มี authorUserId=staff2 · MANAGER ส่งเข้าห้องนั้น ⇒ ไปห้องใหม่ของตัวเอง (ไม่ลงห้อง staff)", sm.ok === true && (sm as AnyMod).conversationId === staffConv && msgs.length >= 3 && msgs.some((m) => m.role === "USER" && m.content === "ช่วยดูด้วย" && (m as AnyMod).authorUserId === U.staff2) && smM.ok === true && (smM as AnyMod).conversationId !== staffConv && !(await prisma.aiMessage.findFirst({ where: { conversationId: staffConv, content: "แอบส่ง" } })), `sm=${JSON.stringify(sm).slice(0, 80)} smM=${(smM as AnyMod).conversationId}`);
     const lp2 = await proposals.listPendingProposals(ctxOf(STAFF2), staffConv), lpM = await proposals.listPendingProposals(ctxOf(MGR), staffConv), lpO = await proposals.listPendingProposals(ctxOf(OWNER), staffConv);
-    chk("G-5", "listPendingProposals: สมาชิก/OWNER เห็น 1 · MANAGER ว่าง", lp2.length === 1 && lpO.length === 1 && lpM.length === 0, `${lp2.length} ${lpO.length} ${lpM.length}`);
+// ORACLE-EDIT (B27-FAB 17 พ.ย. · เจ้าของอนุมัติแบบ fab6): งานเลขาเป็นของแต่ละคน — OWNER ไม่เห็นห้องของคนอื่นแล้ว · scope ถูกเมิน (ทุกบทบาท = ของตัวเอง ∪ ห้องที่เป็นสมาชิก)
+    chk("G-5", "listPendingProposals (อ่านในห้อง): สมาชิกเห็น 1 · OWNER ว่าง (อนุมัติผ่านกล่องอนุมัติแทน · G-6) · MANAGER ว่าง", lp2.length === 1 && lpO.length === 0 && lpM.length === 0, `${lp2.length} ${lpO.length} ${lpM.length}`);
     const prop = lp2[0];
     const exM = await proposals.executeProposal(MGR.membership as never, { tenantId: tid } as never, prop.id, { userId: U.mgr });
     const exO = await proposals.executeProposal(OWNER.membership as never, { tenantId: tid } as never, prop.id, { userId: U.owner });

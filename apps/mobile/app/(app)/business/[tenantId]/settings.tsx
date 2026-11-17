@@ -387,7 +387,7 @@ export default function BusinessSettingsScreen() {
           <>
             <View style={styles.hero}>
               <Pressable testID="biz-set-logo" accessibilityRole="button" accessibilityLabel={t("bizset.photo.change")} onPress={() => openAction("photo")} style={styles.logoWrap}>
-                <View style={[styles.logo, { backgroundColor: profile.logoUrl ? c.surface : bizColor(profile.name, row?.branding?.accent) }]}>
+                <View style={[styles.logo, { backgroundColor: profile.logoUrl ? c.surface : bizColor(profile.name, row?.branding?.accent, c.biz.palette) }]}>
                   {profile.logoUrl ? (
                     <Image source={{ uri: profile.logoUrl }} style={styles.logoImg} resizeMode="cover" />
                   ) : (
