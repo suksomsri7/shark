@@ -23,3 +23,15 @@ Tree `/root/projects/shark-hr` · `wip/hr-vis-5bc` · parent c416e3806. Only `sr
   - (c) other.
 - Oracle note: "Nothing outside ui.tsx is needed" does not hold for P/PB unless (a) is taken.
 - priv-3 N2 does not see this link; it is green.
+
+## F5 option (b): controller ruling applied (builder · 17 Nov)
+- `hub-ui.tsx` HrMonthCard: new required prop `attendance: boolean`. The "calendar" link to `/hr/attendance?view=month&employee=…` on each talk row renders only when it is true. Otherwise the row looks the same, minus the link. Both hunks are marked `HR VIS-5b`.
+- `ui.tsx` HrHub passes `attendance={attOk}`. This is the same tabs-based condition the "ลงเวลา" card uses. P and PB keep the month card and its numbers.
+- Viewers with the attendance tab see no visual change.
+- No static check rejected the edit: S1, S2 and S5 are green. hub-ui.tsx is a 5b "fresh" file.
+- Results (forced, lane DB, via the wrappers):
+  - qc-hr-vis-5b: **33/33**.
+  - qc-hr-priv-3: 26/28. N2 ✅; S4 and N3 are red, as expected.
+  - qc-hr-h2.11 70/70 · qc-hr-h4.3 45/45 · qc-hr-priv-2 47/47 · residue none.
+  - fitness 54/54 · fitness-hr 9/9 · typecheck exit 0, 0 errors.
+- N3 drift: O/M was fddb6ed2… in the previous run and is now 64f1c06f…. O/M have the tab, so their links did not change. This matches the oracle's open question 1, which says N3 depends on the date.

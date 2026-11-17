@@ -794,7 +794,7 @@ export async function HrHub({ systemId, day, unit }: { systemId: string; day?: s
           facts={board ? boardFactsOf(board) : null}
           header={board ? <HrHubHeader systemId={systemId} board={board} canRoster={canReadRoster(hv)} canAdd={canSettings} /> : null}
           board={board ? <HrTodayBoard board={board} /> : null}
-          month={access.reports.includes("time") ? <HrMonthCard ctx={ctx} viewer={hv} systemId={systemId} ot={access.reports.includes("ot")} /> : null}
+          month={access.reports.includes("time") ? <HrMonthCard ctx={ctx} viewer={hv} systemId={systemId} ot={access.reports.includes("ot")} attendance={attOk} /> : null}
           due={overview.lifecycleDue !== null ? <HrDueStrip ctx={ctx} viewer={hv} systemId={systemId} /> : null}
         /> /* HR H2.11 ◂ · HR H3.9 ▸ reports ◂ · HR H4.2 ▸ labor ◂ · HR VIS-5b ▸ ภาพ 01 ◂ */
       )}
