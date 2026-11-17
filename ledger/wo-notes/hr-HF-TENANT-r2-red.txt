@@ -1,0 +1,30 @@
+[env] qc-hr-hf-tenant · ไฟล์ .env.qc-hf · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+
+
+fixture qc-hr-hft-mwkzyry5 · A=cmwkzyryy00007gkzn2cv14jx B=cmwkzyrzc00017gkz5o8pf65e SA=cmwkzys42000h7gkz6t56a1oo U=c9738944b35f7221ff7f0b6dd
+  ✅ [M1] ดัชนีใหม่ HrSalaryProfile_tenantId_systemId_employeeId_key / HrPayrollRun_tenantId_systemId_periodKey_key (unique เต็ม คอลัมน์ตรง) · ไม่มีชื่อเก่า
+  ✅ [M3] ซ้ำในร้าน A เอง (โปรไฟล์ eA1 · รอบ P1) ยังได้ P2002
+  ✅ [M2] มีแถวตกค้าง (B,SA,eA2)/(B,SA,P2) แล้วเจ้าของ A ยังตั้งโปรไฟล์ eA2 + สร้างรอบ P2 ผ่านปุ่มจริงได้
+  ✅ [M4] แถวตกค้าง (โปรไฟล์/รอบ/พนักงานของ B บน SA) อยู่ครบค่าเดิม
+  ✅ [M5] drift: schema ↔ ฐาน ไม่มีตาราง Hr* ต่าง (ฐานของ main ต่างอยู่แล้ว 1 จุด DormUtilityRate NULLS NOT DISTINCT = ค่าฐาน)
+  ✅ [C1] เจ้าของ A + พนักงานเงินเดือน A ขับ 14 ปุ่มด้วยฟอร์มครบ ถึงการเขียนจริงทุกปุ่ม
+  ✅ [C4] R-F2 control: เจ้าของ A + พนักงาน A ขับ 8 ปุ่มที่เหลือกับพนักงาน/ใบลา/เอกสารของ A เอง ถึงการเขียนจริงทุกปุ่ม
+  ✅ [C2] ระบบตัวเอง + runId ไม่มีจริง: approve / reverse / markPaid ยังเขียน audit การปฏิเสธ 1 แถว/ครั้ง ไม่เขียนอื่น
+  ✅ [C3] ระบบตัวเอง + employee ไม่มีจริง บน setSalaryProfile ไม่เขียน (เปลี่ยนพฤติกรรมโดยตั้งใจ → แดงก่อนแก้)
+  ✅ [T1] setSalaryProfile ข้ามร้าน (XO, XP × SA{ไม่มี emp, eA2, eA1} / U / SN) ไม่เขียนอะไร
+  ✅ [T2] createPayrollRun ข้ามร้าน (มีโปรไฟล์ตกค้างบน SA) ไม่เกิดรอบ/items · U / SN ไม่เขียน
+  ✅ [T3] approve / reverse / markPaid ข้ามร้าน (runId rA1 · rA2 · รอบตกค้าง) บน SA / U / SN ไม่มี AuditLog / outbox / ไม่แตะรอบ
+  ✅ [T4] request / decide / cancel adjustment ข้ามร้าน ไม่เขียน/ไม่ลบ · คำตอบของ SA = คำตอบของ U
+  ✅ [T5] พนักงาน 4 ปุ่ม (create / update / remove / restore) ข้ามร้าน ไม่มี HrEmployee / Party
+  ✅ [T6] ทุกปุ่ม: ผลของ SA = U = SN (คำตอบ + ชุดตารางที่เปลี่ยน) ต่อผู้กด/ฟอร์มเดียวกัน
+  ✅ [T8] clock + requestLeave บน SA / U / SN ไม่เขียน HrAttendance / HrLeave / outbox
+  ❌ [T9] R-F1: XO/XP บนระบบของตัวเอง SB + พนักงานของ A (eA1/eA2) → clock/requestLeave ไม่เขียนอะไร = ผลเดียวกับรหัสพนักงานที่ไม่มี · ท้ายชุด: ไม่มีแถวของ B ที่อ้างพนักงานของ A (นอกจากโปรไฟล์ตกค้างที่ลงเอง)
+      ↳ 9 จุด: clock|XO|eA1@SB: Δ=HrAttendance:B R:null | clock|XO|eA2@SB: Δ=HrAttendance:B R:null | requestLeave|XO|eA1@SB: Δ=HrLeave:B,OutboxEvent:B R:null | requestLeave|XO|eA2@SB: Δ=HrLeave:B,OutboxEvent:B R:null | clock|XP|eA1@SB: Δ=HrAttendance:B R:null | clock|XP|eA2@SB: Δ=HrAttendance:B R:null | …
+  ❌ [T10] R-F2: 8 ปุ่มที่เหลือ (save profile · add/remove doc · set PIN · kiosk · decide/bulk-decide leave · schedule) บน SA ด้วยแถวตกค้างของ B ไม่เขียนอะไร · ผล = ผลเมื่อไม่มีแถวตกค้าง
+      ↳ 8 จุด: saveProfile|residue@SA: Δ=HrEmployee:B,Party:B R:{"status":"ok","message":"บันทึกแล้ว"} | addDoc|residue@SA: Δ=HrEmployeeDoc:B,crossSA R:null | removeDoc|residue@SA: Δ=HrEmployeeDoc:B,crossSA R:null | kioskClock|residue@SA: Δ=HrAttendance:B,crossSA R:{"status":"ok","message":"QC HFT ถูกแก้โปรไฟล์ · เข้างาน 00:59","detail":"ยังไม่ได้ตั้งตารางของคุณ — ระบบไม่ตัดสินว่าสาย"} | setPin|residue@SA: Δ=HrEmployee:B R:{"status":"ok","message":"ตั้ง PIN แล้ว"} | decideLeave|residue@SA: Δ=AuditLog:B,HrLeave:B R:null | …
+  ❌ [T7] [static] 22 ปุ่มเรียก hrTargetOwned ก่อน await อื่น (ยกเว้น requireTenant) + ids/คำปฏิเสธตาม §1 + R-F1/R-F2 · kiosk ตรวจก่อนนับถัง PIN · hr-target.ts ไม่มี "use server" · blob = V2 · ไม่ re-export
+      ↳ clockAction: ไม่พบ "if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return;" · requestLeaveAction: ไม่พบ "if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }, { employeeId }))) return;" · saveEmployeeProfileAction: await แรก (นอก requireTenant) = saveEmployeeProfile · addEmployeeDocAction: await แรก (นอก requireTenant) = addEmployeeDoc · removeEmployeeDocAction: await แรก (นอก requireTenant) = removeEmployeeDoc · setPinAction: await แรก (นอก requireTenant) = setPin · kioskClockAction: await แรก (นอก requireTenant) = clockWithPin · decideLeaveAction: await แรก (นอก requireTenant) = decideLeave · bulkDecideLeaveAction: await แรก (นอก requireTenant) = bulkDecideLeave · setWorkScheduleAction: await แรก (นอก requireTenant) = setSchedule
+  ✅ [Z1] คืนสภาพ: ร้าน/ผู้ใช้ qc-hr-hft-* ของรอบนี้ถูกลบ · แถวที่มี tenantId/systemId ของร้านเหล่านั้น = 0 · sequence เลขสมุดบัญชี = 0
+
+❌ qc-hr-hf-tenant [full] — 17/20 ผ่าน · ตก: T9, T10, T7
+JSON_SUMMARY {"suite":"qc-hr-hf-tenant","mode":"full","total":20,"passed":17,"failed":["T9","T10","T7"],"crashed":false,"registered":20}

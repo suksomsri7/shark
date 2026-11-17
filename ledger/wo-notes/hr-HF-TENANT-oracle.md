@@ -69,3 +69,43 @@ Without `QC_FORCE=1` and without `hr-target.ts` → SKIPPED (exit 0). Refuses to
 - `prisma/migrations/20261229000000_hr_hf_tenant_unique_keys/migration.sql` = brief §3 SQL (ran twice on hf_tenant via psql: idempotent).
 - Then: `migrate deploy` on hf_tenant through `qc-hf.sh`, oracle full + `--mig-seed`/`--mig-check`, main's HR suites, fitness, typecheck.
 - typecheck (iso.sh · ISO_MEM=14000M · max-old-space 12288): `tsc --noEmit` exit 0 on this commit's tree.
+
+## Round 2 — controller rulings after review (`hr-HF-TENANT-review.md` F1, F2, F6) · head a6878cfd7
+Oracle now 20 checks. Evidence on a6878cfd7 (builder's fix, hotfix migration applied on hf_tenant): `hr-HF-TENANT-r2-red.txt` — **17/20, red T7, T9, T10**; every earlier check (M1–M5, C1–C3, T1–T6, T8, Z1) stays GREEN; new C4 GREEN. Typecheck exit 0.
+
+| id | a6878cfd7 | evidence |
+|---|---|---|
+| T9 (R-F1) | RED | XO/XP on their own SB with eA1/eA2: clock → `HrAttendance:B`, requestLeave → `HrLeave:B` + `hr.leave.submitted` outbox; ghost employee on SB → FK error (different answer); read-side: B rows referencing A's employees |
+| T10 (R-F2) | RED | 8/8 actions on SA with B's residue rows write: save profile (HrEmployee + Party, "บันทึกแล้ว"), add doc, remove residue doc, kiosk clock ("<residue name> · เข้างาน"), set PIN, decide leave (+audit), bulk decide (done 1), schedule; ghost ids → refusal |
+| T7 | RED | 22 actions now: clock/requestLeave guards must pass `{ employeeId }`; 8 new guards absent |
+| C4 (control) | GREEN | owner A + payroll staff A on A's own employee (the one C1 creates): save profile (name + nationalId saved), add doc, remove doc, set PIN, kiosk clock with that PIN (+1 attendance), schedule (2 rows), decide leave (C1's leave → APPROVED), bulk decide (second leave → REJECTED, done 1) |
+| C1 | GREEN | clock/leave already run on a real own employee (the employee C1 creates) — unchanged |
+
+Fixture additions: B's residue employee `fB` has PIN 9876 · residue `HrEmployeeDoc` (B,SA,fB) · residue leaves resLv1/resLv2 (B,SA,fB, PENDING) · F6: attacker **XM** = STAFF of B with only `hr.payadjust.request` (not a payroll viewer), added to the T4 request drives (green on head: guard answers "ไม่พบพนักงาน" on SA/U/SN). Snapshot now also fingerprints `HrEmployeeDoc`, `HrWorkSchedule`.
+
+T10 rule: on SA, residue-id drive and ghost-id drive must both write nothing and give the same answer (ids normalised to `<id>` for bulk's per-id list) — i.e. the answer no longer reveals or uses residue rows.
+
+**Positive control (temporary, uncommitted, reverted — `actions.ts` restored byte-for-byte):** the guards below → `--static` green, full run **20/20**.
+
+### Builder scope round 2 (line numbers on a6878cfd7, `src/lib/modules/hr/actions.ts` only)
+Guard form `if (!(await hrTargetOwned({ tenantId: auth.active.tenantId, systemId }<ids>))) <refusal>` — refusal = that action's existing answer for an unknown id:
+| action | where | ids | refusal |
+|---|---|---|---|
+| clockAction | edit :71 | `, { employeeId }` | `return;` |
+| requestLeaveAction | edit :243 | `, { employeeId }` | `return;` |
+| saveEmployeeProfileAction | after :137 (`assertHrCan`) | `, { employeeId }` | `return { status: "error", message: "ไม่พบพนักงาน" };` |
+| addEmployeeDocAction | after :156 (`if (!systemId \|\| !employeeId) return;`) | `, { employeeId }` | `return;` |
+| removeEmployeeDocAction | after :173 (`if (!systemId \|\| !docId) return;`) | system only | `return;` |
+| setPinAction | after :183 (`assertHrCan`) | `, { employeeId }` | `return { status: "error", message: "ไม่พบพนักงาน" };` |
+| kioskClockAction | after :207 (PIN-format check), **before `checkRateLimit` :208** | `, { employeeId }` | `return { status: "error", message: "ไม่พบพนักงาน" };` |
+| decideLeaveAction | after :262 (input check) | system only | `return;` |
+| bulkDecideLeaveAction | after :290 (`leaveIds.length === 0` check) | system only | `return { status: "error", message: "ไม่พบระบบ" };` |
+| setWorkScheduleAction | after :305 (`if (!systemId \|\| !employeeId) return;`) | `, { employeeId }` | `return;` |
+`hr-target.ts` unchanged (R-F3: byte-identical to V2).
+
+Notes on the choices (open for the controller):
+- **kioskClockAction** is not anonymous: it calls `requireTenant()` + `assertHrCan("hr.attendance.clock")` (the kiosk page runs on the shop's logged-in session); the PIN identifies the employee *within* that tenant/system. So the ordinary guard fits. Placed before `checkRateLimit` so a foreign or unknown employee id no longer consumes the per-employee PIN bucket (the bucket key is still `hr-kiosk:${employeeId}`, not tenant-scoped — reviewer side note, unchanged).
+- **removeEmployeeDocAction** — system only: the form's `employeeId` is used only for `revalidatePath`; the doc is found by `docId` inside (tenant, system), so passing `employeeId` would not bind the doc to the employee.
+- **decideLeaveAction / bulkDecideLeaveAction** take leave ids, which `hrTargetOwned` cannot check → system only. Answers differ from today's unknown-leave answer: decide today *throws* `HrLeaveDecisionError("ไม่พบใบลา หรืออยู่นอกร้านนี้")`, guard returns void (same shape as every other void guard); bulk today returns `{ done: 0, failed: [{ id, "ไม่พบใบลา…" }] }`, guard returns the action's existing "ไม่พบระบบ" error. SA = U = SN still holds. If the controller prefers byte-identical answers, ORACLE-EDIT T7 refusal for these two.
+- **setPinAction / saveEmployeeProfileAction**: guard sits before the service's input validation, so a foreign/unknown id with an invalid PIN (or invalid profile field) now answers "ไม่พบพนักงาน" instead of the validation message — own valid employees unchanged.
+- Debt (R-F3, not in this hotfix): non-string bound `systemId` passes `hrTargetOwned` (reviewer F3); fix on V2 + main together later.
