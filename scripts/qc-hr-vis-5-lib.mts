@@ -17,8 +17,8 @@ export type Tk = "5b" | "5c";
 export const MARK: Record<Tk, string> = { "5b": "HR VIS-5b", "5c": "HR VIS-5c" };
 export const UI = `${H}ui.tsx`, TH = "src/messages/th/common.json", EN = "src/messages/en/common.json", INV = "scripts/hr-ui-inventory.json";
 export const OWN: Record<Tk, { files: string[]; fresh: string[]; ranges: [number, number][]; block: string; after: string }> = {
- "5b": { files: ["src/app/app/sys/[id]/page.tsx", "src/components/module-tabs.tsx", `${H}overview-ui.tsx`, `${H}InboxBatch.tsx`], fresh: [`${H}hub-ui.tsx`, `${H}hub-rules.ts`], ranges: [[88, 117], [710, 793]], block: "hub", after: "inbox" },
- "5c": { files: ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", `${H}EmployeeProfileForm.tsx`], fresh: [`${H}people-ui.tsx`, `${H}people-rules.ts`], ranges: [[432, 709]], block: "people", after: "life" },
+ "5b": { files: ["src/app/app/sys/[id]/page.tsx", "src/components/module-tabs.tsx", `${H}overview-ui.tsx`, `${H}InboxBatch.tsx`], fresh: [`${H}hub-ui.tsx`, `${H}hub-rules.ts`], ranges: [[89, 118], [717, 802]] /* HR VIS-5b re-merge ▸ base = session/hr a49f81829: PRIV-3 shifted ui.tsx (+1 import · +7 before HrHub · +2 in it) · was [[88, 117], [710, 793]] ◂ */, block: "hub", after: "inbox" },
+ "5c": { files: ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", `${H}EmployeeProfileForm.tsx`], fresh: [`${H}people-ui.tsx`, `${H}people-rules.ts`], ranges: [[439, 716]] /* HR VIS-5b re-merge ▸ same PRIV-3 shift (+7) · was [[432, 709]] ◂ */, block: "people", after: "life" },
 };
 export const ORACLE_FILES = ["scripts/qc-hr-vis-5b.mts", "scripts/qc-hr-vis-5c.mts", "scripts/qc-hr-vis-5-lib.mts"];
 const SHARED_FREE = [TH, EN, INV, UI, "scripts/walk-hr-matrix.json", ...ORACLE_FILES];

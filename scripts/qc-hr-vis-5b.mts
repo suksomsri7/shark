@@ -17,7 +17,7 @@ const KPI = { onShift: "hr-overview-today", arrived: "hr-hub-kpi-arrived", late:
 const PIN: Record<string, [string, string, string]> = {
  decideInboxAction: [`${H}inbox-actions.ts`, "bdc0411f9bee9911", "action"], decideInbox: [`${H}inbox.ts`, "d9bad252a3372cdc", ""], teamOverviewWithPreview: [`${H}inbox.ts`, "4a68ac354a52b46c", ""],
  loadAttendanceBoard: [`${H}judge.ts`, "632d0a898ab0322b", ""], lifecycleDue: [`${H}lifecycle.ts`, "c9babb1e63c87ffa", ""], loadReport: [`${H}reports.ts`, "4dc796e1bd11ca77", ""], reportAccessOf: [`${H}reports.ts`, "28d935ba41f802e5", ""],
- meetsPattern: [`${H}ai-rules.ts`, "c720c67057989df9", ""], hrNavFilter: [`${H}nav.ts`, "1180200054121ff6", ""], hrTabs: [F.ui, "db9ff39ddd0d08ca", "S1.8"], HrLaborCard: [`${H}labor-ui.tsx`, "fc7fe5dd23e3e2dd", "labour"], canRunKiosk: [`${H}clock-settings.ts`, "ac23c6bc70fa5f90", ""],
+ meetsPattern: [`${H}ai-rules.ts`, "c720c67057989df9", ""], hrNavFilter: [`${H}nav.ts`, "a85ecb46e36251c9", ""] /* HR VIS-5b re-merge ▸ re-pin after session/hr a49f81829: PRIV-3 R4 page gates (register/leave/payroll → requireHrPage) · was 1180200054121ff6 ◂ */, hrTabs: [F.ui, "db9ff39ddd0d08ca", "S1.8"], HrLaborCard: [`${H}labor-ui.tsx`, "fc7fe5dd23e3e2dd", "labour"], canRunKiosk: [`${H}clock-settings.ts`, "ac23c6bc70fa5f90", ""],
 };
 const MODTABS_GOLDEN = "dd39eef383f01a0c"; // sha16 of ModuleTabs({items: SAMPLE_TABS}) static markup at base (non-HR module) — 5b-1
 
