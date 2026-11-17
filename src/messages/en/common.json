@@ -764,7 +764,8 @@
         "ended": "Ended",
         "endedOn": "Ended {date}",
         "removed": "Removed",
-        "onLeave": "On leave today"
+        "onLeave": "On leave today",
+        "contract": "Contract until {date}"
       },
       "pinSet": "Set",
       "pinNone": "Not set",
@@ -879,8 +880,8 @@
           "accountYes": "Account linked",
           "accountYesSub": "Sees the “Me” pages",
           "accountNo": "No account",
-          "pin": "Clock-in PIN",
-          "pinChange": "Set/change PIN",
+          "pin": "POS PIN",
+          "pinChange": "Change PIN",
           "line": "LINE"
         },
         "check": {
@@ -933,8 +934,94 @@
         "save": "Save",
         "saving": "Saving…",
         "cancel": "Cancel",
-        "end": "End employment"
-      }
+        "end": "End employment",
+        "legend": {
+          "personal": "Personal details",
+          "employment": "Employment",
+          "address": "Current address",
+          "emergency": "Emergency contact",
+          "sensitive": "🔒 Sensitive details",
+          "note": "Notes"
+        },
+        "name": "Full name *",
+        "nickname": "Nickname",
+        "code": "Employee code",
+        "codePh": "e.g. EMP-001",
+        "gender": "Gender",
+        "notSet": "Not set",
+        "genderOpt": {
+          "MALE": "Male",
+          "FEMALE": "Female",
+          "OTHER": "Other"
+        },
+        "birth": "Date of birth",
+        "marital": "Marital status",
+        "maritalOpt": {
+          "SINGLE": "Single",
+          "MARRIED": "Married",
+          "DIVORCED": "Divorced",
+          "WIDOWED": "Widowed",
+          "OTHER": "Other"
+        },
+        "phone": "Phone",
+        "email": "Email",
+        "position": "Position",
+        "positionPh": "e.g. Hair stylist",
+        "department": "Department",
+        "departmentPh": "e.g. Front of house",
+        "employmentType": "Employment type",
+        "typeOpt": {
+          "FULL_TIME": "Full-time",
+          "PART_TIME": "Part-time",
+          "CONTRACT": "Contract",
+          "DAILY": "Daily",
+          "PROBATION": "Probation"
+        },
+        "startDate": "Start date",
+        "endDate": "End date (if they have left)",
+        "employmentStatus": "Employment status",
+        "statusOpt": {
+          "PROBATION": "Probation",
+          "ACTIVE": "Permanent",
+          "ENDED": "Ended"
+        },
+        "probationEnd": "Probation ends",
+        "contractEnd": "Contract ends",
+        "addressLine": "House no. / street",
+        "subdistrict": "Subdistrict",
+        "district": "District",
+        "province": "Province",
+        "postcode": "Postcode",
+        "emergencyName": "Name",
+        "emergencyPhone": "Phone",
+        "emergencyRelation": "Relationship",
+        "emergencyRelationPh": "e.g. Spouse",
+        "sensitiveHint": "Only the business owner or people allowed to see payroll can see these — fill in only what the shop really needs (documents, social security, salary transfer)",
+        "nationalId": "National ID (13 digits)",
+        "sso": "Social security number",
+        "houseReg": "House-registration address (if different from the current address)",
+        "bankName": "Bank",
+        "bankNamePh": "e.g. Kasikorn",
+        "bankAccountNo": "Account number",
+        "bankAccountName": "Account name"
+      },
+      "lawTail": "the statutory employee register comes from this page",
+      "summary": {
+        "shown": "Showing {n}",
+        "unit": "{name} {n}",
+        "ended": "Ended {n}"
+      },
+      "pay": {
+        "MONTHLY": "Monthly",
+        "DAILY": "Daily",
+        "HOURLY": "Hourly"
+      },
+      "prob": {
+        "stats": "Started {date} · {days} days",
+        "counts": "Late {late} · Absent {absent} · OT {ot} h",
+        "review": "Review"
+      },
+      "closed": "Closed"
     },
     "ot": {
       "title": "OT requests",

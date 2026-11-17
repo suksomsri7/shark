@@ -20,7 +20,7 @@ import { getLocale, getTranslations } from "next-intl/server"; // HR H3.9 ◂
 import { employeeLineStatus } from "@/lib/modules/hr/line-link"; // HR H4.5 ▸ ชิปสถานะ LINE (สถานะ + วันที่ผูกเท่านั้น · ด่านจากแถว Membership + สาขา) ◂
 import { adminUnlinkLineAction } from "@/lib/modules/hr/line-actions"; // HR H4.5 ◂
 // HR VIS-5c ▸ โปรไฟล์ (ภาพ 02): หัว · แท็บ · มุมมองอ่าน (เลขอ่อนไหวปิดแล้ว) · เชื่อมระบบ · แท็บลา/เงินเดือน/เอกสาร — ฝั่ง server ทั้งหมด ◂
-import { EmployeeReadView, PeopleCard, ProfileEditCard, ProfilePageHeader, ProfileRemovedNote, ProfileChecklist, ProfileConnections, ProfileDocsTab, ProfileHeader, ProfileLeaveTab, ProfilePayTab, ProfileTabs, canEditPeople, profileHref, profileTabOf, type ProfileTab } from "@/lib/modules/hr/people-ui"; // HR VIS-5c ◂
+import { EmployeeReadView, PeopleCard, ProfileEditCard, ProfilePageHeader, ProfileRemovedNote, ProfileChecklist, ProfileConnections, ProfileDocsTab, ProfileHeader, ProfileLeaveTab, ProfilePayTab, ProfileProbation, ProfileTabs, canEditPeople, profileHref, profileTabOf, type ProfileTab } from "@/lib/modules/hr/people-ui"; // HR VIS-5c ◂
 
 // หน้าโปรไฟล์พนักงาน 1 คน (ข้อ 8) — ข้อมูลเต็มรูปแบบ + เอกสารแนบ
 // 🔒 ช่องอ่อนไหว (เลขบัตร/ประกันสังคม/ทะเบียนบ้าน/บัญชี) + เอกสาร = เห็นเฉพาะผู้มีสิทธิ์ดูเงินเดือน
@@ -92,12 +92,10 @@ export default async function HrEmployeeProfilePage({
     <div className="flex max-w-6xl flex-col gap-5">{/* HR VIS-5c ▸ ภาพ 02: มุมมองอ่าน + คอลัมน์ขวา ⇒ max-w-6xl ◂ */}
       <ProfilePageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} systemId={id} />{/* HR VIS-5c ▸ ชื่อ/ตำแหน่งย้ายเข้าหัวโปรไฟล์ · ข้อความแปลในคอมโพเนนต์ ◂ */}
       {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
-      <ModuleTabs items={await hrTabsFor(id)} wrap />{/* HR VIS-5c ◂ */}
+      <ModuleTabs items={await hrTabsFor(id)} wrap activeHref={`/app/sys/${id}/hr/employees`} />{/* HR VIS-5c ◂ · r2 (P14): แท็บ "พนักงาน" สว่างบนหน้าโปรไฟล์ ◂ */}
       <LifecycleMsg code={typeof lifeCode === "string" ? lifeCode : undefined} />
-      <PeopleCard className="flex flex-col gap-4">{/* HR VIS-5c ▸ หัวโปรไฟล์ + แถบทดลองงาน/สัญญา (VIS-1 B2) + แท็บ ◂ */}
-        <ProfileHeader systemId={id} emp={emp} canEdit={canEdit} onEdit={editing} />
-        {/* VIS-1 B2 ▸ แถบทดลองงาน/สัญญา/สิ้นสุด อยู่บนสุดของโปรไฟล์ (ภาพ 02) ◂ */}
-        <LifecycleBanner systemId={id} employeeId={emp.id} life={life} active={emp.active} />
+      <PeopleCard className="flex flex-col gap-4">{/* HR VIS-5c ▸ หัวโปรไฟล์ + แท็บ · r2 (B6): แถบทดลองงาน/สัญญา/สิ้นสุด ย้ายลงใต้แท็บ (รายการแรกของแท็บทั่วไป · ภาพ 02) ◂ */}
+        <ProfileHeader emp={emp} />
         {!emp.active && <ProfileRemovedNote />}
         {!editing && <ProfileTabs href={(k) => profileHref(id, emp.id, `?tab=${k}`)} tab={shown} tabs={tabs} />}{/* HR VIS-5c */}
       </PeopleCard>
@@ -131,6 +129,8 @@ export default async function HrEmployeeProfilePage({
         </PeopleCard>
       ) : shown === "history" ? (
         <>
+          {/* HR VIS-5c ▸ r2 (ruling 2): ปุ่มยืนยันผ่านทดลองงานจริง (LifecycleBanner) อยู่ที่แท็บประวัติ — ปลายทางของลิงก์ "ประเมิน ›" ◂ */}
+          <LifecycleBanner systemId={id} employeeId={emp.id} life={life} active={emp.active} />
           <PeopleCard className="empty:hidden">
             <LifecycleProfile systemId={id} employeeId={emp.id} life={life} active={emp.active} />
           </PeopleCard>
@@ -144,8 +144,17 @@ export default async function HrEmployeeProfilePage({
           />
         </>
       ) : (
-        // HR VIS-5c ▸ แท็บทั่วไป: มุมมองอ่าน ∣ รายการรับเข้า (อ่าน) + เชื่อมระบบ ◂
+        // HR VIS-5c ▸ แท็บทั่วไป: มุมมองอ่าน ∣ รายการรับเข้า (อ่าน) + เชื่อมระบบ · r2 (B6): แถบทดลองงาน (ลิงก์ประเมิน ›) / สัญญา / สิ้นสุด เป็นรายการแรก ◂
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
+          {life?.status === "PROBATION" && life.probationEndAt ? (
+            <div className="xl:col-span-2">
+              <ProfileProbation systemId={id} tenantId={auth.active.tenantId} viewer={hrViewerOf(auth)} emp={emp} life={life} />
+            </div>
+          ) : (
+            <div className="empty:hidden xl:col-span-2">
+              <LifecycleBanner systemId={id} employeeId={emp.id} life={life} active={emp.active} />
+            </div>
+          )}
           <PeopleCard>
             <EmployeeReadView systemId={id} emp={emp} sensitive={sensitive} canEdit={canEdit} />
           </PeopleCard>

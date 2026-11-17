@@ -5,13 +5,14 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { getLocale, getTranslations } from "next-intl/server";
 import { evaluate } from "@/lib/core/rbac";
-import { formatShortDate, formatThaiDateFull, thaiDateKey } from "@/lib/ui/date";
+import { THAI_MONTH_SHORT, formatShortDate, formatThaiDateFull, thaiDateKey } from "@/lib/ui/date"; // HR VIS-5c ▸ r2: + THAI_MONTH_SHORT (วัน+เดือนแบบภาพ "15 ต.ค.") ◂
 import { SubmitButton } from "@/components/ui/SubmitButton";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { addEmployeeDocAction, removeEmployeeDocAction } from "./actions";
 import { profileFormId, type EmployeeDocDto, type EmployeeProfileDto } from "./privacy-shared";
 import type { HrViewer } from "./privacy";
-import { cardSubjectOf, listChecklist } from "./lifecycle";
+import { canSeeLifecycle, cardSubjectOf, isLinkedTo, listChecklist } from "./lifecycle"; // HR VIS-5c ▸ r2: + canSeeLifecycle · isLinkedTo (ลิงก์ "ประเมิน ›" ตามด่านเดียวกับปุ่มยืนยันของ LifecycleBanner) ◂
+import { loadAttendanceMonth } from "./judge"; // HR VIS-5c ▸ r2: สาย/ขาด/OT ช่วงทดลองงาน (ด่านเดิมของตัวอ่านปฏิทินลงเวลา · null = ไม่แสดงตัวเลข) ◂
 import { leaveBalances } from "./leave";
 import { ageOn, initialOf, maskBankAccount, maskNationalId, maskSso, ymdOf } from "./people-rules";
 
@@ -32,6 +33,14 @@ export function dayText(d: Date | string | null | undefined, locale: string): st
   return locale === "en" ? formatShortDate(new Date(`${ymd}T00:00:00Z`), "en") : formatThaiDateFull(ymd);
 }
 
+/** HR VIS-5c ▸ r2: วัน+เดือนไม่มีปี (ภาพ 02 "ครบ 15 ต.ค." · "สัญญาถึง 31 ต.ค.") — th "15 ต.ค." · en "15 Oct" ◂ */
+export function dayMonth(d: Date | string | null | undefined, locale: string): string {
+  const ymd = ymdOf(d);
+  if (!ymd) return "";
+  const day = Number(ymd.slice(8, 10)), m = Number(ymd.slice(5, 7));
+  return locale === "en" ? new Date(`${ymd}T00:00:00Z`).toLocaleDateString("en-GB", { day: "numeric", month: "short", timeZone: "UTC" }) : `${day} ${THAI_MONTH_SHORT[m - 1] ?? ""}`;
+}
+
 export const profileHref = (systemId: string, employeeId: string, q = "") => `/app/sys/${systemId}/hr/employees/${encodeURIComponent(employeeId)}${q}`;
 
 function Kv({ k, children, testId }: { k: string; children: ReactNode; testId?: string }) {
@@ -46,9 +55,10 @@ function Kv({ k, children, testId }: { k: string; children: ReactNode; testId?: 
 }
 
 // ═════════════ หัวโปรไฟล์: รูปย่อ · ชื่อ · รหัส · ตำแหน่ง · สาขา · แผนก · ปุ่มแก้ไข ═════════════
-export async function ProfileHeader({ systemId, emp, canEdit, onEdit, close }: { systemId: string; emp: EmployeeProfileDto; canEdit: boolean; onEdit?: boolean; close?: string }) {
+// HR VIS-5c ▸ r2 (A1/B7): ปุ่ม "แก้ไข" ย้ายไปหัวข้อ "ข้อมูลส่วนตัว" (EmployeeReadView) · ชื่อเรื่องแต่ละส่วนไม่ตัดกลางคำ (ขึ้นบรรทัดได้ที่ " · " เท่านั้น · ยาวเกิน = … + title) ◂
+export async function ProfileHeader({ emp, close }: { systemId?: string; emp: EmployeeProfileDto; canEdit?: boolean; onEdit?: boolean; close?: string }) {
   const t = await getTranslations("hr.people");
-  const head = [emp.nickname || emp.name, emp.code, emp.position].filter(Boolean).join(" · ");
+  const parts = [emp.nickname || emp.name, emp.code, emp.position].filter((x): x is string => !!x); // HR VIS-5c ◂
   const sub = [emp.nickname && emp.nickname !== emp.name ? emp.name : null, emp.unitName, emp.department].filter(Boolean).join(" · ");
   return (
     <div className="flex items-center gap-3.5">
@@ -56,14 +66,17 @@ export async function ProfileHeader({ systemId, emp, canEdit, onEdit, close }: {
         {initialOf(emp.nickname || emp.name)}
       </span>
       <div className="min-w-0 flex-1">
-        <h2 className="break-words text-lg font-bold leading-snug">{head}</h2>
+        <h2 className="text-lg font-bold leading-snug">
+          {parts.map((p, i) => (
+            <span key={i} title={p} className="inline-block max-w-full truncate whitespace-nowrap align-bottom">
+              {i > 0 ? <span className={`px-1.5 font-normal ${muted}`}>·</span> : null}
+              {p}
+            </span>
+          ))}
+          {/* HR VIS-5c ◂ */}
+        </h2>
         {sub && <p className={`text-sm ${muted}`}>{sub}</p>}
       </div>
-      {canEdit && !onEdit && (
-        <Link href={profileHref(systemId, emp.id, "?edit=1")} data-testid="hr-profile-edit" className={ghost}>
-          {t("prof.edit")}
-        </Link>
-      )}
       {close && (
         <Link href={close} data-testid="hr-people-panel-close" aria-label={t("panel.close")} className="grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-lg text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)]">
           ×
@@ -88,12 +101,76 @@ export async function ProfileTabs({ href, tab, tabs }: { href: (tab: ProfileTab)
           href={href(k)}
           data-testid={`hr-profile-tab-${k}`}
           aria-current={tab === k ? "page" : undefined}
-          className={`inline-flex min-h-[44px] min-w-[44px] items-center justify-center whitespace-nowrap px-3 text-sm ${tab === k ? "border-b-2 border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : muted}`}
+          className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center whitespace-nowrap px-3 text-sm ${tab === k /* HR VIS-5c ▸ r2 (B2): shrink-0 — แท็บไม่ถูกบีบจนป้ายชนกันที่ 390 ◂ */ ? "border-b-2 border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : muted}`}
         >
           {t(`prof.tab.${k}`)}
         </Link>
       ))}
     </nav>
+  );
+}
+
+// ═════════════ HR VIS-5c ▸ r2 (A1/B6): แถบทดลองงาน (ภาพ 02) — "ทดลองงาน · ครบ <วัน> (อีก N วัน)" + "เริ่ม … · N วัน · สาย · ขาด · OT" + ลิงก์ "ประเมิน ›" ไปแท็บประวัติ ·
+//   ปุ่มยืนยันผ่านทดลองงานจริง (LifecycleBanner · confirmProbationAction) อยู่ที่แท็บประวัติเท่านั้น — ที่นี่ไม่ผูก action ·
+//   ด่าน = life (loadLifecycleForViewer · null ⇒ ไม่แสดง เหมือน LifecycleBanner) · ลิงก์ประเมินตามด่านปุ่มยืนยันเดิม (ผู้ดูข้อมูลบันทึก · ไม่ใช่ตัวเอง · ยังทำงาน) ·
+//   สาย/ขาด/OT = loadAttendanceMonth (ด่านเดิม) รวมทุกเดือนตั้งแต่เดือนเริ่มงานถึงเดือนนี้ · ตัวอ่านปฏิเสธ ⇒ ไม่แสดงตัวเลข ◂ ═════════════
+type LifeLite = { status: string | null; probationEndAt: string | null } | null;
+export async function ProbationStats({ systemId, tenantId, viewer, emp }: { systemId: string; tenantId: string; viewer: HrViewer; emp: EmployeeProfileDto }) {
+  const t = await getTranslations("hr.people");
+  const locale = await getLocale();
+  const start = ymdOf(emp.startDate), end = ymdOf(emp.probationEndAt);
+  if (!start) return null;
+  const days = end ? Math.round((Date.parse(`${end}T00:00:00Z`) - Date.parse(`${start}T00:00:00Z`)) / 86_400_000) : null;
+  const months: string[] = [];
+  const now = thaiDateKey(new Date()).slice(0, 7);
+  for (let m = start.slice(0, 7); m <= now && months.length <= 13; ) {
+    months.push(m);
+    const [y, mm] = m.split("-").map(Number) as [number, number];
+    m = mm === 12 ? `${y + 1}-01` : `${y}-${String(mm + 1).padStart(2, "0")}`;
+  }
+  let late = 0, absent = 0, otMin = 0, ok = months.length > 0 && months.length <= 13;
+  for (const month of ok ? months : []) {
+    const r = await loadAttendanceMonth({ tenantId, systemId }, viewer, { employeeId: emp.id, month }).catch(() => null);
+    if (!r) { ok = false; break; }
+    late += r.summary.lateCount; absent += r.summary.absentDays; otMin += r.summary.otMin;
+  }
+  const date = locale === "en" ? dayText(start, locale) : formatThaiDateFull(start);
+  const head = days !== null && days > 0 ? t("prob.stats", { date, days }) : t("prob.stats", { date, days: "—" });
+  return (
+    <small data-testid="hr-people-prob-stats" className="mt-1 block text-[13px] text-[color:var(--color-ink-soft)]">
+      {head}
+      {ok ? ` · ${t("prob.counts", { late, absent, ot: String(+(otMin / 60).toFixed(2)) })}` : ""}
+    </small>
+  );
+}
+
+export async function ProfileProbation({ systemId, tenantId, viewer, emp, life, reviewTestId = "hr-people-prob-review" }: { systemId: string; tenantId: string; viewer: HrViewer; emp: EmployeeProfileDto; life: LifeLite; reviewTestId?: string }) {
+  if (!life || life.status !== "PROBATION" || !life.probationEndAt) return null;
+  const tl = await getTranslations("hr.life");
+  const t = await getTranslations("hr.people");
+  const locale = await getLocale();
+  const today = thaiDateKey(new Date());
+  const left = Math.round((Date.parse(`${life.probationEndAt}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  const leftText = left > 0 ? tl("banner.left", { n: left }) : left === 0 ? tl("banner.today") : tl("banner.over", { n: -left });
+  const canReview = emp.active && canSeeLifecycle(viewer) && !(await isLinkedTo({ tenantId, systemId }, viewer.userId, emp.id));
+  return (
+    <div data-testid="hr-life-banner" className="flex flex-wrap items-center gap-x-3.5 gap-y-2 rounded-2xl border-[1.5px] border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-4 py-3.5">
+      <div className="min-w-0 flex-1">
+        <b className="flex items-center gap-1.5 text-[15px] text-[color:var(--color-accent)]">
+          <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0">
+            <path d="M5 21V4" />
+            <path d="M5 4h11l-2 4 2 4H5" />
+          </svg>
+          <span className="min-w-0">{tl("banner.probation", { date: dayMonth(life.probationEndAt, locale), left: leftText })}</span>
+        </b>
+        <ProbationStats systemId={systemId} tenantId={tenantId} viewer={viewer} emp={emp} />
+      </div>
+      {canReview && (
+        <Link href={profileHref(systemId, emp.id, "?tab=history#hr-life")} data-testid={reviewTestId} className="btn btn-primary min-h-[44px] whitespace-nowrap text-sm">
+          {t("prob.review")} ›
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -125,8 +202,17 @@ export async function EmployeeReadView({ systemId, emp, sensitive, canEdit, comp
   return (
     <div className="flex flex-col gap-6">
       <section>
-        <h3 className={h3}>{t("prof.personal")}</h3>
-        {emp.nickname && <Kv k={t("prof.nickname")}>{emp.nickname}</Kv>}
+        <h3 className={h3}>
+          {t("prof.personal")}
+          <span className="flex-1" />
+          {canEdit && (
+            <Link href={profileHref(systemId, emp.id, "?edit=1")} data-testid="hr-profile-edit" className={`${link} -my-3 text-[13px]`}>
+              {t("prof.edit")}
+            </Link>
+          )}
+          {/* HR VIS-5c ▸ r2 (A1/B7): "แก้ไข" = ลิงก์ท้ายหัวข้อข้อมูลส่วนตัว (ภาพ 02) · ผู้ถือ hr.employee.create เท่านั้น ◂ */}
+        </h3>
+        {/* HR VIS-5c ▸ r2: แถวชื่อเล่นออก — ชื่อเล่นอยู่บนหัวโปรไฟล์แล้ว (ภาพ 02 เริ่มที่ เบอร์) ◂ */}
         <Kv k={t("prof.phone")}>{emp.phone || none}</Kv>
         <Kv k={t("prof.email")}>{emp.email ? <span className="break-all">{emp.email}</span> : none}</Kv>
         {(

@@ -15719,7 +15719,7 @@
   {
    "page": "/app/sys/[id]/hr/employees",
    "testid": "hr-people-dept",
-   "kind": "select",
+   "kind": "button",
    "interactive": true,
    "file": "src/lib/modules/hr/ui.tsx",
    "conditional": "มีพนักงานที่ระบุแผนกอย่างน้อย 1 คน",
@@ -15741,7 +15741,7 @@
    },
    "wo": "VIS-5c",
    "oracle": "qc-hr-vis-5c",
-   "note": "ตัวกรองแผนก"
+   "note": "ตัวกรองแผนก (เมนูลิงก์ · ภาพ 02 \"แผนก ⌄\") — HR VIS-5c r2"
   },
   {
    "page": "/app/sys/[id]/hr/employees",
@@ -16148,7 +16148,7 @@
    },
    "wo": "VIS-5c",
    "oracle": "qc-hr-vis-5c",
-   "note": "แก้ไข (หัวแผงอ่าน)"
+   "note": "แก้ไข = ลิงก์ท้ายหัวข้อ \"ข้อมูลส่วนตัว\" (HR VIS-5c r2)"
   },
   {
    "page": "/app/sys/[id]/hr/employees",
@@ -16285,7 +16285,7 @@
    },
    "wo": "VIS-5c",
    "oracle": "qc-hr-vis-5c",
-   "note": "แก้ไข → โหมดแก้ไข (ฟอร์มเดิม)"
+   "note": "แก้ไข = ลิงก์ท้ายหัวข้อ \"ข้อมูลส่วนตัว\" (HR VIS-5c r2)"
   },
   {
    "page": "/app/sys/[id]/hr/employees/[employeeId]",
@@ -17284,6 +17284,171 @@
    "wo": "VIS-5c",
    "oracle": "qc-hr-vis-5c",
    "note": "กล่องยืนยันลบ"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-dept-opt-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนูแผนกเปิดอยู่",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees?dept=*"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ตัวเลือกแผนก (all = ทุกแผนก · เลข = ลำดับแผนก) — HR VIS-5c r2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-sched-toggle-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "เมนู ⋯ เปิดอยู่ · ผู้ถือ hr.employee.create",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "HrScheduleEditor",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "พับ/กางตารางเข้างานในเมนู ⋯ (เมนูไม่สูงเกินจอ) — HR VIS-5c r2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-summary",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/ui.tsx",
+   "conditional": "มีอย่างน้อย 1 แถว",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-people-summary",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ท้ายตาราง: แสดง N คน · <สาขา> n · สิ้นสุด n — HR VIS-5c r2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees",
+   "testid": "hr-people-prob-stats",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แผงอ่าน ?emp=<คนทดลองงาน> · ผู้ดูวงจรพนักงาน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-people-prob-stats",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เริ่ม <วัน> · N วัน · สาย · ขาด · OT (loadAttendanceMonth · ปฏิเสธ = ไม่มีตัวเลข) — HR VIS-5c r2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-people-prob-stats",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แท็บทั่วไปของคนทดลองงาน · ผู้ดูวงจรพนักงาน",
+   "roles": [
+    "owner",
+    "manager",
+    "payroll",
+    "payrollSelf",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "ui",
+    "target": "hr-people-prob-stats",
+    "state": "appears"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "เริ่ม <วัน> · N วัน · สาย · ขาด · OT ใต้แถบทดลองงาน — HR VIS-5c r2"
+  },
+  {
+   "page": "/app/sys/[id]/hr/employees/[employeeId]",
+   "testid": "hr-people-prob-review",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/people-ui.tsx",
+   "conditional": "แท็บทั่วไปของคนทดลองงาน · ผู้ดูข้อมูลบันทึก · ไม่ใช่ตัวเอง",
+   "roles": [
+    "owner",
+    "manager"
+   ],
+   "hiddenFor": [
+    "payroll",
+    "payrollSelf",
+    "staff",
+    "kiosk",
+    "member"
+   ],
+   "expect": {
+    "type": "navigation",
+    "target": "/app/sys/[id]/hr/employees/*?tab=history#hr-life"
+   },
+   "wo": "VIS-5c",
+   "oracle": "qc-hr-vis-5c",
+   "note": "ประเมิน › → แท็บประวัติ (ปุ่มยืนยันผ่านทดลองงานจริงอยู่ที่นั่น · ruling 2) — HR VIS-5c r2"
   }
  ]
 }

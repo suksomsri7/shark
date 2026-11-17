@@ -41,151 +41,151 @@ export default function EmployeeProfileForm({
   return (
     <form id={profileFormId(emp.id)} action={formAction} className="flex flex-col gap-5">
       <fieldset className="flex flex-col gap-3">
-        <legend className="text-sm font-medium">ข้อมูลส่วนตัว</legend>
+        <legend className="text-sm font-medium">{t("legend.personal")}</legend>{/* HR VIS-5c */}
         <div className="grid grid-cols-2 gap-2">
-          <Field label="ชื่อ-นามสกุล *">
+          <Field label={t("name")}>{/* HR VIS-5c */}
             <input name="name" required defaultValue={emp.name} className="input" />
           </Field>
-          <Field label="ชื่อเล่น">
+          <Field label={t("nickname")}>{/* HR VIS-5c */}
             <input name="nickname" defaultValue={emp.nickname ?? ""} className="input" />
           </Field>
-          <Field label="รหัสพนักงาน">
-            <input name="code" defaultValue={emp.code ?? ""} placeholder="เช่น EMP-001" className="input" />
+          <Field label={t("code")}>{/* HR VIS-5c */}
+            <input name="code" defaultValue={emp.code ?? ""} placeholder={t("codePh")} className="input" />
           </Field>
-          <Field label="เพศ">
+          <Field label={t("gender")}>{/* HR VIS-5c */}
             <select name="gender" defaultValue={emp.gender ?? ""} className="input">
-              <option value="">ไม่ระบุ</option>
-              <option value="MALE">ชาย</option>
-              <option value="FEMALE">หญิง</option>
-              <option value="OTHER">อื่นๆ</option>
+              <option value="">{t("notSet")}</option>{/* HR VIS-5c */}
+              <option value="MALE">{t("genderOpt.MALE")}</option>
+              <option value="FEMALE">{t("genderOpt.FEMALE")}</option>
+              <option value="OTHER">{t("genderOpt.OTHER")}</option>
             </select>
           </Field>
-          <Field label="วันเกิด">
+          <Field label={t("birth")}>{/* HR VIS-5c */}
             <input name="birthDate" type="date" defaultValue={d(emp.birthDate)} className="input" />
           </Field>
-          <Field label="สถานะสมรส">
+          <Field label={t("marital")}>{/* HR VIS-5c */}
             <select name="maritalStatus" defaultValue={emp.maritalStatus ?? ""} className="input">
-              <option value="">ไม่ระบุ</option>
-              <option value="SINGLE">โสด</option>
-              <option value="MARRIED">สมรส</option>
-              <option value="DIVORCED">หย่า</option>
-              <option value="WIDOWED">คู่สมรสเสียชีวิต</option>
-              <option value="OTHER">อื่นๆ</option>
+              <option value="">{t("notSet")}</option>{/* HR VIS-5c */}
+              <option value="SINGLE">{t("maritalOpt.SINGLE")}</option>
+              <option value="MARRIED">{t("maritalOpt.MARRIED")}</option>
+              <option value="DIVORCED">{t("maritalOpt.DIVORCED")}</option>
+              <option value="WIDOWED">{t("maritalOpt.WIDOWED")}</option>
+              <option value="OTHER">{t("maritalOpt.OTHER")}</option>
             </select>
           </Field>
-          <Field label="เบอร์โทร">
+          <Field label={t("phone")}>{/* HR VIS-5c */}
             <input name="phone" inputMode="tel" defaultValue={emp.phone ?? ""} className="input" />
           </Field>
-          <Field label="อีเมล">
+          <Field label={t("email")}>{/* HR VIS-5c */}
             <input name="email" type="email" defaultValue={emp.email ?? ""} className="input" />
           </Field>
         </div>
       </fieldset>
 
       <fieldset className="flex flex-col gap-3 border-t pt-4">
-        <legend className="text-sm font-medium">การจ้างงาน</legend>
+        <legend className="text-sm font-medium">{t("legend.employment")}</legend>{/* HR VIS-5c */}
         <div className="grid grid-cols-2 gap-2">
-          <Field label="ตำแหน่งงาน">
-            <input name="position" defaultValue={emp.position ?? ""} placeholder="เช่น ช่างตัดผม" className="input" />
+          <Field label={t("position")}>{/* HR VIS-5c */}
+            <input name="position" defaultValue={emp.position ?? ""} placeholder={t("positionPh")} className="input" />
           </Field>
-          <Field label="แผนก">
-            <input name="department" defaultValue={emp.department ?? ""} placeholder="เช่น หน้าร้าน" className="input" />
+          <Field label={t("department")}>{/* HR VIS-5c */}
+            <input name="department" defaultValue={emp.department ?? ""} placeholder={t("departmentPh")} className="input" />
           </Field>
-          <Field label="ประเภทการจ้าง">
+          <Field label={t("employmentType")}>{/* HR VIS-5c */}
             <select name="employmentType" defaultValue={emp.employmentType ?? ""} className="input">
-              <option value="">ไม่ระบุ</option>
-              <option value="FULL_TIME">ประจำ (เต็มเวลา)</option>
-              <option value="PART_TIME">พาร์ตไทม์</option>
-              <option value="CONTRACT">สัญญาจ้าง</option>
-              <option value="DAILY">รายวัน</option>
-              <option value="PROBATION">ทดลองงาน</option>
+              <option value="">{t("notSet")}</option>{/* HR VIS-5c */}
+              <option value="FULL_TIME">{t("typeOpt.FULL_TIME")}</option>
+              <option value="PART_TIME">{t("typeOpt.PART_TIME")}</option>
+              <option value="CONTRACT">{t("typeOpt.CONTRACT")}</option>
+              <option value="DAILY">{t("typeOpt.DAILY")}</option>
+              <option value="PROBATION">{t("typeOpt.PROBATION")}</option>
             </select>
           </Field>
-          <Field label="วันเริ่มงาน">
+          <Field label={t("startDate")}>{/* HR VIS-5c */}
             <input name="startDate" type="date" defaultValue={d(emp.startDate)} className="input" />
           </Field>
-          <Field label="วันสิ้นสุดงาน (ถ้าลาออกแล้ว)">
+          <Field label={t("endDate")}>{/* HR VIS-5c */}
             <input name="endDate" type="date" defaultValue={d(emp.endDate)} className="input" />
           </Field>
           {/* HR H1.1 ▸ R7 สถานะการจ้าง · วันครบทดลองงาน · วันสิ้นสุดสัญญา (ข้อมูลอย่างเดียว — เตือนล่วงหน้า = H2.x) · สาขาประจำอยู่บนหน้า (form=) ◂ */}
-          <Field label="สถานะการจ้าง">
+          <Field label={t("employmentStatus")}>{/* HR VIS-5c */}
             <select name="employmentStatus" data-testid="hr-profile-employment-status" defaultValue={emp.employmentStatus ?? ""} className="input min-h-11">
-              <option value="">ไม่ระบุ</option>
-              <option value="PROBATION">ทดลองงาน</option>
-              <option value="ACTIVE">ประจำ</option>
-              <option value="ENDED">สิ้นสุด</option>
+              <option value="">{t("notSet")}</option>{/* HR VIS-5c */}
+              <option value="PROBATION">{t("statusOpt.PROBATION")}</option>
+              <option value="ACTIVE">{t("statusOpt.ACTIVE")}</option>
+              <option value="ENDED">{t("statusOpt.ENDED")}</option>
             </select>
           </Field>
-          <Field label="วันครบทดลองงาน">
+          <Field label={t("probationEnd")}>{/* HR VIS-5c */}
             <input name="probationEndAt" type="date" defaultValue={d(emp.probationEndAt)} className="input" />
           </Field>
-          <Field label="วันสิ้นสุดสัญญา">
+          <Field label={t("contractEnd")}>{/* HR VIS-5c */}
             <input name="contractEndAt" type="date" defaultValue={d(emp.contractEndAt)} className="input" />
           </Field>
         </div>
       </fieldset>
 
       <fieldset className="flex flex-col gap-3 border-t pt-4">
-        <legend className="text-sm font-medium">ที่อยู่ปัจจุบัน</legend>
-        <Field label="บ้านเลขที่ / ถนน">
+        <legend className="text-sm font-medium">{t("legend.address")}</legend>{/* HR VIS-5c */}
+        <Field label={t("addressLine")}>
           <input name="addressLine" defaultValue={emp.addressLine ?? ""} className="input" />
         </Field>
         <div className="grid grid-cols-2 gap-2">
-          <Field label="ตำบล/แขวง">
+          <Field label={t("subdistrict")}>{/* HR VIS-5c */}
             <input name="subdistrict" defaultValue={emp.subdistrict ?? ""} className="input" />
           </Field>
-          <Field label="อำเภอ/เขต">
+          <Field label={t("district")}>{/* HR VIS-5c */}
             <input name="district" defaultValue={emp.district ?? ""} className="input" />
           </Field>
-          <Field label="จังหวัด">
+          <Field label={t("province")}>{/* HR VIS-5c */}
             <input name="province" defaultValue={emp.province ?? ""} className="input" />
           </Field>
-          <Field label="รหัสไปรษณีย์">
+          <Field label={t("postcode")}>{/* HR VIS-5c */}
             <input name="postcode" inputMode="numeric" maxLength={5} defaultValue={emp.postcode ?? ""} className="input" />
           </Field>
         </div>
       </fieldset>
 
       <fieldset className="flex flex-col gap-3 border-t pt-4">
-        <legend className="text-sm font-medium">ผู้ติดต่อกรณีฉุกเฉิน</legend>
+        <legend className="text-sm font-medium">{t("legend.emergency")}</legend>{/* HR VIS-5c */}
         <div className="grid grid-cols-2 gap-2">
-          <Field label="ชื่อ">
+          <Field label={t("emergencyName")}>{/* HR VIS-5c */}
             <input name="emergencyName" defaultValue={emp.emergencyName ?? ""} className="input" />
           </Field>
-          <Field label="เบอร์โทร">
+          <Field label={t("emergencyPhone")}>{/* HR VIS-5c */}
             <input name="emergencyPhone" inputMode="tel" defaultValue={emp.emergencyPhone ?? ""} className="input" />
           </Field>
-          <Field label="ความสัมพันธ์">
-            <input name="emergencyRelation" defaultValue={emp.emergencyRelation ?? ""} placeholder="เช่น คู่สมรส" className="input" />
+          <Field label={t("emergencyRelation")}>{/* HR VIS-5c */}
+            <input name="emergencyRelation" defaultValue={emp.emergencyRelation ?? ""} placeholder={t("emergencyRelationPh")} className="input" />
           </Field>
         </div>
       </fieldset>
 
       {canSeeSensitive && (
         <fieldset id="hr-profile-sensitive" className="flex scroll-mt-24 flex-col gap-3 border-t pt-4" /* HR VIS-5c ▸ ปลายทางของปุ่มตา (?edit=1#hr-profile-sensitive) ◂ */>
-          <legend className="text-sm font-medium">🔒 ข้อมูลอ่อนไหว</legend>
+          <legend className="text-sm font-medium">{t("legend.sensitive")}</legend>
           <p className={`text-xs ${muted}`}>
-            เห็นได้เฉพาะเจ้าของกิจการหรือผู้ได้รับสิทธิ์ดูเงินเดือน — กรอกเท่าที่ร้านต้องใช้จริง (ทำเอกสาร/ประกันสังคม/โอนเงินเดือน)
+            {t("sensitiveHint") /* HR VIS-5c */}
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="เลขบัตรประชาชน (13 หลัก)">
+            <Field label={t("nationalId")}>{/* HR VIS-5c */}
               <input name="nationalId" inputMode="numeric" defaultValue={emp.nationalId ?? ""} className="input" />
             </Field>
-            <Field label="เลขประกันสังคม">
+            <Field label={t("sso")}>{/* HR VIS-5c */}
               <input name="ssoNumber" inputMode="numeric" defaultValue={emp.ssoNumber ?? ""} className="input" />
             </Field>
           </div>
-          <Field label="ที่อยู่ตามทะเบียนบ้าน (ถ้าต่างจากที่อยู่ปัจจุบัน)">
+          <Field label={t("houseReg")}>{/* HR VIS-5c */}
             <textarea name="houseRegAddress" rows={2} defaultValue={emp.houseRegAddress ?? ""} className="input" />
           </Field>
           <div className="grid grid-cols-2 gap-2">
-            <Field label="ธนาคาร">
-              <input name="bankName" defaultValue={emp.bankName ?? ""} placeholder="เช่น กสิกรไทย" className="input" />
+            <Field label={t("bankName")}>{/* HR VIS-5c */}
+              <input name="bankName" defaultValue={emp.bankName ?? ""} placeholder={t("bankNamePh")} className="input" />
             </Field>
-            <Field label="เลขบัญชี">
+            <Field label={t("bankAccountNo")}>{/* HR VIS-5c */}
               <input name="bankAccountNo" inputMode="numeric" defaultValue={emp.bankAccountNo ?? ""} className="input" />
             </Field>
-            <Field label="ชื่อบัญชี">
+            <Field label={t("bankAccountName")}>{/* HR VIS-5c */}
               <input name="bankAccountName" defaultValue={emp.bankAccountName ?? ""} className="input" />
             </Field>
           </div>
@@ -193,7 +193,7 @@ export default function EmployeeProfileForm({
       )}
 
       <fieldset className="flex flex-col gap-2 border-t pt-4">
-        <legend className="text-sm font-medium">บันทึกเพิ่มเติม</legend>
+        <legend className="text-sm font-medium">{t("legend.note")}</legend>{/* HR VIS-5c */}
         <textarea name="note" rows={2} defaultValue={emp.note ?? ""} className="input" />
       </fieldset>
 

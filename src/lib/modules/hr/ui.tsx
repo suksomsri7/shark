@@ -66,7 +66,7 @@ import { loadLifecycleForViewer } from "./lifecycle"; // HR VIS-5c ◂
 import { getLocale } from "next-intl/server"; // HR VIS-5c ◂
 import { formatShortDate } from "@/lib/ui/date"; // HR VIS-5c ◂
 import { PEOPLE_TABS, departmentsOf, filterPeople, initialOf, pageOf, rowsOfTab, tabCounts, tabOf } from "./people-rules"; // HR VIS-5c ◂
-import { EmployeeReadView, ProfileChecklist, ProfileConnections, ProfileHeader, ProfileTabs, canEditPeople, dayText, profileHref } from "./people-ui"; // HR VIS-5c ◂
+import { EmployeeReadView, ProfileChecklist, ProfileConnections, ProfileHeader, ProfileProbation, ProfileTabs, canEditPeople, dayMonth, profileHref } from "./people-ui"; // HR VIS-5c ◂ · r2: + ProfileProbation · dayMonth ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -466,7 +466,9 @@ const hoursOf = (m: number) => (m % 60 === 0 ? String(m / 60) : (m / 60).toFixed
 
 // HR VIS-5c ▸ ทะเบียนพนักงาน (ภาพ 02): หัว (ชื่อ · จำนวนต่อสาขา · + พนักงาน) → แท็บสถานะ → ค้น/สาขา/แผนก/แสดงที่สิ้นสุด → ตาราง 20 คนต่อหน้า → ต้องจัดการ ·
 //   ?emp= = แผงอ่านด้านขวา (≥ 1280 · เลขอ่อนไหวปิดแล้ว · ไม่มีปุ่มแก้) · ?add=1 = เปิดแผงเพิ่มพนักงาน · ปุ่มแก้ทุกตัว (เพิ่ม · ⋯ · กู้คืน) เฉพาะผู้ถือ hr.employee.create ·
-//   ข้อมูล = ตัวอ่านเดิม (listEmployees/listRemovedEmployees ตามขอบเขตสาขา) · ลาวันนี้ = employeesOnLeave(วันไทยวันนี้ ณ เที่ยงคืน UTC) · action เดิมผูกตรง ◂
+//   ข้อมูล = ตัวอ่านเดิม (listEmployees/listRemovedEmployees ตามขอบเขตสาขา) · ลาวันนี้ = employeesOnLeave(วันไทยวันนี้ ณ เที่ยงคืน UTC) · action เดิมผูกตรง ·
+//   r2: แถวเตี้ย (≥ 8 แถวในจอแรกที่ 1440) · ป้าย/ชื่อ/ตำแหน่ง/สาขาบรรทัดเดียว (ยาวเกิน = … + title) · ข้างแผงซ่อนคอลัมน์ที่เกิน · แผง = ลิ้นชักเต็มสูงชิดขวา ·
+//   ประเภทจ้างบรรทัดสอง = รูปแบบค่าจ้าง เฉพาะผู้ผ่านด่าน loadEmployeeProfileForViewer (ผู้ดูเงินเดือนในขอบเขตค่าจ้าง · ไม่มียอดเงิน) ◂
 export type PeopleQuery = { q?: string; tab?: string; dept?: string; ended?: string; page?: string; emp?: string; add?: string };
 export async function HrEmployeesSection({ systemId, unit, query = {} }: { systemId: string; unit?: string; query?: PeopleQuery }) {
   const auth = await requireTenant();
@@ -495,11 +497,18 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
   const active = filterPeople(byUnit(inScope), q, dept);
   const ended = filterPeople(byUnit(removed), q, dept);
   const counts = tabCounts(active, ended, showEnded);
-  const pg = pageOf(rowsOfTab(tab, active, ended, showEnded), query.page);
+  const tabRows = rowsOfTab(tab, active, ended, showEnded);
+  const pg = pageOf(tabRows, query.page);
   const unassigned = inScope.filter((e) => !e.unitId).length;
   const today = thaiDateKey(new Date()); // HR VIS-5c ◂
   const onLeave = await employeesOnLeave(ctx, pg.rows.filter((x) => !x.ended).map((x) => x.row.id), new Date(`${today}T00:00:00Z`));
   const schedules = canEdit ? await Promise.all(pg.rows.map((x) => (x.ended ? null : getSchedule(ctx, x.row.id)))) : [];
+  // r2 (ruling 1): รูปแบบค่าจ้างต่อแถว = ตัวอ่านที่มีด่านอยู่แล้ว (payType อยู่ใน DTO เฉพาะผู้ดูเงินเดือนในขอบเขตค่าจ้าง) · ผู้ไม่มีสิทธิ์เงินเดือนไม่เรียกเลย
+  const payTypeOf = new Map<string, string>(
+    canViewPayroll(viewer)
+      ? (await Promise.all(pg.rows.map(async (x) => [x.row.id, (await loadEmployeeProfileForViewer(ctx, viewer, x.row.id))?.profile.payType ?? ""] as const))).filter(([, v]) => !!v)
+      : [],
+  );
   const pv = query.emp ? await loadEmployeeProfileForViewer(ctx, viewer, String(query.emp)) : null;
   const pvLife = pv ? await loadLifecycleForViewer(ctx, viewer, pv.profile.id) : null;
 
@@ -514,35 +523,52 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
   const perUnit = units.map((u) => ({ name: u.name, n: inScope.filter((e) => e.unitId === u.id).length })).filter((x) => x.n > 0);
   const summary = [units.length >= 2 ? t("branches", { n: units.length }) : null, ...(units.length >= 2 ? perUnit.map((x) => t("unitPeople", { name: x.name, n: x.n })) : [t("people", { n: inScope.length })])].filter(Boolean).join(" · ");
   const unitLabel = chip === "none" ? t("noUnit") : chip ? (unitName.get(chip) ?? t("otherUnit")) : t("allBranches");
-  // แผงเปิดอยู่ ⇒ คอลัมน์ประเภทจ้าง/บัญชี SHARK พับเข้าเซลล์ชื่อ/PIN จนถึง 2xl (ตารางไม่ล้นข้างแผง)
-  const wideCol = pv ? "hidden 2xl:table-cell" : "hidden xl:table-cell";
-  const foldCol = pv ? "2xl:hidden" : "xl:hidden";
-  const th = `px-1.5 py-3 text-left text-xs font-semibold whitespace-nowrap xl:px-2 ${muted}`; // HR VIS-5c ◂
-  const td = "md:table-cell md:px-1.5 md:py-3 md:align-middle xl:px-2"; // HR VIS-5c ◂
-  const chipCls = "inline-flex min-h-[28px] items-center rounded-lg border px-2.5 py-0.5 text-xs font-semibold 2xl:whitespace-nowrap"; // HR VIS-5c ▸ 1024 en: ป้ายยาวขึ้นบรรทัดได้ (ตารางไม่ล้นจอ) ◂
+  const unitOf = (id: string | null) => (id ? (unitName.get(id) ?? t("otherUnit")) : t("noUnit"));
+  // r2 (B11): บรรทัดท้ายตาราง "แสดง N คน · <สาขา> n · <สาขา> n (· สิ้นสุด n)" — นับจากแถวของแท็บนี้ทุกหน้า (คนทำงานตามสาขาประจำ)
+  const tabActive = tabRows.filter((x) => !x.ended).map((x) => x.row);
+  const footUnits = units.length >= 2 ? [...new Set(tabActive.map((e) => e.unitId))].map((id) => ({ id, n: tabActive.filter((e) => e.unitId === id).length })).sort((a, b) => b.n - a.n) : [];
+  const footEnded = tabRows.filter((x) => x.ended).length;
+  const footer = [pg.pages > 1 ? t("shown", { from: pg.from, to: pg.to, total: counts[tab] }) : t("summary.shown", { n: counts[tab] }), ...footUnits.map((x) => t("summary.unit", { name: unitOf(x.id), n: x.n })), ...(footEnded ? [t("summary.ended", { n: footEnded })] : [])].join(" · ");
+  // คอลัมน์ตามความกว้าง: ไม่มีแผง = 9 คอลัมน์ที่ ≥ 1280 · 1024 = 7 (ประเภทจ้างพับเข้าบรรทัดรหัส · บัญชีพับใต้ PIN) · < 768 = การ์ด ·
+  //   แผงเปิด (≥ 1280) = ชื่อ · ตำแหน่ง · สาขา · สถานะ (+ เริ่มงาน · PIN ที่ ≥ 1536) — ข้อยกเว้นที่ประกาศไว้: ข้างแผงคอลัมน์น้อยกว่า 9
+  const col = pv
+    ? { type: "hidden", start: "hidden lg:table-cell xl:hidden 2xl:table-cell", pin: "hidden lg:table-cell xl:hidden 2xl:table-cell", acct: "hidden", typeFold: "", acctFold: "" }
+    : { type: "hidden xl:table-cell", start: "hidden lg:table-cell", pin: "hidden lg:table-cell", acct: "hidden xl:table-cell", typeFold: "xl:hidden", acctFold: "xl:hidden" };
+  const th = `whitespace-nowrap px-2 py-2.5 text-left text-xs font-semibold ${muted}`; // HR VIS-5c ◂
+  const td = "md:table-cell md:whitespace-nowrap md:px-2 md:py-2 md:align-middle"; // HR VIS-5c ◂
+  const one = "block truncate"; // ข้อความบรรทัดเดียว ยาวเกิน = …
+  const chipCls = "inline-flex min-h-[26px] items-center whitespace-nowrap rounded-lg border px-2 py-0.5 text-xs font-semibold"; // HR VIS-5c ◂
   const typeOf = (v: string | null) => (v && ["FULL_TIME", "PART_TIME", "CONTRACT", "DAILY", "PROBATION"].includes(v) ? t(`type.${v as "FULL_TIME"}`) : t("type.none"));
+  const payOf = (id: string) => { const v = payTypeOf.get(id); return v && ["MONTHLY", "DAILY", "HOURLY"].includes(v) ? t(`pay.${v as "MONTHLY"}`) : ""; };
+  const dd = "absolute left-0 z-30 mt-2 flex max-h-[60vh] w-64 max-w-[85vw] flex-col overflow-y-auto rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-1 shadow-lg";
+  const ddItem = (on: boolean) => `flex min-h-11 items-center rounded-lg px-3 text-sm hover:bg-[color:var(--color-surface-2)] ${on ? "font-semibold" : ""}`;
+  const pill = "btn btn-ghost min-h-[44px] max-w-full cursor-pointer list-none whitespace-nowrap text-sm [&::-webkit-details-marker]:hidden";
 
   return (
-    <div /* HR VIS-5c */ className={`grid grid-cols-1 gap-6 ${pv ? "xl:grid-cols-[minmax(0,1fr)_420px]" : ""}`}>
-      <div className="flex min-w-0 flex-col gap-5">
-        {/* หัว: ชื่อหน้า · จำนวนต่อสาขา · + พนักงาน (ไม่มีนำเข้า CSV — owner list) */}
-        <div className="flex flex-wrap items-start gap-3">
+    <div /* HR VIS-5c */ className={pv ? "xl:-mb-10 xl:-mr-6 xl:grid xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_440px]" : ""}>
+      <div className={`flex min-w-0 flex-col gap-3 ${pv ? "xl:pb-10 xl:pr-6" : ""}`}>
+        {/* หัว: ชื่อหน้า · จำนวนต่อสาขา — ทะเบียนลูกจ้างตามกฎหมาย · + พนักงาน (ไม่มีนำเข้า CSV — owner list) */}
+        <div className="flex items-start gap-3">
           <div className="min-w-0 flex-1">
             <h2 className="text-2xl font-bold">{t("title")}</h2>
-            {summary && <p className={`mt-1 text-sm ${muted}`}>{summary}</p>}
+            <p className={`mt-1 text-[13px] ${muted}`}>
+              {summary}
+              {summary ? " — " : ""}
+              {t("lawTail")}
+            </p>
           </div>
           {canEdit && ( // HR VIS-5c ◂
-            <details open={query.add === "1"} className="relative w-full sm:w-auto">
+            <details open={query.add === "1"} className="relative shrink-0">
               <summary data-testid="hr-people-add" className="btn btn-primary min-h-[44px] cursor-pointer list-none whitespace-nowrap text-sm [&::-webkit-details-marker]:hidden">
                 {t("add")}
               </summary>
-              <div className="mt-2 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 shadow-lg sm:absolute sm:right-0 sm:z-30 sm:w-[560px]">
+              <div className="fixed inset-x-4 top-24 z-30 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[560px]">
                 <h3 className="mb-3 text-base font-bold">{t("addPanel.title")}</h3>
                 <form action={createEmployeeAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <input type="hidden" name="systemId" value={systemId} />
                   <label className={`flex min-w-0 flex-col gap-1 text-xs ${muted} sm:col-span-2`}>
                     {t("addPanel.name")}
-                    <input name="name" required data-testid="hr-people-add-name" placeholder={t("addPanel.namePh")} className="input min-h-11 min-w-[16rem]" />
+                    <input name="name" required data-testid="hr-people-add-name" placeholder={t("addPanel.namePh")} className="input min-h-11 sm:min-w-[16rem]" />
                   </label>
                   {/* HR H1.1 ▸ สาขาประจำ — ผู้ดูที่จำกัดสาขาเลือกได้เฉพาะสาขาตัวเอง (บังคับ) · ทุกสาขา = ไม่ระบุได้ · action ตรวจซ้ำ ◂ */}
                   {(units.length > 0 || !allBranches) && (
@@ -557,8 +583,8 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                         ))}
                       </select>
                     </label>
-                  )}{/* HR VIS-5c */}
-                  <label className={`flex min-w-0 flex-col gap-1 text-xs ${muted}`}>
+                  )}
+                  <label className={`flex min-w-0 flex-col gap-1 text-xs ${muted}`}>{/* HR VIS-5c */}
                     {t("addPanel.position")}
                     <input name="position" data-testid="hr-people-add-position" placeholder={t("addPanel.positionPh")} className="input min-h-11" />
                   </label>
@@ -574,67 +600,72 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
               </div>
             </details>
           )}
-        </div>
-        {/* HR VIS-5c ◂ */}
-        {/* HR VIS-5c ▸ แท็บสถานะ + จำนวน (สิ้นสุด = คนที่ลบ/สิ้นสุดแล้วเท่านั้น) */}
+        </div>{/* HR VIS-5c ◂ */}
+
+        {/* แท็บสถานะ + จำนวน (สิ้นสุด = คนที่ลบ/สิ้นสุดแล้วเท่านั้น) */}
         <nav aria-label={t("tab.label")} data-scroll="x" className="-mx-1 flex gap-1 overflow-x-auto border-b border-[color:var(--color-line)]">
           {PEOPLE_TABS.map((k) => (
             <Link
-              key={k}
+              key={k /* HR VIS-5c */}
               href={href({ tab: k === "all" ? "" : k, page: "" })}
               data-testid={`hr-people-tab-${k}`}
               aria-current={tab === k ? "page" : undefined}
-              className={`inline-flex min-h-[44px] items-center gap-1.5 whitespace-nowrap px-3 text-sm ${tab === k ? "border-b-2 border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : muted}`}
+              className={`inline-flex min-h-[44px] shrink-0 items-center gap-1.5 whitespace-nowrap px-3 text-sm ${tab === k ? "border-b-2 border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : muted}`}
             >
-              {t(`tab.${k}`)}
+              {t(`tab.${k}`) /* HR VIS-5c */}
               <span className={`text-xs ${tab === k ? "" : muted}`}>{counts[k]}</span>
             </Link>
           ))}
         </nav>
 
-        {/* HR VIS-5c ▸ ค้น · แผนก (GET) · สาขา · แสดงที่สิ้นสุด */}
-        <div className="flex flex-wrap items-center gap-3">
-          <form method="get" action={base} role="search" className={`flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-center ${pv ? "" : "xl:w-auto xl:flex-1"}`}>
+        {/* ตัวกรองตามภาพ: ค้น · สาขา · แผนก · แสดงที่สิ้นสุด — ค้นด้วย Enter (ปุ่มส่งเป็น sr-only) */}
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{/* HR VIS-5c */}
+          <form method="get" action={base} role="search" className="flex min-w-[12rem] flex-[1_1_16rem]">
             {chip && <input type="hidden" name="unit" value={chip} />}
             {tab !== "all" && <input type="hidden" name="tab" value={tab} />}
+            {dept && <input type="hidden" name="dept" value={dept} />}
             {showEnded && <input type="hidden" name="ended" value="1" />}
             <label className="relative flex min-w-0 flex-1 items-center">
               <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className={`pointer-events-none absolute left-3 ${muted}`}>
                 <circle cx="11" cy="11" r="7" />
                 <path d="m20 20-3.5-3.5" />
               </svg>
-              <input type="search" name="q" data-testid="hr-people-search" defaultValue={q} placeholder={t("search")} aria-label={t("search")} className="input min-h-11 pl-9" />
+              <input type="search" name="q" data-testid="hr-people-search" defaultValue={q} placeholder={t("search")} aria-label={t("search")} className="input min-h-11 w-full pl-9" />
             </label>
-            {depts.length > 0 && (
-              <select name="dept" data-testid="hr-people-dept" defaultValue={dept} aria-label={t("dept")} className="input min-h-11 sm:w-44">
-                <option value="">{t("allDepts")}</option>
-                {depts.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            )}
-            <button type="submit" data-testid="hr-people-search-go" className="btn btn-ghost min-h-[44px] whitespace-nowrap text-sm">
+            <button type="submit" data-testid="hr-people-search-go" className="sr-only">
               {t("searchGo")}
             </button>
           </form>
           {/* HR H1.1 ▸ R8 ตัวกรองสาขา (ผู้ดูทุกสาขา · ร้าน ≥ 2 สาขา) — ผู้ดูที่จำกัดสาขาเห็นเฉพาะสาขาตัวเอง (+ คนที่ยืมตัวเข้ามา) ◂ */}
           {showBranches && (
-            <details data-testid="hr-register-branch-filter" className="relative">
-              <summary data-testid="hr-people-branch" className="btn btn-ghost min-h-[44px] cursor-pointer list-none whitespace-nowrap text-sm [&::-webkit-details-marker]:hidden">
-                <span className={muted}>{t("branch")}:</span> <b className="inline-block max-w-[12rem] truncate align-bottom">{unitLabel}</b> <span aria-hidden="true">▾</span>
+            <details data-testid="hr-register-branch-filter" className="relative min-w-0">
+              <summary data-testid="hr-people-branch" className={pill}>
+                <span className={muted}>{t("branch")}:</span> <b className="inline-block max-w-[10rem] truncate align-bottom">{unitLabel}</b> <span aria-hidden="true">▾</span>
               </summary>
-              <div className="absolute left-0 z-30 mt-2 flex w-64 max-w-[85vw] flex-col rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-1 shadow-lg">
+              <div className={dd}>
                 {[{ key: "", label: t("allBranches") }, ...units.map((u) => ({ key: u.id, label: u.name })), ...(unassigned ? [{ key: "none", label: t("noUnit") }] : [])].map((c) => (
-                  <Link
-                    key={c.key || "all"}
-                    href={href({ unit: c.key, page: "" }) /* HR VIS-5c */}
-                    data-testid={`hr-register-branch-chip-${c.key || "all"}`}
-                    aria-current={chip === c.key ? "page" : undefined}
-                    className={`flex min-h-11 items-center rounded-lg px-3 text-sm hover:bg-[color:var(--color-surface-2)] ${chip === c.key ? "font-semibold" : ""}`}
-                  >
-                    {c.label /* HR VIS-5c */}
+                  <Link key={c.key || "all"} href={href({ unit: c.key, page: "" })} data-testid={`hr-register-branch-chip-${c.key || "all"}`} aria-current={chip === c.key ? "page" : undefined} className={ddItem(chip === c.key)}>
+                    {c.label}
+                  </Link>
+                ))}
+              </div>{/* HR VIS-5c */}
+            </details>
+          )}
+          {depts.length > 0 && (
+            <details className="relative min-w-0">{/* HR VIS-5c */}
+              <summary data-testid="hr-people-dept" className={pill}>
+                {t("dept")}
+                {dept ? (
+                  <>
+                    <span className={muted}>:</span> <b className="inline-block max-w-[8rem] truncate align-bottom">{dept}</b>
+                  </>
+                ) : null}{" "}
+                <span aria-hidden="true">▾</span>
+              </summary>
+              <div className={dd}>
+                {[{ key: "", label: t("allDepts") }, ...depts.map((d) => ({ key: d, label: d }))].map((c, i) => (
+                  <Link key={c.key || "all"} href={href({ dept: c.key, page: "" })} data-testid={`hr-people-dept-opt-${c.key ? i : "all"}`} aria-current={dept === c.key ? "page" : undefined} className={ddItem(dept === c.key)}>
+                    {c.label}
                   </Link>
                 )) /* HR VIS-5c */}
               </div>
@@ -646,16 +677,15 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
             </span>
             {t("showEnded")}
           </Link>
-        </div>
+        </div>{/* HR VIS-5c */}
 
-        {/* HR VIS-5c ▸ บรรทัดเตือน "ยังไม่ระบุสาขาประจำ N คน" (H1.1 R8) = hr.people.unitPrompt (สองภาษา) ◂ */}
         {showBranches && unassigned > 0 && (
-          <p data-testid="hr-register-unit-prompt" role="note" className={`text-xs ${muted}`}>
+          <p data-testid="hr-register-unit-prompt" role="note" className={`text-xs ${muted}`}>{/* HR VIS-5c */}
             {t("unitPrompt", { n: unassigned })}
           </p>
         )}
 
-        {/* ตาราง (≥ md) · การ์ดซ้อน (< md) — markup ชุดเดียว แถวละ 1 คน */}
+        {/* ตาราง (≥ md) · การ์ดแถวเดียว (< md) — markup ชุดเดียว แถวละ 1 คน */}
         <div className="rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)]">
           {pg.rows.length === 0 ? (
             <p className={`px-4 py-6 text-sm ${muted}`}>{inScope.length + removed.length === 0 ? t("empty") : t("noMatch")}</p>
@@ -666,12 +696,12 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                   <th className={`${th} pl-4`}>{t("col.name")}</th>
                   <th className={th}>{t("col.position")}</th>
                   <th className={th}>{t("col.unit")}</th>
-                  <th className={`${th} ${wideCol}`}>{t("col.type")}</th>
-                  <th className={th}>{t("col.start")}</th>
+                  <th className={`${th} ${col.type}`}>{t("col.type")}</th>
+                  <th className={`${th} ${col.start}`}>{t("col.start")}</th>
                   <th className={th}>{t("col.status")}</th>
-                  <th className={th}>{t("col.pin")}</th>
-                  <th className={`${th} ${wideCol}`}>{t("col.account")}</th>
-                  <th className={th}>
+                  <th className={`${th} ${col.pin}`}>{t("col.pin")}</th>
+                  <th className={`${th} ${col.acct}`}>{t("col.account")}</th>
+                  <th className={`${th} w-12`}>
                     <span className="sr-only">{t("col.more")}</span>
                   </th>
                 </tr>
@@ -684,72 +714,75 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                     const probEnd = e.probationEndAt ? e.probationEndAt.toISOString().slice(0, 10) : "";
                     const left = probEnd ? Math.round((Date.parse(`${probEnd}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000) : -1;
                     const status = isEnded
-                      ? { text: e.employmentStatus === "ENDED" ? (e.endDate ? t("status.endedOn", { date: formatShortDate(e.endDate, locale) }) : t("status.ended")) : t("status.removed"), cls: `${chipCls} border-[color:var(--color-line)] font-normal ${muted}` }
+                      ? { text: e.employmentStatus === "ENDED" ? (e.endDate ? t("status.endedOn", { date: dayMonth(e.endDate, locale) }) : t("status.ended")) : t("status.removed"), cls: `${chipCls} border-[color:var(--color-line)] font-normal ${muted}` }
                       : leaveToday
                         ? { text: t("status.onLeave"), cls: `${chipCls} border-[color:var(--color-line)] font-normal ${muted}` }
                         : e.employmentStatus === "PROBATION"
                           ? { text: left >= 0 ? t("status.probationLeft", { n: left }) : t("status.probation"), cls: `${chipCls} border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] text-[color:var(--color-accent)]` }
-                          : { text: t("status.active"), cls: `${chipCls} border-[color:var(--color-ink)]` };
+                          : e.contractEndAt
+                            ? { text: t("status.contract", { date: dayMonth(e.contractEndAt, locale) }), cls: `${chipCls} border-[color:var(--color-line)] font-normal ${muted}` }
+                            : { text: t("status.active"), cls: `${chipCls} border-[color:var(--color-ink)]` };
                     const sel = pv?.profile.id === e.id;
                     const pinOk = !isEnded && hasPin(e);
+                    const typeTxt = typeOf(e.employmentType), pay = payOf(e.id), unitTxt = showBranches ? unitOf(e.unitId) : e.unitId ? unitOf(e.unitId) : "—";
                     return (
                       <tr
                         key={e.id}
                         data-testid={`hr-people-row-${e.id}`}
                         aria-selected={sel || undefined}
-                        className={`flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-[color:var(--color-line)] px-4 py-3 last:border-b-0 md:table-row md:p-0 ${sel ? "bg-[color:var(--color-accent-soft)] md:shadow-[inset_3px_0_0_var(--color-accent)]" : ""} ${isEnded ? muted : ""}`}
+                        className={`flex items-center gap-2 border-b border-[color:var(--color-line)] py-2 pl-3 pr-1 last:border-b-0 md:table-row md:p-0 ${sel ? "bg-[color:var(--color-accent-soft)] md:shadow-[inset_3px_0_0_var(--color-accent)]" : ""} ${isEnded ? muted : ""}`}
                       >
-                        <td className={`order-1 block min-w-0 flex-1 ${td} md:pl-4`}>
+                        <td className={`block min-w-0 flex-1 ${td} md:pl-4`}>
                           <div className="flex min-w-0 items-center gap-2.5">
                             <span aria-hidden="true" className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[10px] border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] text-[13px] font-semibold">
                               {initialOf(e.name)}
                             </span>
-                            <div className="min-w-0">
-                              <Link href={href({ emp: e.id })} scroll={false} data-testid={`hr-people-name-${e.id}`} className="hidden break-words font-semibold hover:underline xl:inline">
+                            <div className="min-w-0 max-w-[12rem] md:max-w-[11rem]">
+                              <Link href={href({ emp: e.id })} scroll={false} title={e.name} data-testid={`hr-people-name-${e.id}`} className={`hidden font-semibold hover:underline xl:block ${one}`}>
                                 {e.name}
                               </Link>
-                              <Link href={profileHref(systemId, e.id)} data-testid={`hr-people-name-${e.id}`} className="break-words font-semibold hover:underline xl:hidden">
+                              <Link href={profileHref(systemId, e.id)} title={e.name} data-testid={`hr-people-name-${e.id}`} className={`font-semibold hover:underline xl:hidden ${one}`}>
                                 {e.name}
                               </Link>
-                              <small className={`block text-xs ${muted}`}>
+                              <small className={`text-xs ${muted} ${one}`} title={[e.code, e.position, unitTxt].filter(Boolean).join(" · ")}>
                                 {e.code || "—"}
-                                <span className={`hidden md:block ${foldCol}`}>{typeOf(e.employmentType)}</span>
+                                <span className={`hidden md:inline ${col.typeFold}`}>{` · ${typeTxt}${pay ? ` · ${pay}` : ""}`}</span>
+                                <span className="md:hidden">{[e.position, unitTxt].filter((x) => x && x !== "—").map((x) => ` · ${x}`).join("")}</span>
                               </small>
                             </div>
                           </div>
                         </td>
-                        <td className={`order-3 block basis-full pl-[44px] ${td} md:basis-auto`}>
-                          <span className="break-words">{e.position || "—"}</span>
-                          {e.department && <small className={`block text-xs ${muted}`}>{e.department}</small>}
+                        <td className={`hidden ${td}`}>
+                          <span className={`max-w-[9rem] ${one}`} title={e.position ?? undefined}>{e.position || "—"}</span>
+                          {e.department && <small className={`max-w-[9rem] text-xs ${muted} ${one}`} title={e.department}>{e.department}</small>}
                         </td>
-                        <td className={`order-4 block pl-[44px] text-xs md:pl-2 md:text-sm ${td}`}>
-                          {showBranches ? (
-                            <span data-testid={`hr-register-unit-${e.id}`} className="break-words">
-                              {e.unitId ? (unitName.get(e.unitId) ?? t("otherUnit")) : t("noUnit")}
-                            </span>
-                          ) : (
-                            <span className="break-words">{e.unitId ? (unitName.get(e.unitId) ?? t("otherUnit")) : "—"}</span>
-                          )}
+                        <td className={`hidden ${td}`}>
+                          <span data-testid={showBranches ? `hr-register-unit-${e.id}` : undefined} title={unitTxt} className={`max-w-[8rem] ${one}`}>
+                            {unitTxt}
+                          </span>
                         </td>
-                        <td className={`${wideCol} md:px-2 md:py-3 md:align-middle`}>{typeOf(e.employmentType)}</td>
-                        <td className={`hidden whitespace-nowrap ${td}`}>{e.startDate ? formatShortDate(e.startDate, locale) : "—"}</td>
-                        <td className={`order-5 block ${td}`}>
+                        <td className={`${col.type} md:whitespace-nowrap md:px-2 md:py-2 md:align-middle`}>
+                          {typeTxt}
+                          {pay && <small className={`block text-xs ${muted}`}>{pay}</small>}
+                        </td>
+                        <td className={`${col.start} md:whitespace-nowrap md:px-2 md:py-2 md:align-middle`}>{e.startDate ? formatShortDate(e.startDate, locale) : "—"}</td>
+                        <td className={`block shrink-0 ${td}`}>
                           <span data-testid={`hr-register-status-${e.id}`} className={status.cls}>
                             {status.text}
                           </span>
                         </td>
-                        <td className={`hidden whitespace-nowrap ${td}`}>
-                          <span className={pinOk ? "font-semibold" : muted}>{pinOk ? `✓ ${t("pinSet")}` : "—"}</span>
-                          {e.linkedUserId && <small className={`block text-xs ${muted} ${foldCol}`}>{`✓ ${t("accountYes")}`}</small>}
+                        <td className={`${col.pin} md:whitespace-nowrap md:px-2 md:py-2 md:align-middle`}>
+                          <span className={pinOk ? "font-semibold" : muted}>{isEnded ? t("closed") : pinOk ? `✓ ${t("pinSet")}` : "—"}</span>
+                          {e.linkedUserId && !isEnded && <small className={`block text-xs ${muted} ${col.acctFold}`}>{`✓ ${t("accountYes")}`}</small>}
                         </td>
-                        <td className={`${wideCol} whitespace-nowrap md:px-2 md:py-3 md:align-middle`}>
-                          <span className={e.linkedUserId ? "font-semibold" : muted}>{e.linkedUserId ? `✓ ${t("accountYes")}` : "—"}</span>
+                        <td className={`${col.acct} md:whitespace-nowrap md:px-2 md:py-2 md:align-middle`}>
+                          <span className={e.linkedUserId && !isEnded ? "font-semibold" : muted}>{isEnded ? t("closed") : e.linkedUserId ? `✓ ${t("accountYes")}` : "—"}</span>
                         </td>
-                        <td className={`order-2 block shrink-0 text-right ${td} md:pr-3`}>
+                        <td className="block shrink-0 text-right md:table-cell md:py-0.5 md:pr-3 md:align-middle">
                           {canEdit && isEnded ? (
                             // HR H1.1 R12 ▸ R12.4: สถานะ "สิ้นสุด" กู้คืนตรง ๆ ไม่ได้ — เปลี่ยนสถานะที่โปรไฟล์ก่อน (action ปฏิเสธซ้ำ) ◂
                             e.employmentStatus === "ENDED" ? (
-                              <Link href={profileHref(systemId, e.id)} data-testid={`hr-register-restore-status-${e.id}`} title={t("more.restoreEnded")} className={`inline-flex min-h-11 items-center text-xs underline ${muted}`}>
+                              <Link href={profileHref(systemId, e.id)} data-testid={`hr-register-restore-status-${e.id}`} title={t("more.restoreEnded")} className={`inline-flex min-h-11 items-center whitespace-nowrap text-xs underline ${muted}`}>
                                 {t("more.openProfile")}
                               </Link>
                             ) : (
@@ -764,10 +797,26 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                               <summary data-testid={`hr-people-more-${e.id}`} aria-label={t("more.label", { name: e.name })} className="grid min-h-[44px] min-w-[44px] cursor-pointer list-none place-items-center rounded-lg text-lg text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)] [&::-webkit-details-marker]:hidden">
                                 ⋯
                               </summary>
-                              <div className="absolute right-0 top-full z-30 mt-1 flex max-h-[75vh] w-[min(calc(100vw-3rem),440px)] flex-col gap-4 overflow-y-auto whitespace-normal rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 text-sm text-[color:var(--color-ink)] shadow-lg">
-                                <Link href={profileHref(systemId, e.id)} data-testid={`hr-people-menu-open-${e.id}`} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
-                                  {t("more.openProfile")} →
-                                </Link>
+                              {/* r2 (B9): เมนูลอยตรึงกับจอ — สูงไม่เกินจอ (เลื่อนในเมนู) · ตารางเวลาพับไว้ ⇒ ปุ่มลบอยู่ในจอเสมอ */}
+                              <div className="fixed inset-x-3 bottom-3 z-40 flex max-h-[calc(100vh-1.5rem)] flex-col gap-3 overflow-y-auto whitespace-normal rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 text-sm text-[color:var(--color-ink)] shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:max-h-[min(70vh,34rem)] sm:w-[420px]">
+                                <div className="flex items-center gap-3">
+                                  <Link href={profileHref(systemId, e.id)} data-testid={`hr-people-menu-open-${e.id}`} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
+                                    {t("more.openProfile")} →
+                                  </Link>
+                                  <span className="flex-1" />
+                                  {/* ลบ = soft delete · ประวัติลงเวลา/ลา/เงินเดือน และนัดเก่ายังอยู่ครบ */}
+                                  <ConfirmDialog
+                                    triggerLabel={t("more.remove")}
+                                    triggerClassName="btn-sm min-h-[44px] text-[color:var(--color-danger)]"
+                                    title={t("more.removeTitle", { name: e.name })}
+                                    detail={t("more.removeDetail")}
+                                    confirmLabel={t("more.removeConfirm")}
+                                    danger
+                                    action={removeEmployeeAction}
+                                    fields={{ systemId, employeeId: e.id }}
+                                    testId={`hr-people-remove-${e.id}`}
+                                  />
+                                </div>
                                 {/* แก้ข้อมูลพื้นฐาน (ชื่อ/ตำแหน่ง/เบอร์) — action เดิม */}
                                 <form action={updateEmployeeAction} className="flex flex-col gap-2 border-t border-[color:var(--color-line)] pt-3">
                                   <b className="text-sm">{t("more.basic")}</b>
@@ -777,7 +826,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                                     {t("more.name")}
                                     <input name="name" required data-testid={`hr-people-edit-name-${e.id}`} defaultValue={e.name} className="input min-h-11" />
                                   </label>
-                                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                                  <div className="grid grid-cols-2 gap-2">
                                     <label className={`flex min-w-0 flex-col gap-1 text-xs ${muted}`}>
                                       {t("more.position")}
                                       <input name="position" data-testid={`hr-people-edit-position-${e.id}`} defaultValue={e.position ?? ""} placeholder={t("more.positionPh")} className="input min-h-11" />
@@ -791,37 +840,24 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                                     <SubmitButton variant="ghost" pendingText={t("form.saving")} className="min-h-[44px]" data-testid={`hr-people-edit-save-${e.id}`}>{t("more.saveBasic")}</SubmitButton>
                                   </div>
                                 </form>
-                                <div className="flex flex-col gap-2 border-t border-[color:var(--color-line)] pt-3">
-                                  <b className="text-sm">
-                                    {t("more.schedule")}
-                                    <span className={`ml-2 text-xs font-normal ${muted}`}>{!sch || sch.every((x) => x == null) ? t("sched.none") : t("sched.perWeek", { n: sch.filter((x) => x && !x.dayOff).length })}</span>
-                                  </b>
-                                  <HrScheduleEditor systemId={systemId} employeeId={e.id} schedule={sch ?? undefined} />
-                                </div>
                                 {/* PIN ลงเวลาเอง — ให้พนักงานกดเองที่จอ kiosk */}
                                 <div className="flex flex-col gap-2 border-t border-[color:var(--color-line)] pt-3">
                                   <b className="text-sm">{t("more.pin")}</b>
                                   <PinField systemId={systemId} employeeId={e.id} hasPin={hasPin(e)} />
                                 </div>
-                                {/* ลบ = soft delete · ประวัติลงเวลา/ลา/เงินเดือน และนัดเก่ายังอยู่ครบ */}
-                                <div className="border-t border-[color:var(--color-line)] pt-3">
-                                  <ConfirmDialog
-                                    triggerLabel={t("more.remove")}
-                                    triggerClassName="btn-sm min-h-[44px] text-[color:var(--color-danger)]"
-                                    title={t("more.removeTitle", { name: e.name })}
-                                    detail={t("more.removeDetail")}
-                                    confirmLabel={t("more.removeConfirm")}
-                                    danger
-                                    action={removeEmployeeAction}
-                                    fields={{ systemId, employeeId: e.id }}
-                                    testId={`hr-people-remove-${e.id}`}
-                                  />
-                                </div>
+                                <details className="border-t border-[color:var(--color-line)] pt-1">
+                                  <summary data-testid={`hr-people-sched-toggle-${e.id}`} className="flex min-h-[44px] cursor-pointer list-none items-center gap-2 [&::-webkit-details-marker]:hidden">
+                                    <b className="text-sm">{t("more.schedule")}</b>
+                                    <span className={`text-xs ${muted}`}>{!sch || sch.every((x) => x == null) ? t("sched.none") : t("sched.perWeek", { n: sch.filter((x) => x && !x.dayOff).length })}</span>
+                                    <span aria-hidden="true" className={`ml-auto ${muted}`}>▾</span>
+                                  </summary>
+                                  <HrScheduleEditor systemId={systemId} employeeId={e.id} schedule={sch ?? undefined} />
+                                </details>
                               </div>
                             </details>
                           ) : (
-                            <Link href={profileHref(systemId, e.id)} data-testid={`hr-people-open-${e.id}`} aria-label={t("more.openProfile")} className="grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)]">
-                              →
+                            <Link href={profileHref(systemId, e.id)} data-testid={`hr-people-open-${e.id}`} aria-label={t("more.openProfile")} className="grid min-h-[44px] min-w-[44px] place-items-center rounded-lg text-[color:var(--color-ink-soft)] hover:bg-[color:var(--color-surface-2)]">
+                              ›
                             </Link>
                           )}
                         </td>
@@ -833,8 +869,8 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
             </table>
           )}
           {pg.rows.length > 0 && (
-            <div className="flex flex-wrap items-center gap-3 border-t border-[color:var(--color-line)] px-4 py-3 text-sm">
-              <span className={muted}>{t("shown", { from: pg.from, to: pg.to, total: counts[tab] })}</span>
+            <div className="flex flex-wrap items-center gap-3 border-t border-[color:var(--color-line)] px-4 py-2.5 text-[13px]">
+              <span data-testid="hr-people-summary" className={muted}>{footer}</span>
               {pg.pages > 1 && (
                 <nav aria-label={t("pager")} className="ml-auto flex items-center gap-1">
                   {[...(pg.page > 1 ? [{ key: "prev", n: pg.page - 1, label: "‹", aria: t("prev") }] : []), ...Array.from({ length: pg.pages }, (_, k) => ({ key: String(k + 1), n: k + 1, label: String(k + 1), aria: t("pageN", { n: k + 1 }) })), ...(pg.page < pg.pages ? [{ key: "next", n: pg.page + 1, label: "›", aria: t("next") }] : [])].map((x) => (
@@ -859,37 +895,27 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
         <LifecycleDuePanel systemId={systemId} />
       </div>
 
-      {/* แผงอ่านด้านขวา (?emp=) — DTO ของ loadEmployeeProfileForViewer · เลขอ่อนไหวปิดแล้ว · ≥ 1280 เท่านั้น (จอเล็กกดชื่อ = เปิดโปรไฟล์) */}
+      {/* แผงอ่านด้านขวา (?emp=) — ลิ้นชักเต็มสูงชิดขอบขวา (ภาพ 02) · DTO ของ loadEmployeeProfileForViewer · เลขอ่อนไหวปิดแล้ว · ≥ 1280 เท่านั้น (จอเล็กกดชื่อ = เปิดโปรไฟล์) · ไม่ผูก action */}
       {pv && (
-        <aside data-testid="hr-people-panel" aria-label={pv.profile.name} className="hidden flex-col self-start overflow-hidden rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] xl:flex">
+        <aside data-testid="hr-people-panel" aria-label={pv.profile.name} className="hidden min-w-0 flex-col border-l border-[color:var(--color-line)] bg-[color:var(--color-surface)] shadow-[-8px_0_24px_rgba(10,10,10,0.06)] xl:flex">
           <div className="px-5 pb-2 pt-5">
-            <ProfileHeader systemId={systemId} emp={pv.profile} canEdit={canEdit} close={href({ emp: "" })} />
+            <ProfileHeader emp={pv.profile} close={href({ emp: "" })} />
           </div>
           <div className="px-3">
             <ProfileTabs href={(k) => profileHref(systemId, pv.profile.id, `?tab=${k}`)} tab="general" tabs={pv.canSeeSensitive ? ["general", "docs", "schedule", "leave", "pay", "history"] : ["general", "docs", "schedule", "leave", "history"]} />
           </div>
-          <div className="flex flex-col gap-6 px-5 py-5">
-            {pv.profile.employmentStatus === "PROBATION" && pv.profile.probationEndAt && (
-              <div className="flex items-center gap-3 rounded-2xl border-[1.5px] border-[color:var(--color-accent)] bg-[color:var(--color-accent-soft)] px-4 py-3">
-                <b className="min-w-0 flex-1 text-[color:var(--color-accent)]">
-                  {t("status.probationLeft", { n: Math.max(0, Math.round((Date.parse(`${pv.profile.probationEndAt.toISOString().slice(0, 10)}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000)) })}
-                  <small className="block font-normal text-[color:var(--color-ink-soft)]">{dayText(pv.profile.probationEndAt, locale)}</small>
-                </b>
-                <Link href={profileHref(systemId, pv.profile.id)} data-testid="hr-people-panel-review" className="btn btn-primary min-h-[44px] whitespace-nowrap text-sm">
-                  {t("panel.review")} ›
-                </Link>
-              </div>
-            )}{/* HR VIS-5c */}
+          <div className="flex flex-1 flex-col gap-6 px-5 py-5">{/* HR VIS-5c */}
+            <ProfileProbation systemId={systemId} tenantId={auth.active.tenantId} viewer={viewer} emp={pv.profile} life={pvLife} reviewTestId="hr-people-panel-review" />
             <EmployeeReadView systemId={systemId} emp={pv.profile} sensitive={pv.canSeeSensitive} canEdit={canEdit} compact />
             <ProfileChecklist systemId={systemId} tenantId={auth.active.tenantId} viewer={viewer} employeeId={pv.profile.id} life={pvLife} manageHref={profileHref(systemId, pv.profile.id, "?tab=history#hr-life")} />
-            <ProfileConnections systemId={systemId} tenantId={auth.active.tenantId} emp={pv.profile} canEdit={false} />
+            <ProfileConnections systemId={systemId} tenantId={auth.active.tenantId} emp={pv.profile} canEdit={canEdit} />
           </div>
-          <div /* HR VIS-5c */ className="flex items-center gap-3 border-t border-[color:var(--color-line)] px-5 py-4">
+          <div className="sticky bottom-0 flex items-center gap-3 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-5 py-4">
             <Link href={profileHref(systemId, pv.profile.id)} data-testid="hr-people-panel-open" className="btn btn-primary min-h-[44px] text-sm">
               {t("panel.open")} →
             </Link>
           </div>
-        </aside> /* HR VIS-5c */
+        </aside>
       )}
     </div>
   );

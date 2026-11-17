@@ -616,8 +616,8 @@
         "sub": "เปิดสร้างการ์ดในบอร์ดงานได้ที่หน้าตั้งค่า",
         "probation": "ทดลองงานใกล้ครบ",
         "contract": "สัญญาใกล้หมด",
-        "onboarding": "รับพนักงานใหม่ค้าง",
-        "offboarding": "ออกจากงานค้าง",
+        "onboarding": "Onboarding ค้าง",
+        "offboarding": "Offboarding",
         "none": "ไม่มี",
         "items": "{n} ข้อ"
       },
@@ -643,7 +643,7 @@
         "OTHER": "อื่น ๆ"
       },
       "checklist": {
-        "onboarding": "รายการรับพนักงานใหม่",
+        "onboarding": "Onboarding checklist",
         "offboarding": "รายการออกจากงาน",
         "startOnboarding": "เริ่มรายการรับพนักงานใหม่",
         "startOffboarding": "เริ่มรายการออกจากงาน",
@@ -716,10 +716,10 @@
       }
     },
     "people": {
-      "title": "ทะเบียนพนักงาน",
+      "title": "พนักงาน",
       "people": "พนักงาน {n} คน",
-      "branches": "มี {n} สาขา",
-      "unitPeople": "{name} ({n} คน)",
+      "branches": "{n} สาขา",
+      "unitPeople": "{name} {n} คน",
       "add": "+ พนักงาน",
       "tab": {
         "all": "ทั้งหมด",
@@ -731,7 +731,7 @@
       },
       "search": "ค้นชื่อ · รหัส · เบอร์",
       "searchGo": "ค้นหา",
-      "branch": "เลือกสาขา",
+      "branch": "สาขา",
       "allBranches": "ทุกสาขา",
       "noUnit": "ยังไม่ระบุสาขาประจำ",
       "otherUnit": "สาขาอื่น",
@@ -741,7 +741,7 @@
       "col": {
         "name": "ชื่อ / รหัส",
         "position": "ตำแหน่ง / แผนก",
-        "unit": "สาขาประจำ",
+        "unit": "สาขา",
         "type": "ประเภทจ้าง",
         "start": "เริ่มงาน",
         "status": "สถานะ",
@@ -764,7 +764,8 @@
         "ended": "สิ้นสุด",
         "endedOn": "สิ้นสุด {date}",
         "removed": "ลบแล้ว",
-        "onLeave": "ลาวันนี้"
+        "onLeave": "ลาวันนี้",
+        "contract": "สัญญาถึง {date}"
       },
       "pinSet": "ตั้งแล้ว",
       "pinNone": "ยังไม่ตั้ง",
@@ -879,8 +880,8 @@
           "accountYes": "ผูกบัญชีแล้ว",
           "accountYesSub": "เห็นหน้า “ของฉัน”",
           "accountNo": "ยังไม่มีบัญชี",
-          "pin": "PIN ลงเวลา",
-          "pinChange": "ตั้ง/เปลี่ยน PIN",
+          "pin": "PIN POS",
+          "pinChange": "เปลี่ยน PIN",
           "line": "บัญชี LINE"
         },
         "check": {
@@ -930,11 +931,97 @@
         }
       },
       "form": {
-        "save": "บันทึกข้อมูล",
+        "save": "บันทึก",
         "saving": "กำลังบันทึก…",
         "cancel": "ยกเลิก",
-        "end": "สิ้นสุดการจ้าง"
-      }
+        "end": "สิ้นสุดการจ้าง",
+        "legend": {
+          "personal": "ข้อมูลส่วนตัว",
+          "employment": "การจ้างงาน",
+          "address": "ที่อยู่ปัจจุบัน",
+          "emergency": "ผู้ติดต่อกรณีฉุกเฉิน",
+          "sensitive": "🔒 ข้อมูลอ่อนไหว",
+          "note": "บันทึกเพิ่มเติม"
+        },
+        "name": "ชื่อ-นามสกุล *",
+        "nickname": "ชื่อเล่น",
+        "code": "รหัสพนักงาน",
+        "codePh": "เช่น EMP-001",
+        "gender": "เพศ",
+        "notSet": "ไม่ระบุ",
+        "genderOpt": {
+          "MALE": "ชาย",
+          "FEMALE": "หญิง",
+          "OTHER": "อื่นๆ"
+        },
+        "birth": "วันเกิด",
+        "marital": "สถานะสมรส",
+        "maritalOpt": {
+          "SINGLE": "โสด",
+          "MARRIED": "สมรส",
+          "DIVORCED": "หย่า",
+          "WIDOWED": "คู่สมรสเสียชีวิต",
+          "OTHER": "อื่นๆ"
+        },
+        "phone": "เบอร์โทร",
+        "email": "อีเมล",
+        "position": "ตำแหน่งงาน",
+        "positionPh": "เช่น ช่างตัดผม",
+        "department": "แผนก",
+        "departmentPh": "เช่น หน้าร้าน",
+        "employmentType": "ประเภทการจ้าง",
+        "typeOpt": {
+          "FULL_TIME": "ประจำ (เต็มเวลา)",
+          "PART_TIME": "พาร์ตไทม์",
+          "CONTRACT": "สัญญาจ้าง",
+          "DAILY": "รายวัน",
+          "PROBATION": "ทดลองงาน"
+        },
+        "startDate": "วันเริ่มงาน",
+        "endDate": "วันสิ้นสุดงาน (ถ้าลาออกแล้ว)",
+        "employmentStatus": "สถานะการจ้าง",
+        "statusOpt": {
+          "PROBATION": "ทดลองงาน",
+          "ACTIVE": "ประจำ",
+          "ENDED": "สิ้นสุด"
+        },
+        "probationEnd": "วันครบทดลองงาน",
+        "contractEnd": "วันสิ้นสุดสัญญา",
+        "addressLine": "บ้านเลขที่ / ถนน",
+        "subdistrict": "ตำบล/แขวง",
+        "district": "อำเภอ/เขต",
+        "province": "จังหวัด",
+        "postcode": "รหัสไปรษณีย์",
+        "emergencyName": "ชื่อ",
+        "emergencyPhone": "เบอร์โทร",
+        "emergencyRelation": "ความสัมพันธ์",
+        "emergencyRelationPh": "เช่น คู่สมรส",
+        "sensitiveHint": "เห็นได้เฉพาะเจ้าของกิจการหรือผู้ได้รับสิทธิ์ดูเงินเดือน — กรอกเท่าที่ร้านต้องใช้จริง (ทำเอกสาร/ประกันสังคม/โอนเงินเดือน)",
+        "nationalId": "เลขบัตรประชาชน (13 หลัก)",
+        "sso": "เลขประกันสังคม",
+        "houseReg": "ที่อยู่ตามทะเบียนบ้าน (ถ้าต่างจากที่อยู่ปัจจุบัน)",
+        "bankName": "ธนาคาร",
+        "bankNamePh": "เช่น กสิกรไทย",
+        "bankAccountNo": "เลขบัญชี",
+        "bankAccountName": "ชื่อบัญชี"
+      },
+      "lawTail": "ทะเบียนลูกจ้างตามกฎหมายแรงงานออกจากหน้านี้",
+      "summary": {
+        "shown": "แสดง {n} คน",
+        "unit": "{name} {n}",
+        "ended": "สิ้นสุด {n}"
+      },
+      "pay": {
+        "MONTHLY": "รายเดือน",
+        "DAILY": "รายวัน",
+        "HOURLY": "รายชั่วโมง"
+      },
+      "prob": {
+        "stats": "เริ่ม {date} · {days} วัน",
+        "counts": "สาย {late} · ขาด {absent} · OT {ot} ชม.",
+        "review": "ประเมิน"
+      },
+      "closed": "ปิดแล้ว"
     },
     "ot": {
       "title": "คำขอ OT",

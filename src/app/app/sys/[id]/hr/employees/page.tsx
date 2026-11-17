@@ -20,7 +20,7 @@ export default async function HrEmployeesPage({ params, searchParams }: { params
   const def = systemDef(sys.type);
 
   return (
-    <div className="flex max-w-7xl flex-col gap-5">{/* HR VIS-5c ▸ ภาพ 02 ตาราง 9 คอลัมน์ + แผงด้านขวา ⇒ กว้างเท่าหน้าภาพรวม (max-w-7xl) ◂ */}
+    <div className="flex max-w-7xl flex-col gap-4">{/* HR VIS-5c ▸ ภาพ 02 ตาราง 9 คอลัมน์ + แผงด้านขวา ⇒ กว้างเท่าหน้าภาพรวม (max-w-7xl) ◂ · r2 (B1): ระยะ 16 px (แถวในจอแรกมากขึ้น) ◂ */}
       <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} />{/* HR VIS-5c ▸ คำอธิบายย้ายเข้าหัวของทะเบียน (hr.people) ◂ */}
       {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
       <ModuleTabs items={await hrTabsFor(id)} wrap />{/* HR VIS-5c ▸ แท็บขึ้นบรรทัดใหม่บนจอ ≥ md (เหมือนหน้าภาพรวม) ◂ */}

@@ -10,14 +10,15 @@ import { useNavPerms, visibleTabs } from "./nav-perms";
 // CRM C5.5-fix2 ▸ รีวิว RV2-7: แท็บที่มี `perm` ขึ้นเมื่อผู้ใช้ถือคีย์นั้น (รายการคีย์มาจาก layout ของโมดูลทาง `NavPermsProvider`) ◂
 // HR VIS-5b ▸ `wrap` (ไม่บังคับ · เปิดเฉพาะ HR): จอ ≥ md ขึ้นบรรทัดใหม่แทนการตัดแท็บท้าย · จอเล็กยังเลื่อนแถวเดียว (ประกาศ data-scroll="x") ·
 //   ไม่ส่ง wrap = markup เดิมทุกไบต์ (โมดูลอื่น) · รายการว่าง = ไม่วาดแถบ (ผู้ดูที่ไม่มีแท็บ เช่น บัญชีจอลงเวลา) ◂
-export function ModuleTabs({ items, "data-testid": testId, wrap }: { items: { href: string; label: string; perm?: string }[]; "data-testid"?: string; wrap?: boolean }) {
+// HR VIS-5c ▸ `activeHref` (ไม่บังคับ · เปิดเฉพาะหน้าโปรไฟล์พนักงาน HR): แท็บที่ href ตรงค่านี้สว่างด้วย แม้ path ไม่ตรงตัว · ไม่ส่ง = เหมือนเดิมทุกไบต์ ◂
+export function ModuleTabs({ items, "data-testid": testId, wrap, activeHref }: { items: { href: string; label: string; perm?: string }[]; "data-testid"?: string; wrap?: boolean; activeHref?: string /* HR VIS-5c ◂ */ }) {
   const pathname = usePathname();
   const perms = useNavPerms();
   if (!items.length) return null; // HR VIS-5b ◂
   return (
     <div className={wrap ? "-mx-1 flex gap-1 overflow-x-auto border-b pb-px md:flex-wrap md:overflow-visible" : "-mx-1 flex gap-1 overflow-x-auto border-b pb-px"} data-scroll={wrap ? "x" : undefined} data-testid={testId} /* HR VIS-5b ◂ */>
       {visibleTabs(items, perms).map((it) => {
-        const active = pathname === it.href;
+        const active = pathname === it.href || (!!activeHref && it.href === activeHref); // HR VIS-5c ◂
         return (
           <Link
             key={it.href}
