@@ -1,4 +1,4 @@
-# SHARK Member API
+# Lekaa Member API
 
 Machine readable contract: `/api/v1/member/openapi.json` (OpenAPI 3.1.0, no API key needed).
 Base URL: `https://shark.in.th/api/v1/member` - contract version 1.0.0 - 212 operations.
@@ -43,7 +43,7 @@ A key is normally bound to one member system. If it is not, every call must carr
 
 These are the rules of the module, copied verbatim from the contract description in `/api/v1/member/openapi.json`:
 
-REST API for the SHARK membership module. One API key works inside one member system (AppSystem of type MEMBER) and sees every member of that system.
+REST API for the Lekaa membership module. One API key works inside one member system (AppSystem of type MEMBER) and sees every member of that system.
 
 Conventions that apply to every operation:
 1. Authentication is `Authorization: Bearer <api key>`. The key carries its own scopes; an operation returns 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope`.
@@ -2677,7 +2677,7 @@ curl -sS -X PUT "https://shark.in.th/api/v1/member/notifications/templates/WELCO
 
 #### `points.reverse`
 
-**POST /points/reverse** - Undo every point movement caused by one document, putting points back into the lots they came from. Use this when a sale or booking is cancelled outside SHARK. · scope: `member.point.adjust` · write
+**POST /points/reverse** - Undo every point movement caused by one document, putting points back into the lots they came from. Use this when a sale or booking is cancelled outside Lekaa. · scope: `member.point.adjust` · write
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |

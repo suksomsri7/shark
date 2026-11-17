@@ -457,7 +457,7 @@ function validateProduct(input: ProductInput): string | null {
   if ((input.barcode ?? "").trim().length > 48) return "บาร์โค้ดยาวเกิน 48 ตัวอักษร";
   if (input.salePrice != null && input.salePrice < 0) return "ราคาขายติดลบไม่ได้";
   if (input.buyPrice != null && input.buyPrice < 0) return "ราคาซื้อติดลบไม่ได้";
-  if (input.costMethod === "FIFO") return "วิธีคิดต้นทุนแบบ FIFO ยังไม่เปิดใช้งาน (คลัง SHARK ใช้ถัวเฉลี่ย)";
+  if (input.costMethod === "FIFO") return "วิธีคิดต้นทุนแบบ FIFO ยังไม่เปิดใช้งาน (คลังเลขาใช้ถัวเฉลี่ย)";
   return null;
 }
 

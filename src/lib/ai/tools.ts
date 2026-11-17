@@ -2481,7 +2481,7 @@ const supportOpenCase: AiTool = {
   def: {
     name: "support_open_case",
     description:
-      "Open a support case with the SHARK team when the user reports a system problem, makes a complaint, or asks for something the assistant cannot do (outage, bug, feature request, platform billing issue). Records the case immediately without asking the user to confirm; the team replies inside this same chat. Provide subject (short title) and detail (the problem as the user described it).",
+      "Open a support case with the Lekaa team when the user reports a system problem, makes a complaint, or asks for something the assistant cannot do (outage, bug, feature request, platform billing issue). Records the case immediately without asking the user to confirm; the team replies inside this same chat. Provide subject (short title) and detail (the problem as the user described it).",
     parameters: {
       type: "object",
       properties: {
@@ -2503,7 +2503,7 @@ const supportOpenCase: AiTool = {
     if (!detail) return JSON.stringify({ error: "ต้องระบุรายละเอียดปัญหา" });
     // SEC S3a.1-S2 ▸ R-Z34 (RC1 M1): ห้องที่มีบริบทลูกค้า ⇒ เปิดเคสเป็นข้อเสนอ `support.open` (ข้อความลูกค้าอยู่ใน prompt — ไม่ให้ส่งออกนอกร้านเอง) ◂
     if ((await secRoomOf(ctx)).customer) {
-      return propose(ctx, "support.open", `แจ้งทีมงาน SHARK: ${subject}`.slice(0, 300), { subject: subject.slice(0, 200), detail: detail.slice(0, 4000) });
+      return propose(ctx, "support.open", `แจ้งทีมงานเลขา: ${subject}`.slice(0, 300), { subject: subject.slice(0, 200), detail: detail.slice(0, 4000) });
     }
     const { caseNo } = await openCaseFromAi(
       { tenantId: ctx.tenantId },

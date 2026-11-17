@@ -499,7 +499,7 @@ const cardsDetail = defineKanbanOp({
   kind: "read",
   action: "kanban.board.read",
   summary:
-    "Read one card in full: description as plain text, board and column, assignees, due date, labels, checklists with their items, recent comments and the SHARK records the card is linked to.",
+    "Read one card in full: description as plain text, board and column, assignees, due date, labels, checklists with their items, recent comments and the Lekaa records the card is linked to.",
   label: "อ่านการ์ดฉบับเต็ม",
   tool: {
     name: "kanban_card_detail",

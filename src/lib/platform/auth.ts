@@ -58,7 +58,7 @@ export async function requestPlatformOtp(rawEmail: string): Promise<{ preview?: 
   });
   await sendOtpEmail(
     email,
-    "เข้าสู่ระบบหลังบ้าน SHARK",
+    "เข้าสู่ระบบหลังบ้านเลขา",
     `รหัสเข้าสู่ระบบหลังบ้าน (OTP): ${code}\n\nรหัสนี้หมดอายุใน 10 นาที หากคุณไม่ได้ร้องขอ กรุณาเพิกเฉย`,
   );
   return previewEnabled() ? { preview: { otp: code } } : {};

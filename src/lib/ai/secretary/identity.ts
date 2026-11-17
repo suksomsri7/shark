@@ -127,7 +127,7 @@ export function sampleSpeech(sec: SecretaryIdentity): string {
 
 /** pure · บรรทัดแรกของ system prompt เมื่อมีตัวตนเลขา */
 export function secretaryHeadline(sec: SecretaryIdentity, tenantName: string): string {
-  return `คุณคือ ${quoted(sec.name)} เลขา AI ประจำกิจการ "${tenantName}" บนแพลตฟอร์ม SHARK (shark.in.th)`;
+  return `คุณคือ ${quoted(sec.name)} เลขา AI ประจำกิจการ "${tenantName}" บนแพลตฟอร์มเลขา (shark.in.th)`;
 }
 
 /** pure · กติกาภาษา — ["th"] เท่านั้น = บรรทัดเดิมทุกตัวอักษร · มีภาษาอื่น = ตอบภาษาเดียวกับผู้ใช้ */

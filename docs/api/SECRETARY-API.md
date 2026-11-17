@@ -1,4 +1,4 @@
-# SHARK Secretary API (แอปมือถือ · `/api/mobile/*`)
+# Lekaa Secretary API (แอปมือถือ · `/api/mobile/*`)
 
 > สัญญา route ของเลขา AI · ร่าง S0.3 (4 พ.ย. 2569) → **ฉบับจริงหลังใบ S1.14 (5 พ.ย. 2569)** · ทุกแถว `secretary/*` = ไฟล์ที่มีอยู่จริง · สัญญาข้อมูล/ฟังก์ชันอยู่ที่ `docs/modules/31-secretary.md` (§5) · คำตัดสิน `ledger/secretary-briefs/sec-brief-RESOLUTIONS.md`
 > ใบที่สร้าง route: S1.14 (`secretary/*` ทั้งชุด — รวม tenants/staff/invites/support/account ที่ร่างเดิมวางไว้ที่ `tenants/from-app` · `staff/*` · `help/*` · `account/*`) · S1.21 (`inbox/*`) · S1.19 (`auth/sms/*` · `auth/phone/link` = me/phone) · ตารางนี้ = ของที่ route ต้องตรง

@@ -204,7 +204,7 @@ async function sendInviteSms(tenantId: string, invitee: string, phone: string, l
   const provider = getSmsProvider();
   if (!provider) return "unavailable";
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-  const text = `SHARK: ${smsSafe(tenant?.name ?? "") || "ร้าน"} เชิญคุณ ${smsSafe(invitee) || "พนักงาน"} เข้าใช้ SHARK · เปิดลิงก์ ${link} (หมดอายุ ${INVITE_TTL_DAYS} วัน)`;
+  const text = `เลขา: ${smsSafe(tenant?.name ?? "") || "ร้าน"} เชิญคุณ ${smsSafe(invitee) || "พนักงาน"} เข้าใช้เลขา · เปิดลิงก์ ${link} (หมดอายุ ${INVITE_TTL_DAYS} วัน)`;
   const r = await sendSms({ to: phone, text });
   if (!r.ok) return "unavailable";
   return provider.name === "mock" ? "mocked" : "sent";

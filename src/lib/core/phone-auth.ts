@@ -246,7 +246,7 @@ export async function requestPhoneOtp(
   let sent: { ok: boolean; error?: string };
   try {
     // R-Z27: คำเตือน "อย่าบอก" + บรรทัดผูกโดเมน (iOS/Android autofill เฉพาะ shark.in.th · กันหน้าเว็บปลอมขอรหัส)
-    sent = await send({ to: phone, text: `รหัสเข้าใช้ SHARK: ${code} (หมดอายุใน 10 นาที) อย่าบอกรหัสนี้กับใคร ทีมงาน SHARK ไม่ขอรหัสนี้\n\n@shark.in.th #${code}` });
+    sent = await send({ to: phone, text: `รหัสเข้าใช้เลขา: ${code} (หมดอายุใน 10 นาที) อย่าบอกรหัสนี้กับใคร ทีมงานเลขาไม่ขอรหัสนี้\n\n@shark.in.th #${code}` });
   } catch (e) {
     sent = { ok: false, error: String(e).slice(0, 160) };
   }

@@ -21,7 +21,7 @@ const SERVER_URL = "https://shark.in.th/api/v1/crm";
 const API_VERSION = "1.0.0";
 
 export const CRM_DOC_DESCRIPTION: readonly string[] = [
-  "REST API for the SHARK CRM module (contacts, companies, deals and pipelines, activities, custom object records, sales teams). One API key works inside one CRM system (AppSystem of type CRM) and sees what its bundle and filters allow.",
+  "REST API for the Lekaa CRM module (contacts, companies, deals and pipelines, activities, custom object records, sales teams). One API key works inside one CRM system (AppSystem of type CRM) and sees what its bundle and filters allow.",
   "",
   "Conventions that apply to every operation:",
   "1. Authentication is `Authorization: Bearer <api key>`. An operation answers 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope`. A key with no `crm.*` scope at all (a key of another module, or an empty legacy key) is refused on every CRM operation.",
@@ -48,7 +48,7 @@ export const CRM_DOC_DESCRIPTION: readonly string[] = [
 ];
 
 export const CRM_DOC_INFO: ApiDocInfo = {
-  title: "SHARK CRM API",
+  title: "Lekaa CRM API",
   version: API_VERSION,
   serverUrl: SERVER_URL,
   serverDescription: "Production",

@@ -401,7 +401,7 @@ export function accessVerdict(access: AccessMap, name: string): ToolVerdict {
   const module = toolModuleOf(name);
   if (module === UNMAPPED_TOOL_MODULE) {
     // S1.3b ▸ (C3) ไม่รู้ว่าเครื่องมือนี้แตะระบบไหน ⇒ ไม่ให้ใช้เมื่อร้านตั้งระดับต่อระบบ (ปิดไว้ก่อน) ◂
-    return { ok: false, reason: `เครื่องมือ "${name}" ยังไม่ได้ระบุว่าแตะระบบใดของร้าน จึงยังให้เลขาใช้ไม่ได้ — แจ้งทีมงาน SHARK ได้ที่เมนูช่วยเหลือ` };
+    return { ok: false, reason: `เครื่องมือ "${name}" ยังไม่ได้ระบุว่าแตะระบบใดของร้าน จึงยังให้เลขาใช้ไม่ได้ — แจ้งทีมงานเลขาได้ที่เมนูช่วยเหลือ` };
   }
   const main = levelVerdict(access, module, toolIsWrite(name));
   if (!main.ok) return main;

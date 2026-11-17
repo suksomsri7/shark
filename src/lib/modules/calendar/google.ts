@@ -508,7 +508,7 @@ async function myAppointments(userId: string, now: Date): Promise<Map<string, { 
 }
 
 /** คำอธิบายของสำเนานัดลูกค้าใน Google (Q9 · ไม่มีข้อมูลติดต่อลูกค้า) */
-export const BOOKING_COPY_NOTE = "นัดลูกค้าจาก SHARK (บัตรคิว) — ส่งมาเพราะร้านอนุญาตและคุณเปิด \"นัดลูกค้าที่ฉันรับ\" · ปิดได้ที่ ตั้งค่าปฏิทิน › Google Calendar · แก้ในนี้จะถูกเขียนทับด้วยข้อมูลของร้าน";
+export const BOOKING_COPY_NOTE = "นัดลูกค้าจากเลขา (บัตรคิว) — ส่งมาเพราะร้านอนุญาตและคุณเปิด \"นัดลูกค้าที่ฉันรับ\" · ปิดได้ที่ ตั้งค่าปฏิทิน › Google Calendar · แก้ในนี้จะถูกเขียนทับด้วยข้อมูลของร้าน";
 
 async function exportBookings(link: CalLink, run: Run): Promise<number> {
   const db = gdb();

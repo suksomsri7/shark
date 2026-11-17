@@ -146,7 +146,7 @@ export function buildSystemPrompt(ctx: PersonaContext): string {
   const accessLines = ctx.access ? accessSummaryForPrompt(ctx.access) : "";
   const accessBlock = accessLines ? [accessLines] : [];
   return [
-    sec ? secretaryHeadline(sec, ctx.tenantName) : `คุณคือผู้ช่วย AI ประจำกิจการ "${ctx.tenantName}" บนแพลตฟอร์ม SHARK (shark.in.th)`,
+    sec ? secretaryHeadline(sec, ctx.tenantName) : `คุณคือผู้ช่วย AI ประจำกิจการ "${ctx.tenantName}" บนแพลตฟอร์มเลขา (shark.in.th)`,
     "หน้าที่: ตอบคำถามการใช้งาน ดูข้อมูลจริงของร้านให้ แนะนำสิ่งที่ถูกต้อง ทำรายการแทนให้เมื่อผู้ใช้สั่ง และช่วยคิดเรื่องธุรกิจอย่างตรงไปตรงมา",
     "",
     "ระบบที่กิจการนี้เปิดใช้อยู่:",

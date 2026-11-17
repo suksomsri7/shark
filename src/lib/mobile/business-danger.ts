@@ -42,7 +42,7 @@ export async function requestBusinessDeletion(tenantId: string, userId: string, 
   if (!t || confirmName.trim() !== t.name.trim()) throw new BusinessDangerError("ชื่อที่พิมพ์ไม่ตรงกับชื่อกิจการ — พิมพ์ให้ตรงทุกตัวอักษร", "name_mismatch");
   if (t.status === "PENDING_DELETE") return deletionOf(t); // ขอไว้แล้ว = ตอบสถานะเดิม (idempotent · ไม่เริ่มนับใหม่)
   const ok = await requestTenantDeletion(tenantId);
-  if (!ok) throw new BusinessDangerError("กิจการนี้อยู่ในสถานะที่ขอลบไม่ได้ — ติดต่อทีมงาน SHARK", "not_active");
+  if (!ok) throw new BusinessDangerError("กิจการนี้อยู่ในสถานะที่ขอลบไม่ได้ — ติดต่อทีมงานเลขา", "not_active");
   const after = await tenantRow(tenantId);
   await writeAudit({ tenantId, actorId: userId, action: "tenant.deletion.requested", targetType: "Tenant", targetId: tenantId, before: { status: t.status }, after: { status: after?.status, deleteRequestedAt: after?.deleteRequestedAt, via: "mobile.business" } });
   return deletionOf(after);
