@@ -1,6 +1,7 @@
-# เลขา AI "Shark" — ข้อความเปิดเผยการใช้ AI และข้อมูลส่วนบุคคล (PDPA)
+# เลขา AI (Lekaa) — ข้อความเปิดเผยการใช้ AI และข้อมูลส่วนบุคคล (PDPA)
 
 > **ร่าง — รอเจ้าของตรวจ** · ใบ S3b.1 · 8 พ.ย. 2569
+> 17 พ.ย. 2569 (เจ้าของสั่ง): ผู้ช่วยเปลี่ยนชื่อจาก "Shark" เป็น Lekaa — ข้อความไทยเรียก "เลขา" · อังกฤษ "Lekaa" (แบรนด์แพลตฟอร์ม SHARK / SHARK HUB คงเดิม)
 > เอกสารนี้ไม่ใช่คำแนะนำทางกฎหมาย ควรให้ที่ปรึกษากฎหมายตรวจก่อนเผยแพร่ (DESIGN-SECRETARY §5)
 > ทุกข้อเท็จจริงด้านล่างตรวจกับโค้ดที่ขึ้น production (`main` c82cc727a) · อะไรที่โค้ดไม่ได้กำหนดเขียนว่า "ยังไม่กำหนด" และอยู่ในรายการคำถามท้ายไฟล์
 > ใช้ได้ 3 ที่: (ก) ส่วนเพิ่มในนโยบายความเป็นส่วนตัว `src/app/(marketing)/privacy/page.tsx` · (ข) หน้าตั้งค่า B7 ในแอป · (ค) privacy labels ตอนยื่นสโตร์ (ใบ S3b.2)
@@ -10,7 +11,7 @@
 ## ภาษาไทย
 
 ### 1. เลขา AI คืออะไร
-"Shark" คือผู้ช่วย AI ในแอป SHARK HUB ที่ช่วยทีมงานของร้านทำงานในระบบ (บัญชี สมาชิก CRM นัดหมาย POS แชทลูกค้า ฯลฯ) ตามที่ทีมงานสั่ง เลขาอ่าน สรุป และร่างงานได้เอง แต่ **ทุกงานที่เปลี่ยนข้อมูลหรือส่งข้อความถึงลูกค้าต้องมีคนในร้านกดอนุมัติก่อนเสมอ** (ไม่มีโหมด "ทำเองโดยไม่ถาม")
+"เลขา" (Lekaa) คือผู้ช่วย AI ในแอป SHARK HUB ที่ช่วยทีมงานของร้านทำงานในระบบ (บัญชี สมาชิก CRM นัดหมาย POS แชทลูกค้า ฯลฯ) ตามที่ทีมงานสั่ง เลขาอ่าน สรุป และร่างงานได้เอง แต่ **ทุกงานที่เปลี่ยนข้อมูลหรือส่งข้อความถึงลูกค้าต้องมีคนในร้านกดอนุมัติก่อนเสมอ** (ไม่มีโหมด "ทำเองโดยไม่ถาม")
 
 ### 2. ข้อมูลที่เลขาประมวลผล
 | ข้อมูล | มาจาก | ใช้เพื่อ |
@@ -26,10 +27,10 @@
 สิ่งที่ระบบลดก่อนส่งให้โมเดล: บริบทลูกค้าในห้องเลขาไม่ดึงเบอร์/อีเมล/ที่อยู่ และปิดตัวเลขยาว · ข้อความลูกค้าที่ส่งไปตอบนอกเวลา/แปลภาษาถูกปิดเบอร์ อีเมล และตัวเลขยาวก่อน · ตัวอย่างที่เก็บไว้ปรับปรุงเลขาเก็บแบบตัดข้อมูลระบุตัวตน (anonymized)
 
 ### 3. ข้อความถึงลูกค้าอาจเขียนโดย AI ในนามร้าน
-- ร้านอาจใช้เลขาช่วยร่างหรือส่งข้อความถึงลูกค้าในนามร้าน ข้อความที่เลขาเขียนจะลงชื่อผู้ส่งว่า **"Shark (ผู้ช่วย AI)"**
-- ข้อความที่เลขาส่ง (นอกจากตอบนอกเวลา) ต้องมีคนในร้านอนุมัติก่อนทุกครั้ง และลงท้ายว่า "— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน"
+- ร้านอาจใช้เลขาช่วยร่างหรือส่งข้อความถึงลูกค้าในนามร้าน ข้อความที่เลขาเขียนจะลงชื่อผู้ส่งว่า **"เลขา (ผู้ช่วย AI)"**
+- ข้อความที่เลขาส่ง (นอกจากตอบนอกเวลา) ต้องมีคนในร้านอนุมัติก่อนทุกครั้ง และลงท้ายว่า "— ข้อความนี้ส่งโดยเลขา ผู้ช่วย AI ของร้าน"
 - **ตอบนอกเวลาทำการ** (ปิดไว้เป็นค่าเริ่มต้น เจ้าของร้านเปิดเอง): เลขาตอบได้เฉพาะคำถามทั่วไปจากข้อมูลร้าน และทุกข้อความลงท้ายด้วยข้อความเปิดเผย ค่าเริ่มต้นคือ
-  > "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+  > "ข้อความนี้ตอบโดยเลขา ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
 
   เจ้าของร้านแก้ข้อความได้ แต่ระบบบังคับให้ยังมีคำว่า AI / เอไอ / ผู้ช่วย
 - เรื่องเงิน คำร้องเรียน คำขอคุยกับคน หรือคำถามที่ไม่มีข้อมูล เลขาจะไม่ตอบเอง แต่ส่งต่อให้ทีมงาน
@@ -65,7 +66,7 @@
 ## English
 
 ### 1. What the AI secretary is
-"Shark" is the AI assistant in the SHARK HUB app. It helps a shop's team work across SHARK (accounting, members, CRM, bookings, POS, customer chat, etc.) on their instructions. It can read, summarise and draft on its own, but **anything that changes data or messages a customer must be approved by a person in the shop first**. There is no "act without asking" mode.
+"Lekaa" (เลขา) is the AI assistant in the SHARK HUB app. It helps a shop's team work across SHARK (accounting, members, CRM, bookings, POS, customer chat, etc.) on their instructions. It can read, summarise and draft on its own, but **anything that changes data or messages a customer must be approved by a person in the shop first**. There is no "act without asking" mode.
 
 ### 2. Data the secretary processes
 | Data | Source | Purpose |
@@ -81,9 +82,9 @@
 Before data is sent to the model: customer context in a task room excludes phone, e-mail and address and masks long numbers; customer messages used for after-hours replies or translation have phone numbers, e-mails and long numbers masked; samples kept to improve the secretary are anonymised.
 
 ### 3. Replies to customers may be written by AI on the shop's behalf
-- A shop may use the secretary to draft or send messages to its customers. Messages written by the secretary are signed **"Shark (ผู้ช่วย AI)"** ("Shark (AI assistant)").
-- Apart from after-hours replies, every such message is approved by a person in the shop before it is sent, and ends with a Thai line meaning "— sent by Shark, the shop's AI assistant".
-- **After-hours replies** (off by default; only the shop owner can turn them on): the secretary answers only general questions from shop information, and every reply ends with a disclosure. The default (Thai) text means: "This reply was written by Shark, the shop's AI assistant — our team will get back to you during business hours." The owner may edit it, but it must still mention AI / assistant.
+- A shop may use the secretary to draft or send messages to its customers. Messages written by the secretary are signed **"เลขา (ผู้ช่วย AI)"** ("Lekaa (AI assistant)").
+- Apart from after-hours replies, every such message is approved by a person in the shop before it is sent, and ends with a Thai line meaning "— sent by Lekaa, the shop's AI assistant".
+- **After-hours replies** (off by default; only the shop owner can turn them on): the secretary answers only general questions from shop information, and every reply ends with a disclosure. The default (Thai) text means: "This reply was written by Lekaa, the shop's AI assistant — our team will get back to you during business hours." The owner may edit it, but it must still mention AI / assistant.
 - Money matters, complaints, requests for a human and questions without data are never answered by the AI; they are handed to staff.
 - Quotation links sent to customers (`/doc/...`) use hard-to-guess random tokens, are not indexed by search engines and partially mask the customer's contact details.
 
@@ -124,5 +125,5 @@ Requests to access, correct or delete personal data — the shop's customers sho
 6. ผู้ให้บริการ SMS บน production (ใคร · ระบุชื่อในนโยบายไหม) — ยังไม่ได้ตั้ง `SMS_PROVIDER` บน prod
 7. อีเมลติดต่อเรื่องข้อมูลส่วนบุคคล: ใช้ `support@shark.in.th` ต่อ หรือแยก (เช่น privacy@)? มี DPO ไหม?
 8. ข้อตกลงประมวลผลข้อมูล (DPA) ระหว่าง SHARK กับร้าน — จะใส่ในข้อตกลงการใช้บริการ (`/terms`) หรือเอกสารแยก?
-9. ข้อความเปิดเผย (DESIGN §5 "ข้อความแรกของทุกบทสนทนา"): โค้ดใส่ชื่อผู้ส่ง "Shark (ผู้ช่วย AI)" + บรรทัดลงท้ายทุกข้อความที่เลขาส่ง (ทั้งที่อนุมัติและตอบนอกเวลา) แทนการเปิดเผยครั้งเดียวในข้อความแรก — ยอมรับแบบนี้ไหม?
+9. ข้อความเปิดเผย (DESIGN §5 "ข้อความแรกของทุกบทสนทนา"): โค้ดใส่ชื่อผู้ส่ง "เลขา (ผู้ช่วย AI)" + บรรทัดลงท้ายทุกข้อความที่เลขาส่ง (ทั้งที่อนุมัติและตอบนอกเวลา) แทนการเปิดเผยครั้งเดียวในข้อความแรก — ยอมรับแบบนี้ไหม?
 10. ปุ่ม "ระงับเลขาของร้าน" ฝั่งทีม SHARK รุ่นนี้ปิดได้แค่ตอบนอกเวลา (ยังไม่มีสวิตช์ระงับทั้งร้าน · หนี้ S3) — พอสำหรับเปิดสโตร์ไหม?

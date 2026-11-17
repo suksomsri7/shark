@@ -118,7 +118,7 @@ try {
   if (!sec || !hasTables) { for (const i of [1, 2, 3, 4, 5, 6]) skip(`A-${i}`, "secretary.ts", sec ? "ไม่มีตาราง AiSecretary (S1.1 ยังไม่ merge)" : "ไม่มีไฟล์/import ไม่ได้"); }
   else {
     const s1 = await sec.ensureSecretary(U.owner);
-    chk("A-1", "ensureSecretary สร้างค่าเริ่มต้น Shark/ครับ/polite/[th]", s1?.name === "Shark" && s1?.suffix === "ครับ" && s1?.tone === "polite" && JSON.stringify(s1?.languages) === '["th"]', JSON.stringify(s1).slice(0, 160));
+    chk("A-1", "ensureSecretary สร้างค่าเริ่มต้น เลขา/ครับ/polite/[th] (17 พ.ย. Shark→เลขา)", s1?.name === "เลขา" && s1?.suffix === "ครับ" && s1?.tone === "polite" && JSON.stringify(s1?.languages) === '["th"]', JSON.stringify(s1).slice(0, 160));
     const s2 = await sec.ensureSecretary(U.owner);
     chk("A-2", "ensureSecretary ซ้ำ = แถวเดิม (idempotent) · secretaryOf คืนแถว · secretaryOf ผู้ใช้ไม่มีแถว = null", s2?.id === s1?.id && (await sec.secretaryOf(U.owner))?.id === s1?.id && (await sec.secretaryOf(U.staff)) === null && (await prisma.aiSecretary.count({ where: { userId: U.staff } })) === 0, "ดู id/null");
     const u = await sec.updateSecretary(U.owner, { name: "  น้องปลา ", suffix: "ค่ะ", tone: "friendly", languages: ["th", "en", "th"] });

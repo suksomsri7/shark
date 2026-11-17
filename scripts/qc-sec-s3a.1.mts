@@ -129,7 +129,7 @@ try {
     const g1 = await call("secretary/me", "GET");
     bodies.push(g1.text);
     const sec = (g1.json.secretary ?? g1.json) as Record<string, unknown>;
-    chk("U2-1", "GET me ค่าเริ่มต้น Shark · PUT ชื่อ/ลงท้าย ⇒ 200 · GET สะท้อน + มีตัวอย่างประโยค", g0.status === 200 && JSON.stringify(g0.json).includes("Shark") && put.status === 200 && g1.status === 200 && JSON.stringify(sec).includes("น้องเลขา") && /sample|speech|ตัวอย่าง/i.test(JSON.stringify(g1.json)), JSON.stringify({ g0: g0.status, put: put.status, g1: JSON.stringify(g1.json).slice(0, 160) }).slice(0, 300));
+    chk("U2-1", "GET me ค่าเริ่มต้น เลขา (17 พ.ย. Shark→เลขา) · PUT ชื่อ/ลงท้าย ⇒ 200 · GET สะท้อน + มีตัวอย่างประโยค", g0.status === 200 && JSON.stringify(g0.json).includes("เลขา") && !JSON.stringify(g0.json).includes("Shark") && put.status === 200 && g1.status === 200 && JSON.stringify(sec).includes("น้องเลขา") && /sample|speech|ตัวอย่าง/i.test(JSON.stringify(g1.json)), JSON.stringify({ g0: g0.status, put: put.status, g1: JSON.stringify(g1.json).slice(0, 160) }).slice(0, 300));
   }
 
   console.log("── U3: สั่งงานแรก ──");

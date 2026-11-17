@@ -195,8 +195,10 @@ console.log("── M: แอป (static) ──");
   const keys = ["cust.draft.ask", "cust.draft.asking", "cust.draft.askBtn", "cust.draft.askBusy", "cust.draft.fail", "cust.ai.section", "cust.ai.suggest.title", "cust.ai.suggest.sub", "cust.ai.translate.title", "cust.ai.translate.sub", "cust.ai.lang", "cust.ai.langSub", "cust.ai.cost", "cust.ai.readOnly"];
   const miss = keys.filter((k) => !th.includes(`"${k}":`) || !en.includes(`"${k}":`));
   const custShark = [...th.matchAll(/^ {2}"cust\.[^"]+": "[^"\n]*Shark[^"\n]*",$/gm), ...en.matchAll(/^ {2}"cust\.[^"]+": "[^"\n]*Shark[^"\n]*",$/gm)].map((m) => m[0].trim().slice(0, 60));
-  chk("M-3", "i18n th+en ครบทุกคีย์ใหม่ · การ์ดร่าง = \"Lekaa ร่างคำตอบ\" / \"Lekaa's draft reply\" · ไม่มีคำ Shark ในข้อความ cust.* (ชื่อแพลตฟอร์ม SHARK ตัวใหญ่ยกเว้น)",
-    miss.length === 0 && th.includes(`"cust.draft.title": "Lekaa ร่างคำตอบ",`) && en.includes(`"cust.draft.title": "Lekaa's draft reply",`) && custShark.length === 0, JSON.stringify({ miss, custShark }));
+  // 17 พ.ย. (เจ้าของสั่ง): ผู้ช่วยในข้อความไทย = "เลขา" (Lekaa ในประโยคไทยก็เปลี่ยน) · อังกฤษ = "Lekaa" ⇒ th.ts ไม่มีค่าใดมีคำ Lekaa/Shark
+  const thLekaa = [...th.matchAll(/^ {2}"[^"]+": "[^"\n]*(?:Lekaa|Shark)[^"\n]*",$/gm)].map((m) => m[0].trim().slice(0, 60));
+  chk("M-3", "i18n th+en ครบทุกคีย์ใหม่ · การ์ดร่าง = \"เลขาร่างคำตอบ\" / \"Lekaa's draft reply\" · ไม่มีคำ Shark ในข้อความ cust.* (ชื่อแพลตฟอร์ม SHARK ตัวใหญ่ยกเว้น) · th ไม่มี Lekaa/Shark (17 พ.ย.)",
+    miss.length === 0 && th.includes(`"cust.draft.title": "เลขาร่างคำตอบ",`) && en.includes(`"cust.draft.title": "Lekaa's draft reply",`) && custShark.length === 0 && thLekaa.length === 0, JSON.stringify({ miss, custShark, thLekaa }));
   // 17 พ.ย. (ผู้คุม): ✨ เป็นชิปมีป้ายในแถบเหนือช่องพิมพ์ ก่อนชิปแปล · แถวช่องพิมพ์ไม่มีชิ้นส่วนขวา (ช่องพิมพ์ได้ที่เต็ม) · ไม่มีชิป = ไม่มีแถบ
   const tool = room.slice(room.indexOf("<View style={styles.toolRow}>"), room.indexOf("<View style={styles.inputRow}>"));
   chk("M-5", "ชิป cust-draft-ask (✨ + cust.draft.askBtn) มาก่อน cust-translate-send ในแถบ toolRow · แถบขึ้นเฉพาะเมื่อมีชิปอย่างน้อย 1 · InputBar ไม่มี right=",

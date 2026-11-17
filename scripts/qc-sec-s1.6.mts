@@ -137,7 +137,7 @@ try {
     const ownerInRoom = await prisma.aiMessage.count({ where: { conversationId: convId, content: "owner ถาม" } });
     chk("X-1", "USER ของ s2 มี authorUserId=s2 · เครื่องมือที่ยื่นให้ s2 (STAFF ไม่มีคีย์ pos) ไม่มี sales_summary/load_skill ของ sales · OWNER ส่งเข้าห้องนี้ไม่ได้ (ไปห้องตัวเอง) และยังได้เครื่องมือ", (lastUser as AnyMod)?.authorUserId === U.s2 && !offered.includes("sales_summary") && ownerInRoom === 0 && offeredO.length > 0, `author=${(lastUser as AnyMod)?.authorUserId} s2=${offered.length} owner=${offeredO.length}`);
     const sysPrompt = pH.captured[0]?.messages.find((m) => m.role === "system")?.content ?? "";
-    chk("X-2", "system prompt ของ s2 ไม่มีตัวตนเลขาของ owner (ใช้ของผู้เขียนเอง — ไม่มีแถว = ค่าเดิม)", sysPrompt.startsWith("คุณคือผู้ช่วย AI ประจำกิจการ") || sysPrompt.startsWith('คุณคือ "Shark"'), sysPrompt.slice(0, 60), "MAJOR");
+    chk("X-2", "system prompt ของ s2 ไม่มีตัวตนเลขาของ owner (ใช้ของผู้เขียนเอง — ไม่มีแถว = ค่าเดิม)", sysPrompt.startsWith("คุณคือผู้ช่วย AI ประจำกิจการ") || sysPrompt.startsWith('คุณคือ "เลขา"') || sysPrompt.startsWith('คุณคือ "Shark"'), sysPrompt.slice(0, 60), "MAJOR");
 
     console.log("── R: removeMember ──");
     const rm1 = await mem.removeMember(ctxOf(S2), roomId, U.s3);

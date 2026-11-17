@@ -79,7 +79,7 @@
    "canApprove": 2
   },
   "GET /api/mobile/secretary/me": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [
@@ -93,7 +93,7 @@
    }
   },
   "GET /api/mobile/secretary/secretary": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [
@@ -132,12 +132,12 @@
   "GET /api/mobile/secretary/after-hours": {
    "reply": true,
    "handoff": true,
-   "disclosure": "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+   "disclosure": "ข้อความนี้ตอบโดยเลขา ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
   },
   "PUT /api/mobile/secretary/after-hours": {
    "reply": false,
    "handoff": true,
-   "disclosure": "ตอบโดย Shark ผู้ช่วย AI ของร้าน"
+   "disclosure": "ตอบโดยเลขา ผู้ช่วย AI ของร้าน"
   },
   "GET /api/mobile/inbox/unread": {
    "unread": 3
@@ -280,7 +280,7 @@
      "assigneeName": "คุณสุข (QC)",
      "unitId": null,
      "lastMessageAt": "2026-11-04T15:10:00.000Z",
-     "lastMessagePreview": "ร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ",
+     "lastMessagePreview": "ร้านเปิดกี่โมงคะ · เลขาตอบแล้วนอกเวลาทำการ",
      "staffUnreadCount": 0,
      "waitingMin": null,
      "aiDraft": false,
@@ -574,7 +574,7 @@
      "id": "m9",
      "direction": "OUT",
      "type": "FILE",
-     "body": "แก้ใบเสนอราคา Q-0012 เป็นเครดิต 45 วันแล้วค่ะ แนบไฟล์ใหม่มาให้นะคะ\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน",
+     "body": "แก้ใบเสนอราคา Q-0012 เป็นเครดิต 45 วันแล้วค่ะ แนบไฟล์ใหม่มาให้นะคะ\n— ข้อความนี้ส่งโดยเลขา ผู้ช่วย AI ของร้าน",
      "senderUserId": "u-qc-owner",
      "senderName": "คุณสุข (QC)",
      "isInternal": false,
@@ -821,7 +821,7 @@
    "status": "RUNNING"
   },
   "GET /api/mobile/secretary": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "languages": [
     "th"
@@ -1302,7 +1302,7 @@
     {
      "id": "m23",
      "role": "USER",
-     "content": "ลูกค้าขอเครดิต 45 วันค่ะ Shark ช่วยแก้ให้หน่อย",
+     "content": "ลูกค้าขอเครดิต 45 วันค่ะ เลขาช่วยแก้ให้หน่อย",
      "authorUserId": "u-qc-2",
      "system": false,
      "createdAt": "2026-11-04T19:42:40.000Z"
@@ -1402,7 +1402,7 @@
    "ok": true
   },
   "PUT /api/mobile/secretary/secretary": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [

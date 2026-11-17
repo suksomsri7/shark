@@ -25,7 +25,7 @@
    ]
   },
   "GET /api/mobile/secretary/me": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [

@@ -971,14 +971,14 @@
    "testID": "cust-draft-edit",
    "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
    "screen": "K2 /customers/[id]",
-   "action": "ร่าง Shark → ใส่ช่องพิมพ์",
+   "action": "ร่างของเลขา → ใส่ช่องพิมพ์",
    "wo": "S2.17"
   },
   {
    "testID": "cust-draft-send",
    "file": "apps/mobile/app/(app)/customers/[id]/index.tsx",
    "screen": "K2 /customers/[id]",
-   "action": "ร่าง Shark → ส่งผ่าน Composer (POST …/reply)",
+   "action": "ร่างของเลขา → ส่งผ่าน Composer (POST …/reply)",
    "wo": "S2.17"
   },
   {
@@ -1146,7 +1146,7 @@
    "testID": "cust-info-ask-shark",
    "file": "apps/mobile/app/(app)/customers/[id]/info.tsx",
    "screen": "K3 /customers/[id]/info",
-   "action": "ชีตสั่ง Shark",
+   "action": "ชีตสั่งเลขา",
    "wo": "S2.17"
   },
   {

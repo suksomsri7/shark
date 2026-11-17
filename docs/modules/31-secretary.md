@@ -1,4 +1,6 @@
-# โมดูล 31: เลขา AI "Shark" (ห้องงาน · อนุมัติ · ห้องร่วม · แชทลูกค้าในแอป · ช่วยเหลือ · กิจการ/พนักงาน) — สัญญาข้อมูล
+# โมดูล 31: เลขา AI (Lekaa · เดิม "Shark") (ห้องงาน · อนุมัติ · ห้องร่วม · แชทลูกค้าในแอป · ช่วยเหลือ · กิจการ/พนักงาน) — สัญญาข้อมูล
+
+> 17 พ.ย. 2569 (เจ้าของสั่ง): ผู้ช่วยชื่อ Lekaa — ข้อความไทยที่ผู้ใช้/ลูกค้าเห็นเรียก "เลขา" · อังกฤษ "Lekaa" (แทน "Shark") · คอลัมน์ `AiSecretary.name @default("Shark")` ยังไม่แก้ (ไม่มี migration) — โค้ดสร้างแถวใส่ "เลขา" เอง และอ่านชื่อ/ข้อความเปิดเผยปริยายเดิมเป็นค่าปริยายใหม่ · ย้ายค่าในฐาน: `scripts/lekaa-rename-db.mts` (dry-run ปริยาย)
 
 > เอกสารสัญญา · 4 พ.ย. 2569 · ใบ S0.3 (+S0.4) ของ RUN "เลขา AI" · **ปรับให้ตรงโค้ดที่ขึ้น production 8 พ.ย. 2569 (ใบ S3b.1 · ดู §S)** · ภาษาไทย ชื่อโค้ดอังกฤษ (ตาม `_CONVENTIONS.md`)
 > ลำดับความจริง: **โค้ดชนะแบบ** · `ledger/secretary-briefs/sec-brief-RESOLUTIONS.md` (R-K1…R-K20 · §B–§F) ชนะ `ledger/REVIEW-SECRETARY-DESIGN-2026-11-04.md` ซึ่งชนะ `ledger/DESIGN-SECRETARY.md` และ `ledger/SECRETARY-MASTER-PLAN.md` §3
@@ -31,7 +33,7 @@
 
 | # | เรื่อง | มติ | หน้าในแบบ | ผลต่อสัญญา |
 |---|---|---|---|---|
-| 1 | ชื่อเลขา | ผู้ใช้ตั้งเอง · ค่าเริ่มต้น **"Shark"** | [C1](../../ledger/DESIGN-SECRETARY.md) · B2 | `AiSecretary.name @default("Shark")` · §5.2 |
+| 1 | ชื่อเลขา | ผู้ใช้ตั้งเอง · ค่าเริ่มต้น **"เลขา"** (เดิม "Shark" · 17 พ.ย.) | [C1](../../ledger/DESIGN-SECRETARY.md) · B2 | `AiSecretary.name @default("Shark")` · §5.2 |
 | 2 | เลขาผูกกับ | **ผู้ใช้** (ตามไปทุกกิจการ · สิทธิ์แยกตามกิจการ) | B1 B2 | `AiSecretary` axis global (§4) |
 | 3 | เห็นงานของกัน | **เจ้าของเห็นงานทุกคนในกิจการ** · คนอื่นเห็นของตัวเอง (+ ห้องที่ถูกเพิ่ม R5) | A1 D1 | R-K1 · `roomSightFor` (conversations.ts) · §7 |
 | 4 | ช่องทางรุ่นแรก | **แอปเท่านั้น** (เว็บมีเฉพาะระบบ) · LINE รุ่นถัดไป | A8 | API มือถือชุดเดียว · §11 |
@@ -67,7 +69,7 @@
 | R-K12 | `SupportCase.{source, category, roomId}` · `listCasesForUser` · `assignCase` · ระงับเลขา = `setAccess` ทุกโมดูล OFF | §5.20 §5.21 |
 | R-K13 | route มือถือรับ `systemId?` · ด่าน Bearer ใช้ค่าคงที่จาก `guard.ts`/`permissions.ts` · cursor `before?` | `SECRETARY-API.md` |
 | R-K14 | คีย์ตอบแชท = **`chat.message.send`** · `eligibleResponders` | §5.26 §7 |
-| R-K15 | `chat.send` → `sendReply({senderUserId: approver, senderName: "Shark (ผู้ช่วย AI)", meta.ai, clientMessageId: proposalId})` | §5.7 §9 |
+| R-K15 | `chat.send` → `sendReply({senderUserId: approver, senderName: "เลขา (ผู้ช่วย AI)", meta.ai, clientMessageId: proposalId})` | §5.7 §9 |
 | R-K16 | เส้นสาธิต 3 = **คืนมัดจำนัดหมาย** `booking.refund_deposit` | §1.4 §11 |
 | R-K17 | เครื่องมือ POS/SVC v2 ใช้ได้แล้ว · เครื่องมือ SVC v2 ใหม่ (deposit/online/planner/no-show/dorm) นอกขอบเขตรุ่นแรก ยกเว้น `booking.refund_deposit` | §11 |
 | R-K18 | `AnthropicProvider` · `MODEL_IDS` · `pickModel` คืน tier · env `AI_PROVIDER` | §5.15 |
@@ -79,7 +81,7 @@
 ## 1. ขอบเขต · persona · user stories
 
 ### 1.1 ทำอะไร
-ผู้ใช้ 1 คนมี **เลขา AI 1 ตัว** (ค่าเริ่มต้น "Shark") ที่ตามไปทุกกิจการ · คำสั่ง 1 ครั้ง = **ห้องงาน** 1 ห้อง (ผู้ใช้เห็นคำว่า "งาน" ไม่ใช่ session) ที่ทำงานเบื้องหลังบนเซิร์ฟเวอร์ ข้าม POS · CRM · สมาชิก · บัญชี · บอร์ดงาน · จองคิว · แชทลูกค้า ผ่านทะเบียนเครื่องมือเดิม (`src/lib/ai/tools.ts`) · ทุกการเขียน/ส่งลูกค้าเป็น **ข้อเสนอรออนุมัติ** (`src/lib/ai/proposals.ts`) · สิทธิ์ = ผู้พิมพ์ข้อความ ∩ ระดับต่อระบบของกิจการ · แอปเดียวรวม ห้องงาน · แชทลูกค้า · ทีม · ช่วยเหลือ
+ผู้ใช้ 1 คนมี **เลขา AI 1 ตัว** (ค่าเริ่มต้น "เลขา") ที่ตามไปทุกกิจการ · คำสั่ง 1 ครั้ง = **ห้องงาน** 1 ห้อง (ผู้ใช้เห็นคำว่า "งาน" ไม่ใช่ session) ที่ทำงานเบื้องหลังบนเซิร์ฟเวอร์ ข้าม POS · CRM · สมาชิก · บัญชี · บอร์ดงาน · จองคิว · แชทลูกค้า ผ่านทะเบียนเครื่องมือเดิม (`src/lib/ai/tools.ts`) · ทุกการเขียน/ส่งลูกค้าเป็น **ข้อเสนอรออนุมัติ** (`src/lib/ai/proposals.ts`) · สิทธิ์ = ผู้พิมพ์ข้อความ ∩ ระดับต่อระบบของกิจการ · แอปเดียวรวม ห้องงาน · แชทลูกค้า · ทีม · ช่วยเหลือ
 
 ### 1.2 ไม่ทำในรุ่นแรก
 ดู §11 (AUTO/"ไม่ต้องถาม" · งานข้ามกิจการ · LINE เป็นช่องสั่งงาน · เว็บห้องเลขา · dorm ในห้องเลขา · cron รายนาที · เครื่องมือ SVC v2 ใหม่)
@@ -96,12 +98,12 @@
 
 ### 1.4 User stories ที่ต้องผ่านตอนตรวจรับ (10)
 1. **สมัครด้วยเบอร์** — คนใหม่กรอก ชื่อ + เบอร์ + อีเมล (S1) → รับ SMS OTP 6 หลัก (S2) → `verifyPhoneOtp` สร้าง `User` + `UserPhone` ใน tx เดียว → เข้าแอป · บัญชีอีเมลเดิมเข้าด้วยอีเมลแล้วถูกบังคับผูกเบอร์ (R8)
-2. **ตั้งชื่อเลขา** — ครั้งแรก C1 เติม "Shark" ให้ · แก้ชื่อ/ลงท้าย ครับ/ค่ะ/น้ำเสียง → `updateSecretary` · ตัวอย่างประโยคจาก `sampleSpeech`
+2. **ตั้งชื่อเลขา** — ครั้งแรก C1 เติม "เลขา" ให้ · แก้ชื่อ/ลงท้าย ครับ/ค่ะ/น้ำเสียง → `updateSecretary` · ตัวอย่างประโยคจาก `sampleSpeech`
 3. **สั่งงานแรก** — C3 แตะงานแนะนำ หรือพิมพ์ที่ A2 → `startRoom` (นับ 1 งาน) → ห้องขึ้น A1 สถานะ "กำลังทำ" → ปิดแอปได้ · เสร็จ/รออนุมัติแล้ว push (A8)
 4. **อนุมัติ** — A4 การ์ด "จะทำอะไร + ทำไมต้องอนุมัติ" (`classOfKind`) → OWNER/MANAGER กดอนุมัติ → `executeProposal` + `approvalGate` → `AiActionLog` → A5 ลิงก์ของจริง + ย้อนได้ 24 ชม.
 5. **ตีกลับ + สอน** — C4 พิมพ์เหตุผล → "แค่งานนี้" (เลขาแก้ในห้องเดิม) / "จำเป็นกฎ" (`AiMemory.status="PENDING"` รอเจ้าของยืนยันใน B6) → `rejectWithNote`
 6. **ห้องร่วม** — เจ้าของเพิ่มน้องขายเข้าห้อง (D3 · ปิด "เห็นข้อความเก่า" เป็นค่าเริ่มต้น) → น้องขายพิมพ์สั่งในห้องเดียวกันด้วยสิทธิ์ของตัวเอง → ฟองมีชื่อคนพิมพ์ (D2 · `authorUserId`)
-7. **ลูกค้าทัก → Shark ร่าง → ส่ง** — ลูกค้า LINE ถามราคา (K1) → K2 การ์ด "Shark ร่างคำตอบ" (`ChatAiSuggestion` เดิม · ไม่นับงาน) หรือ "สั่ง Shark เรื่องลูกค้านี้" → ใบเสนอราคา + ข้อเสนอ `chat.send` → อนุมัติ → ฟองในห้องลูกค้า "ส่งโดย Shark (ผู้ช่วย AI) · อนุมัติโดย คุณสุข" (R-K15)
+7. **ลูกค้าทัก → เลขาร่าง → ส่ง** — ลูกค้า LINE ถามราคา (K1) → K2 การ์ด "เลขาร่างคำตอบ" (`ChatAiSuggestion` เดิม · ไม่นับงาน) หรือ "สั่งเลขา เรื่องลูกค้านี้" → ใบเสนอราคา + ข้อเสนอ `chat.send` → อนุมัติ → ฟองในห้องลูกค้า "ส่งโดย เลขา (ผู้ช่วย AI) · อนุมัติโดย คุณสุข" (R-K15)
 8. **มอบหมายอัตโนมัติ** — K5 เปิดกฎ "วนตามเวร" ของ LINE · น้องขายกดเข้าเวร → ข้อความใหม่ → `assignIncoming` ให้คนที่ `chat.message.send` + หน่วยตรงเท่านั้น · ไม่มีใคร → เจ้าของ · ไม่ตอบเกิน SLA → เตือน → ย้ายให้ผู้จัดการ
 9. **เชิญพนักงาน** — G2 กรอก ชื่อ + เบอร์ + บทบาท + สิทธิ์ → `createInvite` ส่ง SMS ลิงก์ `https://shark.in.th/i/<code>` (7 วัน) → D1 "รอรับคำเชิญ" → คนนั้นเข้าแอปด้วยเบอร์นั้น → `acceptInvite` สร้าง `Membership` ผ่านตัวตรวจเดียวกับ `updateStaffAccess`
 10. **เจ้าของดูงานทุกคน** — D1 รายชื่อ + สถานะงานต่อคน · A1 ขอบเขต "ทุกคนในกิจการ" (`listRooms({scope: "tenant"})`) เห็นห้องที่มี `AiRoom` ของทุกคน ป้าย "สั่งโดย" · STAFF ขอ scope tenant = 404
@@ -234,9 +236,9 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | **B4** | ต้องอนุมัติเสมอ + ผู้อนุมัติ (sec-b) | รายการปิดไม่ได้ (เงินออก · ลบ · PII) · กฎตั้งได้ 3 ข้อ · วงเงิน · ผู้อนุมัติ | `ALWAYS_APPROVE` · `AiApprovalRule` · `approvalGate` | S1.7 · S2.8 |
 | **B5** | บันทึกการกระทำ (sec-b) | รายวัน · ต่อระบบ · ผู้สั่ง · ผู้อนุมัติ · ปุ่มย้อน (ภายใน 24 ชม.) | `listLog` · `undoAction` · `AiActionLog` | S1.8 · S2.8 |
 | **B6** | ความรู้ของกิจการ + สิ่งที่เรียนรู้ (sec-b) | ความรู้ (ยืนยันแล้ว/รอยืนยัน) · บทเรียน · ข้อมูลสด · ลบได้ | `AiMemory.status` · `AiLesson` · `lessonBlock` · `computeDigest` | S1.10 · S1.15 · S1.16 · S2.9 |
-| **B7** | คุยกับลูกค้าแทนร้าน + PDPA (sec-b) | นอกเวลาทำการให้ Shark ตอบ · ส่งต่อคน · ข้อความเปิดเผย AI | `ChatSetting.businessHours` · `readBusinessHours` · `AiSettings` (คอลัมน์ในใบ S1.22) | S1.22 · S2.9 |
+| **B7** | คุยกับลูกค้าแทนร้าน + PDPA (sec-b) | นอกเวลาทำการให้เลขาตอบ · ส่งต่อคน · ข้อความเปิดเผย AI | `ChatSetting.businessHours` · `readBusinessHours` · `AiSettings` (คอลัมน์ในใบ S1.22) | S1.22 · S2.9 |
 | **B8** | โควตา/แพ็ก (sec-b) | วงแหวน % · "≈ N งานที่เหลือ" · วันรีเซ็ต · แพ็กเสียเงิน (ปิด) | `quotaStatus` · `quotaMessage` · `FREE_PACK` · `AiJobCounter` | S0.4 · S1.13 · S2.7 |
-| **C1** | ตั้งชื่อเลขาครั้งแรก (sec-c) | ช่องชื่อเติม "Shark" (R9) · ลงท้าย · น้ำเสียง | `ensureSecretary` · `updateSecretary` | S1.2 · S2.11 |
+| **C1** | ตั้งชื่อเลขาครั้งแรก (sec-c) | ช่องชื่อเติม "เลขา" (R9) · ลงท้าย · น้ำเสียง | `ensureSecretary` · `updateSecretary` | S1.2 · S2.11 |
 | **C3** | ยังไม่มีงาน (sec-c) | งานแรกที่แนะนำ · ช่องพิมพ์ | `suggestions` · `POST /api/mobile/chat/welcome` (เดิม) | S1.11 · S2.2 |
 | **C4** | ตีกลับ → แก้ → "แค่งานนี้ / จำเป็นกฎ" (sec-c) | เหตุผล · 2 ทางเลือก · ข้อความยืนยัน | `rejectWithNote` · `AiMemory.status="PENDING"` | S1.10 · S2.4 |
 | **S1** | สมัคร ชื่อ + เบอร์ + อีเมล (sec-c) | 3 ช่อง · Apple/Google · ลิงก์เข้าด้วยอีเมล | `requestPhoneOtp` · `toE164Thai` (sms.ts:37) | S1.19 · S2.12 |
@@ -248,13 +250,13 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | **H2** | ห้องแจ้งปัญหา (sec-h) | แชทกับทีม · แนบภาพ · แนบห้องงาน · การ์ด "แก้แล้วหรือยัง" | `listCaseMessages` (:185) · `addShopMessage` (:196) · `SupportCase.roomId` | S1.17 · S2.15 |
 | **H3** | backoffice รายการเรื่อง (sec-h) | แท็บ ใหม่/รอร้าน/ของฉัน/ปิด · ช่องทาง · หมวด · ป้าย ! | `listAllCases({status, source, category, assignee})` | S1.17 · S2.16 |
 | **H4** | backoffice ห้องแชทกับผู้ใช้ (sec-h) | รับเรื่อง · ระงับเลขาของร้าน · ห้องงานที่แนบ · ร่าง AI · push | `assignCase` · `setAccess` (ทุกโมดูล OFF) · `draftCaseReply` (support-ai.ts:48) · `addPlatformMessage` | S1.17 · S2.16 |
-| **K1** | รายการลูกค้า (sec-k) | ตัวนับต่อช่องทาง · แท็บ · ชิปช่องทาง · แถว · "Shark ร่างไว้" · "รอ N นาที" | `listConversations` (+`before`) · `unreadCount` · `waitingMin` | S1.21 · S1.24 · S2.17 |
-| **K2** | ห้องแชทลูกค้า (sec-k) | ฟอง · บันทึกภายใน · การ์ดร่าง · ป้ายส่งโดย Shark · ไฟล์/สติกเกอร์ · ตอบเร็ว | `getThread` · `sendReply` · `suggestReply` · `applyQuickReply` · `meta.ai` · S3a.6: `translateMessage` · `translateDraft` · `needsTranslation` · `gloss` | S1.21 · S1.22 · S2.18 · S3a.6 |
+| **K1** | รายการลูกค้า (sec-k) | ตัวนับต่อช่องทาง · แท็บ · ชิปช่องทาง · แถว · "เลขาร่างไว้" · "รอ N นาที" | `listConversations` (+`before`) · `unreadCount` · `waitingMin` | S1.21 · S1.24 · S2.17 |
+| **K2** | ห้องแชทลูกค้า (sec-k) | ฟอง · บันทึกภายใน · การ์ดร่าง · ป้ายส่งโดยเลขา · ไฟล์/สติกเกอร์ · ตอบเร็ว | `getThread` · `sendReply` · `suggestReply` · `applyQuickReply` · `meta.ai` · S3a.6: `translateMessage` · `translateDraft` · `needsTranslation` · `gloss` | S1.21 · S1.22 · S2.18 · S3a.6 |
 
 > **S3a.6 แปลภาษาในห้องแชทลูกค้า (server · สัญญาล็อก)** — DTO เธรดมี `staffLang` · `contactLang` · `can.translate` และต่อข้อความ `translatedBody/translatedLang/needsTranslation` · `POST …/messages/[mid]/translate` (แคชใน ChatMessage · ปลายทางปริยาย staffLang) · `POST …/translate-draft` (ปลายทางปริยาย contactLang → en · ไม่ส่งเอง) · ai-suggest คืน `replyLang` **ทุกครั้ง** (normalize แล้ว · ไม่มีภาษาลูกค้า ⇒ th) และคืน `gloss` (ภาษาทีม) เฉพาะเมื่อ **ร้านเปิดแปล (`translateEnabled`) ∧ ภาษาลูกค้า ≠ ภาษาทีม** หลัง normalize (prompt เพิ่มรูป JSON + ประโยคขอ gloss ในการเรียกเดียว · maxTokens 2000 · ไม่ขอ = prompt เดิมทุกไบต์ · maxTokens 1200 · R-Z61) · รหัสภาษา `zh` ≡ `cn` (`normalizeLang` ที่ `chat/lang.ts` จุดเดียว · ใช้ทั้ง DTO/route/ai-suggest/translateDraft) · `targetLang` ตรวจรูปร่างเท่านั้น (a-z 2–3 ตัว) — ภาษานอก `LANG_NAME` ใช้รหัสตรง ๆ ใน prompt (R-Z61b) · `needsTranslation` ไม่นับลิงก์/อีเมล/#แท็ก/@ชื่อ · ทุกอย่าง fail-soft 200 `{ok:false, reason}` ไทย · หักเครดิตเดิม (CHAT_TRANSLATE / CHAT_SUGGEST) · สิทธิ์ = เห็นห้อง + `chat.translate.use` (คีย์เดียวกับเว็บ) · ไม่มี migration · gloss ไม่เก็บลงฐาน
 
-| **K3** | ข้อมูลลูกค้า (sec-k) | ติดต่อ · ในระบบ SHARK · ผู้ดูแล · แท็ก · สร้างงานบอร์ด · สั่ง Shark | `linkCustomer` · `assign` · `setStatus` · `createTaskFromChat` · `startRoom({context})` | S1.21 · S1.22 · S2.19 |
-| **K4** | ช่องทาง · ตอบเร็ว · แจ้งเตือน (sec-k) | ช่องทางที่เชื่อม (อ่านอย่างเดียว) · Shark เสนอคำตอบ · ตอบเร็ว · แจ้งเตือน ทุกข้อความ/ที่มอบหมาย/ปิด | `listConnections` · `AiNotifyPref` · `ChatSetting.aiSuggestEnabled` | S1.21 · S1.23 · S2.19 |
+| **K3** | ข้อมูลลูกค้า (sec-k) | ติดต่อ · ในระบบ SHARK · ผู้ดูแล · แท็ก · สร้างงานบอร์ด · สั่งเลขา | `linkCustomer` · `assign` · `setStatus` · `createTaskFromChat` · `startRoom({context})` | S1.21 · S1.22 · S2.19 |
+| **K4** | ช่องทาง · ตอบเร็ว · แจ้งเตือน (sec-k) | ช่องทางที่เชื่อม (อ่านอย่างเดียว) · เลขาเสนอคำตอบ · ตอบเร็ว · แจ้งเตือน ทุกข้อความ/ที่มอบหมาย/ปิด | `listConnections` · `AiNotifyPref` · `ChatSetting.aiSuggestEnabled` | S1.21 · S1.23 · S2.19 |
 | **K5** | กฎรับเรื่องใหม่ · เข้าเวร · ยกระดับ (sec-k) | กฎต่อช่องทาง · รายชื่อเข้าเวร · SLA | `ChatRoutingRule` · `ChatShift` · `assignIncoming` · `eligibleResponders` | S1.24 · S2.19 |
 | **G1** | สร้างกิจการ (sec-g) | ชื่อ · ประเภท · ระบบที่เปิด → เลขาเปิดห้อง "ตั้งค่าเริ่มต้น" | `createTenantFromApp` · `applyBlueprint` (dna/service.ts:175) · `startRoom` | S1.25 · S2.21 |
 | **G2** | เชิญพนักงาน (sec-g) | ชื่อ · เบอร์ · บทบาท · หน่วย · สิทธิ์ · ส่ง SMS | `createInvite` · `sendSms` (sms.ts:100) · `StaffInvite` | S1.25 · S2.21 |
@@ -321,7 +323,7 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 
 ### 5.2 `secretary.ts` (S1.2 · มีแล้ว · `src/lib/ai/secretary/secretary.ts` + ส่วน pure `identity.ts`) — ตัวตนเลขาต่อผู้ใช้
 ตาราง `AiSecretary` แกน global (1 แถว/user ใช้ข้ามทุกร้าน) · ไม่ต้องมี tenant · ค่าคงที่/ตรวจรูปแบบ/prompt อยู่ใน `identity.ts` (ไม่ import อะไร — persona ใช้ได้โดยไม่ลากฐานข้อมูล) · `secretary.ts` = ฐานข้อมูล + re-export
-- `SECRETARY_DEFAULT = { name: "Shark", suffix: "ครับ", tone: "polite", languages: ["th"] }` · `TONES = ["polite", "friendly", "brief"]` (สุภาพ · เป็นกันเอง · สั้นกระชับ) · `LANGUAGES = ["th", "en", "zh", "ja"]` · `NAME_MAX = 30` · `SUFFIX_MAX = 10`
+- `SECRETARY_DEFAULT = { name: "เลขา", suffix: "ครับ", tone: "polite", languages: ["th"] }` · `TONES = ["polite", "friendly", "brief"]` (สุภาพ · เป็นกันเอง · สั้นกระชับ) · `LANGUAGES = ["th", "en", "zh", "ja"]` · `NAME_MAX = 30` · `SUFFIX_MAX = 10`
 - `type SecretaryIdentity = { name: string; suffix: string; tone: Tone; languages: Language[] }`
 - `ensureSecretary(userId: string) → Promise<AiSecretary>` — upsert ค่าเริ่มต้น · เรียกซ้ำ = แถวเดิม (id เดิม · ไม่แก้ค่าที่ตั้งไว้) · ชนกันสร้าง (P2002) = อ่านแถวผู้ชนะ
 - `secretaryOf(userId: string) → Promise<AiSecretary | null>` — อ่านอย่างเดียว ไม่สร้าง
@@ -430,11 +432,11 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - payload (ids + ข้อความ): `{ systemId, conversationId, contactId, body, kind, refs?: { documentId?, dealId? } }` · summary (R-S1.12a) = `ส่งข้อความถึง <ชื่อ ผ่าน maskPiiDeep> (<ช่องทาง>):\n<body เต็ม>` — ผู้อนุมัติเห็นทั้งฉบับ
 - ห้ามเป็นขั้นของแผน (R-S1.12b): `chat.send` และ `booking_refund_deposit` อยู่ใน `PLAN_HUMAN_ONLY` (plans.ts) · `isPlanHumanOnly(kind)` export · ไม่แก้ก่อนอนุมัติ (S1.10 — kind เขียนมือไม่ editable)
 - ด่านก่อน claim (R-S1.12e): ผู้อนุมัติที่ไม่ใช่ OWNER ต้องผ่าน `canAccessConvUnit(unitAccess, conv.unitId)` ⇒ ไม่ผ่าน = คง PENDING + note ไทยเรื่องสิทธิ์สาขา
-- dispatch (ตอนอนุมัติ · ตรวจซ้ำทุกข้อ): ห้องของร้าน + `systemId`/`contactId` ตรงห้อง · `contact.customerId` ไม่ว่าง ("ส่งได้เฉพาะลูกค้าที่ผูกกับสมาชิก/CRM แล้ว") · `status ≠ RESOLVED` (enum มีแค่ OPEN/PENDING/RESOLVED) · `replyWindowExpiresAt` หมด ⇒ "หน้าต่างตอบของช่องทางนี้ปิดแล้ว" · ไม่มีไฟล์แนบ → `sendReply({ senderUserId: <ผู้อนุมัติ>, senderName: "Shark (ผู้ช่วย AI)", body: body + "\n— ข้อความนี้ส่งโดย Shark ผู้ช่วย AI ของร้าน" (R-S1.12c · รวม ≤ 1000), unitAccess: ผู้อนุมัติ (OWNER = "*"), meta, clientMessageId: "ai:" + proposalId })` · resultNote `ส่งถึง <ชื่อ> ทาง <ช่องทาง> แล้ว (ลงชื่อ Shark ผู้ช่วย AI)` · ต้องรู้ userId ผู้อนุมัติ
-- **ป้ายใน `ChatMessage.meta` (คีย์แบน `Record<string,string>` — S1.21 อ่านไปทำป้าย "ส่งโดย Shark · อนุมัติโดย X"):** `ai_proposalId` · `ai_approvedBy` (userId ผู้อนุมัติ) · `ai_roomId` (`AiRoom.id` — มีเฉพาะข้อเสนอที่เกิดในห้องเลขา) · ผู้ส่ง `senderName` = "Shark (ผู้ช่วย AI)" (ทับ `senderAlias` ของร้าน) + บรรทัดลงชื่อในตัวข้อความ (ช่องทางที่ไม่แสดง senderName)
+- dispatch (ตอนอนุมัติ · ตรวจซ้ำทุกข้อ): ห้องของร้าน + `systemId`/`contactId` ตรงห้อง · `contact.customerId` ไม่ว่าง ("ส่งได้เฉพาะลูกค้าที่ผูกกับสมาชิก/CRM แล้ว") · `status ≠ RESOLVED` (enum มีแค่ OPEN/PENDING/RESOLVED) · `replyWindowExpiresAt` หมด ⇒ "หน้าต่างตอบของช่องทางนี้ปิดแล้ว" · ไม่มีไฟล์แนบ → `sendReply({ senderUserId: <ผู้อนุมัติ>, senderName: "เลขา (ผู้ช่วย AI)", body: body + "\n— ข้อความนี้ส่งโดยเลขา ผู้ช่วย AI ของร้าน" (R-S1.12c · รวม ≤ 1000), unitAccess: ผู้อนุมัติ (OWNER = "*"), meta, clientMessageId: "ai:" + proposalId })` · resultNote `ส่งถึง <ชื่อ> ทาง <ช่องทาง> แล้ว (ลงชื่อ "เลขา (ผู้ช่วย AI)")` · ต้องรู้ userId ผู้อนุมัติ
+- **ป้ายใน `ChatMessage.meta` (คีย์แบน `Record<string,string>` — S1.21 อ่านไปทำป้าย "ส่งโดยเลขา · อนุมัติโดย X"):** `ai_proposalId` · `ai_approvedBy` (userId ผู้อนุมัติ) · `ai_roomId` (`AiRoom.id` — มีเฉพาะข้อเสนอที่เกิดในห้องเลขา) · ผู้ส่ง `senderName` = "เลขา (ผู้ช่วย AI)" (ทับ `senderAlias` ของร้าน) + บรรทัดลงชื่อในตัวข้อความ (ช่องทางที่ไม่แสดง senderName)
 - `sendReply` รับ `clientMessageId?: string` (ไม่ส่ง = เดิมทุกประการ) · คีย์ซ้ำในห้องเดียวกัน (เฉพาะ `direction: "OUT"`) ⇒ `{ ok: true, messageId: <แถวเดิม>, duplicate: true }` ไม่สร้างแถว/ไม่ส่งออกช่องทาง/ไม่ emit (ตรวจก่อน + จับ P2002 กรณีชนพร้อมกัน)
 - ย้อนไม่ได้ (ไม่อยู่ใน `UNDOABLE_KINDS`) · log (S1.8) `out.entity = { type: "chat.message", id: <messageId> }` · payload = ids เท่านั้น ไม่เก็บ body · summary (ชื่อ + ข้อความ) ผ่าน maskPiiDeep (R-S1.8f · มติผู้คุม)
-- persona (R-S1.12d): กติกา 1 บรรทัด ("ต้องผ่านการอนุมัติจากผู้มีสิทธิ์" · ระบบลงชื่อ Shark · เฉพาะลูกค้าที่ผูก · ห้ามสัญญาเรื่องเงิน/ส่วนลด) ฉีดเฉพาะเมื่อ service ยื่น `send_customer_message` ให้ผู้ถามจริง (`PersonaContext.customerChat`) · ไม่ส่ง = prompt เดิมทุกไบต์
+- persona (R-S1.12d): กติกา 1 บรรทัด ("ต้องผ่านการอนุมัติจากผู้มีสิทธิ์" · ระบบลงชื่อเลขา · เฉพาะลูกค้าที่ผูก · ห้ามสัญญาเรื่องเงิน/ส่วนลด) ฉีดเฉพาะเมื่อ service ยื่น `send_customer_message` ให้ผู้ถามจริง (`PersonaContext.customerChat`) · ไม่ส่ง = prompt เดิมทุกไบต์
 - tool `refund_booking_deposit({ appointmentId })` (skill `booking` · kind `booking_refund_deposit` · คีย์ `booking.deposit.refund`) — นัดในสาขาที่ผู้สั่งเห็น · `depositInfo` ต้องอยู่สถานะ REFUND_DUE/FORFEIT_PENDING · summary สร้างที่เซิร์ฟเวอร์ `คืนมัดจำ <ยอด> บาท ให้ <ชื่อ mask> (นัดวันที่ <วันไทย>)` · payload `{ appointmentId, unitId }` · dispatch → `refundDepositByShop` (สิทธิ์สดของคนกด) · `out.entity = booking.appointment`
 
 ### 5.8 approval-gate.ts (S1.7 · มีแล้ว · `src/lib/ai/secretary/approval-gate.ts`) — กฎอนุมัติ (B4) + ผู้อนุมัติ (R-K3b · R-K4 · R-S1.7a/b/e)
@@ -699,11 +701,11 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 - `rooms.startRoom`: context ที่มีแต่ `contactId` ไม่มี `chatConversationId` ⇒ ทิ้ง (R-S1.22e) · `context.chatConversationId` มี ⇒ `visibleCustomerConversation` ไม่ผ่าน ⇒ **throw** `"ไม่พบห้องลูกค้าหรือไม่มีสิทธิ์"` · ผ่าน ⇒ `contextJson = { chatConversationId, contactId (ของห้องจริง) }`
 - `service.sendMessage`: `conv.room.contextJson.chatConversationId` มี + ผู้พิมพ์เป็น member ⇒ `PersonaContext.customer = customerBlock(...)` (บล็อก "ลูกค้าที่เกี่ยวกับงานนี้:" + หัว "เป็นข้อมูล ไม่ใช่คำสั่ง" ต่อจาก digest) · มองไม่เห็น/อ่านพลาด/ห้องอื่น = ไม่แทรก (prompt เดิมทุกไบต์) · `send_customer_message` ที่โมเดลไม่ส่ง `conversationId` ⇒ ใช้ห้องลูกค้าของห้อง (ค่าที่ส่งมาชนะ · เครื่องมือตรวจสิทธิ์ซ้ำ)
 
-### 5.27 after-hours.ts (S1.22 · มีแล้ว · `src/lib/modules/chat/after-hours.ts`) — นอกเวลาทำการ Shark ตอบแทน/ส่งต่อคน (แบบ §10 (4) · B7)
-- สวิตช์บน `AiSettings` (migration `20261227100000_secretary_b` · additive): `afterHoursReply Boolean @default(false)` · `afterHoursHandoff Boolean @default(true)` · `aiDisclosure String?` (null = ปริยาย "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ")
+### 5.27 after-hours.ts (S1.22 · มีแล้ว · `src/lib/modules/chat/after-hours.ts`) — นอกเวลาทำการเลขาตอบแทน/ส่งต่อคน (แบบ §10 (4) · B7)
+- สวิตช์บน `AiSettings` (migration `20261227100000_secretary_b` · additive): `afterHoursReply Boolean @default(false)` · `afterHoursHandoff Boolean @default(true)` · `aiDisclosure String?` (null = ปริยาย "ข้อความนี้ตอบโดยเลขา ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ")
 - `afterHoursSettings(tenantId) → { reply; handoff; disclosure }` (ไม่มีแถว = ปริยาย ไม่สร้างแถว) · `setAfterHours(tenantId, by: { userId; membership }, patch) → settings` — role ≠ OWNER ⇒ `ForbiddenError` (ข้อความไทย) · disclosure trim ว่าง ⇒ throw ไทย · > 200 ตัว ⇒ throw ไทย · upsert
 - `isAfterHours(raw, now) → boolean` (pure) — `readBusinessHours` null = false · วันหยุดพิเศษ/วันที่ไม่อยู่ใน days = true · `[open, close)` ในเขตเวลาของร้าน (Intl) = false
-- `afterHoursAutoReply({ tenantId; systemId; conversationId; inboundText; inboundMessageId?; now?; provider? }) → AfterHoursVerdict` (reason: money · complaint · human · unknown · answered · disabled · no_window · in_hours) ลำดับ (R-S1.22b): reply ปิด ⇒ `disabled` · ไม่ตั้งเวลา ⇒ `no_window` · ในเวลา ⇒ `in_hours` · regex: ขอคุยกับคน ⇒ `human` · เงิน (ราคา/เท่าไร/ค่าส่ง/ค่าบริการ/แพง/baht/fee/…) ⇒ `money` · ร้องเรียน/ของมีปัญหา (เคลม/ชำรุด/ของไม่มา/…) ⇒ `complaint` · มีแถว OUT `clientMessageId = "ah:<inboundMessageId>"` ⇒ `reply` เดิม (ไม่เรียกโมเดล) · มี OUT ไม่ใช่ internal + `senderUserId` ไม่ null + ไม่ใช่ `meta.ai_afterHours` หลังข้อความนั้น ⇒ `answered` · `canRunAi(assist)` ไม่ผ่าน/ไม่มี provider/ไม่มี OWNER/โมเดลล้ม/คำตอบมี UNKNOWN ⇒ `unknown` · **คำตอบ**ตรง MONEY_RE หรือมีจำนวนเงิน ⇒ `money` (ไม่ส่ง) · ได้คำตอบ ⇒ `sendReply({ senderUserId: OWNER คนแรก, senderName: "Shark (ผู้ช่วย AI)", body: "Shark (ผู้ช่วย AI): " + คำตอบ ≤1000 + "\n" + disclosure, meta: { ai_afterHours: "1" }, aiAfterHours: true, clientMessageId })` · ต้นทุน `CHAT_SUGGEST` (`chargeUsageSafe` · ไม่นับงาน)
+- `afterHoursAutoReply({ tenantId; systemId; conversationId; inboundText; inboundMessageId?; now?; provider? }) → AfterHoursVerdict` (reason: money · complaint · human · unknown · answered · disabled · no_window · in_hours) ลำดับ (R-S1.22b): reply ปิด ⇒ `disabled` · ไม่ตั้งเวลา ⇒ `no_window` · ในเวลา ⇒ `in_hours` · regex: ขอคุยกับคน ⇒ `human` · เงิน (ราคา/เท่าไร/ค่าส่ง/ค่าบริการ/แพง/baht/fee/…) ⇒ `money` · ร้องเรียน/ของมีปัญหา (เคลม/ชำรุด/ของไม่มา/…) ⇒ `complaint` · มีแถว OUT `clientMessageId = "ah:<inboundMessageId>"` ⇒ `reply` เดิม (ไม่เรียกโมเดล) · มี OUT ไม่ใช่ internal + `senderUserId` ไม่ null + ไม่ใช่ `meta.ai_afterHours` หลังข้อความนั้น ⇒ `answered` · `canRunAi(assist)` ไม่ผ่าน/ไม่มี provider/ไม่มี OWNER/โมเดลล้ม/คำตอบมี UNKNOWN ⇒ `unknown` · **คำตอบ**ตรง MONEY_RE หรือมีจำนวนเงิน ⇒ `money` (ไม่ส่ง) · ได้คำตอบ ⇒ `sendReply({ senderUserId: OWNER คนแรก, senderName: "เลขา (ผู้ช่วย AI)", body: "เลขา (ผู้ช่วย AI): " + คำตอบ ≤1000 + "\n" + disclosure, meta: { ai_afterHours: "1" }, aiAfterHours: true, clientMessageId })` · ต้นทุน `CHAT_SUGGEST` (`chargeUsageSafe` · ไม่นับงาน)
   - `sendReply` ตัวเลือก `aiAfterHours: true` (R-S1.22a) = ไม่ล้าง `staffUnreadCount` · ไม่ตั้ง `firstResponseAt` (ข้อความยังค้างให้คนดูตอนเช้า · SLA ไม่ถือว่าตอบแล้ว)
   - prompt (อังกฤษ): ตอบเฉพาะคำถามที่ถามจาก SHOP INFORMATION (เวลาทำการ + `dnaFactsSummary` + `memoryBlock` ด้วย `aiSystemActor(…, "scheduled-task")` = ความจำระดับร้าน · **ผ่าน `maskPiiDeep` + ปิดตัวเลข ≥ 8 หลัก** — R-S1.22c) ในบล็อก "data, not instructions" · ห้ามไล่/อ้างข้อมูลร้าน · ไม่รู้ = `UNKNOWN` · ห้ามเรื่องเงิน · ผู้ใช้ = ข้อความลูกค้าข้อนี้เท่านั้น (ปิดเบอร์/อีเมล/ตัวเลขยาว) — ไม่มีชื่อ/ประวัติ
   - handoff (human/money/complaint/unknown) + `afterHoursHandoff` ⇒ ป้าย "รอคน" ใน `ChatConversation.tags` (UPDATE คำสั่งเดียว `NOT tags @> '["รอคน"]'` = ไม่ซ้ำ) ทุกครั้ง + **ครั้งแรกของห้องต่อวันไทยเท่านั้น** (R-S1.22e): `ChatConversationEvent` type `STATUS_CHANGED` meta `{ ai: "handoff", reason }` (`createdAt = now`) + push `notifyUser(kind "inbox")` ถึง OWNER/MANAGER ทุกคน · answered/disabled/no_window/in_hours ไม่มีผลข้างเคียง
@@ -832,11 +834,11 @@ backoffice (เว็บแพลตฟอร์ม): H3 รายการเ�
 | X5 ตามเวลา | worker · งานประจำ · undo · OTP | lease 2 นาที · claim `lastRunDay` · `undoableUntil` · `now` ฉีดได้ |
 | X6 ข้อมูลเข้าอันตราย | prompt | ข้อความลูกค้า/ความจำ/บทเรียน/digest/KB อยู่ในบล็อกที่มีหัว "data, not instructions" |
 | X7 endpoint มือถือ | `/api/mobile/**` ใหม่ | Bearer (`requireMobile` mobile/auth.ts:74) · `checkRateLimitDb` ทุกเส้น · เพดาน payload · OTP ต่อเบอร์+IP |
-| X8 PDPA ผ่าน AI | prompt · `AiMemory` · `AiLesson` · `AiTrainingSample` · `AiActionLog.payload` | ไม่เก็บชื่อ/เบอร์/ที่อยู่ลูกค้า (ขยาย `anonymize`) · payload ids เท่านั้น · ข้อความแรกถึงลูกค้าเปิดเผยว่าเป็นผู้ช่วย AI + ลงชื่อ "Shark (ผู้ช่วย AI)" · คำขอเจ้าของข้อมูล = งานให้คนอนุมัติ |
+| X8 PDPA ผ่าน AI | prompt · `AiMemory` · `AiLesson` · `AiTrainingSample` · `AiActionLog.payload` | ไม่เก็บชื่อ/เบอร์/ที่อยู่ลูกค้า (ขยาย `anonymize`) · payload ids เท่านั้น · ข้อความแรกถึงลูกค้าเปิดเผยว่าเป็นผู้ช่วย AI + ลงชื่อ "เลขา (ผู้ช่วย AI)" · คำขอเจ้าของข้อมูล = งานให้คนอนุมัติ |
 | X9 การกระทำอันตราย | `ALWAYS_APPROVE` · DESTRUCTIVE | confirm 2 ชั้นเดิม · บันทึก `AiActionLog` ทุกครั้ง · ป้ายความเสี่ยงจาก `classOfKind` |
 | X10 ความลับ | DTO ทุกตัว | ไม่มีคีย์/รหัส OTP/codeHash/token ช่องทาง/prompt/micro-dollar ใน DTO · `maskedConnection` เดิมสำหรับช่องทาง |
 | X11 ต้นทุนและโควตา | ทุกทางที่เรียกโมเดล | ทุกการเรียกคิดเงิน (`chargeUsageSafe`) · หมด = พัก · ผู้ใช้เห็นงาน/% เท่านั้น |
-| X8a บริบทลูกค้า (S1.22) | ห้องเลขาที่ผูกห้องลูกค้า · ตอบนอกเวลา | `customerContextOf` = สายตาของคนที่พิมพ์ (สิทธิ์อ่านแชท + สาขา · ส่วน CRM/บัญชี/สมาชิกตามสิทธิ์โมดูลของเขา) · ไม่มีเบอร์/อีเมล/ที่อยู่/เลขบัตร/โน้ตภายใน · ตอบนอกเวลา: โมเดลเห็นแค่ข้อความลูกค้าข้อนี้ (ปิด PII) + ข้อมูลร้าน · ทุกคำตอบลงท้ายข้อความเปิดเผยว่าเป็น AI (`aiDisclosure`) + senderName "Shark (ผู้ช่วย AI)" · เงิน/ร้องเรียน/ไม่รู้ = ส่งต่อคน ไม่ให้โมเดลตอบ · ตอบเองปิดไว้ก่อน (OWNER เปิด) |
+| X8a บริบทลูกค้า (S1.22) | ห้องเลขาที่ผูกห้องลูกค้า · ตอบนอกเวลา | `customerContextOf` = สายตาของคนที่พิมพ์ (สิทธิ์อ่านแชท + สาขา · ส่วน CRM/บัญชี/สมาชิกตามสิทธิ์โมดูลของเขา) · ไม่มีเบอร์/อีเมล/ที่อยู่/เลขบัตร/โน้ตภายใน · ตอบนอกเวลา: โมเดลเห็นแค่ข้อความลูกค้าข้อนี้ (ปิด PII) + ข้อมูลร้าน · ทุกคำตอบลงท้ายข้อความเปิดเผยว่าเป็น AI (`aiDisclosure`) + senderName "เลขา (ผู้ช่วย AI)" · เงิน/ร้องเรียน/ไม่รู้ = ส่งต่อคน ไม่ให้โมเดลตอบ · ตอบเองปิดไว้ก่อน (OWNER เปิด) |
 
 **ลำดับ deploy (RESOLUTIONS §E · บังคับโดย R-K2):** (1) `prisma migrate deploy` (secretary_a) → (2) ตรวจ `_prisma_migrations` → (3) deploy โค้ด → (4) ตั้ง `SECRETARY_LAUNCH_AT` ใน pack.ts = เวลาที่ deploy จริง (แก้ก่อน build prod · **⚠️ 8 พ.ย. ยังเป็น 2026-11-04 — ดู §S**) → (5) `SMS_PROVIDER` จริง · `AI_PROVIDER=anthropic` เมื่อมีคีย์ · ไม่มี `eas build`/`eas update`/ส่งสโตร์จากเลน (S3a.3 ผู้คุมรันตามคำสั่งเจ้าของ)
 

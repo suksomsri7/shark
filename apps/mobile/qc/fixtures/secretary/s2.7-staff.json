@@ -59,7 +59,7 @@
    "unread": 1
   },
   "GET /api/mobile/secretary/me": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [
@@ -68,18 +68,18 @@
    ]
   },
   "GET /api/mobile/secretary/secretary": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [
     "th",
     "en"
    ],
-   "sample": "สวัสดีครับ Sharkพร้อมช่วยงานแล้วครับ วันนี้มีอะไรให้ช่วยดูแลบ้างครับ",
+   "sample": "สวัสดีครับ เลขาพร้อมช่วยงานแล้วครับ วันนี้มีอะไรให้ช่วยดูแลบ้างครับ",
    "saved": true
   },
   "PUT /api/mobile/secretary/secretary": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ค่ะ",
    "tone": "friendly",
    "languages": [
