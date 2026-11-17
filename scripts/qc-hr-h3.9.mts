@@ -352,7 +352,7 @@ function runStatic(): void {
     // ORACLE-EDIT (HR VIS-5a · controller) S1.5: explicit allowlist (as M2_ALLOW / P2_ALLOW) — VIS-5a product files in this FROZEN list; in base only; every hunk must add a line with "HR VIS-5a" ◂
     const VIS5A_ALLOW = new Set([`${H}payroll-ui.tsx`, `${H}payroll-run-ui.tsx`, `${H}reports-ui.tsx`]); // ORACLE-EDIT (HR VIS-5a · controller) ◂
     const vis5aOk = (f: string) => IN_BASE && VIS5A_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR VIS-5a"))); // ORACLE-EDIT (HR VIS-5a · controller) ◂
-    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f) && !pp1Only(f) && !vis5aOk(f)) : []; // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Only ◂ // ORACLE-EDIT (HR VIS-5a · controller merge): + vis5aOk (both sides kept) ◂
+    const left0 = diff0.startsWith("changed: ") ? diff0.slice(9).split(",").filter((f) => !laterOk(f) && !pp1Only(f) && !vis5aOk(f)) : []; // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Only ◂ // ORACLE-EDIT (HR VIS-5a · controller): + vis5aOk (re-merge: both sides kept) ◂
     const diff = diff0.startsWith("changed: ") ? (left0.length ? `changed: ${left0.join(",")}` : "unchanged") : diff0;
     const h35Hunks = diffHunks(BASE, H35) ?? [];
     const dlrOk = (changedVsBase(BASE, [DLR]) === "unchanged" || markedOk(DLR)) && h35Hunks.every((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*H3\.9/.test(l)));
