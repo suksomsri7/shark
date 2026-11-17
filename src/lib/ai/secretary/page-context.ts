@@ -80,7 +80,7 @@ function clean(v: unknown, max: number): string {
   if (typeof v !== "string") return "";
   // ตัดอักขระควบคุม/ตัวมองไม่เห็น (กันซ่อนคำสั่งในชื่อหน้า) · ยุบช่องว่าง
   // eslint-disable-next-line no-control-regex
-  return v.replace(/[\u0000-\u001f\u007f-\u009f​-‏ -‮⁠-⁯﻿]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
+  return v.replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff]/g, " ").replace(/\s+/g, " ").trim().slice(0, max);
 }
 
 const isType = (t: string): t is PageEntityType => (PAGE_ENTITY_TYPES as readonly string[]).includes(t);

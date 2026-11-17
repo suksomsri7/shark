@@ -34,6 +34,7 @@ import {
   type HelpMsg,
   type HelpStageEvent,
 } from "@/src/api/secretary";
+import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
 import { cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
@@ -322,6 +323,8 @@ export default function SecretaryHelpCaseScreen() {
         {gone || denied ? null : (
           <>
             <AttachTray items={att.items} note={att.note} onRemove={att.remove} testID="help-attached" />
+            {/* Lekaa FAB (17 พ.ย.) ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (แบบ team4 จอ 4) — ปุ่มลอยซ่อนเองบนจอนี้ */}
+            <View style={styles.inputRow}>
             <InputBar
               key={focusKey}
               testID="help-input"
@@ -339,8 +342,10 @@ export default function SecretaryHelpCaseScreen() {
               plusDisabled={sending || !kase}
               sendDisabled={(!draft.trim() && att.items.length === 0) || sending || !att.ready || !kase}
               maxLength={4000}
-              style={styles.input}
+              style={styles.flex}
             />
+            <LekaaFabSlot />
+            </View>
           </>
         )}
       </KeyboardAvoidingView>
@@ -422,7 +427,7 @@ const styles = StyleSheet.create({
   goneBtn: { marginTop: spacing.sm, height: size.iconBtn, borderRadius: size.iconBtn / 2, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center" },
   goneBtnT: { fontSize: T.sub, fontWeight: "600" },
   flash: { marginHorizontal: spacing.page, marginBottom: spacing.sm, fontSize: 13, lineHeight: 19, borderRadius: radii.k + 2, paddingVertical: 8, paddingHorizontal: 12, overflow: "hidden", textAlign: "center" },
-  input: { marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: LEKAA_SLOT_GAP, marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
   menuH: { fontSize: T.h + 1, fontWeight: "700", lineHeight: 26, marginBottom: 4 },
   menuRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: size.iconBtn + 8, borderBottomWidth: StyleSheet.hairlineWidth },
   menuT: { fontSize: T.body - 1 },

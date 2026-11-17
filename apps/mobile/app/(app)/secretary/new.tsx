@@ -34,6 +34,7 @@ import {
   type Frequent,
   type Suggestion,
 } from "@/src/api/secretary";
+import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
@@ -231,6 +232,8 @@ export default function SecretaryNewScreen() {
 
         <AttachTray items={attach.items} note={attach.note} onRemove={attach.remove} testID="sec-new-attach" />
 
+        {/* Lekaa FAB (17 พ.ย.) ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (แบบ team4 จอ 4) — ปุ่มลอยซ่อนเองบนจอนี้ */}
+        <View style={styles.inputRow}>
         <InputBar
           testID="sec-new-input"
           sendTestID="sec-new-send"
@@ -246,8 +249,10 @@ export default function SecretaryNewScreen() {
           sendDisabled={(!text.trim() && attach.items.length === 0) || !attach.ready || busy || denied}
           locked={denied}
           placeholder={denied ? t("sec.new.lockedPh") : t("sec.new.input")}
-          style={styles.input}
+          style={styles.flex}
         />
+        <LekaaFabSlot />
+        </View>
       </KeyboardAvoidingView>
       <AttachSheet visible={attachOpen} onClose={() => setAttachOpen(false)} onPick={(k) => void attach.pick(k)} name={name} testID="sec-new-attach-sheet" />
     </AiryScreen>
@@ -271,5 +276,5 @@ const styles = StyleSheet.create({
   quotaB: { fontSize: T.sub, lineHeight: 20, marginTop: spacing.xs },
   quotaLink: { marginTop: spacing.sm, alignSelf: "flex-start", paddingVertical: spacing.xs },
   quotaL: { fontSize: T.sub, fontWeight: "700", textDecorationLine: "underline" },
-  input: { marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: LEKAA_SLOT_GAP, marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
 });

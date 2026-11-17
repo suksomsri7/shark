@@ -62,8 +62,6 @@ export default function SecretaryHome() {
   const [rooms, setRooms] = useState<Room[] | null>(null);
   const [denied, setDenied] = useState(false);
   const [failed, setFailed] = useState(false);
-  // R-S2.13h (L4): สิทธิ์ใช้เลขา 3 ค่า — ปุ่ม + บนแถบบนโผล่เมื่อรู้ว่า "อนุญาต" เท่านั้น (ไม่แวบก่อน 403)
-  const [access, setAccess] = useState<"unknown" | "ok" | "denied">("unknown");
   const [sugg, setSugg] = useState<C3Item[] | null>(null);
   const [filter, setFilter] = useState<RoomFilterKey>("all");
   const [query, setQuery] = useState("");
@@ -77,7 +75,6 @@ export default function SecretaryHome() {
     setRooms(null);
     setDenied(false);
     setFailed(false);
-    setAccess("unknown");
     setSugg(null);
   }, [activeTenantId]);
 
@@ -90,13 +87,11 @@ export default function SecretaryHome() {
       if (tenantRef.current !== tenant) return;
       setDenied(false);
       setFailed(false);
-      setAccess("ok");
       setRooms((r.items ?? []).map((x) => normalizeRoom(x, userId)));
     } catch (e) {
       if (tenantRef.current !== tenant) return;
       if (isDenied(e)) {
         setDenied(true);
-        setAccess("denied");
         setRooms([]);
       } else setFailed(true); // ออฟไลน์/เส้นยังไม่ขึ้น: คงรายการเดิม (ยังไม่เคยได้ = LoadError)
     }

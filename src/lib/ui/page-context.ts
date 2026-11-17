@@ -49,7 +49,9 @@ export const PAGE_ENTITY_EVENT = "app:page-entity";
 export function usePageEntity(entity: PageEntity | null) {
   const key = entity ? `${entity.type}:${entity.id}:${entity.label ?? ""}` : "";
   useEffect(() => {
-    const send = (detail: PageEntity | null) => window.dispatchEvent(new CustomEvent(PAGE_ENTITY_EVENT, { detail }));
+    const send = (detail: PageEntity | null) => {
+      window.dispatchEvent(new CustomEvent(PAGE_ENTITY_EVENT, { detail }));
+    };
     send(key ? entity : null);
     return () => send(null);
     // eslint-disable-next-line react-hooks/exhaustive-deps
