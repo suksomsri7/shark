@@ -184,6 +184,9 @@ export const hrefsIn = (s: string) => [...s.matchAll(/<a\b[^>]*\shref="([^"]*)"/
 export const fd = (o: Record<string, string | string[]>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) for (const x of [v].flat()) f.append(k, x); return f; };
 export const ROUTE_RE = /\/hr\/(employees|leave|payroll)(?=$|[/?#])/;
 export const gatedOf = (href: string) => (ROUTE_RE.exec(href)?.[1] === "employees" ? "register" : (ROUTE_RE.exec(href)?.[1] as "leave" | "payroll" | undefined));
+// ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N2 hub: /hr/attendance is gated too (page 404 unless roster reader or linked — nav.ts attendance) · gatedOf itself unchanged (N1 hashes the non-gated nav rest with it) ◂
+export const ATT_RE = /\/hr\/attendance(?=$|[/?#])/;
+export const gatedHubOf = (href: string) => gatedOf(href) ?? (ATT_RE.test(href) ? ("attendance" as const) : undefined); // ORACLE-EDIT (HR VIS-5b F5 · controller) ◂
 
 // ═════════════ goldens measured on base ea2b41ea1 (QC_PRIV3_MEASURE=1 · 2 runs identical) — entitled viewers must keep them ═════════════
 //   pages: "<fixture keys seen>|sha16(testids)|n" · leave cells exclude the filing form (R3 changes it) · control/nav/hub: outcome / sha16 of non-gated hrefs / hub links|first "n คน"

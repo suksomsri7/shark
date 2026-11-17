@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { type Any, type Def, ROOT, rd, errText, canon, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, sha, srcFiles, stripComments, QUERY_COUNTER } from "./qc-hr-lib.mjs";
 import { installNetGuard } from "./qc-hr-h4.3-lib.mjs";
 import { bodyOf } from "./qc-hr-priv-2-lib.mjs";
-import { H, BASE, sha16, fileAtBase, hunksOf, changed, importEnd, fnRange, inRange, cycleThrough, installIntl, loadClientSet, renderPage, renderEl, inScope, h, textOfHtml, testids, leaveForm, employeeOptions, hrefsIn, fd, gatedOf, GOLD, type Rendered } from "./qc-hr-priv-3-lib.mjs";
+import { H, BASE, sha16, fileAtBase, hunksOf, changed, importEnd, fnRange, inRange, cycleThrough, installIntl, loadClientSet, renderPage, renderEl, inScope, h, textOfHtml, testids, leaveForm, employeeOptions, hrefsIn, fd, gatedOf, gatedHubOf, GOLD, type Rendered } from "./qc-hr-priv-3-lib.mjs"; // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N2: + gatedHubOf ◂
 
 const SUITE = "qc-hr-priv-3", ARGV = process.argv.slice(2), FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run"), PFX = "qc-hr-priv3-", MEASURE = process.env.QC_PRIV3_MEASURE === "1";
 const PG = "src/app/app/sys/[id]/hr/";
@@ -137,8 +137,11 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
 {
  const migs = newMigs(), bad: string[] = [];
  const sqlOf = (m: string) => rd(`prisma/migrations/${m}/migration.sql`);
- if (migs.length !== 1) bad.push(`folders=${migs.length}`);
- const m = migs[0] ?? "";
+ // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 S6 R-S6: either exactly ONE new migration vs base (as before) or none new and the PRIV-3 migration already in base with pinned, unchanged content ◂
+ const P3_MIG = "20270112000000_hr_tenant_scoped_unique_keys", P3_MIG_SHA = "95fb5ad171abc2e3", p3f = `prisma/migrations/${P3_MIG}/migration.sql`; // ORACLE-EDIT (HR VIS-5b F5 · controller) · HR PRIV-3 ◂
+ const inBase = migs.length === 0 && fileAtBase(p3f) !== null && sha16(fileAtBase(p3f) ?? "") === P3_MIG_SHA && sha16(rd(p3f)) === P3_MIG_SHA; // ORACLE-EDIT (HR VIS-5b F5 · controller) · HR PRIV-3 ◂
+ if (migs.length !== 1 && !inBase) bad.push(`folders=${migs.length}${migs.length ? "" : ` · in-base ${P3_MIG}: base ${fileAtBase(p3f) === null ? "absent" : sha16(fileAtBase(p3f) ?? "")} tree ${rd(p3f) ? sha16(rd(p3f)) : "absent"} ≠ ${P3_MIG_SHA}`}`); // ORACLE-EDIT (HR VIS-5b F5 · controller) · HR PRIV-3 ◂
+ const m = inBase ? P3_MIG : (migs[0] ?? ""); // ORACLE-EDIT (HR VIS-5b F5 · controller) · HR PRIV-3 ◂
  if (m && m <= LAST_HR_MIG) bad.push(`name ${m} ≤ ${LAST_HR_MIG}`);
  if (m && readdirSync(join(ROOT, "prisma/migrations", m)).some((x) => x !== "migration.sql")) bad.push("extra files");
  const stmts = m ? sqlOf(m).replace(/--[^\n]*/g, "").split(";").map((x) => x.replace(/\s+/g, " ").trim()).filter(Boolean) : [];
@@ -160,7 +163,7 @@ try { fit = await import("./fitness-hr.mjs" as string); } catch (e) { fit = { __
  if (sch.length) bad.push(`schema other lines: ${sch[0]!.trim().slice(0, 40)}`);
  const sites = srcFiles("src").filter((f) => /systemId_employeeId|systemId_periodKey_live/.test(code(f)) && !f.includes("/account/"));
  if (sites.length) bad.push(`old compound key used: ${sites.join(",")}`);
- chk("S6", !bad.length, "one index-only migration", L(bad));
+ chk("S6", !bad.length, inBase ? "PRIV-3 migration in base · content pinned" : "one index-only migration", L(bad)); // ORACLE-EDIT (HR VIS-5b F5 · controller) · HR PRIV-3: expectation names the mode ◂
 }
 
 // ═════════════ runtime ═════════════
@@ -372,7 +375,7 @@ try {
    mute();
    const r = await renderEl(W[k].cookie, `/app/sys/${HRS}`, () => h(M.ui.HrHub, { systemId: HRS })).finally(unmute);
    const links = hrefsIn(r.html), T = TRUTH[k];
-   const dead = links.filter((x) => { const g = gatedOf(x); return g && !T[g === "register" ? 0 : g === "leave" ? 1 : 2]; });
+   const dead = links.filter((x) => { const g = gatedHubOf(x); return g && (g === "attendance" ? GOLD.control?.[`attendance.${k}`] !== "ok" : !T[g === "register" ? 0 : g === "leave" ? 1 : 2]); }); // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ HR PRIV-3 N2: + attendance (truth = P8 attendance row, which P8 asserts) ◂
    const head = /(\d+) คน/.exec(textOfHtml(r.html))?.[1] ?? "";
    if (!T[0]) { if (dead.length) n2.push(`${k}:links ${dead.map((x) => x.replace(/.*\/hr\//, "")).join("/")}`); const hc = /พนักงาน\s*(\d+)\s*คน/.exec(textOfHtml(r.html))?.[1]; if (hc) n2.push(`${k}:count ${hc}`); }
    else if (dead.length) n2.push(`${k}:dead ${dead.join("/")}`);

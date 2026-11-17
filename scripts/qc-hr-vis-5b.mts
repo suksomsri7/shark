@@ -51,6 +51,11 @@ const CHECKS: Def[] = [
  D("G1", "5b-2 §3", "MR", "[db] kiosk-only viewer: no tab strip · one card hr-hub-kiosk-link → /hr/kiosk · no employee count/links"),
  D("G2", "§1", "MG", "[db] [control] member without HR keys: no overview, no board, no approvals"),
  D("I1", "§4 §8", "MR", "[db] en hub: hr.hub exists · no missing key · no Thai value of hr.hub in the en HTML · th hub renders hr.hub strings"),
+ // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ R-F5-1 / R-F5-2 (17 Nov): hub links only to pages the viewer can open · no employee rows / pending leaves read for viewers without that page ◂
+ D("F1", "R-F5-1", "MR", "[db] hub card \"ลงเวลา\" iff hrTabsFor(viewer) has /hr/attendance (O M MB P PB K N + linked staff SL) · no /hr/attendance link at all otherwise · [control] tabs ⇔ attendance page not 404"),
+ D("F2", "R-F5-2", "CR", "[db] hub render runs listEmployees' SQL only for viewers with hrPageAccessOf.register (N · SL · K none) · [control] O does run it"),
+ D("F3", "R-F5-2", "MR", "[db] hub render runs pendingLeaves' SQL only for viewers with hrPageAccessOf.leave · [control] O does run it"),
+ D("F4", "R-F5-2", "MR", "[static] HrHub: pageOk = hrPageAccessOf(..) before the reads · every listEmployees( sits under pageOk.register ?/&& · every pendingLeaves( under pageOk.leave ?/&&"),
  D("Z1", "-", "CG", "residue · outbound"),
 ];
 const R = makeRegistry(SUITE, "", CHECKS);
@@ -89,13 +94,22 @@ if (!built && !FORCE) R.skipExit(["no HR VIS-5b marker in hub-rules.ts / ui.tsx"
  const sysBad = hunksOf(F.sys).filter((h) => h.added.concat(h.removed).some((l) => l.trim() && !/HrHub|"HR"|max-w-7xl|max-w-2xl|HR VIS-5b|\bday\b|\bunit\b|searchParams|sp\./.test(l)));
  const s10 = { inboxImports: ib(rd(F.ib)) === ib(fileAt(BASE, F.ib) ?? ""), noApproval: !/modules\/approval|bulkDecide/.test(rd(F.ib)), action: /decideInboxAction\(/.test(rd(F.ib)), sysPage: !sysBad.length || `${sysBad.length} hunk(s)`, tabsFor: /===\s*systemId/.test(tf.slice(0, 1200)) };
  chk("S10", all(s10), "all", fails(s10));
+ // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ F4: the reads sit under the page gates (R-F5-2) ◂
+ const hub = bodyOf(stripComments(rd(F.ui)), "HrHub"), pv = /const\s+(\w+)\s*=\s*hrPageAccessOf\(/.exec(hub), at = pv?.index ?? -1, gv = pv?.[1] ?? "pageOk";
+ const callsOf = (fn: string) => [...hub.matchAll(new RegExp(`\\b${fn}\\(`, "g"))].map((x) => x.index!);
+ const under = (fn: string, key: string) => { const cs = callsOf(fn), bad = cs.filter((i) => at < 0 || i < at || !new RegExp(`\\b${gv}\\.${key}\\s*(?:\\?|&&)\\s*(?:await\\s+)?$`).test(hub.slice(Math.max(0, i - 80), i))); return !bad.length || `${bad.length}/${cs.length} unguarded`; };
+ const f4 = { hub: hub.length > 200, gate: at >= 0, employees: under("listEmployees", "register"), leaves: under("pendingLeaves", "leave") };
+ chk("F4", all(f4), "all", fails(f4));
 }
 
 // ═════════════ render + DB ═════════════
 const { AsyncLocalStorage } = await import("node:async_hooks");
 (globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage;
 installNetGuard();
-const { P, coreHash } = await qc4Env(SUITE);
+const { P, coreHash } = await qc4Env(SUITE, { countQueries: true }); // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ query events on (F2/F3 read the SQL text) ◂
+const CAP = { on: false, q: [] as string[] }; // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ SQL text of one call / one render ◂
+P.$on?.("query", (e: Any) => { if (CAP.on) CAP.q.push(String(e?.query ?? "")); });
+const capture = async (fn: () => Promise<unknown>): Promise<string[]> => { CAP.q = []; CAP.on = true; try { await fn(); await new Promise((r) => setImmediate(r)); } finally { CAP.on = false; } return CAP.q.slice(); };
 installIntl();
 const nClient = await loadClientSet();
 const imp = async (s: string) => (await import(s).catch((e: unknown) => ({ __err: errText(e) }))) as Any;
@@ -133,7 +147,8 @@ async function buildFixture() {
  const sc = { tenantId: T, systemId: HRS };
  const PAY = { "hr.payroll.read": true, "hr.payroll.create": true, "hr.payroll.approve": true, "hr.payroll.pay": true, "hr.payroll.reverse": true };
  const mk = (t: string, r: "OWNER" | "MANAGER" | "STAFF", ua: string[], p: Record<string, boolean>) => fx.mkUser(T, t, `QCV5b ${t} ${tag}`, r, ua, p);
- const W = { owner: await mk("owner", "OWNER", [], {}), mgr: await mk("mgr", "MANAGER", [], {}), mgrU1: await mk("mgru1", "MANAGER", [U1], {}), pay: await mk("pay", "STAFF", ["*"], PAY), kiosk: await mk("kiosk", "STAFF", [], { "hr.attendance.clock": true }), member: await mk("member", "STAFF", [], {}) };
+ const W = { owner: await mk("owner", "OWNER", [], {}), mgr: await mk("mgr", "MANAGER", [], {}), mgrU1: await mk("mgru1", "MANAGER", [U1], {}), pay: await mk("pay", "STAFF", ["*"], PAY), kiosk: await mk("kiosk", "STAFF", [], { "hr.attendance.clock": true }), member: await mk("member", "STAFF", [], {}),
+  payU1: await mk("payu1", "STAFF", [U1], PAY), staffL: await mk("staffl", "STAFF", [], {}) }; // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ + PB (payroll, branch 1) · SL (plain staff linked to a7) ◂
  const E: Record<string, Any> = {};
  const defs: [string, string][] = [["a1", U1], ["a2", U1], ["a3", U1], ["a4", U1], ["a5", U1], ["a6", U1], ["a7", U1], ["b1", U2], ["b2", U2], ["b3", U2]];
  for (const [i, [k, u]] of defs.entries()) {
@@ -141,6 +156,7 @@ async function buildFixture() {
   await P.hrSalaryProfile.create({ data: { ...sc, employeeId: id, payType: "MONTHLY", baseSalarySatang: SAL + i, ssoEligible: true } });
   E[k] = { id, name, unit: u };
  }
+ await P.hrEmployee.update({ where: { id: E.a7.id }, data: { linkedUserId: W.staffL.id } }); // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ SL linked (a7 has no shift) ◂
  const SH = { [U1]: (await P.hrShift.create({ data: { ...sc, unitId: U1, name: `เช้า1 ${tag}`, startMin: 480, endMin: 1020, breakMin: 60 } })).id, [U2]: (await P.hrShift.create({ data: { ...sc, unitId: U2, name: `เช้า2 ${tag}`, startMin: 480, endMin: 1020, breakMin: 60 } })).id };
  const roster = (k: string, day: string, s = 480, e = 1020) => P.hrRosterEntry.create({ data: { ...sc, employeeId: E[k].id, date: dbDate(day), shiftId: SH[E[k].unit], unitId: E[k].unit, startMin: s, endMin: e, breakMin: 60, crossesMidnight: false, published: true, publishedAt: new Date() } });
  const punch = (k: string, day: string, kind: "IN" | "OUT", min: number) => P.hrAttendance.create({ data: { ...sc, employeeId: E[k].id, kind, at: bkk(day, min), source: "MOBILE" } });
@@ -268,6 +284,43 @@ try {
  const enText = textOfHtml(en.html), thText = textOfHtml(o1.html);
  const i1 = { hub: thHub.length > 0, rendered: !en.err || en.err, noMissing: !/‹MISSING:hr\.hub/.test(en.html + o1.html) && !CUR.missing.some((m) => m.includes("hr.hub")), noThai: !thHub.filter((t) => /[฀-๿]/.test(t) && t.length > 1).some((t) => enText.includes(t.replace(/\{[^}]*\}/g, "").trim().slice(0, 12))), thUsed: thHub.some((t) => thText.includes(t.replace(/\{[^}]*\}.*$/, "").trim().slice(0, 8))) };
  chk("I1", all(i1), "all", fails(i1));
+ // ORACLE-EDIT (HR VIS-5b F5 · controller) ▸ R-F5-1 attendance card · R-F5-2 reads under the page gates ◂
+ {
+  const priv = await imp("@/lib/modules/hr/privacy"), svc = await imp("@/lib/modules/hr/service"), scp = await imp("@/lib/modules/hr/scope"), attPg = await imp("@/app/app/sys/[id]/hr/attendance/page");
+  const ATT = `/app/sys/${X.HRS}/hr/attendance`, isAtt = (u: string) => u === ATT || [`?`, `/`, `#`].some((c) => u.startsWith(ATT + c));
+  const anchors = (html: string) => [...html.matchAll(/<a\b[^>]*>/g)].map((m) => ({ href: /\shref="([^"]*)"/.exec(m[0])?.[1]?.replace(/&amp;/g, "&") ?? "", cls: /\sclass="([^"]*)"/.exec(m[0])?.[1] ?? "" }));
+  const propsHave = (r: Rendered, s: string) => r.client.some((c) => { try { return JSON.stringify(c.props ?? {}).includes(s); } catch { return false; } });
+  const sqlOf = (qs: string[], table: string) => qs.filter((q) => new RegExp(`FROM "(?:public"\\.")?${table}"`).test(q)).at(-1) ?? "";
+  const VW: [string, Any, boolean][] = [["O", W.owner, false], ["M", W.mgr, false], ["MB", W.mgrU1, false], ["P", W.pay, false], ["PB", W.payU1, false], ["K", W.kiosk, false], ["N", W.member, false], ["SL", W.staffL, true]];
+  const WANT_ATT: Record<string, boolean> = { O: true, M: true, MB: true, P: false, PB: false, K: false, N: false, SL: true }; // premise = nav.ts:47-48 (roster || linked) on this fixture
+  const f1: string[] = [], f2: string[] = [], f3: string[] = [], info: string[] = [];
+  let ctlE = false, ctlL = false;
+  for (const [k, w, linked] of VW) {
+   const tabs = ((await M.ui.hrTabsFor?.(X.HRS, own(w), linked)) ?? []) as { href: string }[], tabAtt = tabs.some((t) => isAtt(t.href));
+   const pg = await renderPage(attPg, w.cookie, ATT, { id: X.HRS }, {}, "th"), pg404 = /NEXT_HTTP_ERROR_FALLBACK|NEXT_NOT_FOUND/.test(pg.err);
+   if (tabAtt !== WANT_ATT[k]) f1.push(`${k}:premise tabs=${tabAtt}`);
+   if (tabAtt === pg404 || (!pg404 && !!pg.err)) f1.push(`${k}:ctl tabs=${tabAtt} page=${pg.err ? pg.err.slice(0, 40) : "ok"}`);
+   const gate = priv.hrPageAccessOf?.(own(w)) ?? {};
+   const sigE = sqlOf(await capture(() => svc.listEmployees(ctx, 200, scp.hrScopeOf(own(w)))), "HrEmployee");
+   const sigL = sqlOf(await capture(() => svc.pendingLeaves(ctx, 100, svc.leaveListScopeOf(own(w), w.id))), "HrLeave");
+   let hub: Rendered = { html: "", client: [], clientText: "", err: "" };
+   const qs = await capture(async () => { hub = await view(w); });
+   const as = anchors(hub.html), card = as.some((a) => isAtt(a.href) && /(^|\s)card(\s|$)/.test(a.cls)), anyAtt = as.some((a) => isAtt(a.href)) || propsHave(hub, ATT);
+   const readE = !!sigE && qs.includes(sigE), readL = !!sigL && qs.includes(sigL);
+   info.push(`${k}:tabs=${tabs.length}${tabAtt ? "+att" : ""} page=${pg404 ? 404 : "ok"} card=${card} reg=${gate.register} leave=${gate.leave} empSQL=${readE} leaveSQL=${readL}${sigL ? "" : "(no sig)"}`);
+   if (hub.err) f1.push(`${k}:render ${hub.err.slice(0, 50)}`);
+   if (tabAtt && !card) f1.push(`${k}:no card`);
+   if (!tabAtt && anyAtt) f1.push(`${k}:link to 404${card ? " (card)" : ""}`);
+   if (!sigE) f2.push(`${k}:no listEmployees SQL learnt`);
+   if (gate.register !== true && readE) f2.push(`${k}:listEmployees read (register=false)`);
+   if (gate.leave !== true && readL) f3.push(`${k}:pendingLeaves read (leave=false)`);
+   if (k === "O") { ctlE = readE; ctlL = readL; }
+  }
+  console.log(`  ℹ F5 ${info.join(" · ")}`);
+  chk("F1", !f1.length, "card iff tab · no 404 link", L(f1));
+  chk("F2", ctlE && !f2.length, "only register viewers", `${L(f2)} control(O read)=${ctlE}`);
+  chk("F3", ctlL && !f3.length, "only leave viewers", `${L(f3)} control(O read)=${ctlL}`);
+ }
 } catch (e) {
  crashed = errText(e);
  console.log(`🔴 harness error: ${crashed} ${(e as Error)?.stack?.split("\n").slice(1, 4).join(" | ")}`);
