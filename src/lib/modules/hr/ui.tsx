@@ -53,6 +53,13 @@ import { HrLaborCard } from "./labor-ui"; // HR H4.2 ▸ การ์ดค่�
 export { hrViewerOf } from "./privacy"; // HR H2.11 ▸ ผู้ดูของหน้า /hr/requests (หน้านั้น import ได้เฉพาะ facade + ui) ◂
 import { hrNavFilter, type HrNavViewer } from "./nav"; // HR H2.10 ▸ แท็บตามผู้ดู ◂
 import { employeeOfUser } from "./service"; // HR H2.10 ◂
+import { canRunKiosk } from "./clock-settings"; // HR VIS-5b ▸ บัญชีจอลงเวลาอย่างเดียว = ไม่มีแถบแท็บ ◂
+import { canReadRoster } from "./roster-board"; // HR VIS-5b ◂
+import { canOpenInbox } from "./inbox"; // HR VIS-5b ◂
+import { canViewPayroll } from "@/lib/core/rbac"; // HR VIS-5b ◂
+import { hrAccessOf } from "./privacy"; // HR VIS-5b ◂
+import { boardFactsOf, kpisOf } from "./hub-rules"; // HR VIS-5b ▸ ตัวเลขของภาพรวมทีม (ฟังก์ชันล้วน) ◂
+import { HrDueStrip, HrHubHeader, HrKioskCard, HrMonthCard, HrTodayBoard } from "./hub-ui"; // HR VIS-5b ▸ ส่วนของภาพ 01 ◂
 
 // HR H0.3 ▸ clockAction คืน { ok, reason } (ข้อความปฏิเสธคงที่ สำหรับผู้เรียกที่อ่านผล) — ฟอร์มธรรมดาไม่อ่านค่าที่คืน
 //   (ปุ่มถูกซ่อนจากคนที่จะถูกปฏิเสธอยู่แล้ว) ⇒ แคบชนิดให้เข้ากับ <form action> · ตัวฟังก์ชันคือ server action ตัวเดิม ◂
@@ -104,6 +111,13 @@ export function hrTabs(systemId: string): { href: string; label: string }[] {
   ];
 }
 
+// HR VIS-5b ▸ บัญชีจอลงเวลาอย่างเดียว (มติ 5b-2): เปิดจอลงเวลาได้ แต่ไม่อ่านตารางกะ · ไม่ผูกพนักงาน · ไม่เห็นคำขอ · ไม่ดูเงินเดือน · ไม่เปิดประวัติพนักงาน
+//   ⇒ ไม่มีแถบแท็บ (ทั้ง hub และ /hr/kiosk) และหน้า hub มีการ์ดเดียว "เปิดจอลงเวลา" — ด่านของแต่ละหน้าไม่เปลี่ยน (หน้าเดิมยังตัดสินเอง) ◂
+export function hrKioskOnly(v: HrNavViewer, linked: boolean): boolean {
+  const m = { role: v.role as "OWNER", unitAccess: (Array.isArray(v.unitAccess) ? v.unitAccess : []) as string[], permissions: (v.permissions ?? {}) as Record<string, unknown>, userId: String(v.userId ?? "") };
+  return canRunKiosk(m) && !canReadRoster(m) && !linked && !canOpenInbox(m) && !canViewPayroll(m) && !hrAccessOf(m).openProfile;
+}
+
 // HR H2.10 ▸ แท็บที่ผู้ดูเปิดได้จริง (หนี้ VIS-1: แท็บที่กดแล้ว 404 ไม่แสดง) + "ของฉัน" เมื่อบัญชีผูกกับพนักงาน — hrTabs ข้างบนคงเดิม (ทะเบียนชุดเดียวกับ layout.tsx)
 //   ไม่ส่ง viewer/linked = อ่านจากเซสชันเอง (requireTenant + employeeOfUser) ◂
 export async function hrTabsFor(systemId: string, viewer?: HrNavViewer, linked?: boolean): Promise<{ href: string; label: string }[]> {
@@ -114,7 +128,7 @@ export async function hrTabsFor(systemId: string, viewer?: HrNavViewer, linked?:
     v ??= { role: auth.active.role, unitAccess: auth.active.unitAccess, permissions: auth.active.permissions, userId: auth.user.id };
     l ??= (await employeeOfUser(auth.active.tenantId, auth.user.id))?.systemId === systemId; // ผูกกับระบบ HR นี้เท่านั้น
   }
-  return hrNavFilter(hrTabs(systemId), v, { linked: l });
+  return hrKioskOnly(v, l) ? [] : hrNavFilter(hrTabs(systemId), v, { linked: l }); // HR VIS-5b ▸ บัญชีจอลงเวลาอย่างเดียว = [] ◂
 }
 
 // ───────────── ลงเวลา (attendance) ─────────────
@@ -716,13 +730,21 @@ export async function HrKioskSection({ systemId }: { systemId: string }) {
 
 // ───────────── HrHub (หน้าภาพรวม ฝังใน /app/sys/[id]) ─────────────
 // การ์ดสรุปสั้น + ลิงก์เข้าแต่ละฟังก์ชัน (ไม่ dump ทุก section แล้ว — แตกเป็นหน้าย่อยจริง)
-export async function HrHub({ systemId }: { systemId: string }) {
+export async function HrHub({ systemId, day, unit }: { systemId: string; day?: string; unit?: string }) { // HR VIS-5b ▸ + day · unit (บอร์ดของวัน/สาขาที่เลือก) ◂
   const auth = await requireTenant();
   const ctx: Ctx = { tenantId: auth.active.tenantId, systemId };
+  // HR VIS-5b ▸ แท็บตามผู้ดู — [] = บัญชีจอลงเวลาอย่างเดียว ⇒ การ์ดเดียว "เปิดจอลงเวลา" (ไม่มีตัวนับ/ลิงก์อื่น) ◂
+  const tabs = await hrTabsFor(systemId);
+  if (!tabs.length) return <HrKioskCard systemId={systemId} />;
 
   // HR H1.1 ▸ การ์ดนับ = ขอบเขตเดียวกับหน้ารายการ (แถว + สาขา) ◂
   const hv = hrViewerOf(auth);
-  const [employees, pending] = await Promise.all([listEmployees(ctx, 200, hrScopeOf(hv)), pendingLeaves(ctx, 100, leaveListScopeOf(hv, hv.userId))]);
+  // HR VIS-5b ▸ F5: ด่านหน้า (hrPageAccessOf) ก่อนอ่าน — อ่านรายชื่อเฉพาะผู้เปิดหน้าพนักงานได้ · ใบลารออนุมัติเฉพาะผู้เปิดหน้าใบลาได้ (ไม่มีการอ่านที่ไม่ได้แสดง) ◂
+  const pageOk = hrPageAccessOf(hv); // HR PRIV-3 ▸ R5 ◂ · HR VIS-5b ▸ ย้ายขึ้นก่อนการอ่าน ◂
+  const [employees, pending] = await Promise.all([
+    pageOk.register ? listEmployees(ctx, 200, hrScopeOf(hv)) : [],
+    pageOk.leave ? pendingLeaves(ctx, 100, leaveListScopeOf(hv, hv.userId)) : [],
+  ]); // HR VIS-5b ◂
   // CRM C3.6 ▸ ลิงก์ "ทีมขาย" โชว์เฉพาะคนที่เปิดหน้าทีมได้จริง — กติกาต้นฉบับ: `crmCan(actor, "crm.team.manage")` ใน
   //   src/lib/modules/crm/access.ts (+ ด่านของหน้า src/app/app/settings/teams/page.tsx) · ถ้าแก้ที่นั่น ต้องแก้ที่นี่ตาม (หน้านั้น: OWNER หรือคีย์ `crm.team.manage` — คีย์ของเจ้าของร้าน
   //   ที่ MANAGER ไม่ได้โดยปริยาย) · ไม่ import โมดูล CRM (เส้น hr→crm ไม่อยู่ใน ALLOWED_EDGES) ⇒ อ่านจาก membership ตรง ◂
@@ -735,27 +757,48 @@ export async function HrHub({ systemId }: { systemId: string }) {
     })) > 0;
 
   // HR PRIV-3 ▸ R5: การ์ดใบลา/พนักงาน (+ จำนวนคน)/เงินเดือน เฉพาะผู้เปิดหน้านั้นได้ (hrPageAccessOf — ด่านเดียวกับหน้า · ไม่มีลิงก์ไป 404) ◂
-  const pageOk = hrPageAccessOf(hv);
+  // HR VIS-5b ▸ F5: pageOk ย้ายขึ้นก่อนการอ่าน · การ์ดลงเวลาเฉพาะผู้ที่แท็บของตนมี /hr/attendance (ด่านเดียวกับแถบเมนู · ไม่มีลิงก์ไป 404) ◂
+  const attHref = `/app/sys/${systemId}/hr/attendance`; // HR VIS-5b ◂
+  const attOk = tabs.some((t) => t.href === attHref); // HR VIS-5b ◂
   const cards = [
     { href: `/app/sys/${systemId}/hr/attendance`, label: "ลงเวลา", desc: "เข้า/ออกงาน + ประวัติ" },
     { href: `/app/sys/${systemId}/hr/leave`, label: "ใบลา", value: `${pending.length} รออนุมัติ`, desc: "อนุมัติ/ยื่นใบลา", ok: pageOk.leave },
     { href: `/app/sys/${systemId}/hr/employees`, label: "พนักงาน", value: `${employees.length} คน`, desc: "รายชื่อ + เพิ่มพนักงาน", ok: pageOk.register },
     { href: `/app/sys/${systemId}/hr/payroll`, label: "เงินเดือน", desc: "โปรไฟล์ + รอบจ่าย + สลิป", ok: pageOk.payroll },
-  ].filter((c) => c.ok !== false); // HR PRIV-3 ◂
+  ].filter((c) => c.ok !== false && (c.href !== attHref || attOk)); // HR PRIV-3 ◂ · HR VIS-5b ▸ การ์ดลงเวลา iff แท็บ ◂
   // HR H1.2 ▸ R9 หน้าตั้งค่า (กะ · ประเภทการลา · วันหยุด) — OWNER หรือ hr.employee.create ◂
   const canSettings = canManageHrSettings(hv);
   // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) เหนือการ์ดเดิม เมื่อผู้ดูมีส่วนใดส่วนหนึ่ง · ตัวอย่างคำขอ 5 รายการแรก ◂
-  const { overview, preview } = await teamOverviewWithPreview(ctx, hv); // HR H2.11 ◂
+  const { overview, preview } = await teamOverviewWithPreview(ctx, hv, { day, unit }); // HR H2.11 ◂ · HR VIS-5b ▸ + day · unit ◂
   // HR H3.9 ▸ รายงาน (ไม่มีแท็บใหม่ — มติ Q7): ลิงก์บนการ์ดภาพรวม + การ์ดลิงก์ · แสดงเมื่อผู้ดูเปิดรายงานได้อย่างน้อย 1 ชนิด ◂
   const tRep = await getTranslations("hr.report"); // HR H3.9 ◂
   const reportsLink = reportAccessOf(hv).reports.length > 0 ? { label: tRep("link"), desc: tRep("linkDesc") } : null; // HR H3.9 ◂
+  // HR VIS-5b ▸ ภาพ 01: ตัวเลข 5 ช่อง + ข้อเท็จจริงของบอร์ด (hub-rules) · การ์ดค่าแรงวาดก่อน (null = ผู้ดูไม่เห็นเงิน → ไม่มีช่องว่างในคอลัมน์ซ้าย · การ์ดตัดสินเองเหมือนเดิม) ·
+  //   การ์ดเดือนเฉพาะผู้เปิดรายงานเวลาได้ · แถบใกล้ครบกำหนดเฉพาะผู้ที่ lifecycleDue คืนค่า ◂
+  const board = overview?.board ?? null;
+  const access = reportAccessOf(hv);
+  const labor = overview ? await HrLaborCard({ systemId }) : null;
 
   return (
     <div className="flex flex-col gap-5">
-      {/* HR H2.10 ▸ แท็บตามผู้ดู ◂ */}
-      <ModuleTabs items={await hrTabsFor(systemId)} />
-      {overview && <HrTeamOverviewSection systemId={systemId} overview={overview} preview={preview} reports={reportsLink} labor={<HrLaborCard systemId={systemId} />} /> /* HR H2.11 ◂ · HR H3.9 ▸ reports ◂ · HR H4.2 ▸ labor ◂ */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+      {/* HR H2.10 ▸ แท็บตามผู้ดู ◂ · HR VIS-5b ▸ ขึ้นบรรทัดใหม่ที่จอ ≥ md แทนการตัดแท็บท้าย ◂ */}
+      <ModuleTabs items={tabs} wrap />
+      {overview && (
+        <HrTeamOverviewSection
+          systemId={systemId}
+          overview={overview}
+          preview={preview}
+          reports={reportsLink}
+          labor={labor}
+          kpis={board ? kpisOf(board) : null}
+          facts={board ? boardFactsOf(board) : null}
+          header={board ? <HrHubHeader systemId={systemId} board={board} canRoster={canReadRoster(hv)} canAdd={canSettings} /> : null}
+          board={board ? <HrTodayBoard board={board} /> : null}
+          month={access.reports.includes("time") ? <HrMonthCard ctx={ctx} viewer={hv} systemId={systemId} ot={access.reports.includes("ot")} attendance={attOk} /> : null}
+          due={overview.lifecycleDue !== null ? <HrDueStrip ctx={ctx} viewer={hv} systemId={systemId} /> : null}
+        /> /* HR H2.11 ◂ · HR H3.9 ▸ reports ◂ · HR H4.2 ▸ labor ◂ · HR VIS-5b ▸ ภาพ 01 ◂ */
+      )}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4" /* HR VIS-5b ▸ การ์ดลิงก์ไว้ล่างสุด แบบกระชับ ◂ */>
         {cards.map((c) => (
           <Link
             key={c.href}
