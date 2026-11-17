@@ -739,7 +739,12 @@ export async function HrHub({ systemId, day, unit }: { systemId: string; day?: s
 
   // HR H1.1 ▸ การ์ดนับ = ขอบเขตเดียวกับหน้ารายการ (แถว + สาขา) ◂
   const hv = hrViewerOf(auth);
-  const [employees, pending] = await Promise.all([listEmployees(ctx, 200, hrScopeOf(hv)), pendingLeaves(ctx, 100, leaveListScopeOf(hv, hv.userId))]);
+  // HR VIS-5b ▸ F5: ด่านหน้า (hrPageAccessOf) ก่อนอ่าน — อ่านรายชื่อเฉพาะผู้เปิดหน้าพนักงานได้ · ใบลารออนุมัติเฉพาะผู้เปิดหน้าใบลาได้ (ไม่มีการอ่านที่ไม่ได้แสดง) ◂
+  const pageOk = hrPageAccessOf(hv); // HR PRIV-3 ▸ R5 ◂ · HR VIS-5b ▸ ย้ายขึ้นก่อนการอ่าน ◂
+  const [employees, pending] = await Promise.all([
+    pageOk.register ? listEmployees(ctx, 200, hrScopeOf(hv)) : [],
+    pageOk.leave ? pendingLeaves(ctx, 100, leaveListScopeOf(hv, hv.userId)) : [],
+  ]); // HR VIS-5b ◂
   // CRM C3.6 ▸ ลิงก์ "ทีมขาย" โชว์เฉพาะคนที่เปิดหน้าทีมได้จริง — กติกาต้นฉบับ: `crmCan(actor, "crm.team.manage")` ใน
   //   src/lib/modules/crm/access.ts (+ ด่านของหน้า src/app/app/settings/teams/page.tsx) · ถ้าแก้ที่นั่น ต้องแก้ที่นี่ตาม (หน้านั้น: OWNER หรือคีย์ `crm.team.manage` — คีย์ของเจ้าของร้าน
   //   ที่ MANAGER ไม่ได้โดยปริยาย) · ไม่ import โมดูล CRM (เส้น hr→crm ไม่อยู่ใน ALLOWED_EDGES) ⇒ อ่านจาก membership ตรง ◂
@@ -752,13 +757,15 @@ export async function HrHub({ systemId, day, unit }: { systemId: string; day?: s
     })) > 0;
 
   // HR PRIV-3 ▸ R5: การ์ดใบลา/พนักงาน (+ จำนวนคน)/เงินเดือน เฉพาะผู้เปิดหน้านั้นได้ (hrPageAccessOf — ด่านเดียวกับหน้า · ไม่มีลิงก์ไป 404) ◂
-  const pageOk = hrPageAccessOf(hv);
+  // HR VIS-5b ▸ F5: pageOk ย้ายขึ้นก่อนการอ่าน · การ์ดลงเวลาเฉพาะผู้ที่แท็บของตนมี /hr/attendance (ด่านเดียวกับแถบเมนู · ไม่มีลิงก์ไป 404) ◂
+  const attHref = `/app/sys/${systemId}/hr/attendance`; // HR VIS-5b ◂
+  const attOk = tabs.some((t) => t.href === attHref); // HR VIS-5b ◂
   const cards = [
     { href: `/app/sys/${systemId}/hr/attendance`, label: "ลงเวลา", desc: "เข้า/ออกงาน + ประวัติ" },
     { href: `/app/sys/${systemId}/hr/leave`, label: "ใบลา", value: `${pending.length} รออนุมัติ`, desc: "อนุมัติ/ยื่นใบลา", ok: pageOk.leave },
     { href: `/app/sys/${systemId}/hr/employees`, label: "พนักงาน", value: `${employees.length} คน`, desc: "รายชื่อ + เพิ่มพนักงาน", ok: pageOk.register },
     { href: `/app/sys/${systemId}/hr/payroll`, label: "เงินเดือน", desc: "โปรไฟล์ + รอบจ่าย + สลิป", ok: pageOk.payroll },
-  ].filter((c) => c.ok !== false); // HR PRIV-3 ◂
+  ].filter((c) => c.ok !== false && (c.href !== attHref || attOk)); // HR PRIV-3 ◂ · HR VIS-5b ▸ การ์ดลงเวลา iff แท็บ ◂
   // HR H1.2 ▸ R9 หน้าตั้งค่า (กะ · ประเภทการลา · วันหยุด) — OWNER หรือ hr.employee.create ◂
   const canSettings = canManageHrSettings(hv);
   // HR H2.11 ▸ ภาพรวมทีม (ภาพ 01) เหนือการ์ดเดิม เมื่อผู้ดูมีส่วนใดส่วนหนึ่ง · ตัวอย่างคำขอ 5 รายการแรก ◂
@@ -787,7 +794,7 @@ export async function HrHub({ systemId, day, unit }: { systemId: string; day?: s
           facts={board ? boardFactsOf(board) : null}
           header={board ? <HrHubHeader systemId={systemId} board={board} canRoster={canReadRoster(hv)} canAdd={canSettings} /> : null}
           board={board ? <HrTodayBoard board={board} /> : null}
-          month={access.reports.includes("time") ? <HrMonthCard ctx={ctx} viewer={hv} systemId={systemId} ot={access.reports.includes("ot")} /> : null}
+          month={access.reports.includes("time") ? <HrMonthCard ctx={ctx} viewer={hv} systemId={systemId} ot={access.reports.includes("ot")} attendance={attOk} /> : null}
           due={overview.lifecycleDue !== null ? <HrDueStrip ctx={ctx} viewer={hv} systemId={systemId} /> : null}
         /> /* HR H2.11 ◂ · HR H3.9 ▸ reports ◂ · HR H4.2 ▸ labor ◂ · HR VIS-5b ▸ ภาพ 01 ◂ */
       )}

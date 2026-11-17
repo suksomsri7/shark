@@ -14,7 +14,7 @@ const NEW_LIST = ["hr-people-add", "hr-people-add-name", "hr-people-tab-*", "hr-
 const NEW_PROF = ["hr-profile-tab-*", "hr-profile-edit", "hr-profile-mask-*", "hr-profile-reveal-*", "hr-profile-connections", "hr-profile-footer"];
 const PIN: Record<string, [string, string, string]> = {
  loadEmployeeProfileForViewer: [`${H}privacy.ts`, "f81f520fb7d77683", "PRIV-2"], employeeProfileInputFromForm: [`${H}privacy.ts`, "4881fef53b09c73e", "save"], hrAccessOf: [`${H}privacy.ts`, "f43b250508aacf7a", ""],
- saveEmployeeProfileAction: [`${H}actions.ts`, "a6b692f433368d6c", "action"], createEmployeeAction: [`${H}actions.ts`, "c68d95dd92bd1867", "action"], updateEmployeeAction: [`${H}actions.ts`, "137847337e737078", "action"], setWorkScheduleAction: [`${H}actions.ts`, "dddbcec35f25a1bd", "action"], removeEmployeeAction: [`${H}actions.ts`, "b399879cfad42bc0", "action"],
+ saveEmployeeProfileAction: [`${H}actions.ts`, "a6b692f433368d6c", "action"], createEmployeeAction: [`${H}actions.ts`, "9c1d60297014fae7", "action"] /* HR VIS-5c re-merge ▸ PRIV-3 R12 hrTargetOwned line · was c68d95dd92bd1867 ◂ */, updateEmployeeAction: [`${H}actions.ts`, "6a17e260ed2a0b9c", "action"] /* HR VIS-5c re-merge ▸ PRIV-3 R12 · was 137847337e737078 ◂ */, setWorkScheduleAction: [`${H}actions.ts`, "dddbcec35f25a1bd", "action"], removeEmployeeAction: [`${H}actions.ts`, "522b543a32fb3f5d", "action"] /* HR VIS-5c re-merge ▸ PRIV-3 R12 · was b399879cfad42bc0 ◂ */,
  leaveBalances: [`${H}leave.ts`, "44b7c4aa34a74ca7", ""], cardSubjectOf: [`${H}lifecycle.ts`, "5057bcecdc12fe88", ""], employeeLineStatus: [`${H}line-link.ts`, "6fa7baa0c6e4a7e0", ""], loadLifecycleForViewer: [`${H}lifecycle.ts`, "7bbf9b480808bea4", ""],
  employeesOnLeave: [`${H}service.ts`, "1520032d528518dd", ""], listEmployees: [`${H}service.ts`, "fefee646530f092a", ""], listRemovedEmployees: [`${H}service.ts`, "ef0397108564fb00", ""],
 };
@@ -83,7 +83,7 @@ if (!built && !FORCE) R.skipExit(["no HR VIS-5c marker in people-rules.ts / peop
  chk("S7", !gone.length, "all present", L(gone));
  const formTag = (s: string) => /<form\b[^>]*>/.exec(s)?.[0] ?? "∅", guardImp = (s: string) => importsOf(s).filter((i) => /hr\/(privacy|scope)$/.test(i.spec)).map((i) => i.spec).sort().join();
  const pg = stripComments(rd(F.prof)), forms = pg.match(/<EmployeeProfileForm\b[^>]*\/>/g) ?? [];
- const s8 = { formTag: formTag(rd(F.form)) === formTag(fileAt(BASE, F.form) ?? ""), sharedImp: /from\s+["']\.\/privacy-shared["']/.test(rd(F.form)), noGuardImport: guardImp(rd(F.list)) === guardImp(fileAt(BASE, F.list) ?? "") && pageGuard?.guarded === false,
+ const s8 = { formTag: formTag(rd(F.form)) === formTag(fileAt(BASE, F.form) ?? ""), sharedImp: /from\s+["']\.\/privacy-shared["']/.test(rd(F.form)), noGuardImport: guardImp(rd(F.list)) === guardImp(fileAt(BASE, F.list) ?? "") && pageGuard?.guarded === true, /* HR VIS-5c re-merge ▸ PRIV-3 R1 gated the register page (requireHrPage · row dropped from PAGE_GUARD_BASELINE) ⇒ the page must stay guarded · was guarded === false ◂ */
   oneForm: forms.length === 1 && /systemId=\{id\}\s+emp=\{view\.profile\}\s+canSeeSensitive=\{sensitive\}/.test(forms[0] ?? ""), viewRefs: [...new Set([...pg.matchAll(/\bview\.(\w+)/g)].map((x) => x[1]))].sort().join() === "canSeeSensitive,docs,profile", noRaw: !/getEmployee|tenantDb|hrEmployee|hr\/service/.test(pg), marker: rd(UI).includes("// ───────────── พนักงาน (employees)") };
  chk("S8", all(s8), "all", fails(s8));
  const pr = rd(F.prules), pu = rd(F.pui);

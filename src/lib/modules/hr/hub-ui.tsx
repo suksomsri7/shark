@@ -263,7 +263,8 @@ const num = (v: unknown) => {
   const n = Number(v ?? 0);
   return Number.isFinite(n) ? n : 0;
 };
-export async function HrMonthCard({ ctx, viewer, systemId, ot }: { ctx: Ctx; viewer: HrViewer; systemId: string; ot: boolean }) {
+// HR VIS-5b ▸ F5: attendance = แท็บของผู้ดูมี /hr/attendance (HrHub ตัดสิน) · false ⇒ แถวคุยกันเป็นแถวธรรมดา ไม่มีลิงก์ปฏิทิน (ไม่มีลิงก์ไป 404) ◂
+export async function HrMonthCard({ ctx, viewer, systemId, ot, attendance }: { ctx: Ctx; viewer: HrViewer; systemId: string; ot: boolean; attendance: boolean }) {
   const t = await getTranslations("hr.hub");
   const ta = await getTranslations("hr.attendance");
   const locale = await getLocale();
@@ -312,9 +313,11 @@ export async function HrMonthCard({ ctx, viewer, systemId, ot }: { ctx: Ctx; vie
                 <b className="font-semibold">{r.name}</b>
                 {` · ${t("month.talkLine", { n: r.late, min: r.lateMin })}${r.absent > 0 ? ` · ${t("month.talkAbsent", { n: r.absent })}` : ""}`}
               </span>
-              <Link href={`${base}/hr/attendance?view=month&employee=${encodeURIComponent(r.id)}`} className="inline-flex min-h-[44px] shrink-0 items-center text-sm font-medium text-[color:var(--color-accent)]">
-                {t("month.calendar")}
-              </Link>
+              {attendance && ( // HR VIS-5b ▸ F5: ลิงก์ปฏิทินเฉพาะผู้มีแท็บลงเวลา ◂
+                <Link href={`${base}/hr/attendance?view=month&employee=${encodeURIComponent(r.id)}`} className="inline-flex min-h-[44px] shrink-0 items-center text-sm font-medium text-[color:var(--color-accent)]">
+                  {t("month.calendar")}
+                </Link>
+              )}
             </div>
           ))
         )}

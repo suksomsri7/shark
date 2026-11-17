@@ -804,3 +804,10 @@
 - ทรีผู้คุม shark-hr-c ยังอยู่ `tmp/walk-vis5b` + serve :3226 (unit hr-rewalk-r3) + ข้อมูลเดินหน้าจอบน QC4
 - ลำดับตอนกลับมา: (1) VIS-5a/5b re-merge session/hr + ผู้เขียนข้อสอบ re-pin → ภาพ → merge (2) VIS-5c (3) HF-TENANT hotfix บน main: โค้ด = hr-target.ts + 8 ปุ่มเงินเดือน + 4 ปุ่มพนักงาน · migration ของ main เอง (HrSalaryProfile + HrPayrollRun full unique → มี tenantId · create ก่อน drop IF EXISTS) · แก้ migration V2 20261202 ให้ DROP IF EXISTS และถอดดัชนีของ hotfix ด้วย → ข้อสอบ + ผู้ตรวจ → **ขอ GO เจ้าของ** (4) VIS-5d, VIS-5e (5) ด่าน pm-full (EXTRA ตามบล็อก CHECKPOINT ก่อนพัก + qc-hr-priv-3b · MIGRATE=1 · seed-hr-walk --down ก่อน) → HANDOVER-H4 → push → 41/44 (6) เดินหน้าจอซ้ำ → 42/44 (7) H5.3
 - หนี้เพิ่มจาก PRIV-3: ข้อความ "ไม่พบ…" ในตัวตรวจเป็นสำเนาของชั้นบริการ (ผูกด้วยค่าคงที่ร่วม) · ปุ่มใน ot/swap/roster/lifecycle/line/labor อาศัย "ค้นไม่เจอ" · R13 ต่างเวลา · reports/export 400 vs 404
+
+## ▶️ กลับมาเดินต่อ — 2026-11-17 (เจ้าของสั่ง "ทำงาน HR V2 ต่อ") · 40/44
+- ตรวจตอนเริ่ม: ทุกทรีสะอาด · session/hr ในเครื่อง a49f81829 (นำ origin 104 ยังไม่ push) · unit hr-rewalk-* จบแล้ว · serve :3226 ของ shark-hr-c ยังเปิด
+- ขั้น (1) เปิดแล้ว 2 เลนขนาน (ตัวแทนชุดใหม่ของ session นี้ · ตัวแทนเดิมเรียกต่อไม่ได้):
+  - เลน 3 `wip/hr-vis-5a` — รวม session/hr (ชน: qc-hr-h3.6 / h3.9 / h4.3-lib / priv-2) + migrate ฐานเลน + รันข้อสอบ + typecheck → บันทึก `ledger/wo-notes/hr-VIS-5a-remerge.md`
+  - เลน 1 `wip/hr-vis-5bc` — รวม session/hr (ชน: qc-hr-h4.3-lib / priv-2 / walk-hr-matrix.json) + re-pin hrNavFilter + ปรับ vis-5c S1/S8 + รายงานว่า F5 เหลืออะไร → `ledger/wo-notes/hr-VIS-5b-remerge.md`
+- ถัดไป: เพิ่ม OT ใน seed-hr-walk → build+ถ่ายภาพ VIS-5a รอบยืนยัน → F5 ของ VIS-5b → merge ทั้งสองใบ → VIS-5c → HF-TENANT (ต้องขอ GO) → VIS-5d/5e → ด่าน pm-full
