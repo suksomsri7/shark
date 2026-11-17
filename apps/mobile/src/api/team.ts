@@ -148,6 +148,7 @@ export function listTimeOf(iso: string, nowMs: number, lang: "th" | "en"): strin
   return `${local.getUTCDate()}/${local.getUTCMonth() + 1}`;
 }
 
+// 17 พ.ย. 2026 (เจ้าของยืนยัน): แอปยังไม่ส่งรีวิว Apple ⇒ ลิงก์นี้ยังไม่เปิดสาธารณะ — ปุ่ม "ส่งลิงก์ดาวน์โหลดแอป" ใช้ได้จริงหลังแอปออกสโตร์แล้วเท่านั้น (ห้ามเปลี่ยนลิงก์)
 /** ลิงก์ดาวน์โหลดแอป (App Store) — แผ่นแชร์ของเครื่องเมื่อเบอร์ยังไม่มี Lekaa · id = ascAppId ใน eas.json (th.in.shark.ai) */
 export const LEKAA_APP_URL = "https://apps.apple.com/app/id6793749205";
 

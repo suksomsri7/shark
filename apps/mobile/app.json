@@ -13,6 +13,7 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true,
         "UISupportedInterfaceOrientations~ipad": [
           "UIInterfaceOrientationPortrait",
           "UIInterfaceOrientationPortraitUpsideDown",
@@ -101,6 +102,10 @@
         }
       ]
     ],
+    "locales": {
+      "th": "./locales/th.json",
+      "en": "./locales/en.json"
+    },
     "scheme": "sharkai",
     "backgroundColor": "#ffffff",
     "extra": {

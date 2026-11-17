@@ -1,5 +1,20 @@
 # B27 TEAM CHAT — handoff (15 Nov 2026 · continued 17 Nov 2026)
 
+## ▶ 17 Nov 2026 follow-up (owner: permission prompts in Thai AND English · App Store link)
+- iOS permission strings are localized through app config `locales` (`apps/mobile/locales/th.json`, `en.json`, key `ios`) +
+  `ios.infoPlist.CFBundleAllowMixedLocalizations: true`. Every usage string the config resolves to has th + en: contacts, photos, camera,
+  microphone (image-picker default), calendars + calendars full access, reminders + reminders full access, Face ID (secure-store default).
+  Thai wording kept exactly; English = plain equivalents (mic/Face ID: "Allow Lekaa to …", Thai "อนุญาตให้ Lekaa …").
+  The default (non-localized) Info.plist values are unchanged (plugin strings in app.json — Thai; mic/Face ID plugin English defaults).
+  Android: no user-visible permission rationale strings in config → left alone.
+- Validated: `npx expo config --type introspect` (iso.sh) EXIT 0 — `CFBundleAllowMixedLocalizations` true, `locales` {th, en}, default contacts string Thai.
+  `expo prebuild --platform ios --no-install` in a scratch copy (not in the worktree) EXIT 0 → `ios/Lekaa/Supporting/en.lproj/InfoPlist.strings`
+  and `th.lproj/InfoPlist.strings` each contain all 9 keys; Info.plist keeps the Thai defaults.
+- `LEKAA_APP_URL`: owner confirmed the app has **not been submitted to Apple review** ⇒ the link is not public; the "ส่งลิงก์ดาวน์โหลดแอป"
+  share only works after release. Link unchanged; dated note added next to the constant in `apps/mobile/src/api/team.ts`.
+- Re-verified after the last UI fixes: `qc-team-chat` **86/86** · mobile `tsc --noEmit` **EXIT 0**.
+- Like expo-contacts, the localized prompts ship with the next native build only.
+
 ## ▶ 17 Nov 2026 session (read this first — supersedes the 15 Nov status below)
 - Owner approved **all 5 screens of team4.png** — the "ON HOLD" notes below no longer apply; the + menu, group create, group settings are built.
 - Commits on `wip/b27-team` (not pushed, not merged): `e398dc758` push guard + QC · `05c542f49` group UI + contacts · `3f82a7d65` qc/docs ·
@@ -26,7 +41,7 @@
 - Lekaa FAB: not on this branch. Rooms (DM + group = same file) keep `TEAM_COMPOSER` + `TODO(b27-fab)`; list keeps `TEAM_LIST_FAB_CLEARANCE`.
 - Push guard: `notifyTeamMessage` sends at most 1 push per (recipient, thread) per 30 s (`TEAM_PUSH_WINDOW_MS`), per process, like secretary `notifyUser`.
 - Raw SQL in `team-chat/service.ts`: reviewed — tagged `$queryRaw` only (bound params), tenant on both join sides; added `leftAt IS NULL` to the last-message join.
-- Not done / not verified: App Store link `LEKAA_APP_URL` (owner) · `qc-sec-s2.14` / `click-sec.mjs` click run not re-run (buttons-sec.json was
+- Not done / not verified: App Store link `LEKAA_APP_URL` (not public until release — see follow-up above) · `qc-sec-s2.14` / `click-sec.mjs` click run not re-run (buttons-sec.json was
   regenerated, so `clicks-sec.json` is now stale vs the registry) · no new migration in this session.
 
 ## (15 Nov) Status: NOT VERIFIED — superseded by the 17 Nov block above
