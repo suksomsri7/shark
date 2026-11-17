@@ -53,6 +53,10 @@ export function diffStatics(tk: Tk): { outside: string[]; bad: string[]; files: 
   if (me.files.includes(f)) { for (const h of hunksOf(f)) if (!marked(h, MARK[tk])) bad.push(`${f.split("/").slice(-2).join("/")}@${h.a}:unmarked`); continue; }
   if (me.fresh.includes(f)) { const b = fileAt(BASE, f); if (b !== null || !rd(f).split("\n").slice(0, 3).join("\n").includes(MARK[tk])) bad.push(`${f.split("/").pop()}:header`); continue; }
   if (oracleOk(f)) continue;
+  // ORACLE-EDIT (HR VIS-5c · controller) R4: the other VIS-5 ticket's files on a shared lane — accepted only when every hunk adds that ticket's marker (fresh file: base has none + marker in lines 1-3) · never the whole file ◂
+  const otherTk: Tk = tk === "5b" ? "5c" : "5b"; // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  if (other.files.includes(f) && hunksOf(f).length > 0 && hunksOf(f).every((h) => marked(h, MARK[otherTk]))) continue; // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  if (other.fresh.includes(f) && fileAt(BASE, f) === null && rd(f).split("\n").slice(0, 3).join("\n").includes(MARK[otherTk])) continue; // ORACLE-EDIT (HR VIS-5c · controller) ◂
   outside.push(f + (other.files.includes(f) || other.fresh.includes(f) ? "(other ticket)" : ""));
  }
  // ui.tsx is shared by range: own hunks in own ranges (or the import block) carry the own marker · the other ticket's hunks only in its ranges with its marker
@@ -116,6 +120,8 @@ const req = createRequire(join(ROOT, "src", "qc-vis5-anchor.cjs")); // same CJS 
 let React: Any, RDS: Any, NI: Any, ARC: Any;
 export const CUR = { locale: "th", messages: {} as Any, missing: [] as string[] };
 const MSG: Record<string, Any> = {};
+/** ORACLE-EDIT (HR VIS-5c · controller) R1: replace one locale's bundle (e.g. th hr.people values → sentinels) · undefined = reload from disk ◂ */
+export function overrideMessages(lc: string, f?: (m: Any) => Any): void { delete MSG[lc]; if (f) MSG[lc] = f(JSON.parse(JSON.stringify(msgsOf(lc)))); } // ORACLE-EDIT (HR VIS-5c · controller) ◂
 const msgsOf = (lc: string) => (MSG[lc] ??= { ...JSON.parse(rd(`src/messages/${lc}/common.json`)), pos: JSON.parse(rd(`src/messages/${lc}/pos.json`) || "{}") });
 /** next-intl/server outside Next: same messages as src/i18n/request.ts · missing keys recorded (‹MISSING:…›) */
 export function installIntl(): void {
@@ -179,6 +185,7 @@ export async function inScope<T>(cookie: string, pathname: string, fn: () => Pro
 }
 /** render a page module's default export as `who` (cookie) in `locale` */
 export async function renderPage(mod: Any, cookie: string, path: string, params: Record<string, string>, sp: Record<string, string>, locale: "th" | "en"): Promise<Rendered> {
+ CUR.locale = locale; CUR.messages = msgsOf(locale); // ORACLE-EDIT (HR VIS-5c · controller) R1: set the locale BEFORE the page function runs (page-level getTranslations used the previous render's locale — builder note §5) ◂
  try { return await inScope(`${cookie}; LOCALE=${locale}`, path, async () => renderTree(await mod.default({ params: Promise.resolve(params), searchParams: Promise.resolve(sp) }), locale)); } catch (e) { return { html: "", client: [], clientText: "", err: `${(e as Any)?.digest ? `${String((e as Any).digest).split(";")[0]} ` : ""}${errText(e)}` }; }
 }
 /** React.createElement of the app's React instance */

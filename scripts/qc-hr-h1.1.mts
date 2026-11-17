@@ -420,8 +420,14 @@ function runStatic(): void {
   const inv = rd(UI_INVENTORY);
   const th = rd(MSG_TH);
   const tids = [...ui.matchAll(/data-testid=["'{`]+([\w:.\-]*(?:branch|unit)[\w:.\-]*)/gi)].map((m) => m[1]!).filter((t) => inv.includes(`"${t}`));
-  const x91 = { scope: /hrScopeOf/.test(ui), prompt: th.includes(T_NO_UNIT_PROMPT) || ui.includes(T_NO_UNIT_PROMPT), testids: tids.length };
-  chk("X9.1", x91.scope && x91.prompt && x91.testids > 0, "hrScopeOf · prompt text · ≥1 branch testid in inventory", short(x91));
+  // ORACLE-EDIT (HR VIS-5c · controller) X9.1: the prompt now legitimately lives in a message (src/messages/th/common.json, hr.* leaf, key used in code of ui.tsx / people-ui.tsx) · a comment-only occurrence in ui.tsx no longer counts and fails · was: th.json (absent) or anywhere in ui.tsx text ◂
+  const noComments = (src: string) => src.replace(/\{\/\*[\s\S]*?\*\/\}/g, "").replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:"'`\\])\/\/.*$/gm, "$1"); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  const uiCode = noComments(ui), peopleCode = noComments(existsSync(join(ROOT, "src/lib/modules/hr/people-ui.tsx")) ? rd("src/lib/modules/hr/people-ui.tsx") : ""); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  const leaves = (o: unknown, p: string): [string, string][] => (typeof o === "string" ? [[p, o]] : o && typeof o === "object" ? Object.entries(o as Record<string, unknown>).flatMap(([k, v]) => leaves(v, p ? `${p}.${k}` : k)) : []); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  const thCommon = (() => { try { return JSON.parse(rd("src/messages/th/common.json")); } catch { return {}; } })(); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  const msgKey = leaves(thCommon?.hr ?? {}, "hr").filter(([, v]) => v.includes(T_NO_UNIT_PROMPT)).map(([k]) => k).find((k) => new RegExp(`["'\`]${k.split(".").pop()}["'\`]`).test(uiCode + peopleCode)); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  const x91 = { scope: /hrScopeOf/.test(ui), prompt: th.includes(T_NO_UNIT_PROMPT) || uiCode.includes(T_NO_UNIT_PROMPT) || !!msgKey, commentOnly: ui.includes(T_NO_UNIT_PROMPT) && !uiCode.includes(T_NO_UNIT_PROMPT), msgKey: msgKey ?? "-", testids: tids.length }; // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  chk("X9.1", x91.scope && x91.prompt && !x91.commentOnly && x91.testids > 0, "hrScopeOf · prompt text (code or a used hr.* message) · not comment-only · ≥1 branch testid in inventory", short(x91)); // ORACLE-EDIT (HR VIS-5c · controller) ◂
 
   // X9.2 visual-hr SPECS["1.1"]
   const vis = rd(VISUAL_FILE);

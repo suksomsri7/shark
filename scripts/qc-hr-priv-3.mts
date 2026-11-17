@@ -280,6 +280,16 @@ try {
   const REFUSED: Record<string, VK[]> = { register: ["K", "N", "S", "S0", "SR", "PR", "PA"], leave: ["K", "N", "S0"], payroll: ["K", "N", "S", "S0", "SR", "SD", "PA"] };
   const ENT: Record<string, VK[]> = { register: ["O", "M", "MB", "P", "PB", "SD"], leave: ["O", "M", "MB", "P", "PB", "S", "SR", "SD", "PR", "PA"], payroll: ["O", "M", "MB", "P", "PB", "PR"] };
   const ID: Record<string, [string, string]> = { register: ["P1", "P5"], leave: ["P2", "P6"], payroll: ["P3", "P7"] };
+  // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5: VIS-5c moves removed people to the สิ้นสุด tab / show-ended switch ⇒ the entitled register cell = UNION over every view the viewer is offered
+  //   (default + each hr-people-tab-* link + the hr-people-ended link; P7's method) · names must reproduce the golden exactly · QC_PRIV3_P5_IDS=1 prints names + the union test ids per viewer ◂
+  const regUnion = async (k: VK, r0: Rendered) => { // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
+   const hrefs = [...r0.html.matchAll(/<a\b[^>]*>/g)].map((m) => m[0]).filter((t) => /data-testid="(hr-people-tab-[^"]*|hr-people-ended)"/.test(t)).map((t) => (/\shref="([^"]*)"/.exec(t)?.[1] ?? "").replace(/&amp;/g, "&")).filter(Boolean); // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
+   const rs: Rendered[] = [r0], qs: string[] = []; // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
+   for (const h of [...new Set(hrefs)]) { const sp = Object.fromEntries(new URL(h, "http://x").searchParams.entries()); qs.push(new URL(h, "http://x").search || "?"); mute(); try { rs.push(await renderPage(M.emp, W[k].cookie, pathOf("employees"), { id: HRS }, sp)); } finally { unmute(); } } // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
+   const names = keys.filter((n) => rs.some((r) => seen(r).includes(n))), ids = [...new Set(rs.flatMap((r) => testids(r.html)))].sort(); // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
+   if (process.env.QC_PRIV3_P5_IDS === "1") console.log(`P5 ${k} views=${qs.join(",") || "-"} names=${names.join("")} ids=${ids.join(",")}`); // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
+   return { bad: rs.filter((r) => kind(r) !== "ok").map(kind), names: names.join(""), c: `${names.join("")}|${sha16(ids.join(","))}|${ids.length}` }; // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
+  }; // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
   for (const [pg, [mod, seg]] of Object.entries(MODS)) {
    for (const k of VKS) {
     await counted(mod, k, UNK_SYS, seg); // warm-up
@@ -291,9 +301,10 @@ try {
      const same = real.r.digest === un.r.digest && real.r.err === un.r.err && real.q === un.q && !real.r.html && !real.r.client.length;
      if (!same) refuse[ID[pg]![0]]!.push(`${k}:${kind(real.r)} q${real.q}/${un.q} names${seen(real.r).length}`);
     } else if (ENT[pg]!.includes(k)) {
-     const html = pg === "leave" ? real.r.html.replace(leaveForm(real.r.html), "") : real.r.html, c = cell(real.r, html), key = `${pg}.${k}`;
+     const ru = pg === "register" ? await regUnion(k, real.r) : null; // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5: register = union over offered views ◂
+     const html = pg === "leave" ? real.r.html.replace(leaveForm(real.r.html), "") : real.r.html, c = ru ? ru.c : cell(real.r, html), key = `${pg}.${k}`; // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
      gold[key] = c;
-     if (kind(real.r) !== "ok" || GOLD.pages?.[key] !== c) gBad[ID[pg]![1]]!.push(`${k}:${kind(real.r)} ${c} want ${GOLD.pages?.[key]}`);
+     if (kind(real.r) !== "ok" || (ru?.bad.length ?? 0) > 0 || GOLD.pages?.[key] !== c) gBad[ID[pg]![1]]!.push(`${k}:${kind(real.r)}${ru?.bad.length ? ru.bad.join(",") : ""} ${c} want ${GOLD.pages?.[key]}`); // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 ◂
     }
    }
   }

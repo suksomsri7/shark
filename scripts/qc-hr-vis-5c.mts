@@ -6,7 +6,7 @@
 import { type Any, type Def, ROOT, rd, errText, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, sha, stripComments, importsOf, fileAt } from "./qc-hr-lib.mjs";
 import { installNetGuard, NET, sweepTenants, sweepResidue } from "./qc-hr-h4.3-lib.mjs";
 import { textOfAny } from "./qc-hr-priv-2-lib.mjs";
-import { H, BASE, UI, diffStatics, msgStatics, invHas, invRows, baseIdsGone, pinned, installIntl, loadClientSet, renderPage, inScope, CUR, idsWith, elOf, showsNum, attrOf, hrefsIn, queryOf, textOfHtml, isClientFile, type Rendered } from "./qc-hr-vis-5-lib.mjs"; // HR VIS-5c oracle ▸ + inScope (G1 outcomes) ◂
+import { H, BASE, UI, diffStatics, msgStatics, invHas, invRows, baseIdsGone, pinned, installIntl, loadClientSet, renderPage, inScope, overrideMessages, CUR, idsWith, elOf, showsNum, attrOf, hrefsIn, queryOf, textOfHtml, isClientFile, type Rendered } from "./qc-hr-vis-5-lib.mjs"; // HR VIS-5c oracle ▸ + inScope (G1 outcomes) ◂
 import { srcFiles } from "./qc-hr-lib.mjs"; // HR VIS-5c oracle ▸ A2 ◂
 
 const SUITE = "qc-hr-vis-5c", ARGV = process.argv.slice(2), FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run"), PFX = "qc-hr-vis5c-";
@@ -50,7 +50,7 @@ const CHECKS: Def[] = [
  D("V6", "§2 17 24", "MR", "[db] read view: hr-profile-tab-* links (?tab=, one aria-current) · hr-profile-connections"),
  D("V7", "§2 19 23", "MG", "[db] [control] probation banner + onboarding checklist progress 5/7 from lifecycle data (bow)"),
  D("V8", "§5", "MR", "[db] read-view dates: th Buddhist-year formatThaiDateFull · en formatShortDate · no ISO / mm/dd/yyyy / date input"),
- D("V9", "§5 §9", "MR", "[db] en profile + register: hr.people exists · no missing key · no Thai value of hr.people in en HTML"),
+ D("V9", "§5 §9", "MR", "[db] en profile + register (+ panel, add, edit, every tab): hr.people exists · no missing key · no th hr.people string reaches the en page (sentinel bundle — Thai data does not count)"), // ORACLE-EDIT (HR VIS-5c · controller) R1 ◂
  // HR VIS-5c oracle ▸ added 17 Nov (role matrix · payload-wide PII · action surface · owner-list absences · tab data) ◂
  D("G1", "PRIV-3 R2 Q1 · H2.10", "CG", "[db] [control] page matrix: register + profile render for O · payroll-all · payroll-U1 · M · M-U1 · leave-read staff (also ?emp= / ?add=1 / ?edit=1) · staff/kiosk/member → 404 on the register · staff on own profile → redirect /app/me/hr/profile · staff on another profile, kiosk, member → 404"),
  D("G2", "5c-1 5c-4", "CG", "[db] [control] register states (default · ?emp=namfon · ?add=1 · payroll-U1 ?emp=borrowed) for every register viewer: no full ID/SSO/bank/house value of ANY employee in HTML or client props · viewers not entitled for that person: no mask string, no eye"),
@@ -59,6 +59,7 @@ const CHECKS: Def[] = [
  D("R10", "§2 10 · §6 1", "MR", "[db] leave-today badge from employeesOnLeave: row of a person on approved leave today shows it (th text has «ลา…วันนี้» and does not claim ลาป่วย — no leave type in employeesOnLeave, ruling 17 Nov (5) · en text has leave) · a person not on leave does not"),
  D("V10", "§2 18 · §6 3", "MR", "[db] ?tab=leave = leaveBalances(viewer) (policy name + balance) · a viewer leaveBalances refuses (payroll-U1) gets no balances · ?tab=schedule = HrScheduleEditor (setWorkScheduleAction · start-<wd> inputs)"),
  D("A3", "ruling 17 Nov (1)(2)", "MR", "[db] editor controls only for hr.employee.create holders (the key every register/profile editor action asserts): payroll-all · payroll-U1 · leave-read staff get no create/update/schedule/remove/restore/doc/save action, no PinField, no EmployeeProfileForm, no hr-people-add(-name) / hr-people-more-* / hr-profile-edit / hr-profile-reveal-* — register default · ?add=1 · ?emp= and profile default · every tab · ?edit=1 · their ?edit=1 = 200 with the same test ids as their default view (the flag is ignored — no new refusal) · [control] O · M · M-U1 keep the register editors"),
+ D("W1", "R1 (controller 18 Nov) · mockup 02", "MR", "[static+db] approved mockup wording restored: th hr.people.title = พนักงาน · branches = {n} สาขา · unitPeople = {name} {n} คน · col.unit = สาขา · branch = สาขา · owner th register shows «2 สาขา · <unit> N คน»"), // ORACLE-EDIT (HR VIS-5c · controller) R1 ◂
  D("V11", "§5 5c-2", "CG", "[db] [control] no pay figure on the profile: every hr-profile-tab-* state (and the default) for every profile viewer — no salary of the person in HTML or client props"),
  D("Z1", "-", "CG", "residue · outbound"),
 ];
@@ -284,8 +285,20 @@ try {
  // V9 en
  const enL = await list(W.owner, {}, "en"), thPeople = Object.values(((JSON.parse(rd("src/messages/th/common.json")).hr ?? {}).people ?? {}) as Record<string, unknown>).flatMap((v) => (typeof v === "string" ? [v] : Object.values(v as object).filter((x) => typeof x === "string"))) as string[];
  const enAll = enT + " " + textOfHtml(enL.html);
- const v9 = { block: thPeople.length > 0, rendered: (!en.err && !enL.err) || `${en.err}${enL.err}`, noMissing: !/‹MISSING:hr\.people/.test(en.html + enL.html), noThai: !thPeople.filter((t) => /[฀-๿]/.test(t) && t.length > 1).some((t) => enAll.includes(t.replace(/\{[^}]*\}/g, "").trim().slice(0, 12))) };
+ // ORACLE-EDIT (HR VIS-5c · controller) R1: V9 judged only on text that comes FROM the hr.people block — the th bundle's hr.people leaves are replaced by sentinels ‹TH:key› and the en pages are rendered again; a sentinel in en HTML/props = a th hr.people string reached the en page · Thai DATA on the en page (unit names, departments, module tabs) no longer counts (it made the builder rename approved wording) · was: first 12 chars of every th value vs the en text ◂
+ const sentinel = (o: Any, p: string): Any => (typeof o === "string" ? `‹TH:${p}›` : o && typeof o === "object" ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, sentinel(v, `${p}.${k}`)])) : o); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ overrideMessages("th", (m) => ({ ...m, hr: { ...m.hr, people: sentinel(m.hr?.people ?? {}, "hr.people") } })); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const enS: Rendered[] = [await list(W.owner, {}, "en"), await list(W.owner, { emp: nf.id }, "en"), await list(W.owner, { add: "1" }, "en"), await prof(W.owner, nf, {}, "en"), await prof(W.owner, nf, { edit: "1" }, "en"), ...(await Promise.all(["docs", "schedule", "leave", "pay", "history"].map((t) => prof(W.owner, nf, { tab: t }, "en"))))]; // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const thCtl = await list(W.owner, {}, "th"); // ORACLE-EDIT (HR VIS-5c · controller) R1 positive control: the th page under the sentinel bundle must show sentinels (the override reaches the renderer) ◂
+ overrideMessages("th"); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const thLeak = enS.flatMap((r) => [...(r.html + r.clientText).matchAll(/‹TH:([^›]+)›/g)].map((m) => m[1]!)); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const v9 = { block: thPeople.length > 0, rendered: (enS.every((r) => !r.err) && !en.err && !enL.err) || `${en.err}${enL.err}${enS.map((r) => r.err).join("")}`.slice(0, 80), noMissing: !/‹MISSING:hr\.people/.test(en.html + enL.html + enS.map((r) => r.html).join("")), noThaiFromBlock: !thLeak.length || [...new Set(thLeak)].slice(0, 4).join(","), control: /‹TH:hr\.people\./.test(thCtl.html) || "sentinel not rendered on th" }; // ORACLE-EDIT (HR VIS-5c · controller) R1 ◂
  chk("V9", all(v9), "all", fails(v9));
+ // ORACLE-EDIT (HR VIS-5c · controller) R1 ▸ W1 mockup wording (02-employees.png: «พนักงาน» · «2 สาขา · หัวหิน 9 คน · สวนผึ้ง 5 คน» · column «สาขา» · filter «สาขา:») ◂
+ const thP = (JSON.parse(rd("src/messages/th/common.json")).hr ?? {}).people ?? {}, WANT: [string, unknown, string][] = [["title", thP.title, "พนักงาน"], ["branches", thP.branches, "{n} สาขา"], ["unitPeople", thP.unitPeople, "{name} {n} คน"], ["col.unit", thP.col?.unit, "สาขา"], ["branch", thP.branch, "สาขา"]]; // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const oT = textOfHtml(o.html), w1: string[] = WANT.filter(([, got, want]) => got !== want).map(([k, got]) => `${k}=${JSON.stringify(got)}`); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ if (!/(^|\s)2 สาขา ·/.test(oT) || !new RegExp(`สาขาหนึ่ง ${tag} \\d+ คน`).test(oT)) w1.push("rendered count line"); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ chk("W1", !w1.length, "mockup wording", L(w1)); // ORACLE-EDIT (HR VIS-5c · controller) ◂
 
  // ═════════════ HR VIS-5c oracle ▸ role matrix · payload-wide PII · action surface · absences · tab data (17 Nov) ◂ ═════════════
  const outcome = async (mod: Any, w: Any, path: string, params: Record<string, string>, sp: Record<string, string>): Promise<string> => {

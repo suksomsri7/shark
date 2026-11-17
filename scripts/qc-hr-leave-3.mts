@@ -99,19 +99,33 @@ function runStatic(): void {
  const P3_FILES: string[] = ["scripts/qc-hr-h3.6.mts", "src/lib/modules/hr/payroll-opening-actions.ts", "src/lib/modules/hr/work-entries-actions.ts", "src/lib/modules/hr/stock-charge-actions.ts", "src/lib/modules/hr/attendance-pay-actions.ts", "src/lib/modules/hr/payslip-actions.ts", "src/lib/modules/hr/bank-files/actions.ts", "src/lib/modules/hr/filings/actions.ts", "scripts/qc-hr-leave-3.mts", "scripts/qc-hr-preprod-1.mts", "prisma/migrations/20270112000000_hr_tenant_scoped_unique_keys/migration.sql", "prisma/schema/payroll.prisma", "scripts/fitness-hr.mts", "scripts/qc-hr-h0.6.mts", "scripts/qc-hr-h1.3.mts", "scripts/qc-hr-h2.10.mts", "scripts/qc-hr-h3.9.mts", "scripts/qc-hr-h4.3-lib.mts", "scripts/qc-hr-priv-2.mts", "scripts/qc-hr-priv-3-lib.mts", "scripts/qc-hr-priv-3.mts", "scripts/qc-hr-priv-3b.mts", "scripts/visual-hr.mts", "src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/leave/page.tsx", "src/app/app/sys/[id]/hr/payroll/page.tsx", "src/lib/modules/hr/actions.ts", "src/lib/modules/hr/hr-target.ts", "src/lib/modules/hr/nav.ts", "src/lib/modules/hr/ot-actions.ts", "src/lib/modules/hr/ot.ts", "src/lib/modules/hr/payroll-actions.ts", "src/lib/modules/hr/privacy.ts", "src/lib/modules/hr/service.ts", "src/lib/modules/hr/swap-actions.ts", "src/lib/modules/hr/swap.ts", "src/lib/modules/hr/ui.tsx"]; // ORACLE-EDIT (HR PRIV-3 · controller merge) ◂
  const P3_DATA = ["scripts/hr-ui-inventory.json", "scripts/walk-hr-matrix.json"]; // ORACLE-EDIT (HR PRIV-3 · controller merge): JSON rows (no comment syntax) — content judged by fitness F16.8 + the controller walk ◂
  const p3Ok = (f: string) => P3_DATA.includes(f) || (P3_FILES.includes(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR PRIV-3")))); // ORACLE-EDIT (HR PRIV-3 · controller merge) ◂
+ // ORACLE-EDIT (HR VIS-5c · controller) ST2/ST3: explicit allowlist — the later ticket VIS-5c: its product files (every hunk adds a line with "HR VIS-5c"; new files: absent in base + "HR VIS-5c" in lines 1-3) · the oracles edited for it (every hunk "HR VIS-5c") · messages th/en only when every changed key is under hr.people.* · never a whole file · unmarked still fails ◂
+ const V5C_SRC = ["src/app/app/sys/[id]/hr/employees/page.tsx", "src/app/app/sys/[id]/hr/employees/[employeeId]/page.tsx", `${H}EmployeeProfileForm.tsx`, `${H}ui.tsx`], V5C_NEW = [`${H}people-ui.tsx`, `${H}people-rules.ts`]; // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const V5C_OR = ["vis-5b", "vis-5c", "vis-5-lib", "priv-2", "priv-3", "priv-3-lib", "h4.3-lib", "h1.1"].map((x) => `scripts/qc-hr-${x}.mts`); // ORACLE-EDIT (HR VIS-5c · controller) ◂
+ const v5cKeys = (f: string) => { // ORACLE-EDIT (HR VIS-5c · controller): changed leaf keys of a messages file vs base ◂
+  const flat = (o: Any, p = ""): Record<string, unknown> => (o && typeof o === "object" ? Object.assign({}, ...Object.entries(o).map(([k, v]) => flat(v, p ? `${p}.${k}` : k))) : { [p]: o });
+  try { const a = flat(JSON.parse(git(["show", `${BASE}:${f}`]) || "{}")), b = flat(JSON.parse(rd(f) || "{}")); return [...new Set([...Object.keys(a), ...Object.keys(b)])].filter((k) => JSON.stringify(a[k]) !== JSON.stringify(b[k])); } catch { return ["∅json"]; }
+ };
+ const v5cOk = (f: string) => { // ORACLE-EDIT (HR VIS-5c · controller) ◂
+  if (/^src\/messages\/(th|en)\/common\.json$/.test(f)) { const ks = v5cKeys(f); return ks.length > 0 && ks.every((k) => k.startsWith("hr.people.")); }
+  if (V5C_NEW.includes(f)) return git(["cat-file", "-t", `${BASE}:${f}`]) !== "blob" && rd(f).split("\n").slice(0, 3).join("\n").includes("HR VIS-5c");
+  const hs = diffHunks(BASE, f) ?? [];
+  if (!hs.length) return false;
+  return (V5C_SRC.includes(f) || V5C_OR.includes(f)) && hs.every((h) => h.added.some((l) => l.includes("HR VIS-5c")));
+ }; // ORACLE-EDIT (HR VIS-5c · controller) ◂
  {
   const markedOracle = (f: string) => {
    const hs = diffHunks(BASE, f) ?? [];
    return hs.length > 0 && hs.every((h) => h.added.length > 0 && h.added.some((l) => /ORACLE-EDIT[^\n]*LEAVE-3/.test(l)));
   };
-  const bad = changed.filter((f) => !(ALLOWED.includes(f) || OWN.includes(f) || (/^scripts\/qc-[^/]+\.mts$/.test(f) && inBase(f) && markedOracle(f)) || p3Ok(f))); // ORACLE-EDIT (HR PRIV-3 · controller merge): + p3Ok ◂
+  const bad = changed.filter((f) => !(ALLOWED.includes(f) || OWN.includes(f) || (/^scripts\/qc-[^/]+\.mts$/.test(f) && inBase(f) && markedOracle(f)) || p3Ok(f) || v5cOk(f))); // ORACLE-EDIT (HR PRIV-3 · controller merge): + p3Ok ◂ · ORACLE-EDIT (HR VIS-5c · controller): + v5cOk ◂
   const frozen = [...srcFiles("src/lib/modules/hr").filter((f) => /\/(judge-rules|work-entries|leave|leave-rules|rules|lifecycle|attendance-pay[^/]*|payroll[^/]*|correction[^/]*|swap[^/]*)\.tsx?$/.test(f)), "prisma", "src/lib/core"];
-  const fz = git(["diff", "--name-only", BASE, "--", ...frozen]).split("\n").filter((f) => f && !p3Ok(f)).join("\n"); // ORACLE-EDIT (HR PRIV-3 · controller merge): + p3Ok ◂
+  const fz = git(["diff", "--name-only", BASE, "--", ...frozen]).split("\n").filter((f) => f && !p3Ok(f) && !v5cOk(f)).join("\n"); // ORACLE-EDIT (HR PRIV-3 · controller merge): + p3Ok ◂ · ORACLE-EDIT (HR VIS-5c · controller): + v5cOk ◂
   ck("ST2", { allowed: !!BASE && !bad.length, frozen: fz === "" }, "only allowed files", `base=${BASE.slice(0, 9)} outside=${bad.slice(0, 6).join(",") || "none"} frozen=${fz.replace(/\n/g, ",").slice(0, 120) || "none"}`);
  }
  {
   const bad: string[] = [];
-  for (const f of changed.filter((x) => x.startsWith("src/") && !p3Ok(x))) { // ORACLE-EDIT (HR PRIV-3 · controller merge) ST3: + p3Ok ◂
+  for (const f of changed.filter((x) => x.startsWith("src/") && !p3Ok(x) && !v5cOk(x))) { // ORACLE-EDIT (HR PRIV-3 · controller merge) ST3: + p3Ok ◂ · ORACLE-EDIT (HR VIS-5c · controller) ST3: + v5cOk ◂
    const hs = diffHunks(BASE, f);
    if (!hs) { bad.push(`${f}:git`); continue; }
    hs.forEach((h, i) => {

@@ -197,12 +197,12 @@ export const GOLD: Gold = {
  xs: "ok|-|form:n", // r2 R9 · 44a75f37a
  cycle: ["src/lib/modules/hr/judge.ts", "src/lib/modules/hr/payroll.ts", "src/lib/modules/hr/roster-board.ts", "src/lib/modules/hr/work-entries.ts"],
  pages: {
-  "register.O": "e1e2e3e4e5e6e7|b81b2621bee09a78|8",
-  "register.M": "e1e2e3e4e5e6e7|b81b2621bee09a78|8",
-  "register.MB": "e1e2e4e5e7|4daaf3bfe057d61b|2",
-  "register.P": "e1e2e3e4e5e6e7|d427af2f3180cec1|7",
-  "register.PB": "e1e2e4e5e7|1abb61947757f28a|1",
-  "register.SD": "e1e2e3e4e5e6e7|d427af2f3180cec1|7",
+  "register.O": "e1e2e3e4e5e6e7|2f2e32cf8371f0af|64", // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 R3: union over offered views (QC_PRIV3_P5_IDS=1) · names = golden · testid part re-measured (added = VIS-5c ids + hr-register-status-*; removed = hr-register-create-unit for non-editors, ruling 1) · was e1e2e3e4e5e6e7|b81b2621bee09a78|8 ◂
+  "register.M": "e1e2e3e4e5e6e7|2f2e32cf8371f0af|64", // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 R3: union over offered views (QC_PRIV3_P5_IDS=1) · names = golden · testid part re-measured (added = VIS-5c ids + hr-register-status-*; removed = hr-register-create-unit for non-editors, ruling 1) · was e1e2e3e4e5e6e7|b81b2621bee09a78|8 ◂
+  "register.MB": "e1e2e4e5e7|5fc829f9882bffca|57", // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 R3: union over offered views (QC_PRIV3_P5_IDS=1) · names = golden · testid part re-measured (added = VIS-5c ids + hr-register-status-*; removed = hr-register-create-unit for non-editors, ruling 1) · was e1e2e4e5e7|4daaf3bfe057d61b|2 ◂
+  "register.P": "e1e2e3e4e5e6e7|64d8b00155aa0ea5|20", // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 R3: union over offered views (QC_PRIV3_P5_IDS=1) · names = golden · testid part re-measured (added = VIS-5c ids + hr-register-status-*; removed = hr-register-create-unit for non-editors, ruling 1) · was e1e2e3e4e5e6e7|d427af2f3180cec1|7 ◂
+  "register.PB": "e1e2e4e5e7|bf4b9e62656eaeb9|13", // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 R3: union over offered views (QC_PRIV3_P5_IDS=1) · names = golden · testid part re-measured (added = VIS-5c ids + hr-register-status-*; removed = hr-register-create-unit for non-editors, ruling 1) · was e1e2e4e5e7|1abb61947757f28a|1 ◂
+  "register.SD": "e1e2e3e4e5e6e7|64d8b00155aa0ea5|20", // ORACLE-EDIT (HR VIS-5c · controller) ▸ HR PRIV-3 P5 R3: union over offered views (QC_PRIV3_P5_IDS=1) · names = golden · testid part re-measured (added = VIS-5c ids + hr-register-status-*; removed = hr-register-create-unit for non-editors, ruling 1) · was e1e2e3e4e5e6e7|d427af2f3180cec1|7 ◂
   "leave.O": "e1e2e3e4e6e7|68440db10095c997|6",
   "leave.M": "e1e2e3e4e6e7|68440db10095c997|6",
   "leave.MB": "e1e2e4e7|f6287be1c22c5f20|4",

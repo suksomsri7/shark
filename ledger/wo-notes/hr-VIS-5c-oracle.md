@@ -164,3 +164,115 @@ Logs: `/tmp/claude-0/-root/59156a1f-9c0e-594d-9643-d1896f46b191/scratchpad/v5c/`
 | qc-hr-priv-2 | 47/47. A first run gave 46/47: S4 flagged the vis-5c.mts hunk at :46, which had no marker. That hunk is now marked. |
 | qc-hr-h4.3 | 45/45. A first run gave 44/45: S1.6, same unmarked hunk, now fixed. |
 | typecheck (iso, ISO_MEM=14000M, heap 12288) | first commit: exit 0 · 0 errors · after the rulings: exit 0 · 0 errors |
+
+---
+# Round 3 — controller rulings R1–R5 on the VIS-5c build (oracle writer · 18 Nov)
+Lane head before this round: builder 50521f66d. No src/ edits. Every oracle hunk carries `ORACLE-EDIT (HR VIS-5c · controller)`; edits in priv-3 files additionally carry `HR PRIV-3`.
+
+## R1 — V9 no longer bends the UI · W1 pins the mockup wording
+**Lib:** `renderPage` now sets the locale/messages **before** the page function runs. This is the builder's §5 finding: page-level `getTranslations` used the previous render's locale. New export `overrideMessages(lc, f)`.
+
+**V9 rewritten.** It now judges only text that comes from the `hr.people` block:
+- The th bundle's `hr.people` leaves are replaced by sentinels `‹TH:hr.people.<key>›`.
+- The en pages are rendered again: register, `?emp=`, `?add=1`, profile, `?edit=1`, and the docs / schedule / leave / pay / history tabs.
+- Any sentinel in the HTML or client props means a th `hr.people` string reached the en page.
+- Thai data on the en page (unit names, departments, module tabs, PinField) no longer counts.
+- Positive control: the th register rendered under the sentinel bundle shows the sentinels.
+- The old rule was "the first 12 chars of every th value must not appear in the en text".
+
+**New check W1 (MR):** the th `hr.people` values must equal the mockup wording, and the owner th register must render «2 สาขา · <unit> N คน».
+
+### Builder to-do (R1 · strings to restore, `src/messages/th/common.json`)
+| key | now | restore to (mockup 02-employees.png) |
+|---|---|---|
+| `hr.people.title` | ทะเบียนพนักงาน | **พนักงาน** |
+| `hr.people.branches` | มี {n} สาขา | **{n} สาขา** |
+| `hr.people.unitPeople` | {name} ({n} คน) | **{name} {n} คน** |
+| `hr.people.col.unit` | สาขาประจำ | **สาขา** |
+| `hr.people.branch` | เลือกสาขา | **สาขา** (the mockup shows «สาขา:» before the value) |
+
+Rules for these keys:
+- Keep `col.pin` «รหัส PIN» and `prof.conn.line` «บัญชี LINE» as they are (fitness F16.4).
+- Do not touch the en values.
+- The count line must render as «2 สาขา · <unit> 9 คน · <unit> 5 คน».
+
+## R2 — qc-hr-h1.1 X9.1 (ORACLE-EDIT) · builder to-do
+- **New logic.** The prompt «ยังไม่ระบุสาขาประจำ» is accepted in either of two places:
+  - in ui.tsx code with comments stripped;
+  - in an `hr.*` leaf of `src/messages/th/common.json` whose key is used in the code of ui.tsx or people-ui.tsx (found today: `hr.people.noUnit`; `unitPrompt` also holds the text).
+- **It fails** when the text appears in ui.tsx only inside a comment.
+- **Now red, as intended:** `commentOnly: true`.
+- **Builder to-do:** remove the comment added in be28dd67a, in `src/lib/modules/hr/ui.tsx`: `{/* HR VIS-5c ▸ บรรทัดเตือน "ยังไม่ระบุสาขาประจำ N คน" (H1.1 R8) = hr.people.unitPrompt (สองภาษา) ◂ */}`.
+  - Removing it, or rewording it so it no longer contains the Thai phrase, makes X9.1 green.
+
+## R3 — qc-hr-priv-3 P5 (union over offered views, like P7)
+**Method.** The register cell is now the union over:
+- the default view;
+- every `hr-people-tab-*` link;
+- the `hr-people-ended` link.
+
+`QC_PRIV3_P5_IDS=1` prints the names and ids per viewer.
+
+**Proof on a clean base.** I ran it in a temporary detached worktree at 8df167086 (node_modules symlinked, a dummy SESSION_SECRET in the environment, no env file copied; the worktree has since been removed). It reproduces all 6 old goldens exactly, and priv-3 scores 28/28 there.
+
+**Names (union) = golden for all 6 viewers:** O/M/P/SD `e1e2e3e4e5e6e7`, MB/PB `e1e2e4e5e7`. e5, a removed person, is now on the สิ้นสุด tab / `?ended=1` view.
+
+**Test ids per viewer (union on the lane vs base):**
+| viewer | removed | added |
+|---|---|---|
+| O, M | ∅ | 56: `hr-people-*` (add, add-name/phone/position/submit, branch, edit-name/phone/position/save-*, ended, menu-open-*, more-*, name-*, remove-*-trigger, restore-*, row-*, search, search-go, tab-all/ended/full/part/prob, table) · `hr-sched-*` (on/start/end/off 0–6, grace, save — HrScheduleEditor) · `hr-register-status-*` |
+| MB | ∅ | 55: the same, without `hr-people-branch` (MB has no branch filter) |
+| P, SD | `hr-register-create-unit` | 14: `hr-people-branch, -ended, -name-*, -open-*, -row-*, -search, -search-go, -tab-{all,ended,full,part,prob}, -table` · `hr-register-status-*` |
+| PB | `hr-register-create-unit` | 13: the P list without `hr-people-branch` |
+
+How each change is explained:
+- **Added `hr-people-*` and `hr-sched-*`:** every one is a VIS-5c element with an inventory row `wo: "VIS-5c"`.
+- **Added `hr-register-status-*`:** this is the existing H1.1 id. The base rendered it only when `employmentStatus` was set, and the priv-3 fixture sets none. VIS-5c's status column (mockup item 9) always shows a chip.
+- **Removed `hr-register-create-unit`:** the add form is hidden from viewers without `hr.employee.create` (ruling 17 Nov (1)). SD is a STAFF viewer holding only the leave keys.
+
+**Re-measured goldens (names unchanged, ORACLE-EDIT in `qc-hr-priv-3-lib.mts`):**
+| viewer | new golden | old golden |
+|---|---|---|
+| O, M | `…\|2f2e32cf8371f0af\|64` | b81b2621…\|8 |
+| MB | `…\|5fc829f9882bffca\|57` | 4daaf3bf…\|2 |
+| P, SD | `…\|64d8b00155aa0ea5\|20` | d427af2f…\|7 |
+| PB | `…\|bf4b9e62656eaeb9\|13` | 1abb6194…\|1 |
+
+## R4 — narrow acceptances (never a whole file)
+- **qc-hr-vis-5-lib `diffStatics`.** The other VIS-5 ticket's file is accepted only when:
+  - every hunk adds that ticket's marker; or
+  - for a new file, it is absent in base and the marker is in lines 1–3.
+
+  This fixes vis-5b S1. vis-5c S1 behaves the same way the other direction.
+- **qc-hr-leave-3 ST2/ST3.** New `v5cOk`:
+  - VIS-5c product files: both employee pages, `EmployeeProfileForm.tsx`, `ui.tsx` — every hunk adds `HR VIS-5c`;
+  - new `people-ui.tsx` / `people-rules.ts`: absent in base, marker in lines 1–3;
+  - the oracles edited for VIS-5c: vis-5b, vis-5c, vis-5-lib, priv-2, priv-3, priv-3-lib, h4.3-lib, h1.1 — every hunk `HR VIS-5c`;
+  - messages: only when every changed key is under `hr.people.*`.
+- **qc-hr-priv-2 S4 and qc-hr-h4.3-lib S1.6:** `VIS5_ORACLES` gains priv-3, priv-3-lib, h1.1 and leave-3 (every hunk `HR VIS-5[bc]`). priv-2 S5 already has `VIS5C_SRC` from round 1.
+- **qc-hr-preprod-1:** its ST2 frozen set holds no VIS-5c file. 57/57, no change needed.
+- **qc-hr-priv-3 S4:** excluded by the controller. It still names VIS-5c's files and the oracle edits on the lane.
+- **Merge note:** VIS-5a (`wip/hr-vis-5a`, not yet in session/hr) edits the same lines in leave-3 ST2/ST3, priv-2 S4/S5, h4.3-lib S1.6, preprod-1 ST2 and priv-3 P7. Whichever ticket merges second gets text conflicts there. Resolve them as unions, the way the VIS-5b re-merge did.
+
+## R5 — qc-nav-functions S5 (not edited)
+- **What S5 reads:** `childrenFor` in `src/app/app/layout.tsx` and the route folders under `src/app/app/u/[unitSlug]/<system>/`. It requires every real sub-route to appear in the accordion.
+- **What is missing:** HOTEL lacks 14 routes (calendar, channels, folio/unmatched, guests, housekeeping, rates, reports, reservations/new, settings, tm30, …) and BOOKING lacks /booking/calendar and /booking/day.
+- **VIS-5c changes none of these inputs:** `git diff 8df167086 HEAD` touches only HR files.
+- **Red on base 8df167086: verified by a run.** The same failure, 10/11, in the temporary clean worktree.
+- **Red on origin/main: from the files, not run.** origin/main has 22 hotel pages and the booking calendar/day pages, while its `layout.tsx` accordion lists only `hotel/reservations` and `hotel/setup`. Its qc-nav-functions has the same HOTEL entry.
+- **Cause:** the SVC hotel/booking work (e.g. f68ac154f, 96e846560) added routes without accordion entries. It is independent of VIS-5c.
+
+## Runs (lane DB · wrappers · QC_FORCE=1 · this commit's tree)
+| suite | result |
+|---|---|
+| qc-hr-vis-5c | **37/38**. Only W1 is red (wording to restore, expected). V9 is green, with its positive control. Residue none. |
+| qc-hr-vis-5b | 34/34 |
+| qc-hr-priv-3 | 27/28. P5 ✅ (union, re-measured). S4 is red: lane scope, excluded by the controller. |
+| qc-hr-priv-2 | 47/47 |
+| qc-hr-h4.3 | 45/45 |
+| qc-hr-leave-3 | 53/53 |
+| qc-hr-h1.1 | 80/81. X9.1 is red, `commentOnly: true` (expected until the comment goes). |
+| qc-hr-preprod-1 | 57/57 |
+| typecheck (iso, ISO_MEM=14000M, heap 12288) | exit 0 · 0 errors |
+
+After the builder restores the 5 strings and removes the comment, the expected result is vis-5c 38/38 and h1.1 81/81.
