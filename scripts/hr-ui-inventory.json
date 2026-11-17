@@ -892,7 +892,8 @@
    ],
    "hiddenFor": [
     "kiosk",
-    "member"
+    "member",
+    "staff"
    ],
    "expect": {
     "type": "ui",
@@ -919,7 +920,8 @@
    ],
    "hiddenFor": [
     "kiosk",
-    "member"
+    "member",
+    "staff"
    ],
    "expect": {
     "type": "mutation",
@@ -3586,7 +3588,7 @@
    "kind": "select",
    "interactive": true,
    "file": "src/lib/modules/hr/ui.tsx",
-   "conditional": "มีประเภทการลาที่เปิดอยู่ + มีพนักงานให้เลือก",
+   "conditional": "มีประเภทการลาที่เปิดอยู่ + มีฟอร์มยื่นใบลา (ผู้ยื่นแทนได้ที่มีพนักงานให้เลือก หรือบัญชีผูกกับพนักงานของระบบนี้ — HR PRIV-3)",
    "roles": [
     "owner",
     "manager",
@@ -3595,7 +3597,8 @@
    ],
    "hiddenFor": [
     "kiosk",
-    "member"
+    "member",
+    "payroll"
    ],
    "expect": {
     "type": "input"
@@ -3610,7 +3613,7 @@
    "kind": "select",
    "interactive": true,
    "file": "src/lib/modules/hr/ui.tsx",
-   "conditional": "มีพนักงานให้เลือก",
+   "conditional": "มีฟอร์มยื่นใบลา (ผู้ยื่นแทนได้ที่มีพนักงานให้เลือก หรือบัญชีผูกกับพนักงานของระบบนี้ — HR PRIV-3)",
    "roles": [
     "owner",
     "manager",
@@ -3619,7 +3622,8 @@
    ],
    "hiddenFor": [
     "kiosk",
-    "member"
+    "member",
+    "payroll"
    ],
    "expect": {
     "type": "input"
@@ -3643,7 +3647,8 @@
    ],
    "hiddenFor": [
     "kiosk",
-    "member"
+    "member",
+    "payroll"
    ],
    "expect": {
     "type": "input"
@@ -3667,7 +3672,8 @@
    ],
    "hiddenFor": [
     "kiosk",
-    "member"
+    "member",
+    "payroll"
    ],
    "expect": {
     "type": "display"
@@ -5485,13 +5491,13 @@
    "conditional": "ผู้ตัดสิน · คำขอรออนุมัติของคนอื่น",
    "roles": [
     "owner",
-    "manager"
+    "manager",
+    "payroll"
    ],
    "hiddenFor": [
     "kiosk",
     "member",
-    "staff",
-    "payroll"
+    "staff"
    ],
    "expect": {
     "type": "mutation"
@@ -5509,13 +5515,13 @@
    "conditional": "ผู้ตัดสิน · คำขอรออนุมัติของคนอื่น",
    "roles": [
     "owner",
-    "manager"
+    "manager",
+    "payroll"
    ],
    "hiddenFor": [
     "kiosk",
     "member",
-    "staff",
-    "payroll"
+    "staff"
    ],
    "expect": {
     "type": "mutation"
@@ -5533,13 +5539,13 @@
    "conditional": "ผู้ตัดสิน · คำขอที่อนุมัติแล้วของคนอื่น (ใส่เหตุผล 3–200 ตัวอักษร)",
    "roles": [
     "owner",
-    "manager"
+    "manager",
+    "payroll"
    ],
    "hiddenFor": [
     "kiosk",
     "member",
-    "staff",
-    "payroll"
+    "staff"
    ],
    "expect": {
     "type": "mutation"

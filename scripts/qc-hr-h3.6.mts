@@ -245,11 +245,17 @@ function runStatic(): void {
     const VIS5A_ALLOW = new Set([`${H}payroll-ui.tsx`, `${H}payroll-run-ui.tsx`, `${H}reports-ui.tsx`]); // ORACLE-EDIT (HR VIS-5a · controller) ◂
     const vis5aOk = (f: string) => IN_BASE && VIS5A_ALLOW.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => l.includes("HR VIS-5a"))); // ORACLE-EDIT (HR VIS-5a · controller) ◂
     const d0 = changedVsBase(BASE, FROZEN.filter((f) => f !== bankDir));
-    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f) && !vis5aOk(f)) : []; // ORACLE-EDIT (HR VIS-5a · controller): + vis5aOk ◂
+    const PP1_S16 = new Set(["leave.ts", "privacy.ts", "self.ts", "self-ui.tsx", "service.ts", "settings.ts", "stock-charge.ts", "work-entries.ts", "work-entries-rules.ts", "payroll.ts", "payroll-actions.ts", "payroll-ui.tsx", "scope.ts", "ui.tsx"].map((x) => `${H}${x}`)); // ORACLE-EDIT (HR PREPROD-1 · controller): brief-allowed files of the later ticket ◂
+    const pp1Only = (f: string) => IN_BASE && PP1_S16.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR PREPROD-1/.test(l))); // ORACLE-EDIT (HR PREPROD-1 · controller): explicit file list, every hunk marked ◂
+    // ORACLE-EDIT (HR LEAVE-3 · controller merge) S1.6: explicit allowlist — the LEAVE-3 files this FROZEN list covers (hr service.ts · self.ts · approval service.ts · actions.ts) pass when every hunk
+    //   carries "HR LEAVE-3", or (files changed by both tickets) "HR LEAVE-3"/"HR PREPROD-1" each in that ticket's own files · unmarked still fails ◂
+    const L3_S16 = new Set([`${H}service.ts`, `${H}self.ts`, "src/lib/modules/approval/service.ts", "src/lib/modules/approval/actions.ts"]); // ORACLE-EDIT (HR LEAVE-3 · controller merge) ◂
+    const l3Mixed = (f: string) => IN_BASE && L3_S16.has(f) && (diffHunks(BASE, f) ?? []).length > 0 && (diffHunks(BASE, f) ?? []).every((h) => h.added.some((l) => /HR LEAVE-3/.test(l) || (PP1_S16.has(f) && /HR PREPROD-1/.test(l)))); // ORACLE-EDIT (HR LEAVE-3 · controller merge) ◂
+    const left = d0.startsWith("changed: ") ? d0.slice(9).split(",").filter((f) => !oracleEdited(f) && !pp1Only(f) && !l3Mixed(f) && !vis5aOk(f)) : []; // ORACLE-EDIT (HR PREPROD-1 · controller): + pp1Only ◂ // ORACLE-EDIT (HR LEAVE-3 · controller merge): + l3Mixed ◂ // ORACLE-EDIT (HR VIS-5a · controller): + vis5aOk (re-merge: both sides kept) ◂
     const d = d0.startsWith("changed: ") ? (left.length ? `changed: ${left.join(",")}` : "unchanged") : d0;
     const bankChanged = changedVsBase(BASE, [bankDir]);
     const bankFiles = bankChanged.startsWith("changed: ") ? bankChanged.slice(9).split(",") : [];
-    const bankUnmarked = bankFiles.filter((f) => !(diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H3\.6/.test(l)) || laterMarked(h, /HR H\d+\.\d+/)));
+    const bankUnmarked = bankFiles.filter((f) => !(diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR H3\.6/.test(l)) || laterMarked(h, /HR H\d+\.\d+/) || (f === `${H}bank-files/actions.ts` && laterMarked(h, /HR PRIV-3/)))); // ORACLE-EDIT (HR PRIV-3 · controller r3) S1.6: explicit — bank-files/actions.ts R11 hunks (systemOf → hrTargetOwned) marked "HR PRIV-3" ◂
     ck("S1.6", { shaOk, frozen: d === "unchanged", bank: bankChanged === "unchanged" || (bankChanged.startsWith("changed: ") && bankUnmarked.length === 0) }, "unchanged (bank-files: HR H3.6 hunks only)", `${d} · bank ${bankChanged}${bankUnmarked.length ? ` unmarked ${bankUnmarked.join(",")}` : ""}`);
   }
   {

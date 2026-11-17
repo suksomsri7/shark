@@ -17,6 +17,7 @@ import { HR_UNIT_NOT_FOUND_TEXT, hrScopeOf, type HrScope } from "./scope";
 import { addDays, shiftWindow, TimeRuleError } from "./time-rules";
 import { grantDays, tenthsOf } from "./leave-rules"; // HR H2.7 ▸ r2b: โควตาใหม่ต้องไม่ทำให้ปีที่ใช้ไปแล้วติดลบ (ตัวช่วยบริสุทธิ์) ◂
 import { normalizeShiftTimes } from "./clock-rules"; // HR H2.4 ▸ R14 ◂
+import { leavePolicyPaidLockedInTx } from "./leave"; // HR PREPROD-1 ▸ R5: กติกาเดือนที่อนุมัติเงินเดือนแล้ว อยู่ที่ leave.ts ที่เดียว ◂
 
 type Ctx = { tenantId: string; systemId: string };
 /** ผู้กด — รูปเดียวกับ HrViewer ของ hr/privacy (role · unitAccess · permissions · userId) */
@@ -54,6 +55,8 @@ export const SETTINGS_TEXT = {
   // HR H2.7 ▸ r2 มติ L5: ปีการลาของแถวสมุดที่เขียนแล้วต้องไม่เปลี่ยนความหมาย ◂
   yearStartLocked: "เปลี่ยนเดือนเริ่มปีการลาไม่ได้ เพราะประเภทการลานี้มีการบันทึกวันลาแล้ว — สร้างประเภทการลาใหม่แทน",
   quotaBelowUsed: "ตั้งโควตานี้ไม่ได้ เพราะจะทำให้วันลาคงเหลือของพนักงานบางคนติดลบในปีที่ลาไปแล้ว — ตั้งโควตาให้ไม่น้อยกว่าวันที่ใช้ไปแล้ว",
+  // HR PREPROD-1 ▸ R5: สลับ "ได้รับค่าจ้าง" ไม่ได้เมื่อมีใบลาที่อนุมัติแล้วในเดือนที่อนุมัติเงินเดือนแล้ว (เงินของเดือนนั้นคิดจากค่าเดิมไปแล้ว) ◂
+  paidLocked: "เปลี่ยน 'ได้รับค่าจ้าง' ของประเภทการลานี้ไม่ได้ เพราะมีใบลาที่อนุมัติแล้วอยู่ในเดือนที่อนุมัติเงินเดือนแล้ว — สร้างประเภทการลาใหม่แทน",
 } as const;
 
 const LEAVE_CATEGORIES = new Set<HrLeaveType>(["SICK", "PERSONAL", "VACATION", "OTHER"]);
@@ -513,6 +516,7 @@ export async function updateLeavePolicy(ctx: Ctx, v: SettingsViewer, id: string,
       }
       const data = policyData(patch ?? {}, policyBase(row));
       // HR H2.7 ▸ r2 มติ L5: เปลี่ยนเดือนเริ่มปีการลา ไม่ได้ เมื่อมีแถวสมุดวันลา (หรือใบลารอ/อนุมัติ) ของประเภทนี้แล้ว — ข้อความคงที่
+      if (data.paid !== row.paid && (await leavePolicyPaidLockedInTx(tx, ctx, row.id))) throw new SettingsRefusal(SETTINGS_TEXT.paidLocked); // HR PREPROD-1 ▸ R5: ไม่เขียนอะไร ◂
       if (data.yearStartMonth !== row.yearStartMonth) {
         const used = (await tx.hrLeaveBalanceTxn.count({ where: { policyId: row.id } })) + (await tx.hrLeave.count({ where: { policyId: row.id, status: { in: ["PENDING", "APPROVED"] } } }));
         if (used > 0) throw new SettingsRefusal(SETTINGS_TEXT.yearStartLocked);

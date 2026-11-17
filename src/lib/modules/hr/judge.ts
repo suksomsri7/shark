@@ -240,6 +240,20 @@ function slotLeaves(windows: readonly { start: Date; end: Date }[], lv: JudgeLea
   });
 }
 
+// HR LEAVE-3 ▸ R1 (F1): ใบลาครึ่งเช้า + ครึ่งบ่ายที่อนุมัติทั้งคู่ในวันเดียว = ลาทั้งวัน — ทุกช่องลาเต็มช่อง ·
+//   ใบที่บันทึกในช่อง = ครึ่งที่ครอบช่องนั้น (คร่อมจุดกึ่งกลาง/ช่อง DAY = ใบครึ่งเช้า) · วันที่มีใบอนุมัติแบบอื่นหลายใบ (แถวเก่า) = พฤติกรรมเดิม (LEAVE_MISMATCH) ◂
+type LeavePair = { am: JudgeLeave; pm: JudgeLeave };
+function leavePairOf(onDay: readonly JudgeLeave[], day: string): LeavePair | null {
+  const ap = onDay.filter((l) => l.status === "APPROVED");
+  if (ap.length !== 2 || !ap.every((l) => l.hours === null && l.from === day && l.to === day)) return null;
+  const am = ap.find((l) => l.halfDay === "AM");
+  const pm = ap.find((l) => l.halfDay === "PM");
+  return am && pm ? { am, pm } : null;
+}
+// HR LEAVE-3 ▸ W4 (r3): ช่องของวันคู่ครึ่งวันบันทึก leaveId = ครึ่งที่ครอบ แต่ leaveHalf = null (ลาทั้งวัน) ◂
+const asFullDay = (l: JudgeLeave): JudgeLeave => ({ ...l, halfDay: null });
+const pairLeaveOf = (windows: readonly { start: Date; end: Date }[], p: LeavePair): JudgeLeave[] => slotLeaves(windows, p.am).map((x) => asFullDay(x ? p.am : p.pm)); // HR LEAVE-3 ◂
+
 /** ช่องคิดสดของพนักงานหนึ่งคนในวันที่ส่งมา (Map วัน → ช่อง เรียงตามเวลาเริ่ม) */
 function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): Map<string, LiveSlot[]> {
   const out = new Map<string, LiveSlot[]>();
@@ -262,6 +276,7 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
     const onDay = leaves.filter((l) => l.from <= day && day <= l.to);
     const approved = onDay.find((l) => l.status === "APPROVED") ?? null;
     const shown = approved ?? onDay[0] ?? null;
+    const pair = leavePairOf(onDay, day); // HR LEAVE-3 ▸ R1 ◂
     const hol = holidayOfDay(data.hols, unitOf, day); // HR H2.8 ▸ แถวสาขาชนะแถวทั้งร้าน ◂
     const list: LiveSlot[] = [];
     const dayEntries = entries
@@ -274,11 +289,12 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
           return []; // แถวเวลาเสีย (ก่อนกติกา H1.2) — ไม่ตัดสิน
         }
       });
-    const eLeaves = slotLeaves(dayEntries.map((x) => x.w), approved);
+    const eLeaves = pair ? dayEntries.map((): SlotLeave => ({ halfDay: null })) : slotLeaves(dayEntries.map((x) => x.w), approved); // HR LEAVE-3 ▸ R1 คู่ครึ่งวัน = เต็มทุกช่อง ◂
+    const eWho = pair ? pairLeaveOf(dayEntries.map((x) => x.w), pair) : null; // HR LEAVE-3 ▸ R1 ใบของช่อง = ครึ่งที่ครอบ ◂
     for (const [i, { e, shift }] of dayEntries.entries()) {
       const evs = (attr.byEntry[e.id] ?? []).map((id) => evById.get(id)!).filter(Boolean);
       const sl = eLeaves[i] ?? null;
-      list.push({ slotKey: e.id, day, entry: e, shift, shiftName: e.shift.name, dayOff: false, holidayId: hol?.id ?? null, unitId: e.unitId ?? unitOf, leave: sl ? approved : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: evs, out: judge(day, shift, false, evs, sl) });
+      list.push({ slotKey: e.id, day, entry: e, shift, shiftName: e.shift.name, dayOff: false, holidayId: hol?.id ?? null, unitId: e.unitId ?? unitOf, leave: sl ? (eWho?.[i] ?? approved) : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: evs, out: judge(day, shift, false, evs, sl) }); // HR LEAVE-3 ▸ R1 ◂
     }
     const rest = restByDay.get(day) ?? [];
     if (!dayEntries.length) {
@@ -300,19 +316,20 @@ function slotsOf(emp: EmpRow, days: readonly string[], data: Data, now: Date): M
       let sl: SlotLeave | null = null;
       if (shift) {
         try {
-          sl = slotLeaves([shiftWindow(day, shift)], approved)[0] ?? null;
+          const w1 = shiftWindow(day, shift); // HR LEAVE-3 ▸ R1: เวลาเสีย = โยนเหมือนเดิม ◂
+          sl = pair ? { halfDay: null } : (slotLeaves([w1], approved)[0] ?? null); // HR LEAVE-3 ▸ R1 ◂
         } catch {
           shift = null;
         }
       }
-      list.push({ slotKey: "DAY", day, entry: null, shift, shiftName: shift ? SCHEDULE_NAME_TH : null, dayOff, holidayId: hol?.id ?? null, unitId: unitOf, leave: sl ? approved : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, shift, dayOff, rest, sl, true) });
+      list.push({ slotKey: "DAY", day, entry: null, shift, shiftName: shift ? SCHEDULE_NAME_TH : null, dayOff, holidayId: hol?.id ?? null, unitId: unitOf, leave: sl ? (pair ? asFullDay(pair.am) : approved) : null, slotLeave: sl, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, shift, dayOff, rest, sl, true) }); // HR LEAVE-3 ▸ R1 ช่อง DAY = ใบครึ่งเช้า ◂
     } else if (rest.some((e) => e.kind === "IN")) {
       // รอบที่ไม่เข้ากะใดเลยในวันที่มีกะ — ไม่ทิ้งนาทีทำงาน: ช่อง DAY แบบไม่มีตาราง (วันหยุด = DAY_OFF)
       list.push({ slotKey: "DAY", day, entry: null, shift: null, shiftName: null, dayOff: !!hol, holidayId: hol?.id ?? null, unitId: unitOf, leave: null, slotLeave: null, leaveFraction: null, shownLeave: shown, events: rest, out: judge(day, null, !!hol, rest, null, true) });
     }
     // ส่วนวันลาเก็บครั้งเดียวต่อวัน — ช่องแรกที่ใบลาครอบจริง (มติ r3 3) · ช่องอื่นที่ครอบ 0 · ช่องที่ไม่ครอบไม่มีใบลา
     const withLeave = list.filter((x) => x.slotLeave);
-    for (const [i, x] of withLeave.entries()) x.leaveFraction = i === 0 ? (x.leave!.halfDay ? "0.5" : "1.0") : "0.0";
+    for (const [i, x] of withLeave.entries()) x.leaveFraction = i === 0 ? (x.leave!.halfDay && !pair ? "0.5" : "1.0") : "0.0"; // HR LEAVE-3 ▸ R1 คู่ครึ่งวัน = 1.0 ◂
     // HR H2.7 ▸ ลาเป็นชั่วโมง: ไม่มีเวลา ⇒ ไม่ครอบช่อง แต่บันทึกใบลา + ส่วนวัน (hourlyLeaveDays = floor(ชม./8, 0.1)) ที่ช่องแรกของวันที่เป็นกะ/ตาราง ◂
     const hourly = approved && approved.hours !== null ? (list.find((x) => x.shift) ?? null) : null;
     if (hourly && approved) {

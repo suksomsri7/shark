@@ -19,6 +19,7 @@ const F = { page: "src/app/app/sys/[id]/hr/payroll/page.tsx", payUi: `${H}payrol
 const ALLOW_SRC = [F.page, F.payUi, F.runUi, F.repUi, F.label, F.view];
 const ALLOW_DATA = [F.th, F.en, F.inv, F.mx];
 const OWN = ["scripts/qc-hr-vis-5a.mts", "scripts/qc-hr-vis-5a-lib.mts"];
+const TOOL = ["scripts/seed-hr-walk.mts"]; // ORACLE-EDIT (HR VIS-5a · controller): walk seed OT row for the r3 add/OT column (every hunk "HR VIS-5a" + ◂, checked in S2) ◂
 /** brief §7 "Untouched" — whole files/dirs */
 const UNTOUCHED = [F.payroll, F.rr, `${H}privacy.ts`, `${H}privacy-shared.ts`, `${H}bank-files`, `${H}filings`, `${H}reports.ts`, `${H}reports-rules.ts`, `${H}scope.ts`, "src/lib/core", "prisma", ...srcFiles("src/lib/modules/hr").filter((f) => /actions\.ts$/.test(f))];
 /** loaders/gates the payroll page reads — bodies hashed vs base (privacy + I/O pins) */
@@ -114,7 +115,7 @@ const CH = changedFiles(BASE).filter((f) => !/^(ledger|scratchpad)\//.test(f));
 {
  const r = { sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA, runRules: !!rd(F.rr) && rd(F.rr) === fileAt(BASE, F.rr), untouched: changedVsBase(BASE, UNTOUCHED) === "unchanged" };
  chk("S1", all(r), "", `${fails(r)} ${changedVsBase(BASE, UNTOUCHED).slice(0, 120)}`);
- const out = CH.filter((f) => ![...ALLOW_SRC, ...ALLOW_DATA, ...OWN].includes(f) && !(/^scripts\/qc-.*\.mts$/.test(f) && !isNew(f) && oracleEditOk(BASE, f)));
+ const out = CH.filter((f) => ![...ALLOW_SRC, ...ALLOW_DATA, ...OWN].includes(f) && !(/^scripts\/qc-.*\.mts$/.test(f) && !isNew(f) && oracleEditOk(BASE, f)) && !(TOOL.includes(f) && !isNew(f) && !vis5aUnmarked(BASE, [f], isNew).length)); // ORACLE-EDIT (HR VIS-5a · controller): + TOOL ◂
  chk("S2", !out.length, "none", `outside=${L(out)} base=${BASE.slice(0, 9)}`);
  const bad = vis5aUnmarked(BASE, CH.filter((f) => ALLOW_SRC.includes(f)), isNew);
  chk("S3", !bad.length, "", L(bad));

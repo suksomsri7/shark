@@ -148,3 +148,33 @@ Above-the-fold positions and page heights · the sticky bar at 390 (`max-md:cont
 - **11v adjust / profiles / ytd / history:** sub-nav on one row; Thai period labels in the legacy lists.
 - **13b:** title "… · ก.ย. 2569".
 - **New:** `11d-payroll-drawer*` states.
+
+## Picture round 2 (on 3c91c6068) — commit `5a3aba2bd`
+- **P1:** the "ต้องตรวจ N รายการ" box renders only for a v2 DRAFT.
+  - The header sync renders only with no run or a draft.
+  - After a reversal, sync moves into the "สร้างรอบจ่ายใหม่ของงวด …" block. The action allows it there because the period is not frozen.
+  - Approved, paid and v1 runs have no sync anywhere (frozen period).
+- **P2:**
+  - Cells are `px-2` below xl and `px-3` from xl.
+  - The code labels under add/deduct use `whitespace-normal`. At 1024 one long label ("เข้า/ออกกลางเดือน (÷30)") was widening the add column and pushing the status column out of the card.
+  - The short reason shows only from 1280 with the drawer closed. With the drawer open and at 1024 only the badge shows.
+  - Money stays nowrap. The table frame keeps `overflow-hidden`; with these widths the 1024 and drawer-open layouts fit (the controller confirms with pictures).
+- **P3:** consent dates in the adjust list use `dayLabel` ("14 พ.ย. 2569"). ISO left in files outside this ticket (→ VIS-5e or a ruling):
+  - `stock-charge-ui.tsx` — `t("period", { period: c.periodKey })` at :168 and :222.
+  - `RunRowActions.tsx` — dialog titles "อนุมัติ/ดึงข้อมูลใหม่/ลบรอบร่างงวด 2026-…" at :60, :70, :81.
+  - `work-entries-ui.tsx` — hours panel "งวด {period}".
+  - `bank-files/**` and `filings/**` — docs periods, ปีภาษี ค.ศ.
+  - Native month pickers ("November 2026", "September 2026") belong to VIS-5e.
+- **P4:** rows at 1440 with the reason are about 69 px: badge 28 px + reason line + padding. The mockup rows with a reason are about 70 px. Rows without a reason, and all rows at 1024 or with the drawer open, are shorter.
+- **P5:** the action row renders only when it holds a control or a document link. The branch-limited viewer on a PAID run gets no gap.
+- **P6:** both are legacy list content in `payroll-ui.tsx`'s runs part, unchanged by the split → VIS-5e.
+  - The "พนักงาน" slip chip comes from `nameByEmp.get(...) ?? "พนักงาน"`, a name map built only from the current in-scope employee list. A person missing from that list (e.g. ended) gets the fallback.
+  - "โบว์ · ต้องตรวจ" comes from the legacy `PARTIAL_MONTH` flag on the slip chip of any run.
+- **OT seed (for the walk):** no seeded v2 run has an OT line. The only seeded OT, น้ำฝน +฿600 (6 h), sits in period ต.ค. 2569 = the engine-1 PAID run (x4), so it shows only as a stored addition.
+  - To show the r3 rule, add an APPROVED pay adjustment kind OT for น้ำฝน (`emp.namfon`, monthly ฿16,000) in `{period.DRAFT}` (มิ.ย. 2569) before the DRAFT v2 run is built. Alternatively write the DRAFT run's snapshot with an `{code:"OT", ref, day:null, minutes:null, amountSatang:60000}` line and raise that item's `addSatang` / gross / net and the run totals by the same 60000.
+  - One person with OT plus the others without is what T1 checks.
+- **Runs:**
+  - qc-hr-vis-5a forced ×3 → 39/39 each (one run before the commit, same code); unforced 39/39; RESIDUE none.
+  - h3.4 85/85 · h3.6 62/62 · h3.8 78/78 · priv-2 47/47.
+  - fitness 54/54 and fitness-hr 9/9 in both modes.
+  - Clean typecheck exit 0, started at 24.2 GB free.

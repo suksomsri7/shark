@@ -22,7 +22,7 @@ import {
   reverseRunAction,
   setSalaryProfileAction,
 } from "./payroll-actions";
-import { periodLabel } from "./period-label"; // HR VIS-5a ▸ F9 ◂
+import { dayLabel, periodLabel } from "./period-label"; // HR VIS-5a ▸ F9 · P3 ◂
 import { HrSalaryOtRateField } from "./ui"; // HR H2.9 ▸ #18 ช่องอัตรา OT ต่อชั่วโมง (ui.tsx) ◂
 
 const muted = "text-[color:var(--color-muted)]";
@@ -279,11 +279,11 @@ export async function PayrollSection({ systemId, parts, locale = "th" }: { syste
                     {a.sourceType === "INVENTORY_ISSUE" && (
                       <span
                         data-testid="hr-pay-src-stock"
-                        title={stockConsent.get(a.id) ? `หนังสือยินยอม ${stockConsent.get(a.id)!.ref} ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบหนังสือยินยอม — ตรวจก่อนอนุมัติ"}
+                        title={stockConsent.get(a.id) ? `หนังสือยินยอม ${stockConsent.get(a.id)!.ref} ลงนาม ${dayLabel(stockConsent.get(a.id)!.at, locale)}` : "ไม่พบหนังสือยินยอม — ตรวจก่อนอนุมัติ"} // HR VIS-5a ▸ P3 ◂
                         className="mt-0.5 inline-block rounded-full border border-[color:var(--color-line)] px-2 py-0.5 text-xs"
                       >
                         เบิกของ/ค่าเสียหาย · หนังสือยินยอม (ม.76/77):{" "}
-                        {stockConsent.get(a.id) ? `${stockConsent.get(a.id)!.ref} · ลงนาม ${stockConsent.get(a.id)!.at}` : "ไม่พบ — ตรวจก่อนอนุมัติ"}
+                        {stockConsent.get(a.id) ? `${stockConsent.get(a.id)!.ref} · ลงนาม ${dayLabel(stockConsent.get(a.id)!.at, locale)}` : "ไม่พบ — ตรวจก่อนอนุมัติ"} {/* HR VIS-5a ▸ P3 ◂ */}
                         {stockConsent.get(a.id)?.employeeEnded && a.status === "PENDING" ? " · พนักงานสิ้นสุดการจ้างแล้ว — ตรวจก่อนอนุมัติ (ทวงจากค่าจ้างงวดสุดท้ายหรือตัดหนี้ = นักบัญชี)" : ""}
                       </span>
                     )}
@@ -347,6 +347,7 @@ export async function PayrollSection({ systemId, parts, locale = "th" }: { syste
         {stranded.length > 0 && (
           <div role="note" data-testid="hr-payroll-stranded" className="mb-2 rounded-lg border bg-[color:var(--color-surface-2)] px-3 py-2 text-xs">
             <div className="font-medium">รายการค้าง {stranded.length} รายการ — งวดของรายการมีรอบจ่ายแล้ว จะไม่ถูกจ่ายจนกว่าจะย้ายไปงวดถัดไป</div>
+            {stranded.some((a) => a.reason === "REFUND_BEHIND") && <div className={muted}>เงินคืนที่อยู่ในงวดที่ยังไม่มีรอบจ่าย แต่รอบงวดหลังของพนักงานอนุมัติแล้ว — ย้ายไปงวดถัดไปที่ยังไม่มีรอบจ่าย (พนักงานที่พ้นสภาพแล้ว ให้คืนเงินนอกระบบเงินเดือน)</div>} {/* HR PREPROD-1 ▸ R2: REFUND_BEHIND ◂ */}
             <div className="mt-1 flex flex-col gap-1">
               {stranded.map((a) => (
                 <div key={a.id} className="flex flex-wrap items-center justify-between gap-2">

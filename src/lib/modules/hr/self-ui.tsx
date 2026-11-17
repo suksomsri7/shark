@@ -948,6 +948,7 @@ function RequestList({ r, canWrite }: { r: MyRequests; canWrite: boolean }) {
             {l.days !== null ? t("daysN", { n: l.days }) : "—"}
             {l.halfDay ? ` · ${l.halfDay === "AM" ? t("halfAM") : t("halfPM")}` : ""}
             {l.hours !== null ? ` · ${t("hoursN", { n: l.hours })}` : ""}
+            {l.unpaidDays ? ` · ${t("unpaidDaysN", { n: l.unpaidDays })}` : ""} {/* HR PREPROD-1 ▸ R3 ◂ */}
           </Field>
           <Field label={t("fFiled")}>{beDate(bkkYmd(l.createdAt))}</Field>
           {l.canCancel && cancelBtn("leave", l.id, () => selfCancelLeaveAction(l.id))}

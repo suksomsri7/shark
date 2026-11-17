@@ -51,7 +51,7 @@ export async function respondSwapAction(fd: FormData): Promise<void> {
   const auth = await requireTenant();
   const ctx = ctxOf(auth, fd);
   if (!ctx) throw new HrSwapActionError(SWAP_REFUSAL.stale);
-  const r = await respondSwap(ctx, actorOf(auth), field(fd, "swapId"), { accept: field(fd, "accept") === "1" });
+  const r = await respondSwap(ctx, actorOf(auth), field(fd, "swapId"), { accept: field(fd, "accept") === "1", hideForeign: true }); // HR PRIV-3 ▸ R7 ◂
   if (!r.ok) throw new HrSwapActionError(r.reason);
   done();
 }
@@ -60,7 +60,7 @@ export async function cancelSwapAction(fd: FormData): Promise<void> {
   const auth = await requireTenant();
   const ctx = ctxOf(auth, fd);
   if (!ctx) throw new HrSwapActionError(SWAP_REFUSAL.stale);
-  const r = await cancelSwap(ctx, actorOf(auth), field(fd, "swapId"));
+  const r = await cancelSwap(ctx, actorOf(auth), field(fd, "swapId"), { hideForeign: true }); // HR PRIV-3 ▸ R7 ◂
   if (!r.ok) throw new HrSwapActionError(r.reason);
   done();
 }

@@ -708,3 +708,99 @@
 - เลน 4 `wip/hr-preprod-1` 681ed7464: ผู้สร้าง a7878aeefb74368f3 รอบ V1b/V7b/V8c (3 ไฟล์ข้อสอบ)
 - ลำดับรวม: H4.9-FIX1 (อยู่ใน session/hr แล้ว) → PREPROD-1 → LEAVE-3 → PRIV-3 → VIS-5a → VIS-5b → VIS-5c → (VIS-5d, 5e ยังไม่ร่าง) → ด่าน pm-full (ต้อง seed-hr-walk --down ก่อน + EXTRA ชุด preprod-1b/1c, leave-3b, priv-3, vis-5a/5b/5c) → HANDOVER-H4 → นับ H4.9 · หลังชุดหน้าจอครบ: build ใหม่ + เดินซ้ำ + ดูภาพคู่ → นับ H5.1
 - หนี้: reports/export ตอบ 400 กับ 404 ต่างกันตาม system id (เล็ก) · ข้อสอบ vis-5b การ์ดสรุปเดือนแดงปลอมถ้ารันวันที่ 1–3
+
+### 2026-11-15T05:10Z · จุดต่อ
+- 🔴 ทรีผู้คุม `/root/projects/shark-hr-c` ตอนนี้อยู่บนสาขาชั่วคราว `tmp/walk-vis5b` (session/hr + VIS-5b + VIS-5a · ใช้ถ่ายภาพเท่านั้น · ไฟล์ข้อสอบที่ชนเลือกฝั่งเดียวแบบหยาบ ห้าม merge) · serve :3226 จาก build ของสาขานี้ · unit hr-walk-vis5ab2 กำลังเดิน 11v/x1–x4/13b (สถานะ /tmp/hr-ctl/walk/vis5ab2/status) · สคริปต์ /tmp/hr-ctl/walk/rewalk.sh (build+serve+walk) และ walkonly.sh
+- การ merge เข้า session/hr ทำที่ทรี merge-only `/root/projects/shark-hr-merge` (ไม่มี node_modules) จนกว่าทรีผู้คุมจะกลับมา session/hr
+- session/hr ในเครื่อง = 1cb714435 = +HR-PREPROD-1 (1e53bba91 · ผู้ตรวจ MERGE ×2 รอบส่วนต่าง · นักล่ายืนยันข้อเดิมปิด) · ยังไม่ push · ยังไม่ผ่านด่าน
+- 🔴 รอเจ้าของ: "แก้ค่าตรึง h3.8 ได้" — qc-hr-h3.8 S1.13 ตรึง sha ของ privacy.ts → แดงบน session/hr (77/78) · ระบบสิทธิ์บล็อกผู้สร้าง PREPROD-1 ไม่ให้แก้ · ผู้สร้าง PRIV-3 แก้ไปเองแล้วถูกสั่งถอน · ค่าใหม่ต้องคำนวณหลังรวมทุกใบที่แตะ privacy.ts (PREPROD-1, PRIV-3, LEAVE-3?)
+- LEAVE-3 (เลน 2): ผู้ตรวจส่วนต่าง MERGE · ผู้สร้าง a872228a4f774f395 ทำขั้นสอง (W10 การ์ด AI บอกชื่อคำขอ + รวม session/hr + โพรบลาคู่×ลาป่วยแบ่งส่วน)
+- PRIV-3 (เลน 5 `wip/hr-priv-3` 44a75f37a): ผู้ตรวจ MERGE WITH NOTES · นักล่า a9e849d961b43d3fc กำลังล่า · ค้าง: ผู้เขียนข้อสอบเพิ่มผู้ดูถือกุญแจเดียว (payadjust.request / payadjust.approve) + เซลล์ S0/SR/SD ในตารางเดิน · SD (ถือ hr.leave.read) เห็นทะเบียน = ของเดิม → รายการเจ้าของ
+- VIS-5a (เลน 3 `wip/hr-vis-5a` 815a626aa): 39/39 · รอภาพ · VIS-5b (เลน 1 `wip/hr-vis-5bc`): ผู้สร้าง a538b5242fe7df3d0 แก้ตามภาพ F1–F4 (แถบอนุมัติทับการ์ด · คอลัมน์ซ้ายว่าง · เพิ่มชุดถ่ายวันมีกะ `01-hub-rostered`)
+- ด่านสุดท้ายต้อง EXTRA="qc-hr-preprod-1b qc-hr-preprod-1c qc-hr-leave-3 qc-hr-leave-3b qc-hr-priv-3 qc-hr-vis-5a qc-hr-vis-5b qc-hr-vis-5c" + `seed-hr-walk --down` ก่อน
+
+### 2026-11-15T05:40Z · 🔴 ช่องโหว่ข้ามร้านในปุ่มเงินเดือน (มีบน origin/main = production)
+- นักล่า a9e849d961b43d3fc (โพรบ /tmp/hr-ctl/priv3-hunt/): `setSalaryProfileAction` (payroll-actions.ts) ไม่ตรวจว่า systemId เป็นระบบ HR ของ tenant ผู้เรียก · origin/main มีโค้ดเดียวกัน (ตรวจแล้ว: requireTenant + assertHrCan แล้วเรียก setSalaryProfile ทันที) · ผล: แถว HrSalaryProfile ใน tenant ผู้เรียกชี้ระบบร้านอื่น · unique (systemId, employeeId) ⇒ ตรวจว่ารหัสมีจริง + จองแถวกันร้านเจ้าของตั้งเงินเดือน · markPaid/reverseRun/reverseRunV2 เขียน audit ใน tenant ผู้เรียกสำหรับ run id ร้านอื่น
+- จัดเข้า HR-PRIV-3 เป็น R6 (+ R7 ข้อความยกเลิกแยก "มีแต่ไม่ใช่ของคุณ" · R8 จอลงเวลาบอกชื่อพนักงาน · R9 ช่องว่างข้อสอบ) → ผู้เขียนข้อสอบ a31b21b807884d5a9 กำลังเพิ่ม → ผู้สร้าง a47766f0e3ed7927e
+- ส่ง tg ถามเจ้าของ: ออก hotfix production แยกก่อนหรือไม่ (ยังไม่มีคำตอบ · ห้าม deploy เอง)
+- ผลนักล่าส่วนอื่น: ด่าน 3 หน้าแน่น (K/N/S ได้ not-found เหมือนระบบไม่มีอยู่ทุกไบต์) · 135 ปุ่ม × 8 ผู้ดู ไม่มีการเขียนแถวของคนอื่น · ไม่ได้ทดสอบ: sidebar/layout, เวลาตอบ
+
+### 2026-11-15T06:40Z · ภาพรอบ 2 ของ VIS-5a + VIS-5b
+- ผู้ตรวจภาพ ab9a46458db968e72 รอบสอง (บันทึก ledger/wo-notes/hr-H5.1-visual-review-r2.md): หน้ารอบจ่ายไม่เหลือข้อระดับ A · แถว/ยอดรวม/การ์ดบวกลงตัว · M ไม่เห็น ฿ · PB เห็นเฉพาะคนในสิทธิ์ · หน้ารวม: แถบอนุมัติทับการ์ด (A) + คอลัมน์ซ้ายว่าง ~640px
+- ส่งรายการแก้ให้ผู้สร้าง VIS-5a a8a2aaeef4ec7ecc8 (F1–F10 + สืบ I1–I3) · 🔴 I1: PB เห็นปุ่ม "กลับรายการ" ทั้งรอบจ่าย (x2) — ต้องรู้ว่าปุ่มหลังบ้านปฏิเสธ PB หรือไม่ ถ้าไม่ปฏิเสธ = ช่องโหว่ต้องเปิดใบแยก
+- VIS-5b: ผู้สร้าง a538b5242fe7df3d0 แก้ F1–F4 + เพิ่มชุดถ่าย `01-hub-rostered`
+- ทรีผู้คุมยังอยู่ `tmp/walk-vis5b` · serve :3226 เปิด (unit hr-walk-vis5ab2)
+- รอเจ้าของ 2 เรื่อง: (1) แก้ค่าตรึง h3.8 (2) hotfix ปุ่มตั้งเงินเดือนข้ามร้านขึ้น production แยกก่อนหรือไม่ (tg ส่งแล้ว msg 6021)
+
+### 2026-11-15T08:10Z · PRIV-3 ขยาย (R6–R10) + migration
+- ข้อสอบ: `qc-hr-priv-3` 28 + `qc-hr-priv-3b` 13 (เลน 5 `wip/hr-priv-3` 990a15634) · ทดสอบ 51 ปุ่มใน 8 ไฟล์ปุ่มเงินเดือนแบบเจ้าของร้านอื่นเรียก: 48 แน่น · รั่ว: setSalaryProfile · createPayrollRun (ใหม่) · markPaid/reverseRun/reverseRunV2 (audit) · X4/X6 พิสูจน์การจองกุญแจกันร้านเจ้าของ
+- R10: migration 1 ตัว (ดัชนีอย่างเดียว ไม่ลบข้อมูล) — HrSalaryProfile unique → (tenantId, systemId, employeeId) · HrPayrollRun_systemId_periodKey_live_key → (tenantId, systemId, periodKey) WHERE status<>'REVERSED' · ไม่มี call site ใช้ compound unique → เข้ารายการ GO ทีละ migration ตอน H5.3 (+ ถ้า hotfix แยก ต้องไปด้วย)
+- ⚠ ห้าม migrate ฐานเลน 5 (ร่วมเลน 2) จนกว่า LEAVE-3 ขั้นสองจบ — h0.6 S2.4 / h1.3 S1.10 ตรึงดัชนีเดิม → ผู้สร้าง PRIV-3 a47766f0e3ed7927e ทำ R6/R7 + เขียน migration ก่อน แล้วรอข้อความจากผู้คุม · หลัง PRIV-3 เข้า session/hr ทุกเลน + QC4 ต้อง migrate deploy
+- R8 จอลงเวลา: ไม่ต้องแก้ (บอกชื่อเฉพาะคนที่หน้าจอลงเวลาแสดงอยู่แล้ว)
+
+### 2026-11-15T08:20Z · เจ้าของตอบ "แก้ไขทั้ง 2 เรื่องเลย"
+- (1) ค่าตรึง h3.8 S1.13: อนุญาตแล้ว → ผู้คุมแก้บน session/hr ในเครื่อง (ค่า privacy.ts หลัง PREPROD-1 = 1847a6a0…) · ทุกใบที่แตะ privacy.ts หลังจากนี้ (PRIV-3, LEAVE-3?) ต้องให้ผู้คุมตรึงค่าใหม่ตอน merge (คำอนุญาตครอบเรื่องนี้) — ตัวแทนยังห้ามแก้เอง
+- (2) hotfix ช่องโหว่ปุ่มเงินเดือนข้ามร้านขึ้น production แยก: อนุมัติให้ทำ → แผน: รอผู้สร้าง PRIV-3 ทำ R6 + R10 เสร็จบน session/hr → เปิดใบ HF-TENANT พอร์ตเฉพาะ R6 (resolver ทุกปุ่มใน payroll action ของ main) + migration R10 ลงสาขา `hotfix/hr-payroll-tenant-guard` จาก origin/main ในทรีใหม่ → ข้อสอบ + ผู้ตรวจ → **ยังต้องขอ GO จากเจ้าของก่อน push main / deploy / ลง migration บน production ทุกครั้ง**
+
+## 🟡 CHECKPOINT ก่อนพัก — 2026-11-15T00:15Z (อา. 15 พ.ย. 07:15 ไทย) · เจ้าของ: "จบงานส่วนนี้แล้วจะให้พัก · จะสั่งเริ่มต่อเอง"
+**สถานะนับ: 40/44 (91%)** · origin/session/hr = 40/44 (ด่านเขียว) · session/hr ในเครื่อง = นำหน้า origin 55+ commit **ยังไม่ผ่านด่านรวม ยังไม่ push**
+กติกาตอนพัก: ไม่เปิดงานใหม่ · ไม่ tg รายชั่วโมง · ไม่ push session/hr จนกว่าด่านรวมผ่าน · ไม่แตะ production
+
+### ทรีและสาขา (ทุกอย่าง commit ในเครื่องแล้ว ยกเว้นที่ระบุ)
+| ทรี | สาขา @ head | งาน | สถานะ |
+|---|---|---|---|
+| `/root/projects/shark-hr-merge` (ไม่มี node_modules · ใช้ merge + สมุดคุมงาน) | `session/hr` | ผู้คุม | มี: HF-SSO fix2 · H4.9-FIX1 · HR-PREPROD-1 (1e53bba91) · ค่าตรึง h3.8 S1.13 แก้แล้ว (เจ้าของอนุมัติ 15 พ.ย.) · walker tuning · ใบสั่ง PRIV-3 |
+| `/root/projects/shark-hr-c` (ทรีผู้คุมเดิม · QC4 · มี .next) | `tmp/walk-vis5b` 0afc19d43 | สาขาถ่ายภาพเท่านั้น = session/hr(เก่า)+VIS-5a+VIS-5b · **ห้าม merge** | unit `hr-rewalk-r3` กำลัง build+เดิน (สถานะ /tmp/hr-ctl/walk/r3/status) · serve :3226 · ข้อมูลเดินหน้าจอ (seed-hr-walk) ยังอยู่บน QC4 → ต้อง `--down` ก่อนด่าน pm-full · ตอนกลับมาคุม: `git checkout session/hr` ในทรีนี้หลังถ่ายเสร็จ แล้วลบ worktree shark-hr-merge ได้ |
+| เลน 1 `/root/projects/shark-hr` | `wip/hr-vis-5bc` 0c37a8069 | VIS-5b หน้ารวม (ผู้สร้าง a538b5242fe7df3d0 · ข้อสอบ a09a65f20a0188281 qc-hr-vis-5b 29) + ใบสั่ง/ข้อสอบ VIS-5c (ยังไม่มีผู้สร้าง) | แก้ตามภาพรอบ 1 แล้ว รอภาพรอบ 3 · ค้าง F5 (การ์ดลงเวลา + ตัด listEmployees) หลัง PRIV-3 เข้า · ต้อง re-pin `hrNavFilter` + vis-5c S1/S8 |
+| เลน 2 `/root/projects/shark-hr-b` | `wip/hr-leave-3` 9b4326127 (+งานค้างยังไม่ commit 1 ไฟล์) | HR-LEAVE-3 (ผู้สร้าง a872228a4f774f395 · ข้อสอบ aceb1aa709a1b580c leave-3 53 + leave-3b 11 · ผู้ตรวจ a116fba15115ccb3e MERGE) | **กำลังทำขั้นสอง**: รวม session/hr (มี PREPROD-1) + W10 การ์ด AI + โพรบลาคู่×ลาป่วยแบ่งส่วน → รายงานแล้ว merge เข้า session/hr ได้ |
+| เลน 3 `/root/projects/shark-hr-l3` | `wip/hr-vis-5a` 3c91c6068 | VIS-5a หน้ารอบจ่าย (ผู้สร้าง a8a2aaeef4ec7ecc8 · ข้อสอบ af937fefaa7374165 qc-hr-vis-5a 39) | 39/39 · แก้ตามภาพรอบ 1 แล้ว รอภาพรอบ 3 · เหลือ: ชื่องวด ISO ใน work-entries-ui / bank-files / filings → VIS-5e |
+| เลน 4 `/root/projects/shark-hr-l4` | `wip/hr-preprod-1` 1e53bba91 | HR-PREPROD-1 | **merged เข้า session/hr ในเครื่องแล้ว** · เลนว่าง |
+| เลน 5 `/root/projects/shark-hr-l5` (ฐาน QC ร่วมเลน 2) | `wip/hr-priv-3` 2fea7f599 (+งานค้าง 1 ไฟล์) | HR-PRIV-3 (ผู้สร้าง a47766f0e3ed7927e · ข้อสอบ a31b21b807884d5a9 priv-3 28 + priv-3b 13 · ผู้ตรวจ ad232656914a642fd · นักล่า a9e849d961b43d3fc) | **กำลังทำรอบแก้** R6 (ปุ่มเงินเดือนข้ามร้าน) R7 R10 (migration ดัชนี tenant) · ⚠ ห้าม migrate ฐานเลน 5 จนเลน 2 จบ (h0.6 S2.4 / h1.3 S1.10 ตรึงดัชนีเดิม) → แล้วส่วนต่างให้ผู้ตรวจ+นักล่า → merge (ผู้คุมตรึงค่า h3.8 S1.13 ใหม่) → ทุกเลน + QC4 `migrate deploy` |
+
+### ลำดับที่เหลือ (ตอนกลับมา)
+1. รับรายงาน LEAVE-3 ขั้นสอง → merge เข้า session/hr (ที่ shark-hr-merge หรือ shark-hr-c หลัง checkout กลับ)
+2. บอกผู้สร้าง PRIV-3 ว่าเลน 2 จบ → migrate + ORACLE-EDIT h0.6 S2.4 / h1.3 S1.10 → ผู้ตรวจส่วนต่าง → merge → ตรึง h3.8 S1.13 ใหม่
+3. **HF-TENANT (เจ้าของอนุมัติให้ทำ hotfix แยก · ยังต้องขอ GO ก่อน push main/deploy/migration บน prod)**: ทรีใหม่จาก origin/main สาขา `hotfix/hr-payroll-tenant-guard` · พอร์ต R6 (resolver ทุกปุ่ม payroll บน main) + migration R10 **ตัวเดียวกันทุกตัวอักษร**กับของ PRIV-3 · ข้อสอบ + ผู้ตรวจ
+4. ดูภาพรอบ 3 (VIS-5a/5b: /root/qc/hr-h5.1 · states 01-hub, 01-hub-rostered*, 11a, 11b, 11v-*, 11d-*, x1–x4, 13b · เทียบตัวเลขวันมีกะ: อยู่กะ 9 · มาแล้ว 9 · สาย 1 น้ำฝน 18 นาที — ตัวเลขนี้อ่านจากฐานเลน 1; บน QC4 วันที่อาจเป็น 13 พ.ย.) → ถ้าผ่าน: ผู้เขียนข้อสอบแต่ละใบ re-pin → VIS-5a, VIS-5b re-merge session/hr (หลัง PRIV-3) → merge
+5. VIS-5c (หน้าพนักงาน/โปรไฟล์ + ปิดบังเลข): เปิดผู้สร้างหลัง PRIV-3 เข้า (ข้อสอบ vis-5c S1/S8 ต้องปรับ)
+6. ร่าง + ทำ VIS-5d (ตั้งค่า/กฎหมาย) · VIS-5e (ภาษา ~240 จุด · วันที่/ยุค · ชื่องวด ISO ที่เหลือ · error ของปุ่มยกเลิกที่ขึ้นหน้าทั่วไปบน prod · tab strip หน้าย่อย · ปุ่มปิดไม่มีเหตุผล · TAP-44 · PAY_SCOPE_EXCLUDED_TEXT ไทยบนหน้าอังกฤษ)
+7. ด่าน pm-full สุดท้าย: `seed-hr-walk --down` ก่อน · `MIGRATE=1` · EXTRA="qc-hr-preprod-1b qc-hr-preprod-1c qc-hr-leave-3 qc-hr-leave-3b qc-hr-priv-3 qc-hr-priv-3b qc-hr-vis-5a qc-hr-vis-5b qc-hr-vis-5c qc-hr-hf-sso qc-hr-money-2 qc-hr-priv-2 qc-account-cpa" → HANDOVER-H4 (รวมรายการ svc/sec ไม่รันโดย HR · หมุด POS ชั้น a) → push → นับ H4.9 = 41/44
+8. เดินหน้าจอซ้ำทั้งระบบ (build ใหม่ · re-seed วันเดิน) + ดูภาพคู่ → นับ H5.1 = 42/44 → H5.3 production (GO ทีละ migration + นักบัญชี 85 ข้อ + ยืนยัน ปกส. 17,500) = 43/44 จบจริง (H4.7 ตัด)
+
+### รอเจ้าของ/ต้องย้ายเข้า HR-OWNER-LIST
+- GO hotfix HF-TENANT เมื่อพร้อม · GO production ทีละ migration · ยืนยัน ปกส. 17,500 / HF-SSO
+- องค์ประกอบในแบบที่ไม่มีหลังบ้าน (ท้ายใบสั่ง VIS-5a/5b/5c): การ์ด AI แนะนำ · PDF สลิปรวม · ประวัติการคำนวณ · เทียบเดือนก่อน · วันหมดอายุเอกสาร · นำเข้า CSV · ปุ่มเปิดดูเลขเต็มแบบมี audit ฯลฯ
+- ผู้ถือ hr.leave.read เห็นทะเบียนพนักงาน (ของเดิม) · ลาบางส่วนของวันปิดคิวจองทั้งวัน (F5) · คืนเงินอัตโนมัติลาป่วยย้อนหลัง (O-29) · ลาป่วยรายชั่วโมงเกินสิทธิ์
+
+### 2026-11-15T01:05Z · HR-LEAVE-3 merged เข้า session/hr ในเครื่อง (ddc332400 → 8e36991a6)
+- ผู้สร้างรวม session/hr (PREPROD-1) แล้ว · โพรบลาคู่×ลาป่วยแบ่งส่วน: ได้เงิน 336 · ไม่ได้เงิน 144 · ขาด 0 · หัก UNPAID_LEAVE −30,000 อย่างเดียว (ตรงกับที่ผู้ตรวจคำนวณ) · ชุดทดสอบในเลนเขียวทั้งหมด (leave-3 53 · 3b 11 · preprod 57/25/16 ฯลฯ) · typecheck 0
+- ผู้คุมตรึงค่า h3.8 S1.13 ของ self.ts ใหม่ (ea079308…) ภายใต้คำอนุมัติเจ้าของ · privacy.ts ยัง 1847a6a0…
+- เลน 2 ว่างแล้ว → แจ้งผู้สร้าง PRIV-3 ให้ migrate ฐานร่วมได้ (h0.6 S2.4 / h1.3 S1.10 ต้องแก้ตาม)
+- ยังไม่ push (ยังไม่ผ่านด่านรวม)
+
+### 2026-11-15T02:10Z · ภาพรอบ 3 (build tmp/walk-vis5b 0afc19d43 = VIS-5a 3c91c6068 + VIS-5b 0c37a8069)
+- ผู้ตรวจภาพรอบสาม (ledger/wo-notes/hr-H5.1-visual-review-r3.md): ไม่มีข้อ A · ไม่มีเงินตัดบรรทัด/เลื่อนแนวนอน/รั่ว
+- **VIS-5b หน้ารวม: รับได้ทางภาพ** — วันมีกะ (ศ. 13 พ.ย. บน QC4): การ์ด 9/9/1/0/0 ตรงกระดาน 9 แถว · น้ำฝนสาย 18 นาที · แถบอนุมัติท้ายการ์ด · คอลัมน์ซ้ายไม่ว่าง (ผู้คุมเปิดดูเอง 1 ภาพ ตรงกัน) · ของเล็กค้าง (→ VIS-5e หรือรอบ F5): ข้อความในแถบกะถูกตัด · ชื่อใกล้ครบกำหนดถูกตัด · ป้ายช่องเลือกทั้งหมด "ยังไม่ได้เลือก" · การ์ดค่าแรงแสดงของวันนี้บนหน้าของวันอื่น · PB มีช่องว่าง ~750px ใต้การ์ดค่าแรง · ไทยบนหน้าอังกฤษ · ค้าง F5 หลัง PRIV-3 (การ์ดลงเวลา + listEmployees) + re-pin hrNavFilter + merge session/hr
+- **VIS-5a หน้ารอบจ่าย: อีก 1 รอบเล็ก** (ส่งผู้สร้าง a8a2aaeef4ec7ecc8 แล้ว P1–P6): กล่อง "ต้องตรวจ" + ปุ่มดึงชั่วโมงค้างบนรอบล็อก x1/x3 · คอลัมน์สถานะถูกตัดที่ 1024 และตอนเปิดลิ้นชัก · ป้าย ISO ใน 11v-adjust · กฎคอลัมน์ เพิ่ม/OT ยังไม่เห็นในภาพ (ข้อมูลเดินหน้าจอไม่มี OT ในรอบรุ่น 2 → ต้องเพิ่มใน seed-hr-walk)
+- PRIV-3: ผู้สร้าง a47766f0e3ed7927e กำลัง migrate ฐานเลน 5 + แก้ h0.6 S2.4/h1.3 S1.10 + รวม session/hr (มี PREPROD-1 + LEAVE-3)
+
+### 2026-11-15T03:00Z · VIS-5a รอบภาพ 2 แก้แล้ว — head `wip/hr-vis-5a` 9f6acd9bb (39/39 · typecheck 0) · **ยังไม่ได้ถ่ายภาพยืนยัน**
+- แก้: กล่อง "ต้องตรวจ"/ปุ่มดึงชั่วโมงเฉพาะร่าง (รอบย้อนแล้ว ปุ่มย้ายไปบล็อกสร้างรอบใหม่) · คอลัมน์สถานะไม่ถูกตัด (สาเหตุ: ป้ายรหัสเพิ่ม/หักไม่ตัดบรรทัด) · วันที่ลงนามเป็นไทย · ไม่มีช่องว่างของ PB
+- ค้างไป VIS-5e (ไฟล์ที่ใบนี้ห้ามแตะ): ชื่องวด ISO ใน stock-charge-ui.tsx:168,222 · RunRowActions.tsx:60,70,81 · work-entries-ui.tsx · bank-files/** · filings/** · ป้าย "พนักงาน" + "ต้องตรวจ" ในรายการประวัติ (payroll-ui.tsx ส่วน runs)
+- ต้องทำก่อนรับ VIS-5a: (1) เพิ่ม OT ในข้อมูลเดินหน้าจอ — รายการปรับ OT อนุมัติแล้วของน้ำฝน (emp.namfon ฿16,000/เดือน) ใน {period.DRAFT} = มิ.ย. 2569 ก่อนสร้างรอบร่าง (แก้ scripts/seed-hr-walk.mts → ผู้สร้างเครื่องมือ aa82a4e1b820b0f99) (2) build ใหม่ + เดิน 11a/11d/11v/x1–x4/13b + hub (สคริปต์ /tmp/hr-ctl/walk/rewalk.sh <tag> <states…> ที่ทรี shark-hr-c สาขา tmp/walk-vis5b หลัง merge head ใหม่ของสองใบ) (3) ผู้ตรวจภาพ ab9a46458db968e72 รอบสี่
+
+### 2026-11-15T04:10Z · PRIV-3 ส่วนต่างรอบ 2 = FIX REQUIRED (ยังไม่ merge) — `wip/hr-priv-3` 50b272695
+- ผู้ตรวจ ad232656914a642fd: `approvePayrollRunAction` ยังเขียน audit ให้ระบบร้านอื่น (ข้อสอบ 3b พลาดเพราะฟอร์มไม่ครบ) · `createEmployeeAction` ไม่ตรวจระบบเลย (พนักงานปลอมในร้านผู้เรียก → ผ่านด่าน "หาเจอ" ของปุ่มอื่น) · `cancelLeave` บอกว่าใบลามีอยู่ (CANCEL_DECIDED ก่อนตรวจเจ้าของ) · `createPayrollRunV2` รอดเพราะค่าเริ่ม v1 เท่านั้น · migration ควร create ก่อน drop + DROP IF EXISTS
+- คำตัดสิน r3 (R11–R15) ส่งผู้เขียนข้อสอบ a31b21b807884d5a9 แล้ว: resolver ในทุกปุ่ม payroll ที่รับรหัสจากผู้ใช้ + createEmployee · ขับทุกปุ่มด้วยฟอร์มครบ → แล้วผู้สร้าง a47766f0e3ed7927e → ส่วนต่าง → merge (ผู้คุมตรึง h3.8 S1.13: privacy.ts ปัจจุบันบนสาขา = 06e0ac17… ต้องคำนวณใหม่หลัง merge)
+- ⚠ migration R10 ลงบนฐานเลน 5/เลน 2 (ร่วมกัน) แล้ว — ฐานเลนอื่นและ QC4 ยังไม่ลง
+- หนี้จากผู้ตรวจ: ปุ่มใน ot/swap/roster/lifecycle/line/labor อาศัย "ค้นแล้วไม่เจอ" แทนการตรวจระบบตรง ๆ (แถวอยู่ในร้านผู้เรียกเอง ไม่มีกุญแจข้ามร้านอื่นที่เข้าถึงได้) → ใบเสริมความแข็งแรงหลัง RUN
+- **แผน hotfix บน main (ซับซ้อนกว่าที่คิด — ต้องให้ผู้คุมออกแบบ):** พอร์ตได้ตรง ๆ: `hr-target.ts` + เรียกใน setSalaryProfile (ระบบ+พนักงาน) · createPayrollRun · approvePayrollRun · reverseRun · markPaid (ระบบ) · บน main ปุ่มรอบจ่ายทั้ง 3 เขียน audit ไม่มีเงื่อนไข · **migration พอร์ตตรงไม่ได้**: main มี unique เต็ม `HrPayrollRun_systemId_periodKey_key` (ยังไม่มีดัชนี partial ของ 20261202) → hotfix ต้องมี migration ของตัวเอง (HrSalaryProfile → tenant-scoped · HrPayrollRun full unique → tenant-scoped full unique) แล้วต้องแก้ migration ของ V2 ก่อน V2 ขึ้น prod: 20261202 ใช้ DROP INDEX IF EXISTS + ถอดดัชนีของ hotfix ด้วย (ไม่งั้นรันซ้ำหลัง REVERSED พัง) · 20270112 ต้องข้ามครึ่งที่ hotfix ลงแล้ว (IF EXISTS / IF NOT EXISTS)
+
+## 🟢 จุดพักสะอาด — 2026-11-15T06:10Z (อา. 15 พ.ย. 13:10 ไทย) · ไม่มีตัวแทนค้างกลางขั้น
+**40/44 (91%)** · origin/session/hr = 40/44 (ด่านเขียว) · **session/hr ในเครื่อง (ทรี /root/projects/shark-hr-merge) = +PREPROD-1 +LEAVE-3 +PRIV-3 (migration 20270112000000) +ค่าตรึง h3.8 ใหม่ — ยังไม่ผ่านด่านรวม ยังไม่ push**
+- PRIV-3: ผู้ตรวจ MERGE (ส่วนต่างรอบ 3) · ข้อสอบ priv-3 28 + priv-3b 20 เขียวในเลน 5 · merged db2c20df9
+- เลนว่าง: 2, 4, 5 · เลน 1 = VIS-5b (0c37a8069 รับได้ทางภาพ · ค้าง F5 + re-merge session/hr + re-pin) · เลน 3 = VIS-5a (9f6acd9bb · ค้างถ่ายภาพยืนยันรอบ 2 + เพิ่ม OT ใน seed-hr-walk + re-merge session/hr)
+- ฐาน: migration ใหม่ลงแล้วเฉพาะฐานเลน 2/5 (ร่วมกัน) → ฐานเลน 1, 3/4, QC4 ต้อง `migrate deploy` ก่อนรันข้อสอบบน session/hr ใหม่ (h0.6 S2.4 / h1.3 S1.10 คาดหวังดัชนีใหม่)
+- ทรีผู้คุม shark-hr-c ยังอยู่ `tmp/walk-vis5b` + serve :3226 (unit hr-rewalk-r3) + ข้อมูลเดินหน้าจอบน QC4
+- ลำดับตอนกลับมา: (1) VIS-5a/5b re-merge session/hr + ผู้เขียนข้อสอบ re-pin → ภาพ → merge (2) VIS-5c (3) HF-TENANT hotfix บน main: โค้ด = hr-target.ts + 8 ปุ่มเงินเดือน + 4 ปุ่มพนักงาน · migration ของ main เอง (HrSalaryProfile + HrPayrollRun full unique → มี tenantId · create ก่อน drop IF EXISTS) · แก้ migration V2 20261202 ให้ DROP IF EXISTS และถอดดัชนีของ hotfix ด้วย → ข้อสอบ + ผู้ตรวจ → **ขอ GO เจ้าของ** (4) VIS-5d, VIS-5e (5) ด่าน pm-full (EXTRA ตามบล็อก CHECKPOINT ก่อนพัก + qc-hr-priv-3b · MIGRATE=1 · seed-hr-walk --down ก่อน) → HANDOVER-H4 → push → 41/44 (6) เดินหน้าจอซ้ำ → 42/44 (7) H5.3
+- หนี้เพิ่มจาก PRIV-3: ข้อความ "ไม่พบ…" ในตัวตรวจเป็นสำเนาของชั้นบริการ (ผูกด้วยค่าคงที่ร่วม) · ปุ่มใน ot/swap/roster/lifecycle/line/labor อาศัย "ค้นไม่เจอ" · R13 ต่างเวลา · reports/export 400 vs 404

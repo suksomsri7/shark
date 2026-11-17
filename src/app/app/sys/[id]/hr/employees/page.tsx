@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { requireTenant } from "@/lib/core/context";
 import { prisma } from "@/lib/core/db";
 import { systemDef } from "@/lib/systems";
+import { hrViewerOf, requireHrPage } from "@/lib/modules/hr/privacy"; // HR PRIV-3 ▸ ด่านหน้าตามบทบาท ◂
 import { HrEmployeesSection, hrTabsFor } from "@/lib/modules/hr/ui"; // HR H2.10 ▸ hrTabsFor ◂
 import { PageHeader } from "@/components/ui/PageHeader";
 import { ModuleTabs } from "@/components/module-tabs";
@@ -13,6 +14,7 @@ export default async function HrEmployeesPage({ params, searchParams }: { params
   const auth = await requireTenant();
   const sys = await prisma.appSystem.findFirst({ where: { id, tenantId: auth.active.tenantId, type: "HR" } });
   if (!sys) notFound();
+  if (!requireHrPage(hrViewerOf(auth), "register")) notFound(); // HR PRIV-3 ▸ ไม่มีสิทธิ์หน้านี้ = 404 เดียวกับรหัสระบบที่ไม่มีอยู่ (ก่อนอ่านข้อมูลใด ๆ) ◂
   const def = systemDef(sys.type);
 
   return (

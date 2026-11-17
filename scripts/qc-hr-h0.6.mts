@@ -788,8 +788,8 @@ async function runDb(): Promise<void> {
   {
     const idx = (await P.$queryRawUnsafe(`SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = current_schema() AND tablename = 'HrPayrollRun'`)) as Any[];
     const onPair = (d: string) => /\(\s*"systemId"\s*,\s*"periodKey"\s*\)/.test(d);
-    const live = idx.find((i) => i.indexname === "HrPayrollRun_systemId_periodKey_live_key");
-    const liveOk = !!live && /CREATE UNIQUE INDEX/i.test(live.indexdef) && onPair(live.indexdef) && /WHERE\s*\(\s*status\s*<>\s*'REVERSED'/i.test(live.indexdef);
+    const live = idx.find((i) => i.indexname === "HrPayrollRun_tenantId_systemId_periodKey_live_key"); // ORACLE-EDIT (HR PRIV-3 · controller) S2.4: R10 migration 20270112000000 — partial unique is now tenant-scoped (tenantId, systemId, periodKey) ◂
+    const liveOk = !!live && /CREATE UNIQUE INDEX/i.test(live.indexdef) && /\(\s*"tenantId"\s*,\s*"systemId"\s*,\s*"periodKey"\s*\)/.test(live.indexdef) && /WHERE\s*\(\s*status\s*<>\s*'REVERSED'/i.test(live.indexdef); // ORACLE-EDIT (HR PRIV-3 · controller) ◂
     const otherUnique = idx.filter((i) => i !== live && /CREATE UNIQUE INDEX/i.test(i.indexdef) && onPair(i.indexdef)).map((i) => i.indexname);
     const plain = idx.find((i) => i.indexname === "HrPayrollRun_systemId_periodKey_idx" && !/UNIQUE/i.test(i.indexdef) && onPair(i.indexdef));
     const colsI = (await P.$queryRawUnsafe(`SELECT column_name, data_type, is_nullable FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = 'HrPayrollRun' AND column_name IN ('reversedAt','reversedById')`)) as Any[];

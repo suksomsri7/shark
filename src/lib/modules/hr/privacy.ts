@@ -13,7 +13,10 @@ import { hasPin } from "./pin"; // HR H0.5 ▸ ◂
 import type { EmployeeBorrowingDto, EmployeeDocDto, EmployeeProfileDto, LeaveItemDto } from "./privacy-shared";
 // HR H1.1 ▸ ขอบเขตสาขา = ตัวกรองเพิ่มบนด่านเดิม (ไม่เคยขยายสิทธิ์ · ไม่ให้สิทธิ์เงินเดือน) ◂
 import { employeeInScope, hrScopeOf, inPayScope, isAllBranches, unitNamesOf } from "./scope"; // HR PRIV-2 ▸ + inPayScope (ข้อมูลอ่อนไหวด้านค่าจ้าง = สาขาประจำเท่านั้น) ◂
+import { leaveSplitOf } from "./leave"; // HR PREPROD-1 ▸ R3: ส่วนได้/ไม่ได้ค่าจ้างของใบลาป่วยเกินวันที่เหลือ ◂
 import { finalizedOf, slipState } from "./payslip-rules"; // HR H3.8 ▸ สถานะสลิป (pure) ◂
+import { canReadWorkEntries } from "./work-entries"; // HR PRIV-3 ▸ ด่านแผงชั่วโมงทำงานของหน้าเงินเดือน (เรียกใช้ ไม่เขียนซ้ำ) ◂
+import { canRequestStockCharge, canSeeStockCharges } from "./stock-charge"; // HR PRIV-3 ▸ ด่านส่วนหักค่าของของหน้าเงินเดือน ◂
 
 export type HrViewer = MembershipCtx & { userId: string };
 
@@ -40,6 +43,31 @@ export function hrAccessOf(v: HrViewer): { seeSensitive: boolean; readLeave: boo
     // ผู้แก้ทะเบียน · ผู้อ่านข้อมูล HR (คีย์เดียวกับลิงก์การ์ดพนักงานบนบอร์ดงาน) · ผู้ดูเงินเดือน
     openProfile: can("hr.employee.create") || can("hr.leave.read") || seeSensitive || (String(v.userId ?? "").startsWith("apikey:") && can("hr.employee.read")), // HR H4.8 ▸ + คีย์อ่านรายชื่อ เฉพาะผู้ดูสังเคราะห์ของคีย์ API (คนที่ถือคีย์นี้ไม่ได้อะไรเพิ่ม · ไม่ให้ seeSensitive) ◂
   };
+}
+
+// HR PRIV-3 ▸ ด่านหน้า /hr/employees · /hr/leave · /hr/payroll + เมนู/แท็บ/การ์ด hub — จุดตัดสินเดียว (หน้า · nav.ts · ui.tsx · requestLeaveAction เรียกที่นี่)
+//   ประกอบจากด่านที่มีอยู่แล้วเท่านั้น (ไม่มีกติกาใหม่): ทะเบียน = hrAccessOf.openProfile · ใบลา = คีย์ที่ส่วนต่าง ๆ ของหน้าใช้ (ฟอร์ม · รายการ · OT) ·
+//   เงินเดือน = ผลรวมด่านของทุกส่วนบนหน้า (canViewPayroll · canReadWorkEntries · canRequestStockCharge · canSeeStockCharges) ·
+//   ยื่นแทน = สองคีย์เดิมของ requestLeaveAction (ย้ายมาไว้ที่นี่) · ผู้ดูรูปร่างผิด = false ทุกช่อง (fail-closed) · ไม่อ่านฐานข้อมูล
+//   ไม่ผ่าน ⇒ หน้าเรียก notFound() ทันทีหลังตรวจระบบ (ก่อนอ่านข้อมูลใด ๆ — ไบต์เดียวกับรหัสระบบที่ไม่มีอยู่) ◂
+export type HrPage = "register" | "leave" | "payroll";
+export function hrPageAccessOf(v: HrViewer): { register: boolean; leave: boolean; payroll: boolean; leaveOnBehalf: boolean } {
+  const none = { register: false, leave: false, payroll: false, leaveOnBehalf: false };
+  if (!v || typeof v !== "object" || typeof v.role !== "string" || !v.permissions || typeof v.permissions !== "object") return none;
+  const m: HrViewer = { role: v.role, unitAccess: Array.isArray(v.unitAccess) ? v.unitAccess : [], permissions: v.permissions, userId: typeof v.userId === "string" ? v.userId : "" };
+  const can = (action: string) => evaluate(m, { module: "hr", action });
+  const leaveOnBehalf = can("hr.employee.create") || can("hr.leave.decide");
+  return {
+    register: hrAccessOf(m).openProfile,
+    leave: ["hr.leave.request", "hr.leave.read", "hr.leave.decide", "hr.employee.create", "hr.payadjust.request", "hr.payadjust.approve", "hr.payroll.read"].some(can),
+    payroll: canViewPayroll(m) || canReadWorkEntries(m) || canRequestStockCharge(m) || canSeeStockCharges(m),
+    leaveOnBehalf,
+  };
+}
+/** HR PRIV-3 ▸ หน้านี้เปิดได้ไหม (ค่าเดียวกับ hrPageAccessOf · หน้าอื่น/ค่าผิด = false) ◂ */
+export function requireHrPage(v: HrViewer, page: HrPage): boolean {
+  if (page !== "register" && page !== "leave" && page !== "payroll") return false;
+  return hrPageAccessOf(v)[page] === true;
 }
 
 /** โปรไฟล์พนักงาน 1 คนในรูป DTO — null = ไม่มีสิทธิ์/ไม่พบ/ข้ามร้าน */
@@ -158,10 +186,12 @@ export async function loadPayslipForViewer(ctx: Ctx, v: HrViewer, runId: string,
 }
 
 /** รายการใบลาของหน้าจอ — เหตุผลการลาใส่เฉพาะผู้มี hr.leave.read */
+/** HR PREPROD-1 ▸ R3: + paidDays/unpaidDays เฉพาะใบลาป่วยที่แบ่งส่วนไม่ได้ค่าจ้าง (ใบอื่นรูปเดิมทุกคีย์) ◂ */
+export type LeaveItemSplitDto = LeaveItemDto & { paidDays?: number; unpaidDays?: number };
 export async function leaveItemsForViewer(
   ctx: Ctx,
   v: HrViewer,
-): Promise<{ pending: LeaveItemDto[]; history: LeaveItemDto[]; canReadReason: boolean }> {
+): Promise<{ pending: LeaveItemSplitDto[]; history: LeaveItemSplitDto[]; canReadReason: boolean }> { // HR PREPROD-1 ◂
   const canReadReason = hrAccessOf(v).readLeave;
   // HR H0.7 R10 ▸ ขอบเขตแถว: ผู้อ่าน/ผู้ตัดสินใบลา/OWNER/MANAGER = ทุกแถว · คนอื่น = เฉพาะของตัวเอง (กรองใน where) ◂
   // HR H1.1 ▸ + ขอบเขตสาขา (แถวของตัวเองไม่ถูกกรองด้วยสาขา — service.leaveScopeWhere) ◂
@@ -172,7 +202,11 @@ export async function leaveItemsForViewer(
   const filers = filerIds.length
     ? new Map((await tenantDb({ tenantId: ctx.tenantId }).user.findMany({ where: { id: { in: filerIds } }, select: { id: true, name: true } })).map((u) => [u.id, u.name]))
     : new Map<string, string | null>();
-  const toItem = (l: (typeof history)[number]): LeaveItemDto => ({
+  const splits = await leaveSplitOf(ctx, history.filter((l) => String(l.status) === "APPROVED").map((l) => l.id)); // HR PREPROD-1 ▸ R3 ◂
+  const payScope = hrScopeOf(v); // HR PREPROD-1 ▸ V2: ส่วนได้/ไม่ได้ค่าจ้าง = ข้อมูลค่าจ้าง — ผู้ดูเงินเดือนในขอบเขตค่าจ้างของสาขาประจำ (inPayScope) หรือตัวพนักงานเอง ◂
+  const paySees = (l: (typeof history)[number]) => (!!v.userId && l.employee.linkedUserId === v.userId) || (canViewPayroll(v) && inPayScope(payScope, l.employee.unitId)); // HR PREPROD-1 ◂
+  const splitOf = (l: (typeof history)[number]) => { const x = splits[l.id]; return x && x.unpaidDays > 0 && paySees(l) ? { paidDays: x.paidDays, unpaidDays: x.unpaidDays } : {}; }; // HR PREPROD-1 ◂
+  const toItem = (l: (typeof history)[number]): LeaveItemSplitDto => ({
     id: l.id,
     employeeName: l.employee.name,
     type: String(l.type),
@@ -181,6 +215,7 @@ export async function leaveItemsForViewer(
     status: String(l.status),
     ...(canReadReason ? { reason: l.reason } : {}),
     ...(canReadReason && l.filedById ? { filedBy: `ยื่นโดย ${filers.get(l.filedById) || "ผู้ใช้ในร้าน"}` } : {}),
+    ...splitOf(l), // HR PREPROD-1 ◂
   });
   return { pending: pending.map(toItem), history: history.map(toItem), canReadReason };
 }
@@ -234,10 +269,21 @@ export function employeeProfileInputFromForm(form: FormData, v: HrViewer): Emplo
 
 // ข้อความปฏิเสธกลาง (ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือน) — ใช้ร่วมกันเพื่อให้ทุกทางปฏิเสธได้ไบต์เดียวกัน
 const ADJUST_REFUSED_GENERIC = "ยื่นรายการนี้ไม่ได้ในตอนนี้ — กรุณาแจ้งผู้ดูแลงานบุคคลให้ตรวจข้อมูลพนักงานคนนี้";
+const ADJUST_OUT_OF_PAY_SCOPE = "ยื่นแล้ว — รออนุมัติ (ยอดของพนักงานนอกขอบเขตค่าจ้างของคุณ ผู้ดูแลเงินเดือนของสาขาประจำของพนักงานเป็นผู้ตรวจ)"; // HR PREPROD-1 ▸ V7/V7b: สำเร็จ — ไม่มียอด ◂
+const ADJUST_OUT_OF_PAY_SCOPE_REFUSED = "ยื่นรายการนี้ไม่ได้ — ติดต่อผู้ดูแลเงินเดือนของสาขาประจำของพนักงานคนนี้"; // HR PREPROD-1 ▸ V7b: ยื่นไม่ได้ด้วยเหตุจากข้อมูลค่าจ้าง ◂
 /**
  * คำตอบของการยื่นรายการเพิ่ม/หักเงิน — ผู้ยื่นที่ไม่ใช่ผู้ดูเงินเดือนต้องไม่รู้ยอดที่ระบบคิดจากเงินเดือน (OT)
  * และไม่รู้ว่าพนักงานคนนั้นมีโปรไฟล์เงินเดือนหรือไม่ · ผู้ดูเงินเดือน = คำตอบเดิมทุกตัวอักษร
  */
+/** HR PREPROD-1 ▸ V7/V7b: ผู้ยื่นที่พนักงานอยู่นอกขอบเขตค่าจ้างของตน (ยืมตัว) — สำเร็จ ⇒ คำตอบสำเร็จกลาง ไม่มียอด (เหมือนกันทุกเงินเดือน) ·
+ *  ยื่นไม่ได้ด้วยเหตุที่มาจากข้อมูลค่าจ้าง (รหัส PAY_* — ไม่มีโปรไฟล์ · ยอด OT ปัดเป็น 0) ⇒ ไม่สำเร็จ ข้อความคงที่ให้ติดต่อผู้ดูแลเงินเดือนของสาขาประจำ ·
+ *  เหตุอื่น (ไม่มีข้อมูลค่าจ้าง เช่น งวดมีรอบแล้ว) ⇒ ส่งผ่านตามจริง (เหมือนผู้ดูทุกสาขา) · จัดกลุ่มด้วยรหัส ไม่ใช้คำในข้อความ ◂ */
+export function adjustmentReplyOutOfPayScope(res: { ok: boolean; reason?: string; code?: string }): { status: "ok" | "error"; message: string } {
+  if (res.ok) return { status: "ok", message: ADJUST_OUT_OF_PAY_SCOPE };
+  if (typeof res.code === "string" && res.code.startsWith("PAY_")) return { status: "error", message: ADJUST_OUT_OF_PAY_SCOPE_REFUSED };
+  return { status: "error", message: res.reason ?? "ยื่นไม่ได้" };
+}
+// ◂ HR PREPROD-1
 export function adjustmentReplyForViewer(
   payrollViewer: boolean,
   res: { ok: boolean; reason?: string; amountSatang?: number },
