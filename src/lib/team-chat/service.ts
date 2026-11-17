@@ -120,6 +120,8 @@ export type ThreadRow = {
   updatedAt: string;
 };
 
+// SQL ดิบของไฟล์นี้ (ตรวจ 17 พ.ย. 2026 · ความเสี่ยงใน handoff): ใช้ tagged template `$queryRaw\`…\`` เท่านั้น ⇒ ทุก ${…} เป็น bind parameter (ไม่ต่อสตริง · ไม่มี $queryRawUnsafe)
+//   ชื่อตาราง/คอลัมน์เป็นค่าคงที่ · กรองร้านทั้งสองฝั่ง JOIN (m."tenantId" + tm."tenantId" = ร้านของผู้เรียก) · ids ของ ANY() มาจากแถวสมาชิกของผู้เรียกเอง (leftAt null · ร้านนี้)
 /** ยังไม่อ่านต่อห้องของผู้ใช้ (ข้อความคนอื่น · ไม่ใช่ SYSTEM · หลัง lastReadAt/joinedAt) — คำสั่งเดียว */
 async function unreadByThread(tenantId: string, userId: string): Promise<Map<string, number>> {
   const rows = await prisma.$queryRaw<{ threadId: string; n: bigint }[]>`
@@ -162,7 +164,7 @@ export async function listThreads(ctx: TeamCtx): Promise<{ ok: true; threads: Th
       ? prisma.$queryRaw<{ id: string; threadId: string; senderUserId: string; kind: string; body: string; attachments: unknown; createdAt: Date; deletedAt: Date | null }[]>`
           SELECT DISTINCT ON (m."threadId") m."id", m."threadId", m."senderUserId", m."kind", m."body", m."attachments", m."createdAt", m."deletedAt"
           FROM "TeamMessage" m
-          JOIN "TeamThreadMember" tm ON tm."threadId" = m."threadId" AND tm."userId" = ${ctx.userId} AND tm."tenantId" = ${ctx.tenantId}
+          JOIN "TeamThreadMember" tm ON tm."threadId" = m."threadId" AND tm."userId" = ${ctx.userId} AND tm."tenantId" = ${ctx.tenantId} AND tm."leftAt" IS NULL
           WHERE m."tenantId" = ${ctx.tenantId} AND m."threadId" = ANY(${ids}) AND m."createdAt" >= tm."joinedAt"
           ORDER BY m."threadId", m."createdAt" DESC, m."id" DESC`
       : Promise.resolve([]),

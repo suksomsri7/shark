@@ -7,7 +7,9 @@
 //   G  กลุ่ม CRUD: สร้าง · ข้อความระบบ · เปลี่ยนชื่อ (ผู้ดูแลเท่านั้น) · เพิ่ม/เอาออก · คนใหม่ไม่เห็นประวัติก่อนเข้า · ออก = 404 · ผู้ดูแลคนสุดท้ายออก ⇒ ยกคนแทน
 //   F  ไฟล์แนบ: ไฟล์ของตัวเองเท่านั้น · สมาชิกเห็นไฟล์ (visibleFile) · ไม่ใช่สมาชิก/ก่อนเข้า = ไม่เห็น · เส้นไฟล์ไม่ใช่สมาชิก = 404
 //   M  ปิดเสียง: ไม่อยู่ในผู้รับ push · ไม่นับ badge
-//   S  ตัวตรวจไฟล์: จอ SMS เดิมถอดแล้ว · เส้นเดิมของแอปรุ่นเก่ายังอยู่ · migration ≥ 20261228000900
+//   P  กันสแปม push (17 พ.ย.): ห้องเดียวกันถึงคนเดิมภายใน TEAM_PUSH_WINDOW_MS = ใบเดียว · ห้องอื่น/คนอื่น/พ้นหน้าต่าง = ส่ง · ส่งไม่ออก = คืนการจอง
+//   S  ตัวตรวจไฟล์: จอ SMS เดิมถอดแล้ว · เส้นเดิมของแอปรุ่นเก่ายังอยู่ · migration ≥ 20261228000900 · จอกลุ่ม (สร้าง/ตั้งค่า/เมนู +) มีจริงและเรียกเส้นที่ถูก
+//   (G-12 ตั้ง/ถอดแอดมินกลุ่ม · F-7 รูปกลุ่ม — เพิ่ม 17 พ.ย. ตอนต่อจอกลุ่ม team4.png)
 // รัน: bash scripts/iso.sh bash scripts/qc-sec.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scripts/qc-team-chat.mts
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, dirname } from "node:path";
@@ -366,6 +368,23 @@ try {
     chk("G-10", "ผู้ดูแลคนสุดท้ายออก ⇒ คนที่อยู่นานสุดเป็นผู้ดูแลแทน · คนที่ออกอ่าน ⇒ 404", lvI.status === 200 && after.some((x) => x.role === "ADMIN") && lvG.status === 404, after.map((x) => `${x.userId}:${x.role}`).join(","));
     const dmLeave = await call("secretary/team/threads/[id]/leave", "POST", HO, {}, { id: dm });
     chk("G-11", "ออกจากห้อง 1:1 ไม่ได้ ⇒ 400", dmLeave.status === 400, dmLeave.text);
+    // G-12 ตั้ง/ถอดแอดมินกลุ่ม (⋯ ของจอตั้งค่ากลุ่ม) — เหลือ เจ้าของ + ครูนิว
+    const left = await prisma.teamThreadMember.findMany({ where: { threadId: gid, leftAt: null }, orderBy: { joinedAt: "asc" } });
+    const hdr: Record<string, Record<string, string>> = { [U.owner]: HO, [U.staff]: HS };
+    const adm = left.find((x) => x.role === "ADMIN");
+    const oth = left.find((x) => x.role !== "ADMIN");
+    if (adm && oth && hdr[adm.userId] && hdr[oth.userId]) {
+      const no = await call("secretary/team/threads/[id]/members/[userId]", "PUT", hdr[oth.userId]!, { admin: true }, { id: gid, userId: oth.userId });
+      const yes = await call("secretary/team/threads/[id]/members/[userId]", "PUT", hdr[adm.userId]!, { admin: true }, { id: gid, userId: oth.userId });
+      const promoted = await prisma.teamThreadMember.findFirst({ where: { threadId: gid, userId: oth.userId } });
+      const down = await call("secretary/team/threads/[id]/members/[userId]", "PUT", hdr[adm.userId]!, { admin: false }, { id: gid, userId: adm.userId });
+      const admins = await prisma.teamThreadMember.count({ where: { threadId: gid, leftAt: null, role: "ADMIN" } });
+      const view = await call("secretary/team/threads/[id]", "GET", hdr[oth.userId]!, undefined, { id: gid });
+      chk("G-12", "แอดมินกลุ่ม: ไม่ใช่ผู้ดูแลตั้ง ⇒ 403 · ผู้ดูแลตั้งคนอื่น ⇒ 200 (ADMIN) · ถอดตัวเองได้ เหลือผู้ดูแล ≥ 1 · หัวห้อง myRole ADMIN",
+        no.status === 403 && yes.status === 200 && promoted?.role === "ADMIN" && down.status === 200 && admins >= 1 && view.json.thread?.myRole === "ADMIN", `${no.status} ${yes.status} ${promoted?.role} ${down.status} ${admins}`);
+      const strict = await call("secretary/team/threads/[id]/members/[userId]", "PUT", hdr[oth.userId]!, { admin: true, x: 1 }, { id: gid, userId: adm.userId });
+      chk("G-13", "PUT แอดมิน คีย์แปลก ⇒ 400 (strict)", strict.status === 400, strict.text);
+    } else chk("G-12", "แอดมินกลุ่ม (fixture)", false, left.map((x) => `${x.userId}:${x.role}`).join(","));
   }
 
   console.log("── F: ไฟล์แนบ ──");
@@ -392,6 +411,21 @@ try {
     chk("F-5", "เส้นไฟล์: สมาชิกผ่านด่านสิทธิ์ (200 หรือ 404/503 จากที่เก็บ QC ที่ไม่มีไบต์จริง — ไม่ใช่ 403)", [200, 404, 503].includes(rMem.status), String(rMem.status), "MINOR");
     const up = await call("secretary/team/attachments", "POST", HL, undefined);
     chk("F-6", "เส้นอัปของทีม: สมาชิกคุยอย่างเดียวผ่านด่าน (ไม่ใช่ 403 · ไม่มีไฟล์ = 411/400)", up.status === 411 || up.status === 400, String(up.status));
+    // F-7 รูปกลุ่ม (จอสร้างกลุ่ม 📷 · ตั้งค่ากลุ่ม) — รูปของตัวเองเท่านั้น · สมาชิกเห็นผ่าน visibleFile · แถวรายชื่อมี photoFileId
+    const fPhoto = await mk(U.owner);
+    const fOther = await mk(U.staff);
+    const badG = await call("secretary/team/threads", "POST", HO, { name: "กลุ่มรูปคนอื่น", userIds: [U.invitee], photoFileId: fOther });
+    const g2 = await call("secretary/team/threads", "POST", HO, { name: "กลุ่มมีรูป", userIds: [U.invitee], photoFileId: fPhoto });
+    const g2id = String(g2.json.threadId ?? "");
+    const ph = await svc.visibleFile({ tenantId: tidA, userId: U.invitee }, g2id, fPhoto);
+    const lst = await call("secretary/team", "GET", HI);
+    const row = (lst.json.threads ?? []).find((x: AnyMod) => x.id === g2id);
+    const fPhoto2 = await mk(U.owner);
+    const patchNo = await call("secretary/team/threads/[id]", "PATCH", HI, { photoFileId: fPhoto2 }, { id: g2id });
+    const patchOk = await call("secretary/team/threads/[id]", "PATCH", HO, { photoFileId: fPhoto2 }, { id: g2id });
+    chk("F-7", "รูปกลุ่ม: รูปคนอื่น ⇒ 400 · รูปตัวเอง ⇒ 200 · สมาชิกเห็นรูป · แถวรายชื่อ photoFileId · ไม่ใช่ผู้ดูแลเปลี่ยนรูป 403 · ผู้ดูแลเปลี่ยนได้",
+      badG.status === 400 && g2.status === 200 && ph?.kind === "image" && row?.photoFileId === fPhoto && row?.hasPhoto === true && patchNo.status === 403 && patchOk.status === 200 && patchOk.json.thread?.photoFileId === fPhoto2,
+      `${badG.status} ${g2.status} ${ph?.kind} ${row?.photoFileId} ${patchNo.status} ${patchOk.status}`);
   }
 
   console.log("── M: ปิดเสียง ──");
@@ -409,6 +443,41 @@ try {
     chk("M-4", "ข้อความ push: ไฟล์อย่างเดียว = '📷 รูปภาพ' · ตัดยาว", nt.teamPreview("", [{ fileId: "a", name: "a.jpg", mimeType: "image/jpeg", size: 1, kind: "image" }]) === "📷 รูปภาพ" && nt.teamPreview("x".repeat(500), []).length <= 120);
   }
 
+  console.log("── P: กันสแปม push ──");
+  {
+    const nt = (await import("@/lib/team-chat/notify")) as AnyMod;
+    nt.resetTeamPushGuard();
+    await (prisma as AnyMod).pushDevice.create({ data: { userId: U.staff, tenantId: tidA, expoToken: `ExponentPushToken[${P}staff]`, platform: "ios" } });
+    await (prisma as AnyMod).pushDevice.create({ data: { userId: U.invitee, tenantId: tidA, expoToken: `ExponentPushToken[${P}invitee]`, platform: "ios" } });
+    let posted: unknown[] = [];
+    let fail = false;
+    const post = async (payloads: unknown[]) => {
+      if (fail) throw new Error("expo down");
+      posted.push(...payloads);
+      return payloads.map(() => ({ status: "ok", id: "x" }));
+    };
+    const base = { tenantId: tidA, kind: "GROUP", groupName: "ทีมทดสอบ", senderName: "เจ้าของ", attachments: [], recipients: [U.staff, U.invitee] };
+    const t0 = new Date("2026-11-17T03:00:00Z");
+    const at = (ms: number) => new Date(t0.getTime() + ms);
+    const a = await nt.notifyTeamMessage({ ...base, threadId: "qc-th-1", body: "1" }, { post, now: t0 });
+    const b = await nt.notifyTeamMessage({ ...base, threadId: "qc-th-1", body: "2" }, { post, now: at(5_000) });
+    chk("P-1", "ห้องเดียวกัน 2 ข้อความติดกัน ⇒ ใบแรกถึง 2 คน · ใบที่สองในหน้าต่าง = ไม่ส่ง", a === 2 && b === 0 && posted.length === 2, `${a} ${b} ${posted.length}`);
+    const c2 = await nt.notifyTeamMessage({ ...base, threadId: "qc-th-2", body: "3" }, { post, now: at(6_000) });
+    chk("P-2", "ห้องอื่นในหน้าต่างเดียวกัน ⇒ ส่งปกติ (กันต่อห้องต่อคน)", c2 === 2, String(c2));
+    const d = await nt.notifyTeamMessage({ ...base, threadId: "qc-th-1", body: "4" }, { post, now: at(nt.TEAM_PUSH_WINDOW_MS + 1) });
+    chk("P-3", "พ้นหน้าต่าง ⇒ ส่งอีกครั้ง", d === 2, String(d));
+    posted = [];
+    fail = true;
+    const e = await nt.notifyTeamMessage({ ...base, threadId: "qc-th-3", body: "5" }, { post, now: at(100_000) });
+    fail = false;
+    const f = await nt.notifyTeamMessage({ ...base, threadId: "qc-th-3", body: "6" }, { post, now: at(101_000) });
+    chk("P-4", "ส่งไม่ออก (Expo ล่ม) ⇒ คืนการจอง · ข้อความถัดไปในหน้าต่างเดิมยังส่งได้", e === 0 && f === 2, `${e} ${f}`);
+    const g = await nt.notifyTeamMessage({ ...base, threadId: "qc-th-4", body: "7", recipients: [U.staff] }, { post, now: at(200_000) });
+    const h = await nt.notifyTeamMessage({ ...base, threadId: "qc-th-4", body: "8", recipients: [U.staff, U.invitee] }, { post, now: at(201_000) });
+    chk("P-5", "กันต่อผู้รับ: คนที่ยังไม่ได้ใบของห้องนี้ ⇒ ได้ใบแรกของตัวเอง", g === 1 && h === 1, `${g} ${h}`);
+    nt.resetTeamPushGuard();
+  }
+
   console.log("── S: ตัวตรวจไฟล์ ──");
   {
     const app = join(ROOT, "apps/mobile/app/(app)/secretary");
@@ -420,12 +489,26 @@ try {
     chk("S-4", "migration team_chat มีเลข ≥ 20261228000900 · additive (ไม่มี DROP/ALTER COLUMN)", mig.length === 1 && mig[0]! >= "20261228000900" && !/DROP |ALTER COLUMN/i.test(readFileSync(join(ROOT, "prisma/migrations", mig[0]!, "migration.sql"), "utf8")), mig.join(","));
     const scope = readFileSync(join(ROOT, "src/lib/core/scope.ts"), "utf8");
     chk("S-5", "scope.ts ลงทะเบียน 3 ตาราง (tenant)", /TeamThread: tenant/.test(scope) && /TeamThreadMember: tenant/.test(scope) && /TeamMessage: tenant/.test(scope));
+    const rd = (f: string) => (existsSync(f) ? readFileSync(f, "utf8") : "");
+    const list = rd(join(app, "staff/index.tsx"));
+    const ng = rd(join(app, "team/new-group.tsx"));
+    const gs = rd(join(app, "team/[id]/settings.tsx"));
+    const room = rd(join(app, "team/[id]/index.tsx"));
+    const api = rd(join(ROOT, "apps/mobile/src/api/team.ts"));
+    chk("S-6", "เมนู + (team4 จอ 2): 2 ทาง team-menu-add → /secretary/team/add · team-menu-group → /secretary/team/new-group · ไม่ใช่ผู้จัดการ = ไปสร้างกลุ่มตรง",
+      /team-menu-add/.test(list) && /team-menu-group/.test(list) && /\/secretary\/team\/new-group/.test(list) && /if \(!manage\)[\s\S]{0,80}new-group/.test(list), "", "MAJOR");
+    chk("S-7", "จอสร้างกลุ่ม (จอ 3): createGroup · คำเชิญค้างจาง (dim) เลือกไม่ได้ · ตัวนับ team.group.picked", /createGroup\(/.test(ng) && /pending[\s\S]{0,400}dim/.test(ng) && /team\.group\.picked/.test(ng), "", "MAJOR");
+    chk("S-8", "จอตั้งค่ากลุ่ม (จอ 5): แก้ชื่อ/รูป · เพิ่ม/เอาออก/แอดมิน · ปิดเสียง · ออกจากกลุ่มมีแผ่นยืนยัน", ["patchThread", "addGroupMembers", "removeGroupMember", "setGroupAdmin", "leaveGroup", "team-gs-leave-sheet", "team-gs-mute"].every((k) => gs.includes(k)), "", "MAJOR");
+    chk("S-9", "ห้องกลุ่ม (จอ 4): ⚙ → /settings · บรรทัดรอง memberSummaryOf · ที่วางปุ่ม Lekaa TODO(b27-fab) + TEAM_COMPOSER คงอยู่", /\/settings`/.test(room) && /memberSummaryOf/.test(room) && /TODO\(b27-fab\)/.test(room) && /TEAM_COMPOSER/.test(room), "", "MAJOR");
+    const sum = api.match(/export function memberSummaryOf[\s\S]*?\n}\n/)?.[0] ?? "";
+    chk("S-10", "เส้นกลุ่มของแอปตรงเส้นเซิร์ฟเวอร์ (threads · members · leave)", /\$\{B\}\/threads`/.test(api) && /\/members\/\$\{enc\(userId\)\}/.test(api) && /\/leave`/.test(api) && sum.length > 0, "", "MAJOR");
   }
 
   console.log("── X: ความลับ ──");
   {
-    const leak = bodies.filter((b) => /"phone":"\+66|\+6681234990|codeHash|"token":"|@example\.com|secret/i.test(b));
-    chk("X-1", "ทุกคำตอบไม่มีเบอร์เต็ม · อีเมล · codeHash · token", leak.length === 0, leak.map((b) => b.slice(0, 100)).join(" | ").slice(0, 300));
+    const LEAK = /"phone":"\+66|\+6681234990|codeHash|"token":"|@example\.com|secret(?!ary)/i; // "secretary" ในเส้นไฟล์ (/api/mobile/secretary/team/…) ≠ ความลับ
+    const leak = bodies.filter((b) => LEAK.test(b));
+    chk("X-1", "ทุกคำตอบไม่มีเบอร์เต็ม · อีเมล · codeHash · token", leak.length === 0, leak.map((b) => `${b.match(LEAK)?.[0]} @ ${b.slice(Math.max(0, (b.match(LEAK)?.index ?? 0) - 80), (b.match(LEAK)?.index ?? 0) + 40)}`).join(" | ").slice(0, 400));
   }
 } catch (e) {
   console.log(`  💥 ${errMsg(e)}`);
