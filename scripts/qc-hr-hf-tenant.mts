@@ -32,9 +32,12 @@ const CHECKS: readonly [string, string][] = [
   ["T4", "request / decide / cancel adjustment ข้ามร้าน ไม่เขียน/ไม่ลบ · คำตอบของ SA = คำตอบของ U"],
   ["T5", "พนักงาน 4 ปุ่ม (create / update / remove / restore) ข้ามร้าน ไม่มี HrEmployee / Party"],
   ["T6", "ทุกปุ่ม: ผลของ SA = U = SN (คำตอบ + ชุดตารางที่เปลี่ยน) ต่อผู้กด/ฟอร์มเดียวกัน"],
-  ["T7", "[static] 14 ปุ่มเรียก hrTargetOwned ก่อน await อื่น (ยกเว้น requireTenant) + คำปฏิเสธตาม §1 · hr-target.ts ไม่มี \"use server\" · blob = V2 · ไม่ re-export"],
+  ["T7", "[static] 22 ปุ่มเรียก hrTargetOwned ก่อน await อื่น (ยกเว้น requireTenant) + ids/คำปฏิเสธตาม §1 + R-F1/R-F2 · kiosk ตรวจก่อนนับถัง PIN · hr-target.ts ไม่มี \"use server\" · blob = V2 · ไม่ re-export"],
   ["T8", "clock + requestLeave บน SA / U / SN ไม่เขียน HrAttendance / HrLeave / outbox"],
+  ["T9", "R-F1: XO/XP บนระบบของตัวเอง SB + พนักงานของ A (eA1/eA2) → clock/requestLeave ไม่เขียนอะไร = ผลเดียวกับรหัสพนักงานที่ไม่มี · ท้ายชุด: ไม่มีแถวของ B ที่อ้างพนักงานของ A (นอกจากโปรไฟล์ตกค้างที่ลงเอง)"],
+  ["T10", "R-F2: 8 ปุ่มที่เหลือ (save profile · add/remove doc · set PIN · kiosk · decide/bulk-decide leave · schedule) บน SA ด้วยแถวตกค้างของ B ไม่เขียนอะไร · ผล = ผลเมื่อไม่มีแถวตกค้าง"],
   ["C1", "เจ้าของ A + พนักงานเงินเดือน A ขับ 14 ปุ่มด้วยฟอร์มครบ ถึงการเขียนจริงทุกปุ่ม"],
+  ["C4", "R-F2 control: เจ้าของ A + พนักงาน A ขับ 8 ปุ่มที่เหลือกับพนักงาน/ใบลา/เอกสารของ A เอง ถึงการเขียนจริงทุกปุ่ม"],
   ["C2", "ระบบตัวเอง + runId ไม่มีจริง: approve / reverse / markPaid ยังเขียน audit การปฏิเสธ 1 แถว/ครั้ง ไม่เขียนอื่น"],
   ["C3", "ระบบตัวเอง + employee ไม่มีจริง บน setSalaryProfile ไม่เขียน (เปลี่ยนพฤติกรรมโดยตั้งใจ → แดงก่อนแก้)"],
   ["M1", "ดัชนีใหม่ HrSalaryProfile_tenantId_systemId_employeeId_key / HrPayrollRun_tenantId_systemId_periodKey_key (unique เต็ม คอลัมน์ตรง) · ไม่มีชื่อเก่า"],
@@ -78,8 +81,17 @@ const ACTIONS: readonly [string, string, string, string][] = [
   [EMP, "updateEmployeeAction", "", "return;"],
   [EMP, "removeEmployeeAction", "", "return;"],
   [EMP, "restoreEmployeeAction", "", "return;"],
-  [EMP, "clockAction", "", "return;"],
-  [EMP, "requestLeaveAction", "", "return;"],
+  [EMP, "clockAction", ", { employeeId }", "return;"], // R-F1
+  [EMP, "requestLeaveAction", ", { employeeId }", "return;"], // R-F1
+  // R-F2 — คำปฏิเสธ = คำตอบเดิมของรหัสที่ไม่มีของปุ่มนั้น (service "ไม่พบพนักงาน" / void / ข้อความ "ไม่พบระบบ" เดิมของ bulk)
+  [EMP, "saveEmployeeProfileAction", ", { employeeId }", `return { status: "error", message: "ไม่พบพนักงาน" };`],
+  [EMP, "addEmployeeDocAction", ", { employeeId }", "return;"],
+  [EMP, "removeEmployeeDocAction", "", "return;"],
+  [EMP, "setPinAction", ", { employeeId }", `return { status: "error", message: "ไม่พบพนักงาน" };`],
+  [EMP, "kioskClockAction", ", { employeeId }", `return { status: "error", message: "ไม่พบพนักงาน" };`],
+  [EMP, "decideLeaveAction", "", "return;"],
+  [EMP, "bulkDecideLeaveAction", "", `return { status: "error", message: "ไม่พบระบบ" };`],
+  [EMP, "setWorkScheduleAction", ", { employeeId }", "return;"],
 ];
 function fnBody(src: string, name: string): string {
   const i = src.indexOf(`export async function ${name}(`);
@@ -98,6 +110,8 @@ function runStatic(): void {
     if (first !== "hrTargetOwned") { bad.push(`${name}: await แรก (นอก requireTenant) = ${first ?? "ไม่มี"}`); continue; }
     const want = `${GUARD}${ids}))) ${refusal}`;
     if (!body.includes(want)) bad.push(`${name}: ไม่พบ "${want}"`);
+    // R-F2: kiosk — ตรวจระบบ/พนักงานก่อนนับถัง PIN (ร้านอื่นเผาถังของพนักงานเราไม่ได้)
+    if (name === "kioskClockAction" && !(body.indexOf(GUARD) >= 0 && body.indexOf(GUARD) < body.indexOf("checkRateLimit("))) bad.push(`${name}: guard ต้องมาก่อน checkRateLimit`);
   }
   const tsrc = rd(TARGET);
   let blob = "";
@@ -183,18 +197,21 @@ const EA = (await import("@/lib/modules/hr/actions" as string)) as Any;
 // ═════════════ fixture ═════════════
 const PERM = { "hr.payroll.read": true, "hr.payroll.create": true, "hr.payroll.approve": true, "hr.payroll.pay": true, "hr.payadjust.request": true, "hr.payadjust.approve": true, "hr.employee.create": true, "hr.attendance.clock": true, "hr.leave.request": true };
 const P1 = "2031-01", P2 = "2031-03";
-const RES_SALARY = 1_234_500, RES_FAKE = "QC HFT ผู้โจมตี-พนักงานปลอม";
+const RES_SALARY = 1_234_500, RES_FAKE = "QC HFT ผู้โจมตี-พนักงานปลอม", RES_PIN = "9876";
 type Actor = { label: string; userId: string; cookie: string };
 type Fx = {
   stamp: string; A: string; B: string; SA: string; SB: string; SN: string; SAcc: string; U: string;
   eA1: string; eA2: string; rA1: string; rA2: string; adjA: string; fB: string; resProfile: string; resRun: string; resAdj1: string; resAdj2: string;
-  OA: Actor; AP: Actor; XO: Actor; XP: Actor;
+  resDoc: string; resLv1: string; resLv2: string;
+  OA: Actor; AP: Actor; XO: Actor; XP: Actor; XM: Actor;
 };
 const tenantsOf = async (like: string) => (await P.tenant.findMany({ where: { slug: { startsWith: like } }, select: { id: true, slug: true } })) as { id: string; slug: string }[];
 
-async function mkActor(label: string, email: string, tenantId: string, role: "OWNER" | "STAFF"): Promise<Actor> {
+/** F6: ผู้โจมตีที่ไม่ใช่ผู้ดูเงินเดือน — ยื่นรายการเพิ่ม/หักได้อย่างเดียว */
+const PERM_NOPAY = { "hr.payadjust.request": true };
+async function mkActor(label: string, email: string, tenantId: string, role: "OWNER" | "STAFF", perm: Record<string, boolean> = PERM): Promise<Actor> {
   const u = await P.user.create({ data: { email, name: `QC HFT ${label}` } });
-  await P.membership.create({ data: { userId: u.id, tenantId, role, unitAccess: role === "OWNER" ? ["*"] : [], permissions: role === "OWNER" ? {} : PERM, acceptedAt: new Date() } });
+  await P.membership.create({ data: { userId: u.id, tenantId, role, unitAccess: role === "OWNER" ? ["*"] : [], permissions: role === "OWNER" ? {} : perm, acceptedAt: new Date() } });
   return sessionFor(label, u.id, tenantId);
 }
 async function sessionFor(label: string, userId: string, tenantId: string): Promise<Actor> {
@@ -208,6 +225,7 @@ async function seed(stamp: string): Promise<void> {
   const tb = await P.tenant.create({ data: { name: "QC HFT ร้าน B (ผู้โจมตี)", slug: `${PREFIX}${stamp}-b` } });
   const em = (r: string) => `${PREFIX}${stamp}-${r}@qc.invalid`;
   for (const [l, t, role] of [["oa", ta.id, "OWNER"], ["ap", ta.id, "STAFF"], ["xo", tb.id, "OWNER"], ["xp", tb.id, "STAFF"]] as const) await mkActor(l, em(l), t, role);
+  await mkActor("xm", em("xm"), tb.id, "STAFF", PERM_NOPAY);
   const SA = await sys.createSystem(ta.id, "HR", "QC HFT SA");
   await sys.createSystem(ta.id, "ACCOUNT", "QC HFT บัญชี A");
   await sys.createSystem(tb.id, "HR", "QC HFT SB");
@@ -219,7 +237,10 @@ async function seed(stamp: string): Promise<void> {
   await P.hrPayrollRun.create({ data: { tenantId: ta.id, systemId: SA.id, periodKey: "2031-02", payDate: new Date("2031-02-28T00:00:00Z"), status: "APPROVED" } });
   await P.hrPayAdjustment.create({ data: { tenantId: ta.id, systemId: SA.id, employeeId: eA1.id, periodKey: "2031-04", kind: "BONUS", amountSatang: 50_000, note: "QC HFT adjA" } });
   // แถวตกค้าง = จำลองการถูกโจมตีในอดีต (ร้าน B บนระบบ SA ของร้าน A)
-  const fB = await emp(tb.id, RES_FAKE);
+  const fB = await P.hrEmployee.create({ data: { tenantId: tb.id, systemId: SA.id, name: RES_FAKE, pinCode: RES_PIN } });
+  // R-F2: แถวตกค้างของ B บน SA ที่ 8 ปุ่มที่เหลือแตะได้ (เอกสาร · ใบลา 2 ใบ)
+  await P.hrEmployeeDoc.create({ data: { tenantId: tb.id, systemId: SA.id, employeeId: fB.id, title: "QC HFT resDoc", url: "https://example.com/res.pdf" } });
+  for (const n of ["QC HFT resLv1", "QC HFT resLv2"]) await P.hrLeave.create({ data: { tenantId: tb.id, systemId: SA.id, employeeId: fB.id, type: "PERSONAL", fromDate: new Date("2031-10-01T00:00:00Z"), toDate: new Date("2031-10-02T00:00:00Z"), reason: n } });
   await P.hrSalaryProfile.create({ data: { tenantId: tb.id, systemId: SA.id, employeeId: eA2.id, baseSalarySatang: RES_SALARY } });
   await P.hrPayrollRun.create({ data: { tenantId: tb.id, systemId: SA.id, periodKey: P2, payDate: new Date(`${P2}-28T00:00:00Z`), status: "DRAFT", note: "QC HFT residue run" } });
   for (const n of ["QC HFT resAdj1", "QC HFT resAdj2"]) await P.hrPayAdjustment.create({ data: { tenantId: tb.id, systemId: SA.id, employeeId: fB.id, periodKey: "2031-04", kind: "BONUS", amountSatang: 70_000, note: n } });
@@ -245,13 +266,17 @@ async function load(stamp: string): Promise<Fx> {
     resProfile: await id("hrSalaryProfile", { tenantId: B, systemId: SA, employeeId: eA2 }),
     resRun: await id("hrPayrollRun", { tenantId: B, systemId: SA, periodKey: P2 }),
     resAdj1: await id("hrPayAdjustment", { tenantId: B, note: "QC HFT resAdj1" }), resAdj2: await id("hrPayAdjustment", { tenantId: B, note: "QC HFT resAdj2" }),
-    OA: await actor("oa", A), AP: await actor("ap", A), XO: await actor("xo", B), XP: await actor("xp", B),
+    resDoc: await id("hrEmployeeDoc", { tenantId: B, title: "QC HFT resDoc" }),
+    resLv1: await id("hrLeave", { tenantId: B, reason: "QC HFT resLv1" }), resLv2: await id("hrLeave", { tenantId: B, reason: "QC HFT resLv2" }),
+    OA: await actor("oa", A), AP: await actor("ap", A), XO: await actor("xo", B), XP: await actor("xp", B), XM: await actor("xm", B),
   };
 }
 
 // ═════════════ ภาพถ่ายก่อน/หลัง (§5): แถว + ลายนิ้วมือ ต่อร้าน · + แถวบน SA ที่ไม่ใช่ของ A ═════════════
-const SNAP_TABLES = ["HrSalaryProfile", "HrPayrollRun", "HrPayrollItem", "HrPayAdjustment", "HrEmployee", "Party", "HrAttendance", "HrLeave", "AuditLog", "OutboxEvent"];
-const SA_TABLES = ["HrSalaryProfile", "HrPayrollRun", "HrPayrollItem", "HrPayAdjustment", "HrEmployee", "HrAttendance", "HrLeave"];
+const SNAP_TABLES = ["HrSalaryProfile", "HrPayrollRun", "HrPayrollItem", "HrPayAdjustment", "HrEmployee", "Party", "HrAttendance", "HrLeave", "AuditLog", "OutboxEvent", "HrEmployeeDoc", "HrWorkSchedule"];
+const SA_TABLES = ["HrSalaryProfile", "HrPayrollRun", "HrPayrollItem", "HrPayAdjustment", "HrEmployee", "HrAttendance", "HrLeave", "HrEmployeeDoc", "HrWorkSchedule"];
+/** ตารางที่มี employeeId — ใช้ตรวจ "แถวของ B อ้างพนักงานของ A" (T9) */
+const EMP_REF_TABLES = ["HrSalaryProfile", "HrPayrollItem", "HrPayAdjustment", "HrAttendance", "HrLeave", "HrEmployeeDoc", "HrWorkSchedule"];
 type Snap = Map<string, string>;
 async function snap(fx: Fx): Promise<Snap> {
   const parts: string[] = [];
@@ -375,6 +400,33 @@ async function runC(fx: Fx): Promise<void> {
   ok(lv?.status === "PENDING" && (await P.outboxEvent.count({ where: { tenantId: fx.A, type: "hr.leave.submitted", idempotencyKey: `hr.leave.submitted#${lv.id}` } })) === 1, `requestLeave ${r} → ${short(lv)}`);
   chk("C1", bad.length === 0 && SCOPE_RUNS > 0, bad.join(" · "));
 
+  // C4 (R-F2 control) — 8 ปุ่มที่เหลือ กับพนักงาน eid ของ A เอง (ฟอร์มครบ ถึงการเขียนจริง)
+  const c4: string[] = [];
+  const idle = { status: "idle" };
+  r = await call(fx.OA, path, () => EA.saveEmployeeProfileAction(fx.SA, eid, idle, fd({ name: `${name} โปรไฟล์`, nickname: "ซี", phone: "0812345678", email: "c4@qc.invalid", birthDate: "1991-02-03", position: "พนักงาน", department: "ขาย", startDate: "2030-01-01", addressLine: "1 ถนนทดสอบ", subdistrict: "ก", district: "ข", province: "ค", postcode: "10110", emergencyName: "ญาติ", emergencyPhone: "0800000001", emergencyRelation: "พี่", note: "QC HFT C4", nationalId: "1101700203451", ssoNumber: "1101700203451", bankName: "KBANK", bankAccountNo: "1234567890", bankAccountName: "ซี" })));
+  const prof4 = await P.hrEmployee.findUnique({ where: { id: eid }, select: { name: true, nationalId: true } });
+  if (!(r.includes(`"status":"ok"`) && prof4?.name === `${name} โปรไฟล์` && prof4?.nationalId === "1101700203451")) c4.push(`saveProfile ${r} → ${short(prof4)}`);
+  r = await call(fx.OA, path, () => EA.addEmployeeDocAction(fd({ systemId: fx.SA, employeeId: eid, kind: "OTHER", title: "QC HFT C4 doc", url: "https://example.com/c4.pdf", note: "c4" })));
+  const doc4 = await P.hrEmployeeDoc.findFirst({ where: { tenantId: fx.A, systemId: fx.SA, employeeId: eid, title: "QC HFT C4 doc" }, select: { id: true } });
+  if (!doc4) c4.push(`addDoc ${r}`);
+  r = await call(fx.OA, path, () => EA.removeEmployeeDocAction(fd({ systemId: fx.SA, employeeId: eid, docId: doc4?.id ?? "-" })));
+  if (!doc4 || (await P.hrEmployeeDoc.count({ where: { id: doc4.id } })) !== 0) c4.push(`removeDoc ${r}`);
+  r = await call(fx.AP, path, () => EA.setPinAction(fx.SA, eid, idle, fd({ pin: "2468" })));
+  if (!(r.includes(`"status":"ok"`) && (await P.hrEmployee.findUnique({ where: { id: eid }, select: { pinCode: true } }))?.pinCode === "2468")) c4.push(`setPin ${r}`);
+  const att0 = await P.hrAttendance.count({ where: { tenantId: fx.A, systemId: fx.SA, employeeId: eid } });
+  r = await call(fx.AP, path, () => EA.kioskClockAction(fx.SA, idle, fd({ employeeId: eid, pin: "2468" })));
+  if (!(r.includes(`"status":"ok"`) && (await P.hrAttendance.count({ where: { tenantId: fx.A, systemId: fx.SA, employeeId: eid } })) === att0 + 1)) c4.push(`kioskClock ${r}`);
+  r = await call(fx.AP, path, () => EA.setWorkScheduleAction(fd({ systemId: fx.SA, employeeId: eid, "on-1": "on", "start-1": "09:00", "end-1": "18:00", "on-6": "on", "off-6": "on", graceMin: "15" })));
+  const sch4 = await P.hrWorkSchedule.findMany({ where: { tenantId: fx.A, systemId: fx.SA, employeeId: eid }, select: { weekday: true, dayOff: true, startMin: true } });
+  if (!(sch4.length === 2 && sch4.some((x: Any) => x.weekday === 1 && x.startMin === 540 && !x.dayOff) && sch4.some((x: Any) => x.weekday === 6 && x.dayOff))) c4.push(`setSchedule ${r} → ${short(sch4)}`);
+  r = await call(fx.OA, path, () => EA.decideLeaveAction(fd({ systemId: fx.SA, leaveId: lv?.id ?? "-", status: "APPROVED" })));
+  if ((await P.hrLeave.findUnique({ where: { id: lv?.id ?? "-" }, select: { status: true } }))?.status !== "APPROVED") c4.push(`decideLeave ${r}`);
+  await call(fx.AP, path, () => EA.requestLeaveAction(fd({ systemId: fx.SA, employeeId: eid, type: "PERSONAL", fromDate: "2031-06-10", toDate: "2031-06-11", reason: "QC HFT C4 bulk" })));
+  const lv2 = await P.hrLeave.findFirst({ where: { tenantId: fx.A, employeeId: eid, reason: "QC HFT C4 bulk" }, select: { id: true } });
+  r = await call(fx.OA, path, () => EA.bulkDecideLeaveAction(fx.SA, idle, (() => { const f = fd({ status: "REJECTED" }); f.append("leaveIds", lv2?.id ?? "-"); return f; })()));
+  if (!(r.includes(`"done":1`) && (await P.hrLeave.findUnique({ where: { id: lv2?.id ?? "-" }, select: { status: true } }))?.status === "REJECTED")) c4.push(`bulkDecideLeave ${r}`);
+  chk("C4", c4.length === 0, c4.join(" · "));
+
   // C2 — ระบบตัวเอง + runId ไม่มีจริง ⇒ audit ปฏิเสธเดิม 1 แถว/ครั้ง
   const c2: string[] = [];
   for (const [nm, fn, action] of [
@@ -420,7 +472,7 @@ async function runT(fx: Fx): Promise<void> {
   }
   // T4 adjustments
   const t4resp: string[] = [];
-  for (const a of [fx.XO, fx.XP]) for (const [el, eid] of [["fB", fx.fB], ["eA1", fx.eA1]] as const) {
+  for (const a of [fx.XO, fx.XP, fx.XM]) for (const [el, eid] of [["fB", fx.fB], ["eA1", fx.eA1]] as const) {
     for (const [fl, form] of [["BONUS", { kind: "BONUS", amountBaht: "5000", hours: "" }], ["OT-hours", { kind: "OT", amountBaht: "", hours: "4" }]] as const) {
       for (const [sl, s] of sysList(fx)) rec("T4", `requestAdj|${a.label}|${el}|${fl}`, sl, await drive(fx, a, () => PA.requestAdjustmentAction(s, { status: "idle" }, fd({ employeeId: eid, periodKey: "2031-08", ...form, note: "QC HFT โจมตี" }))));
     }
@@ -454,6 +506,54 @@ async function runT(fx: Fx): Promise<void> {
   const t6 = [...T6].filter(([, m]) => !(m.SA === m.U && m.U === m.SN)).map(([k, m]) => `${k}: SA=${m.SA} · U=${m.U} · SN=${m.SN}`);
   chk("T6", t6.length === 0 && T6.size > 0, `${t6.length}/${T6.size} ไม่เท่ากัน: ${t6.slice(0, 5).join(" | ")}`);
   chk("T8", fails.T8!.length === 0, show(fails.T8!));
+
+  // ── T9 (R-F1): ระบบของผู้โจมตีเอง (SB) + รหัสพนักงานของ A ──
+  const t9: string[] = [];
+  const ghostE = `c${randomBytes(16).toString("hex").slice(0, 24)}`;
+  for (const a of [fx.XO, fx.XP]) {
+    for (const [nm, mk] of [
+      ["clock", (e: string) => () => EA.clockAction(fd({ systemId: fx.SB, employeeId: e, kind: "IN" }))],
+      ["requestLeave", (e: string) => () => EA.requestLeaveAction(fd({ systemId: fx.SB, employeeId: e, type: "SICK", fromDate: "2031-11-01", toDate: "2031-11-02", reason: "QC HFT T9" }))],
+    ] as const) {
+      const ref = await drive(fx, a, mk(ghostE));
+      if (ref.d.length) t9.push(`${nm}|${a.label}|ghost@SB: Δ=${ref.d.join(",")} ${ref.res}`);
+      for (const [el, eid] of [["eA1", fx.eA1], ["eA2", fx.eA2]] as const) {
+        const r = await drive(fx, a, mk(eid));
+        if (r.d.length) t9.push(`${nm}|${a.label}|${el}@SB: Δ=${r.d.join(",")} ${r.res}`);
+        else if (r.res !== ref.res) t9.push(`${nm}|${a.label}|${el}@SB: ${r.res} ≠ ghost ${ref.res}`);
+      }
+    }
+  }
+  const refsQ = EMP_REF_TABLES.map((t) => `SELECT '${t}' AS t, x.id FROM "${t}" x JOIN "HrEmployee" e ON e.id = x."employeeId" WHERE x."tenantId" = $1 AND e."tenantId" = $2`).join(" UNION ALL ");
+  const refs = ((await P.$queryRawUnsafe(refsQ, fx.B, fx.A)) as { t: string; id: string }[]).filter((r) => r.id !== fx.resProfile);
+  if (refs.length) t9.push(`แถวของ B ที่อ้างพนักงานของ A: ${refs.map((r) => r.t).join(",")}`);
+  chk("T9", t9.length === 0, show(t9));
+
+  // ── T10 (R-F2): 8 ปุ่มที่เหลือ บน SA ด้วยแถวตกค้างของ B (fB · resDoc · resLv1/2) เทียบกับรหัสที่ไม่มี ──
+  const t10: string[] = [];
+  const gh = () => `c${randomBytes(16).toString("hex").slice(0, 24)}`;
+  const idle = { status: "idle" };
+  const profileForm = (n: string) => fd({ name: n, nickname: "ปลอม", phone: "0812345678", email: "x@qc.invalid", birthDate: "1990-01-15", position: "พนักงาน", department: "ขาย", startDate: "2030-01-01", addressLine: "1 ถนนทดสอบ", subdistrict: "ก", district: "ข", province: "ค", postcode: "10110", emergencyName: "ญาติ", emergencyPhone: "0800000001", emergencyRelation: "พี่", note: "QC HFT", nationalId: "1101700203451", ssoNumber: "1101700203451", bankName: "KBANK", bankAccountNo: "1234567890", bankAccountName: "ปลอม" });
+  const T10_CASES: [string, (res: boolean) => () => Promise<unknown>][] = [
+    ["saveProfile", (res) => () => EA.saveEmployeeProfileAction(fx.SA, res ? fx.fB : gh(), idle, profileForm("QC HFT ถูกแก้โปรไฟล์"))],
+    ["addDoc", (res) => () => EA.addEmployeeDocAction(fd({ systemId: fx.SA, employeeId: res ? fx.fB : gh(), kind: "OTHER", title: "QC HFT เอกสารปลอม", url: "https://example.com/x.pdf", note: "x" }))],
+    ["removeDoc", (res) => () => EA.removeEmployeeDocAction(fd({ systemId: fx.SA, employeeId: fx.fB, docId: res ? fx.resDoc : gh() }))],
+    ["kioskClock", (res) => () => EA.kioskClockAction(fx.SA, idle, fd({ employeeId: res ? fx.fB : gh(), pin: RES_PIN }))],
+    ["setPin", (res) => () => EA.setPinAction(fx.SA, res ? fx.fB : gh(), idle, fd({ pin: "13579" }))],
+    ["decideLeave", (res) => () => EA.decideLeaveAction(fd({ systemId: fx.SA, leaveId: res ? fx.resLv1 : gh(), status: "APPROVED" }))],
+    ["bulkDecideLeave", (res) => () => EA.bulkDecideLeaveAction(fx.SA, idle, (() => { const f = fd({ status: "REJECTED" }); f.append("leaveIds", res ? fx.resLv2 : gh()); return f; })())],
+    ["setSchedule", (res) => () => EA.setWorkScheduleAction(fd({ systemId: fx.SA, employeeId: res ? fx.fB : gh(), "on-1": "on", "start-1": "08:00", "end-1": "17:00", "on-2": "on", "off-2": "on", graceMin: "10" }))],
+  ];
+  // ปุ่มที่คืนข้อความของรหัสที่ส่งมา (bulk) — แทนรหัสด้วย <id> ก่อนเทียบ
+  const norm = (r: string) => r.replace(/c[a-z0-9]{24}/g, "<id>");
+  for (const [nm, mk] of T10_CASES) {
+    const g = await drive(fx, fx.XO, mk(false));
+    const r = await drive(fx, fx.XO, mk(true));
+    if (g.d.length) t10.push(`${nm}|ghost@SA: Δ=${g.d.join(",")} ${g.res}`);
+    if (r.d.length) t10.push(`${nm}|residue@SA: Δ=${r.d.join(",")} ${r.res}`);
+    else if (norm(r.res) !== norm(g.res)) t10.push(`${nm}: residue ${r.res} ≠ ghost ${g.res}`);
+  }
+  chk("T10", t10.length === 0, show(t10));
 }
 
 // ═════════════ กวาด + Z1 ═════════════
