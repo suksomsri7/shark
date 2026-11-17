@@ -908,6 +908,8 @@ const en: Record<I18nKey, string> = {
   "cust.draft.send": "Send this",
   "cust.draft.ask": "Ask Lekaa to draft a reply",
   "cust.draft.asking": "Lekaa is drafting…",
+  "cust.draft.askBtn": "Suggest reply",
+  "cust.draft.askBusy": "Drafting…",
   "cust.draft.fail": "Could not draft a reply. Please try again.",
   "cust.input.ph": "Message the customer…",
   "cust.input.internalPh": "Internal note (hidden from customer) · @name",

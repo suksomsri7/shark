@@ -910,6 +910,8 @@ const th = {
   "cust.draft.send": "ส่งข้อความนี้",
   "cust.draft.ask": "ให้ Lekaa ร่างคำตอบ",
   "cust.draft.asking": "Lekaa กำลังร่างคำตอบ…",
+  "cust.draft.askBtn": "แนะนำคำตอบ",
+  "cust.draft.askBusy": "กำลังร่าง…",
   "cust.draft.fail": "ร่างคำตอบไม่สำเร็จ ลองใหม่อีกครั้ง",
   "cust.input.ph": "พิมพ์ถึงลูกค้า…",
   "cust.input.internalPh": "บันทึกภายใน (ลูกค้าไม่เห็น) · @ชื่อ",

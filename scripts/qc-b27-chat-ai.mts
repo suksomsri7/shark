@@ -192,11 +192,15 @@ console.log("── M: แอป (static) ──");
     && /inboxPostId\("inbox\/conversations\/\[id\]\/ai-suggest", id, \{ systemId \}\)/.test(room) && /r\.ok === false && r\.reason\?\.trim\(\)\) \|\| t\("cust\.draft\.fail"\)/.test(room) && /busy: suggesting/.test(room) && /th\.conversation\.aiDraft && th\.conversation\.can\?\.aiSuggest !== false/.test(room) && /<LekaaFabSlot \/>/.test(room));
   chk("M-2", "ตั้งค่า: GET/PUT inbox/ai-settings · สวิตช์ cust-set-ai-suggest/translate + ภาษา cust-set-ai-lang-<code> · ปิดเมื่อ !canEdit · บรรทัดค่าใช้จ่าย",
     /"inbox\/ai-settings": "\/api\/mobile\/inbox\/ai-settings"/.test(api) && /inboxGet\("inbox\/ai-settings", \{ systemId: sid \}\)/.test(set) && /inboxPut\("inbox\/ai-settings"/.test(set) && /testID="cust-set-ai-suggest"[^\n]*disabled=\{!ai\.canEdit \|\| busy\}/.test(set) && /testID="cust-set-ai-translate"[^\n]*disabled=\{!ai\.canEdit \|\| busy\}/.test(set) && /testID=\{`cust-set-ai-lang-\$\{code\}`\}/.test(set) && /t\("cust\.ai\.cost"\)/.test(set));
-  const keys = ["cust.draft.ask", "cust.draft.asking", "cust.draft.fail", "cust.ai.section", "cust.ai.suggest.title", "cust.ai.suggest.sub", "cust.ai.translate.title", "cust.ai.translate.sub", "cust.ai.lang", "cust.ai.langSub", "cust.ai.cost", "cust.ai.readOnly"];
+  const keys = ["cust.draft.ask", "cust.draft.asking", "cust.draft.askBtn", "cust.draft.askBusy", "cust.draft.fail", "cust.ai.section", "cust.ai.suggest.title", "cust.ai.suggest.sub", "cust.ai.translate.title", "cust.ai.translate.sub", "cust.ai.lang", "cust.ai.langSub", "cust.ai.cost", "cust.ai.readOnly"];
   const miss = keys.filter((k) => !th.includes(`"${k}":`) || !en.includes(`"${k}":`));
   const custShark = [...th.matchAll(/^ {2}"cust\.[^"]+": "[^"\n]*Shark[^"\n]*",$/gm), ...en.matchAll(/^ {2}"cust\.[^"]+": "[^"\n]*Shark[^"\n]*",$/gm)].map((m) => m[0].trim().slice(0, 60));
   chk("M-3", "i18n th+en ครบทุกคีย์ใหม่ · การ์ดร่าง = \"Lekaa ร่างคำตอบ\" / \"Lekaa's draft reply\" · ไม่มีคำ Shark ในข้อความ cust.* (ชื่อแพลตฟอร์ม SHARK ตัวใหญ่ยกเว้น)",
     miss.length === 0 && th.includes(`"cust.draft.title": "Lekaa ร่างคำตอบ",`) && en.includes(`"cust.draft.title": "Lekaa's draft reply",`) && custShark.length === 0, JSON.stringify({ miss, custShark }));
+  // 17 พ.ย. (ผู้คุม): ✨ เป็นชิปมีป้ายในแถบเหนือช่องพิมพ์ ก่อนชิปแปล · แถวช่องพิมพ์ไม่มีชิ้นส่วนขวา (ช่องพิมพ์ได้ที่เต็ม) · ไม่มีชิป = ไม่มีแถบ
+  const tool = room.slice(room.indexOf("<View style={styles.toolRow}>"), room.indexOf("<View style={styles.inputRow}>"));
+  chk("M-5", "ชิป cust-draft-ask (✨ + cust.draft.askBtn) มาก่อน cust-translate-send ในแถบ toolRow · แถบขึ้นเฉพาะเมื่อมีชิปอย่างน้อย 1 · InputBar ไม่มี right=",
+    tool.indexOf('testID="cust-draft-ask"') > 0 && tool.indexOf('testID="cust-draft-ask"') < tool.indexOf('testID="cust-translate-send"') && /t\("cust\.draft\.askBtn"\)/.test(tool) && /\{\(canSuggest && !internal && !windowClosed\) \|\| \(translateTo && !internal\) \? \(\s*<View style=\{styles\.toolRow\}>/.test(room) && !/\bright=\{/.test(room));
   const hex = [room, set].some((s) => /#[0-9a-fA-F]{3,8}\b|rgba?\(/.test(s.replace(/\/\/.*$/gm, "")));
   chk("M-4", "ไม่มีสี hex/rgba ในไฟล์จอที่แก้", !hex);
 }

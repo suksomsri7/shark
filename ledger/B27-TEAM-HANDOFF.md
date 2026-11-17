@@ -18,12 +18,21 @@
   - `customers/[id]/index.tsx` has a ✨ button (`cust-draft-ask`) in the input row. It shows when `can.aiSuggest === true`, the user can reply,
     the message is not an internal note and the reply window is open. Pressing it posts `…/ai-suggest` and shows the existing draft card (spinner while busy);
     `ok:false` shows the server's reason in `cust-room-note`.
-  - **Composer arrangement:** at 390pt, ＋ 🔒 field ✨ แปลแล้วส่ง send + Lekaa left the text field ~0 wide. "แปลแล้วส่ง" is now a small
+  - **Composer arrangement (first version; superseded by the follow-up below):** at 390pt, ＋ 🔒 field ✨ แปลแล้วส่ง send + Lekaa left the text field ~0 wide. "แปลแล้วส่ง" is now a small
     right-aligned strip above the send button. The input row is ＋ 🔒 field ✨ send + Lekaa; the field is ~95pt, so the Thai placeholder wraps to 2 lines.
   - i18n th/en: new keys `cust.draft.ask/asking/fail` and `cust.ai.*`. Customer-chat strings now say Lekaa instead of Shark:
     `cust.draft.title`, `cust.row.aiDraft`, `cust.msg.aiBy`, `cust.msg.aiNoApprover`, `cust.info.askShark`, `cust.ask.title`.
     Not renamed: the platform name "SHARK" (`cust.info.inShark`) and the after-hours `sec.cust.*` strings (outside this scope).
   - `qc/buttons-sec.json` regenerated (+ `cust-set-ai*`, `cust-draft-ask`). `clicks-sec.json` was **not** re-run, so it is stale vs the registry.
+- **Follow-up 17 Nov (coordinator): ✨ moved out of the input row.**
+  - It is now a labelled chip "✨ แนะนำคำตอบ" (en "✨ Suggest reply"), using the translate chip's style and height. While busy it shows a spinner + "กำลังร่าง…" (en "Drafting…").
+  - Chip strip above the composer, right-aligned (over the send button): ✨ chip first, then "แปลแล้วส่ง". Only the chips that apply are shown; with none, the strip is not rendered.
+  - Input row = ＋ 🔒 field send + Lekaa (no `right=` on InputBar). The field is ~165pt at 390pt and "พิมพ์ถึงลูกค้า…" fits on one line.
+    The internal-note placeholder "บันทึกภายใน (ลูกค้าไม่เห็น) · @ชื่อ" is longer and still wraps.
+  - testID `cust-draft-ask` unchanged; new keys `cust.draft.askBtn/askBusy`. `buttons-sec.json` only reordered, so it was left as is.
+  - `qc-b27-chat-ai` gained M-5 (chip order / strip condition / no `right=`): **23/23**. Mobile tsc EXIT 0. Screen specs s3a6/s2.17: only the pre-existing U7.1.
+  - Re-rendered room-ask/draft/internal/off, light + dark; crops in `crop-room-*.png` and `crop-rooms-all.png`.
+  - Web render: a one-line placeholder sits slightly above centre in the multiline field (RN-web textarea). Not checked on a device.
 - Verified (all through iso.sh):
   - server `pnpm typecheck` EXIT 0 · mobile `tsc --noEmit` EXIT 0 (run after the last change)
   - `qc-b27-chat-ai` 22/22 (run 3×, last after the final change) · `qc-sec-s1.14c` 13/13 · `qc-sec-s1.14b` 24/24 · `qc-sec-s3a6-s` 23/23
