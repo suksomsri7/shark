@@ -126,7 +126,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
   const px = sel ? "px-2" : "px-2 xl:px-3"; // drawer open: tight cells at every width (mockup .pt 8 px) ◂
   const num = `whitespace-nowrap ${px} py-2.5 text-right tabular-nums`; // HR VIS-5a ▸ F7: money never wraps · P2: tighter cells below xl so the status badge always fits the card ◂
   const sub = "block whitespace-normal text-xs text-[color:var(--color-muted)]"; // HR VIS-5a ▸ P2: code labels under amounts wrap (they must not widen the column) ◂
-  const reasonCls = sel ? "hidden" : "hidden pt-1 text-xs text-[color:var(--color-muted)] xl:block"; // HR VIS-5a ▸ P2: the short reason shows only where the badge has room (≥1280, drawer closed) ◂
+  const reasonCls = "hidden whitespace-normal pt-1 text-xs text-[color:var(--color-muted)] [overflow-wrap:anywhere] xl:block"; // HR VIS-5a ▸ P2: the short reason shows ≥1280 · r4b B-4: also with the drawer open (mockup 06 keeps it) — it wraps inside the status cell, the chip stays nowrap ◂
   const top = "max-md:-order-2"; // HR VIS-5a ▸ F6: at 390 the header · chips · banner · step line come first, then the action bar (in flow, nothing overlaps) ◂
   const amt = (v: number | null) => (v === null ? "—" : baht(v));
   const tone = (v: number) => (v < 0 ? "text-[color:var(--color-danger)]" : "");
@@ -157,7 +157,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
       {foot}
     </table>
   );
-  const frame = "overflow-hidden rounded-2xl border border-[color:var(--color-line)]";
+  const frame = "overflow-x-auto overflow-y-hidden rounded-2xl border border-[color:var(--color-line)]"; // HR VIS-5a ▸ r4b B-2: content wider than the frame (very large amounts) scrolls inside the frame, never clipped · the frame is a scroll container (min-width 0) so the page itself never scrolls sideways · no change when it fits ◂
   const headCls = "bg-[color:var(--color-stage)] text-xs text-[color:var(--color-muted)]";
   const mgrRows = (canMgr && pv && pv.ok ? pv.rows : []) as { employeeId: string; name: string; days: number; workMin: number; unpaidLeaveMin: number; holidayWorkMin: number }[];
   const createForm = (
