@@ -33,7 +33,7 @@ const SYS_ICON: Record<string, IconName> = {
   HOTEL: "key",
   RESTAURANT: "coffee",
   SHOP: "shopping-bag",
-  BOOKING: "calendar",
+  BOOKING: "clock", // 17 พ.ย.: ไม่ซ้ำกับช่องปฏิทิน (calendar)
   QUEUE: "credit-card", // แบบ topbar2 = บัตรคิว (รูปตั๋ว)
   TICKET: "tag",
   MEMBER: "user",
@@ -47,7 +47,7 @@ const SYS_ICON: Record<string, IconName> = {
   POS: "shopping-cart",
   CRM: "target",
   KB: "book-open",
-  HR: "user", // แบบ topbar2 = รูปคน (สีม่วง) แยกจากสมาชิกด้วยสี
+  HR: "briefcase", // 17 พ.ย. (เจ้าของสั่งจากเครื่องจริง): ไอคอนซ้ำกับสมาชิก (รูปคน) ⇒ พนักงาน HR = กระเป๋าเอกสาร
   INVENTORY: "box",
   MARKETING: "volume-2",
   RENTAL: "truck",
