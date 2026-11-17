@@ -48,8 +48,12 @@ const marked = (h: Hunk, mk: string) => h.added.some((l) => l.includes(mk));
 export function diffStatics(tk: Tk): { outside: string[]; bad: string[]; files: string[] } {
  const me = OWN[tk], other = OWN[tk === "5b" ? "5c" : "5b"], ch = changed(), outside: string[] = [], bad: string[] = [];
  const oracleOk = (f: string) => /^scripts\/(qc-|fitness)[^/]*\.mts$/.test(f) && fileAt(BASE, f) !== null && hunksOf(f).length > 0 && hunksOf(f).every((h) => marked(h, ORACLE_EDIT_MARK));
+ // ORACLE-EDIT (HR VIS-5a · controller) S1 (re-merge 2): explicit VIS-5a files (lane wip/hr-vis-5a carries VIS-5b in base) — edited src/tools only when EVERY hunk adds a line with "HR VIS-5a" and "◂"; new files (2 src + VIS-5a's own 2 oracles) only with "HR VIS-5a" in lines 1–3 · anything else still outside ◂
+ const V5A_EDIT = ["src/app/app/sys/[id]/hr/payroll/page.tsx", "src/app/app/sys/[id]/hr/attendance/page.tsx", `${H}payroll-ui.tsx`, `${H}payroll-run-ui.tsx`, `${H}reports-ui.tsx`, "scripts/walk-hr.mts", "scripts/seed-hr-walk.mts"], V5A_NEW = [`${H}pay-run-view.ts`, `${H}period-label.ts`, "scripts/qc-hr-vis-5a.mts", "scripts/qc-hr-vis-5a-lib.mts"]; // ORACLE-EDIT (HR VIS-5a · controller) ◂
+ const vis5aOk = (f: string) => V5A_EDIT.includes(f) ? fileAt(BASE, f) !== null && hunksOf(f).length > 0 && hunksOf(f).every((h) => h.added.some((l) => l.includes("HR VIS-5a") && l.includes("◂"))) : V5A_NEW.includes(f) && fileAt(BASE, f) === null && rd(f).split("\n").slice(0, 3).join("\n").includes("HR VIS-5a"); // ORACLE-EDIT (HR VIS-5a · controller) ◂
  for (const f of ch) {
   if (f.startsWith("ledger/") || SHARED_FREE.includes(f)) continue;
+  if (vis5aOk(f)) continue; // ORACLE-EDIT (HR VIS-5a · controller) S1 ◂
   if (me.files.includes(f)) { for (const h of hunksOf(f)) if (!marked(h, MARK[tk])) bad.push(`${f.split("/").slice(-2).join("/")}@${h.a}:unmarked`); continue; }
   if (me.fresh.includes(f)) { const b = fileAt(BASE, f); if (b !== null || !rd(f).split("\n").slice(0, 3).join("\n").includes(MARK[tk])) bad.push(`${f.split("/").pop()}:header`); continue; }
   if (oracleOk(f)) continue;
@@ -75,7 +79,7 @@ export function msgStatics(tk: Tk): Record<string, boolean | string> {
  const r: Record<string, boolean | string> = {};
  for (const [lc, p] of [["th", TH], ["en", EN]] as const) {
   const b = flat(base(p) ?? {}), n = flat(jsonOf(p) ?? {});
-  const moved = [...new Set([...Object.keys(b), ...Object.keys(n)])].filter((k) => JSON.stringify(b[k]) !== JSON.stringify(n[k]) && !k.startsWith(`hr.${me.block}.`) && !k.startsWith(`hr.${oth}.`));
+  const moved = [...new Set([...Object.keys(b), ...Object.keys(n)])].filter((k) => JSON.stringify(b[k]) !== JSON.stringify(n[k]) && !k.startsWith(`hr.${me.block}.`) && !k.startsWith(`hr.${oth}.`) && !/^hr\.(run2|payview)\./.test(k)); // ORACLE-EDIT (HR VIS-5a · controller) S5 (re-merge 2): VIS-5a's message keys (hr.run2.* · hr.payview.*, the same key-path rule as leave-3 ST3) are not "other" keys ◂
   r[`${lc}Only`] = !moved.length || moved.slice(0, 3).join(",");
   const hk = Object.keys((jsonOf(p) ?? {}).hr ?? {});
   r[`${lc}After`] = hk.indexOf(me.block) > 0 && hk.indexOf(me.block) === hk.indexOf(me.after) + 1;

@@ -16,11 +16,26 @@ import { ModuleTabs } from "@/components/module-tabs";
 import { WorkEntriesPanel, WE_MSG, weMsgCode } from "@/lib/modules/hr/work-entries-ui";
 import { buildWorkEntriesAction, finalizeWorkEntriesAction } from "@/lib/modules/hr/work-entries-actions";
 import { thaiDateKey } from "@/lib/ui/date";
-import { getTranslations } from "next-intl/server";
+import { getLocale, getTranslations } from "next-intl/server"; // HR VIS-5a ▸ getLocale (F9) ◂
 // HR H3.4 ▸ รอบจ่ายรุ่น 2 (ภาพ 06) — ส่วน payroll-run-ui · ผลการกด ?r2= รหัสคงที่ (RUN2_MSG) · ?run= รอบที่เลือก ◂
 import { PayrollRunSection, RUN2_MSG, run2MsgCode } from "@/lib/modules/hr/payroll-run-ui";
 import { approveRunV2Action, confirmBranchHoursAction, createPayrollRunV2Action, payRunV2Action, recomputeRunV2Action, reverseRunV2Action } from "@/lib/modules/hr/payroll-actions";
 import { syncAttendanceDeductionsAction } from "@/lib/modules/hr/attendance-pay-actions";
+// HR VIS-5a ▸ one page, sub-views ?view= (run · hours · adjust · profiles · docs · ytd · history) — nav shows a view only when an existing gate of its sections passes ◂
+import { PAY_VIEWS, payViewOf, type PayView } from "@/lib/modules/hr/pay-run-view";
+import { canViewPayroll } from "@/lib/core/rbac";
+import { canReadWorkEntries } from "@/lib/modules/hr/work-entries";
+import { canRequestStockCharge, canSeeStockCharges } from "@/lib/modules/hr/stock-charge";
+import { canUseBankFiles } from "@/lib/modules/hr/bank-files/service";
+import { canUseFilings } from "@/lib/modules/hr/filings/service";
+import { canUseSalaryCerts } from "@/lib/modules/hr/payslip";
+import { getPayrollEngine } from "@/lib/modules/hr/payroll";
+
+// HR VIS-5a ▸ r4 A1: ปลายทางของปุ่มรอบจ่ายรุ่น 2 — ระดับโมดูล รับสตริงล้วน (เดิม back2 เป็นฟังก์ชันในหน้า ถูก action แบบ inline จับไว้ ⇒ Next ส่งฟังก์ชันไปเบราว์เซอร์ไม่ได้ หน้าพังทุกปุ่ม)
+function run2Back(id: string, period: string, code: string, run: string): never {
+  redirect(`/app/sys/${id}/hr/payroll?period=${period}${run ? `&run=${encodeURIComponent(run)}` : ""}&r2=${encodeURIComponent(code)}#hr-run2`);
+}
+// ◂ HR VIS-5a
 
 // หน้าย่อย "เงินเดือน" ของระบบ HR — โปรไฟล์เงินเดือน + รอบจ่าย + สลิป
 // 🔒 PayrollSection มี canViewPayroll guard ในตัว (PDPA — เห็นเฉพาะ OWNER/ผู้มีสิทธิ์)
@@ -50,12 +65,13 @@ export default async function HrPayrollPage({
   const onFinalize = async (fd: FormData) => {
     "use server";
     const r = await finalizeWorkEntriesAction(fd);
-    redirect(`/app/sys/${id}/hr/payroll?period=${period}&${r.ok ? `we=fin&n=${r.finalized}` : `we=${encodeURIComponent(weMsgCode(r.reason))}`}`);
+    redirect(`/app/sys/${id}/hr/payroll?view=hours&period=${period}&${r.ok ? `we=fin&n=${r.finalized}` : `we=${encodeURIComponent(weMsgCode(r.reason))}`}`); // HR VIS-5a ▸ ?view=hours ◂
   };
+  // HR VIS-5a ▸ both work-entry redirects land on ?view=hours ◂
   const onBuild = async (fd: FormData) => {
     "use server";
     const r = await buildWorkEntriesAction(fd);
-    redirect(`/app/sys/${id}/hr/payroll?period=${period}&${r.ok ? (r.next ? `we=more&n=${r.written}&after=${encodeURIComponent(r.next)}` : `we=ok&n=${r.written}&r=${r.blocking}`) : `we=${encodeURIComponent(weMsgCode(r.reason))}`}`);
+    redirect(`/app/sys/${id}/hr/payroll?view=hours&period=${period}&${r.ok ? (r.next ? `we=more&n=${r.written}&after=${encodeURIComponent(r.next)}` : `we=ok&n=${r.written}&r=${r.blocking}`) : `we=${encodeURIComponent(weMsgCode(r.reason))}`}`); // HR VIS-5a ▸ ?view=hours ◂
   };
   // HR H3.4 ▸ ปุ่มของรอบจ่ายรุ่น 2 — ทุกปุ่ม redirect กลับพร้อมรหัสผล (ไม่มีข้อความอิสระบน URL) ◂
   const tRun2 = await getTranslations("hr.run2");
@@ -63,37 +79,37 @@ export default async function HrPayrollPage({
   const r2Ok = ["created", "done", "approved", "synced"].includes(r2);
   const r2Flash = r2Ok ? tRun2(r2) : r2 ? (RUN2_MSG[r2] ?? tRun2("failed")) : "";
   const runSel = /^[A-Za-z0-9_-]{1,64}$/.test(one(sp.run) ?? "") ? one(sp.run)! : "";
-  const back2 = (code: string, run = runSel): never => redirect(`/app/sys/${id}/hr/payroll?period=${period}${run ? `&run=${encodeURIComponent(run)}` : ""}&r2=${encodeURIComponent(code)}#hr-run2`);
+  // HR VIS-5a ▸ r4 A1: back2 ย้ายไประดับโมดูล (run2Back) — action แบบ inline จับได้แค่สตริง (id · period · runSel) ไม่จับฟังก์ชัน ◂
   const run2Actions = {
     create: async (fd: FormData) => {
       "use server";
       const r = await createPayrollRunV2Action(fd);
-      back2(r.ok ? "created" : run2MsgCode(r.reason), r.ok ? r.id : runSel);
+      run2Back(id, period, r.ok ? "created" : run2MsgCode(r.reason), r.ok ? r.id : runSel); // HR VIS-5a ◂
     },
     rebuild: async (fd: FormData) => {
       "use server";
       const r = await recomputeRunV2Action(fd);
-      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     approve: async (fd: FormData) => {
       "use server";
       const r = await approveRunV2Action(fd);
-      back2(r.ok ? "approved" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "approved" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     pay: async (fd: FormData) => {
       "use server";
       const r = await payRunV2Action(fd); // fix r1 F7: ผลจริง (ปฏิเสธ = role=alert)
-      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     reverse: async (fd: FormData) => {
       "use server";
       const r = await reverseRunV2Action(fd); // fix r1 F7: CARRY_BOUND · LATER_RUN · สิทธิ์ = ข้อความคงที่
-      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     confirm: async (fd: FormData) => {
       "use server";
       const r = await confirmBranchHoursAction(fd);
-      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     sync: async (fd: FormData) => {
       "use server";
@@ -104,7 +120,7 @@ export default async function HrPayrollPage({
         f.set("periodKey", period);
         if (after) f.set("after", after);
         const b = await buildWorkEntriesAction(f);
-        if (!b.ok) back2(run2MsgCode(b.reason));
+        if (!b.ok) run2Back(id, period, run2MsgCode(b.reason), runSel); // HR VIS-5a ◂
         if (!b.ok || !b.next) break;
         after = b.next;
       }
@@ -114,33 +130,82 @@ export default async function HrPayrollPage({
         f.set("periodKey", period);
         if (after) f.set("after", after);
         const s = await syncAttendanceDeductionsAction(f);
-        if (!s.ok) back2(run2MsgCode(s.reason));
+        if (!s.ok) run2Back(id, period, run2MsgCode(s.reason), runSel); // HR VIS-5a ◂
         if (!s.ok || !s.next) break;
         after = s.next;
       }
-      back2("synced");
+      run2Back(id, period, "synced", runSel); // HR VIS-5a ◂
     },
   };
   // ◂ HR H3.4
 
+  // HR VIS-5a ▸ view + nav per viewer (existing gates only — rulings r2 §4) · sections keep their own gates inside ◂
+  const view = payViewOf(sp);
+  const membership = { role: auth.active.role, unitAccess: auth.active.unitAccess as string[], permissions: auth.active.permissions as Record<string, unknown> };
+  const viewer = hrViewerOf(auth);
+  const ctx = { tenantId: auth.active.tenantId, systemId: id };
+  const payViewer = canViewPayroll(membership);
+  const [engine, bankOk, filingOk, certOk] = await Promise.all([getPayrollEngine(ctx), canUseBankFiles(ctx, viewer), canUseFilings(ctx, viewer), canUseSalaryCerts(ctx, viewer)]);
+  const v2 = engine.engineVersion === 2;
+  const navOn: Record<PayView, boolean> = {
+    run: true,
+    hours: canReadWorkEntries(viewer) || payViewer,
+    adjust: payViewer || canRequestStockCharge(viewer) || canSeeStockCharges(viewer),
+    profiles: payViewer,
+    docs: bankOk || filingOk || certOk,
+    ytd: filingOk,
+    history: payViewer && v2, // engine-1 shops: the run view already lists runs (ruling r2 §3) — ?view=history still renders
+  };
+  const tView = await getTranslations("hr.payview");
+  const loc = await getLocale(); // HR VIS-5a ▸ F9: period labels in the legacy parts ◂
+  const wide = view === "run" || view === "hours" || view === "docs";
+  const tabCls = (on: boolean) => `inline-flex min-h-[44px] items-center rounded-[10px] px-3.5 text-sm ${on ? "bg-[color:var(--color-surface)] font-semibold shadow-sm" : "text-[color:var(--color-muted)]"}`;
+
   return (
-    <div className="flex max-w-2xl flex-col gap-5">
-      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc="เงินเดือน — โปรไฟล์ + รอบจ่าย + สลิป" />
+    <div className="flex w-full max-w-[1200px] flex-col gap-5">{/* HR VIS-5a ▸ F8: header + sub-nav always use the full content width; only the forms of narrow views stay max-w-2xl (below) ◂ */}
+      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={tView("desc")} />
       {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
       <ModuleTabs items={await hrTabsFor(id)} />
-      <PayrollSection systemId={id} />
+      {/* HR VIS-5a ▸ sub-nav (attendance pattern: ?view= links · aria-current · 44 px · wraps, no scroller) ◂ */}
+      <nav className="flex flex-wrap items-center gap-1 self-start rounded-[13px] border border-[color:var(--color-line)] bg-[color:var(--color-stage)] p-1" aria-label={tView("nav")}>
+        {PAY_VIEWS.filter((v) => navOn[v]).map((v) => (
+          <a key={v} href={`/app/sys/${id}/hr/payroll?view=${v}&period=${period}`} data-testid={`hr-pay-view-${v}`} aria-current={view === v ? "page" : undefined} className={tabCls(view === v)}>
+            {tView(v)}
+          </a>
+        ))}
+      </nav>
+      <div className={wide ? "contents" : "flex w-full max-w-2xl flex-col gap-5"}>{/* HR VIS-5a ▸ F8 ◂ */}
+      {/* HR VIS-5a ▸ run view: viewer without payroll access sees the PayrollSection no-access notice here only · engine-1 shop = legacy create + runs ◂ */}
+      {view === "run" && (!payViewer || !v2) && <PayrollSection systemId={id} locale={loc} parts={["create", "runs"]} />}
+      {view === "hours" && (<>{/* HR VIS-5a ▸ hours = work-entry panel + attendance part ◂ */}
       <WorkEntriesPanel systemId={id} periodKey={period} flash={weFlash} onBuild={onBuild} after={weAfter} onFinalize={onFinalize} /> {/* HR H3.1 ◂ */}
-      <PayrollRunSection systemId={id} periodKey={period} runId={runSel} flash={r2Flash} flashOk={r2Ok} actions={run2Actions} /> {/* HR H3.4 ▸ รอบจ่ายรุ่น 2 (payroll-run-ui) ◂ */}
+      {payViewer && <PayrollSection systemId={id} locale={loc} parts={["attendance"]} />}
+      </>)}{/* HR VIS-5a ◂ */}
+      {view === "run" && (<>{/* HR VIS-5a ▸ run view ◂ */}
+      <PayrollRunSection systemId={id} periodKey={period} runId={runSel} flash={r2Flash} flashOk={r2Ok} actions={run2Actions} emp={/^[A-Za-z0-9_-]{1,64}$/.test(one(sp.emp) ?? "") ? one(sp.emp)! : ""} /> {/* HR H3.4 ▸ รอบจ่ายรุ่น 2 (payroll-run-ui) ◂ */}{/* HR VIS-5a ▸ ?emp= drawer (run-ui shows it only for a row of the viewer's own preview) ◂ */}
+      </>)}{/* HR VIS-5a ◂ */}
+      {view === "adjust" && (<>{/* HR VIS-5a ▸ adjust = additions/deductions part + stock charges ◂ */}
+      {payViewer && <PayrollSection systemId={id} locale={loc} parts={["adjust"]} />}
       {/* HR H4.6 ▸ ฟอร์ม = ผู้ถือคีย์ยื่นรายการ · รายการ/ยอด = ผู้ดูเงินเดือน (ด่านในตัว) ◂ */}
       <StockChargeSection systemId={id} msg={one(sp.stock)} q={one(sp.stockq)} inv={one(sp.stockinv)} />
+      </>)}{/* HR VIS-5a ◂ */}
+      {view === "docs" && (<>{/* HR VIS-5a ▸ docs = bank file · filings · salary certificates ◂ */}
       {/* HR H3.5 ▸ ไฟล์โอนเงินเดือน — ?bank=<รอบ> · ?bfmt= · ?beff= · ?benc= · ?bmode= · ?bera= · ?bbranch= · ?bmsg=<รหัสสั้น> (allowlist ใน ui) · ?bfile=<ไฟล์ที่เพิ่งสร้าง> ◂ */}
       <BankFileSection systemId={id} sp={{ bank: one(sp.bank), bfmt: one(sp.bfmt), beff: one(sp.beff), benc: one(sp.benc), bmode: one(sp.bmode), bera: one(sp.bera), bbranch: one(sp.bbranch), bmsg: one(sp.bmsg), bfile: one(sp.bfile) }} /> {/* HR H3.5 ◂ */}
+      </>)}{/* HR VIS-5a ◂ */}
       {/* HR H3.6 ▸ ยื่นภาษี/ประกันสังคม — ?fk=<แบบ> · ?fp=<งวด> · ?frun=<รอบ> · ?ty=<ปีภาษี> · ?fperson= · ?fmsg=<รหัสผล> (allowlist ใน ui) · ?ffile=<ไฟล์ที่เพิ่งสร้าง> ◂ */}
+      {view === "ytd" && (<>{/* HR VIS-5a ▸ ytd = opening figures ◂ */}
       {/* HR H3.4-YTD ▸ ยอดยกมาต้นปี (ก่อนใช้ระบบ) — ?yty=<ปีภาษี> · ?ymsg=<รหัสผล> (allowlist ใน ui) · ?yn=<จำนวนที่บันทึก> ◂ */}
       <OpeningYtdCard systemId={id} sp={{ yty: one(sp.yty), ymsg: one(sp.ymsg), yn: one(sp.yn) }} /> {/* HR H3.4-YTD ◂ */}
+      </>)}{/* HR VIS-5a ◂ */}
+      {view === "docs" && (<>{/* HR VIS-5a ▸ docs (cont.) ◂ */}
       <FilingSection systemId={id} sp={{ fk: one(sp.fk), fp: one(sp.fp), frun: one(sp.frun), fmsg: one(sp.fmsg), fflds: one(sp.fflds), fdoc: one(sp.fdoc), fbi: one(sp.fbi), fbs: one(sp.fbs), ffile: one(sp.ffile), ty: one(sp.ty), fperson: one(sp.fperson), fstop: one(sp.fstop) }} /> {/* HR H3.6 ◂ */}
       {/* HR H3.8 ▸ หนังสือรับรองเงินเดือน — คำขอ (ออก/ไม่อนุมัติ) · ออกใหม่ · ใบที่ออก (ดาวน์โหลด/ยกเลิก) · ?sc=<รหัสผล> (allowlist ใน payslip-ui) ◂ */}
       <SalaryCertSection systemId={id} sc={one(sp.sc)} />
+      </>)}{/* HR VIS-5a ◂ */}
+      {view === "profiles" && payViewer && <PayrollSection systemId={id} locale={loc} parts={["profiles"]} />}{/* HR VIS-5a ▸ profiles ◂ */}
+      {view === "history" && payViewer && <PayrollSection systemId={id} locale={loc} parts={["create", "runs"]} />}{/* HR VIS-5a ▸ history = create + run list (v1 runs, exclusions, stranded, slip chips) ◂ */}
+      </div>{/* HR VIS-5a ▸ F8 ◂ */}
     </div>
   );
 }

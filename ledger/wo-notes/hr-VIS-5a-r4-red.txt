@@ -1,0 +1,71 @@
+  ✅ [S1] payroll-rules sha · payroll-run-rules byte-identical · untouched files = base
+  ✅ [S2] changed files ⊆ allow list · older oracle edits marked ORACLE-EDIT (HR VIS-5a · controller)
+fatal: path 'src/lib/modules/hr/pay-run-view.ts' exists on disk, but not in 'a49f818296985d1c385a54a3bfe33c2f6e6b494b'
+fatal: path 'src/lib/modules/hr/period-label.ts' exists on disk, but not in 'a49f818296985d1c385a54a3bfe33c2f6e6b494b'
+  ✅ [S3] every src hunk adds HR VIS-5a ◂ · new file marker in first 3 lines
+  ✅ [S4] action + loader/gate bodies hash = base · privacy lines kept verbatim
+fatal: path 'src/lib/modules/hr/pay-run-view.ts' exists on disk, but not in 'a49f818296985d1c385a54a3bfe33c2f6e6b494b'
+fatal: path 'src/lib/modules/hr/period-label.ts' exists on disk, but not in 'a49f818296985d1c385a54a3bfe33c2f6e6b494b'
+  ✅ [S5] no new *Satang arithmetic in tsx · no new "use client" file
+  ✅ [S6] fitness-hr F16.1 clean
+  ✅ [S7] page: payViewOf · we → view=hours · ytd link ?view=ytd · nav hr-pay-view-* · old imports kept
+  ❌ [A1] no inline "use server" in an HR page/layout captures a function-valued local of its component (TS compiler API · all HR pages) — expected 38 inline actions in 19 files | actual 15 captures · attendance/page.tsx: onRequestMine→corrBack onRequestMine→msgOf onRequestFor→corrBack onRequestFor→msgOf onDecide→corrBack onDecide→msgOf onCancel→corrBack onCancel→msgOf | payroll/page.tsx: create→back2 rebuild→back2 approve→back2 pay→back2 reverse→back2 confirm→back2 sync→back2
+  ❌ [A2] Next SWC server-actions transform (the build's): no bound argument of an HR inline action is function-valued · control: payroll page registers its actions — expected  | actual control=true(regs 9) bound fn args: attendance/page.tsx:corrBack (local arrow expression) | attendance/page.tsx:msgOf (local arrow expression) | payroll/page.tsx:back2 (local arrow expression) [15]
+A1 hits (15):
+  src/app/app/sys/[id]/hr/attendance/page.tsx:88 onRequestMine captures corrBack (local arrow expression, :87)
+  src/app/app/sys/[id]/hr/attendance/page.tsx:88 onRequestMine captures msgOf (local arrow expression, :86)
+  src/app/app/sys/[id]/hr/attendance/page.tsx:93 onRequestFor captures corrBack (local arrow expression, :87)
+  src/app/app/sys/[id]/hr/attendance/page.tsx:93 onRequestFor captures msgOf (local arrow expression, :86)
+  src/app/app/sys/[id]/hr/attendance/page.tsx:98 onDecide captures corrBack (local arrow expression, :87)
+  src/app/app/sys/[id]/hr/attendance/page.tsx:98 onDecide captures msgOf (local arrow expression, :86)
+  src/app/app/sys/[id]/hr/attendance/page.tsx:103 onCancel captures corrBack (local arrow expression, :87)
+  src/app/app/sys/[id]/hr/attendance/page.tsx:103 onCancel captures msgOf (local arrow expression, :86)
+  src/app/app/sys/[id]/hr/payroll/page.tsx:78 create captures back2 (local arrow expression, :76)
+  src/app/app/sys/[id]/hr/payroll/page.tsx:83 rebuild captures back2 (local arrow expression, :76)
+  src/app/app/sys/[id]/hr/payroll/page.tsx:88 approve captures back2 (local arrow expression, :76)
+  src/app/app/sys/[id]/hr/payroll/page.tsx:93 pay captures back2 (local arrow expression, :76)
+  src/app/app/sys/[id]/hr/payroll/page.tsx:98 reverse captures back2 (local arrow expression, :76)
+  src/app/app/sys/[id]/hr/payroll/page.tsx:103 confirm captures back2 (local arrow expression, :76)
+  src/app/app/sys/[id]/hr/payroll/page.tsx:108 sync captures back2 (local arrow expression, :76)
+[env] qc-hr-vis-5a · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-vis-5a] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+  ✅ [V1] payViewOf vectors (redirects · links · GET forms · default · unknown · explicit)
+  ✅ [V2] [meta] vector table covers every payroll param the frozen actions emit
+  ✅ [P1] periodLabel vectors th/en
+  ✅ [I1] hr.run2 th=en · every key the run screen uses exists in th and en
+  ✅ [I2] hr.payview.* 7 views th+en · hr.run2.title without engine wording · page desc via messages
+fatal: path 'src/lib/modules/hr/pay-run-view.ts' exists on disk, but not in 'a49f818296985d1c385a54a3bfe33c2f6e6b494b'
+fatal: path 'src/lib/modules/hr/period-label.ts' exists on disk, but not in 'a49f818296985d1c385a54a3bfe33c2f6e6b494b'
+  ✅ [I3] no Thai literal in added code lines (payroll-ui.tsx moved sections exempt)
+  ✅ [N2] walk matrix states for hours/adjust/profiles/docs/ytd/history
+  ✅ [K2] every base inventory id of /hr/payroll still in code
+  ✅ [K3] hr-run2-* written only in payroll-run-ui.tsx · base hr-run2 ids kept
+  ✅ [K4] new run-screen ids in payroll-run-ui.tsx (banner · drawer · excluded · doclink · totals · bar · jv)
+  ✅ [K5] run table: no min-w-[ · md:table-cell · one table
+fixture ok: {"DRAFT":"2026-11","PAID":"2026-10","APPROVED":"2026-09","REVERSED":"2026-08","V1":"2026-07","NONE":"2026-05","YTD":"2026-06"}
+  ✅ [W1] page per view: own sections only · no id in 2 views · every legacy id in a view · nav per viewer (r2) · no-access notice in run only · engine-1 history
+  ✅ [W2] [control] sections per viewer (owner · branch payroll · manager): union over nav views = base set
+  ✅ [K1] PayrollSection parts: disjoint · union = default
+  ✅ [R0] [control] period without run: create shown
+  ✅ [R1] live run in period: no create control
+  ✅ [R2] REVERSED: banner + read-only table + create · no run buttons
+  ✅ [R3] v1 run: banner + history link · no v2 controls
+  ✅ [R4] period label th/en · no ISO period · no engine wording
+  ✅ [R5] [privacy] limited viewer: in-scope rows/totals only + excluded note
+  ✅ [R6] hr-run2-excluded: limited viewer only
+  ✅ [R7] [privacy] no whole-run figure for limited · accounting callout without amounts
+  ✅ [R8] [privacy] manager: no ฿ in run screen
+  ✅ [R9] ?emp= drawer with that row's lines · unknown emp → none
+  ✅ [R10] [privacy] ?emp out of pay scope shows nothing of that person
+  ✅ [R11] OT + commission figures (tiles/col) = Σ stored lines
+  ✅ [R12] en run screen: no Thai from UI strings
+  ✅ [T1] run table add vs OT: ≥1280 add excl. OT + OT col · <1280 stored add + 'รวม OT' · each row/total sums to net · no-OT row equal · limited totals in-scope
+  ✅ [N1] inventory rows for new ids · every id rendered on payroll has a payroll row (ids owned by another page: that page's row) · hr-run2-lines-* kind link
+  ❌ [Y1] ytd link per viewer: owner + all-branch payroll → hr-run2-ytd-link to a non-empty ytd view · branch payroll: review text, no link to ?view=ytd — expected owner · payAll link → ytd card · payU1 text only | actual payU1: link to ?view=ytd offered (/app/sys/cmwl1cr2k0003sdkzvawj31sb/hr/payroll?view=ytd#hr-ytd-card) — viewer has no ytd view
+  ✅ [B1] 13b screen: status translated · engine column hidden · net sticky right-0
+  ✅ [B2] [control] 13b data/CSV unchanged (engine + raw status kept)
+RESIDUE none (tenants=1 users=4)
+  ✅ [Z1] residue · outbound · intl shim used · no missing message at render
+BASE-EXPECTATION 23/42 as registered (RED-by-design 22 · GREEN controls 20) · off: S7(RED→pass) V1(RED→pass) P1(RED→pass) I2(RED→pass) N2(RED→pass) K4(RED→pass) K5(RED→pass) W1(RED→pass) K1(RED→pass) R1(RED→pass) R2(RED→pass) R3(RED→pass) R4(RED→pass) R6(RED→pass) R9(RED→pass) R11(RED→pass) T1(RED→pass) N1(RED→pass) B1(RED→pass)
+===== qc-hr-vis-5a ===== passed 39/42 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-vis-5a","total":42,"passed":39,"failed":["A1","A2","Y1"],"findings":[{"id":"A1","sev":"CRITICAL"},{"id":"A2","sev":"CRITICAL"},{"id":"Y1","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":22,"baseGreen":20,"offBase":["S7(RED→pass)","V1(RED→pass)","P1(RED→pass)","I2(RED→pass)","N2(RED→pass)","K4(RED→pass)","K5(RED→pass)","W1(RED→pass)","K1(RED→pass)","R1(RED→pass)","R2(RED→pass)","R3(RED→pass)","R4(RED→pass)","R6(RED→pass)","R9(RED→pass)","R11(RED→pass)","T1(RED→pass)","N1(RED→pass)","B1(RED→pass)"]}
