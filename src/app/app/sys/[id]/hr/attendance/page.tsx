@@ -42,6 +42,14 @@ const MSG_TEXTS: Record<string, string> = {
   "x.unassigned": HR_UNASSIGNED_TEXT,
 };
 const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
+// HR VIS-5a ▸ r4 A1: รหัสผล + ปลายทางของคำขอแก้เวลา — ระดับโมดูล (เดิมเป็นฟังก์ชันในหน้า ถูก action แบบ inline จับไว้ ⇒ Next ส่งฟังก์ชันไปเบราว์เซอร์ไม่ได้ หน้าพังเมื่อกด)
+function corrMsgOf(r: { ok: true; status: string } | { ok: false; reason: string }, okCode: string): string {
+  return r.ok ? (r.status === "APPROVED" && okCode === "c.sent" ? "c.applied" : okCode) : (MSG_CODE_OF.get(r.reason) ?? "fail");
+}
+function corrBackOf(base: string, keep: string, v: string): string {
+  return `${base}?view=${v}${v === "corrections" ? "" : keep ? `&${keep}` : ""}`;
+}
+// ◂ HR VIS-5a
 
 export default async function HrAttendancePage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ view?: string; day?: string; unit?: string; employee?: string; month?: string; msg?: string; status?: string }> }) {
   const { id } = await params;
@@ -83,27 +91,26 @@ export default async function HrAttendancePage({ params, searchParams }: { param
 
   // HR H2.6 ▸ คำขอแก้เวลา — closure ของหน้า: เรียก action แล้ว redirect พร้อมรหัสผล (ไม่ส่งข้อความอิสระทาง URL) ◂
   const actor = { tenantId: auth.active.tenantId, userId: auth.user.id };
-  const msgOf = (r: { ok: true; status: string } | { ok: false; reason: string }, okCode: string) => (r.ok ? (r.status === "APPROVED" && okCode === "c.sent" ? "c.applied" : okCode) : (MSG_CODE_OF.get(r.reason) ?? "fail"));
-  const corrBack = (v: string) => `${base}?view=${v}${v === "corrections" ? "" : keep ? `&${keep}` : ""}`;
+  // HR VIS-5a ▸ r4 A1: msgOf + corrBack ย้ายไประดับโมดูล (corrMsgOf · corrBackOf) — action แบบ inline จับได้แค่สตริง (base · keep · view) ไม่จับฟังก์ชัน ◂
   const onRequestMine = async (fd: FormData) => {
     "use server";
     const r = await requestMyCorrectionAction(fd);
-    redirect(`${corrBack(view)}&msg=${encodeURIComponent(msgOf(r, "c.sent"))}`);
+    redirect(`${corrBackOf(base, keep, view)}&msg=${encodeURIComponent(corrMsgOf(r, "c.sent"))}`); // HR VIS-5a ◂
   };
   const onRequestFor = async (fd: FormData) => {
     "use server";
     const r = await requestCorrectionForAction(fd);
-    redirect(`${corrBack(view)}&msg=${encodeURIComponent(msgOf(r, "c.sent"))}`);
+    redirect(`${corrBackOf(base, keep, view)}&msg=${encodeURIComponent(corrMsgOf(r, "c.sent"))}`); // HR VIS-5a ◂
   };
   const onDecide = async (fd: FormData) => {
     "use server";
     const r = await decideCorrectionAction(fd);
-    redirect(`${corrBack("corrections")}&msg=${encodeURIComponent(msgOf(r, r.ok && r.status === "REJECTED" ? "c.rejected" : "c.approved"))}`);
+    redirect(`${corrBackOf(base, keep, "corrections")}&msg=${encodeURIComponent(corrMsgOf(r, r.ok && r.status === "REJECTED" ? "c.rejected" : "c.approved"))}`); // HR VIS-5a ◂
   };
   const onCancel = async (fd: FormData) => {
     "use server";
     const r = await cancelCorrectionAction(fd);
-    redirect(`${corrBack("corrections")}&msg=${encodeURIComponent(msgOf(r, "c.cancelled"))}`);
+    redirect(`${corrBackOf(base, keep, "corrections")}&msg=${encodeURIComponent(corrMsgOf(r, "c.cancelled"))}`); // HR VIS-5a ◂
   };
   const today = thaiDateKey(new Date());
   /** แถวการลงเวลาที่อยู่ในวันนั้น ± 1 วัน (รอบข้ามเที่ยงคืน) — ให้ฟอร์มของแต่ละวันเลือกแถวเดิมได้ */

@@ -118,9 +118,13 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
   /** per-row money cells (the same expressions as before — one place for the table and the drawer) */
   const cellsOf = (r: (typeof rows)[number]) => ({ base: r.grossSatang + r.deductSatang - r.addSatang, deduct: -r.deductSatang, sso: -r.ssoEmployeeSatang, wht: -r.whtSatang });
   const md = "hidden md:table-cell";
-  const xl = sel ? "hidden 2xl:table-cell" : "hidden xl:table-cell";
-  const mdUntilXl = sel ? "hidden md:table-cell 2xl:hidden" : "hidden md:table-cell xl:hidden"; // HR VIS-5a ▸ r3: stored-additions variant where the OT column is hidden ◂
-  const num = "whitespace-nowrap px-2 py-2.5 text-right tabular-nums xl:px-3"; // HR VIS-5a ▸ F7: money never wraps · P2: tighter cells below xl so the status badge always fits the card ◂
+  // HR VIS-5a ▸ r4 B1: drawer open ⇒ columns follow the table frame's own width (@container on the frame), not the viewport — the table yields columns to the 400 px drawer (mockup 06: fixed drawer, table keeps tight 8 px cells, status never hidden).
+  //   frame ≥ 940 px: every column · ≥ 680 px: + ค่าจ้างฐาน · ปสส. · below: ชื่อ · เพิ่ม · หัก · สุทธิ · สถานะ (the drawer shows every figure of the selected row)
+  const xl = sel ? "hidden @min-[940px]:table-cell" : "hidden xl:table-cell";
+  const mdUntilXl = sel ? "hidden md:@max-[940px]:table-cell" : "hidden md:table-cell xl:hidden"; // HR VIS-5a ▸ r3: stored-additions variant where the OT column is hidden ◂
+  const mdMid = sel ? "hidden @min-[680px]:table-cell" : md; // ค่าจ้างฐาน · ปสส. ◂
+  const px = sel ? "px-2" : "px-2 xl:px-3"; // drawer open: tight cells at every width (mockup .pt 8 px) ◂
+  const num = `whitespace-nowrap ${px} py-2.5 text-right tabular-nums`; // HR VIS-5a ▸ F7: money never wraps · P2: tighter cells below xl so the status badge always fits the card ◂
   const sub = "block whitespace-normal text-xs text-[color:var(--color-muted)]"; // HR VIS-5a ▸ P2: code labels under amounts wrap (they must not widen the column) ◂
   const reasonCls = sel ? "hidden" : "hidden pt-1 text-xs text-[color:var(--color-muted)] xl:block"; // HR VIS-5a ▸ P2: the short reason shows only where the badge has room (≥1280, drawer closed) ◂
   const top = "max-md:-order-2"; // HR VIS-5a ▸ F6: at 390 the header · chips · banner · step line come first, then the action bar (in flow, nothing overlaps) ◂
@@ -297,21 +301,21 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
           {canMoney && pv && pv.ok && "review" in pv && (
             <>
               <div className={sel ? "grid gap-4 xl:grid-cols-[minmax(0,1fr)_400px] xl:items-start" : "flex flex-col gap-4"}> {/* HR VIS-5a ◂ */}
-                <div className={frame} data-testid="hr-run2-table">
+                <div className={sel ? `${frame} @container` : frame} data-testid="hr-run2-table">{/* HR VIS-5a ▸ r4 B1 ◂ */}
                   {tableOf(
                     <thead className={headCls}>
                       <tr className="text-left">
-                        <th className="px-2 py-2.5 xl:px-3">{t("col_name")}</th>
-                        <th className={`${md} ${num}`}>{t("col_gross")}</th>
+                        <th className={`${px} py-2.5`}>{t("col_name")}</th>{/* HR VIS-5a ◂ */}
+                        <th className={`${mdMid} ${num}`}>{t("col_gross")}</th>{/* HR VIS-5a ◂ */}
                         <th className={`${xl} ${num}`}>{t("col_days")}</th>
                         <th className={`${xl} ${num}`}>{t("col_ot")}</th>
                         <th className={`${xl} ${num}`}>{t("col_add")}</th>
                         <th className={`${mdUntilXl} ${num}`}>{t("col_add")}</th>
                         <th className={`${md} ${num}`}>{t("col_deduct")}</th>
-                        <th className={`${md} ${num}`}>{t("col_sso")}</th>
+                        <th className={`${mdMid} ${num}`}>{t("col_sso")}</th>{/* HR VIS-5a ◂ */}
                         <th className={`${xl} ${num}`}>{t("col_wht")}</th>
                         <th className={num}>{t("col_net")}</th>
-                        <th className={`${md} px-2 py-2.5 xl:px-3`}>{t("col_status")}</th>
+                        <th className={`${md} ${px} py-2.5`}>{t("col_status")}</th>{/* HR VIS-5a ◂ */}
                       </tr>
                     </thead>,
                     <tbody>
@@ -321,14 +325,14 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                         const on = sel?.employeeId === r.employeeId;
                         return (
                           <tr key={r.employeeId} className={`border-t border-[color:var(--color-line)] align-top ${on ? "bg-[color:var(--color-accent-soft)] shadow-[inset_3px_0_0_var(--color-accent)]" : ""}`}>
-                            <td className="px-2 py-1 xl:px-3">
+                            <td className={`${px} py-1`}>{/* HR VIS-5a ◂ */}
                               <Link href={`${runQs}&emp=${encodeURIComponent(r.employeeId)}#hr-run2-drawer`} data-testid={`hr-run2-lines-${r.employeeId}`} aria-current={on ? "true" : undefined} className="flex min-h-[44px] flex-col justify-center underline-offset-2 hover:underline">
                                 <span className="font-medium">{r.name}</span>
                                 <span className="text-xs text-[color:var(--color-muted)]">{t(`pt_${r.payType}`)}</span>
                               </Link>
                               <span className="mb-1.5 flex md:hidden">{statusChip(!!f?.review)}</span>
                             </td>
-                            <td className={`${md} ${num}`}>{baht(c.base)}</td>
+                            <td className={`${mdMid} ${num}`}>{baht(c.base)}</td>{/* HR VIS-5a ◂ */}
                             <td className={`${xl} ${num}`}>{days ? t("days", { n: days.get(r.employeeId) ?? 0 }) : "—"}</td>
                             <td className={`${xl} ${num}`}>{f?.otSatang ? baht(f.otSatang) : "—"}</td>
                             <td className={`${xl} ${num}`}>
@@ -344,10 +348,10 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                               {baht(c.deduct)}
                               {f?.outCodes.length ? <span className={sub}>{f.outCodes.map((k) => t(`ln_${k}`)).join(" · ")}</span> : null}
                             </td>
-                            <td className={`${md} ${num}`}>{baht(c.sso)}</td>
+                            <td className={`${mdMid} ${num}`}>{baht(c.sso)}</td>{/* HR VIS-5a ◂ */}
                             <td className={`${xl} ${num}`}>{baht(c.wht)}</td>
                             <td className={`${num} font-semibold`}>{baht(r.netSatang)}</td>
-                            <td className={`${md} px-2 py-2.5 xl:px-3`}>
+                            <td className={`${md} ${px} py-2.5`}>{/* HR VIS-5a ◂ */}
                               {statusChip(!!f?.review)}
                               {draft && f?.review ? <span className={reasonCls}>{reasonOf(r)}</span> : null}
                             </td>
@@ -357,8 +361,8 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                     </tbody>,
                     <tfoot>
                       <tr data-testid="hr-run2-totals" className="border-t-2 border-[color:var(--color-line)] bg-[color:var(--color-stage)] font-semibold">
-                        <th scope="row" className="whitespace-nowrap px-2 py-2.5 text-left xl:px-3">{t("totalsRow", { n: pv.rows.length })}</th>
-                        <td className={`${md} ${num}`}>{amt(fig.baseSatang)}</td>
+                        <th scope="row" className={`${sel ? "" : "whitespace-nowrap "}${px} py-2.5 text-left`}>{t("totalsRow", { n: pv.rows.length })}</th>{/* HR VIS-5a ◂ */}
+                        <td className={`${mdMid} ${num}`}>{amt(fig.baseSatang)}</td>{/* HR VIS-5a ◂ */}
                         <td className={`${xl} ${num}`} />
                         <td className={`${xl} ${num}`}>{fig.otRowsSatang ? baht(fig.otRowsSatang) : "—"}</td>
                         <td className={`${xl} ${num}`}>{baht(fig.addNoOtSatang)}</td>
@@ -367,10 +371,10 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                           {fig.otRowsSatang ? <span className="block text-xs font-normal text-[color:var(--color-muted)]">{t("addInclOt")}</span> : null}
                         </td>
                         <td className={`${md} ${num}`}>{baht(tileOf.deduct)}</td> {/* HR VIS-5a ◂ */}
-                        <td className={`${md} ${num}`}>{baht(tileOf.ssoEe)}</td>
+                        <td className={`${mdMid} ${num}`}>{baht(tileOf.ssoEe)}</td>{/* HR VIS-5a ◂ */}
                         <td className={`${xl} ${num}`}>{baht(tileOf.wht)}</td>
                         <td className={num}>{baht(tileOf.net)}</td>
-                        <td className={`${md} whitespace-nowrap px-3 py-2.5 text-xs font-normal`}>{draft ? t("totalsStatus", { ready: fig.ready, review: fig.review }) : t(`st_${status}`)}</td>
+                        <td className={`${md} ${sel ? "px-2" : "whitespace-nowrap px-3"} py-2.5 text-xs font-normal`}>{draft ? t("totalsStatus", { ready: fig.ready, review: fig.review }) : t(`st_${status}`)}</td>{/* HR VIS-5a ▸ r4 B1: totals status may wrap with the drawer open ◂ */}
                       </tr>
                     </tfoot>,
                   )}
@@ -459,7 +463,7 @@ export async function PayrollRunSection({ systemId, periodKey, runId, flash, fla
                         {t(`rv_${code}`)} · {xs.length}
                       </p>
                       <p className={muted}>{xs.map((x) => `${x.name} (${x.day ? dayLabel(x.day, locale) : t("wholePeriod")})`).join(" · ")}</p>
-                      {code === "YTD_OPENING" ? <a href={`${base}?view=ytd#hr-ytd-card`} data-testid="hr-run2-ytd-link" className="inline-flex min-h-[44px] items-center self-start underline-offset-2 hover:underline">{t("ytdLink")}</a> : null} {/* HR H3.4-YTD ▸ ไปการ์ดยอดยกมา ◂ */}
+                      {code === "YTD_OPENING" && filingOk ? <a href={`${base}?view=ytd#hr-ytd-card`} data-testid="hr-run2-ytd-link" className="inline-flex min-h-[44px] items-center self-start underline-offset-2 hover:underline">{t("ytdLink")}</a> : null} {/* HR H3.4-YTD ▸ ไปการ์ดยอดยกมา ◂ */}{/* HR VIS-5a ▸ r4 B2: link only for a viewer with the ytd view (filingOk = the page's navOn.ytd gate) · others keep the review line as plain text ◂ */}
                     </div>
                   ))}
                 </div>

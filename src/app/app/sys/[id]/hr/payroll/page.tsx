@@ -31,6 +31,12 @@ import { canUseFilings } from "@/lib/modules/hr/filings/service";
 import { canUseSalaryCerts } from "@/lib/modules/hr/payslip";
 import { getPayrollEngine } from "@/lib/modules/hr/payroll";
 
+// HR VIS-5a ▸ r4 A1: ปลายทางของปุ่มรอบจ่ายรุ่น 2 — ระดับโมดูล รับสตริงล้วน (เดิม back2 เป็นฟังก์ชันในหน้า ถูก action แบบ inline จับไว้ ⇒ Next ส่งฟังก์ชันไปเบราว์เซอร์ไม่ได้ หน้าพังทุกปุ่ม)
+function run2Back(id: string, period: string, code: string, run: string): never {
+  redirect(`/app/sys/${id}/hr/payroll?period=${period}${run ? `&run=${encodeURIComponent(run)}` : ""}&r2=${encodeURIComponent(code)}#hr-run2`);
+}
+// ◂ HR VIS-5a
+
 // หน้าย่อย "เงินเดือน" ของระบบ HR — โปรไฟล์เงินเดือน + รอบจ่าย + สลิป
 // 🔒 PayrollSection มี canViewPayroll guard ในตัว (PDPA — เห็นเฉพาะ OWNER/ผู้มีสิทธิ์)
 export default async function HrPayrollPage({
@@ -73,37 +79,37 @@ export default async function HrPayrollPage({
   const r2Ok = ["created", "done", "approved", "synced"].includes(r2);
   const r2Flash = r2Ok ? tRun2(r2) : r2 ? (RUN2_MSG[r2] ?? tRun2("failed")) : "";
   const runSel = /^[A-Za-z0-9_-]{1,64}$/.test(one(sp.run) ?? "") ? one(sp.run)! : "";
-  const back2 = (code: string, run = runSel): never => redirect(`/app/sys/${id}/hr/payroll?period=${period}${run ? `&run=${encodeURIComponent(run)}` : ""}&r2=${encodeURIComponent(code)}#hr-run2`);
+  // HR VIS-5a ▸ r4 A1: back2 ย้ายไประดับโมดูล (run2Back) — action แบบ inline จับได้แค่สตริง (id · period · runSel) ไม่จับฟังก์ชัน ◂
   const run2Actions = {
     create: async (fd: FormData) => {
       "use server";
       const r = await createPayrollRunV2Action(fd);
-      back2(r.ok ? "created" : run2MsgCode(r.reason), r.ok ? r.id : runSel);
+      run2Back(id, period, r.ok ? "created" : run2MsgCode(r.reason), r.ok ? r.id : runSel); // HR VIS-5a ◂
     },
     rebuild: async (fd: FormData) => {
       "use server";
       const r = await recomputeRunV2Action(fd);
-      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     approve: async (fd: FormData) => {
       "use server";
       const r = await approveRunV2Action(fd);
-      back2(r.ok ? "approved" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "approved" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     pay: async (fd: FormData) => {
       "use server";
       const r = await payRunV2Action(fd); // fix r1 F7: ผลจริง (ปฏิเสธ = role=alert)
-      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     reverse: async (fd: FormData) => {
       "use server";
       const r = await reverseRunV2Action(fd); // fix r1 F7: CARRY_BOUND · LATER_RUN · สิทธิ์ = ข้อความคงที่
-      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     confirm: async (fd: FormData) => {
       "use server";
       const r = await confirmBranchHoursAction(fd);
-      back2(r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? ""));
+      run2Back(id, period, r.ok ? "done" : run2MsgCode(r.reason), String(fd.get("runId") ?? "")); // HR VIS-5a ◂
     },
     sync: async (fd: FormData) => {
       "use server";
@@ -114,7 +120,7 @@ export default async function HrPayrollPage({
         f.set("periodKey", period);
         if (after) f.set("after", after);
         const b = await buildWorkEntriesAction(f);
-        if (!b.ok) back2(run2MsgCode(b.reason));
+        if (!b.ok) run2Back(id, period, run2MsgCode(b.reason), runSel); // HR VIS-5a ◂
         if (!b.ok || !b.next) break;
         after = b.next;
       }
@@ -124,11 +130,11 @@ export default async function HrPayrollPage({
         f.set("periodKey", period);
         if (after) f.set("after", after);
         const s = await syncAttendanceDeductionsAction(f);
-        if (!s.ok) back2(run2MsgCode(s.reason));
+        if (!s.ok) run2Back(id, period, run2MsgCode(s.reason), runSel); // HR VIS-5a ◂
         if (!s.ok || !s.next) break;
         after = s.next;
       }
-      back2("synced");
+      run2Back(id, period, "synced", runSel); // HR VIS-5a ◂
     },
   };
   // ◂ HR H3.4
