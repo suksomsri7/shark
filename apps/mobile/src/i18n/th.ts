@@ -25,9 +25,9 @@ const th = {
   "sec.switch.quotaReset": "รอบใหม่ {d}/{m}",
   "sec.sheet.youAre": "คุณเป็น{role}",
   "sec.sheet.open": "เปิดระบบ",
-  "sec.sheet.home": "Dashboard",
+  "sec.sheet.home": "แดชบอร์ด",
   "sec.sheet.back": "กลับไปหน้าเปิดระบบ",
-  "sec.sheet.empty": "กิจการนี้ยังไม่ได้เปิดระบบใด — แตะ \"Dashboard\" เพื่อเพิ่มระบบ",
+  "sec.sheet.empty": "กิจการนี้ยังไม่ได้เปิดระบบใด — แตะ \"แดชบอร์ด\" เพื่อเพิ่มระบบ",
   "sec.sheet.unread": "{n} ข้อความที่ยังไม่อ่าน",
   // 17 พ.ย. แถบบน topbar2: แผ่นดึงลง + จัดลำดับ
   "sec.panel.systems": "ระบบของร้าน",
