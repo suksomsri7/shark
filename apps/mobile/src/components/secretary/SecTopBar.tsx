@@ -169,7 +169,11 @@ export function SecTopBar(props: SecTopBarProps) {
     <GestureDetector gesture={pan}>
       <View ref={rowRef} testID={testID} style={styles.bar} collapsable={false}>
         <BizIcon testID="sec-top-biz" onPress={openPanel} />
-        <View style={styles.stripBox} onLayout={(e: LayoutChangeEvent) => setBox((b) => ({ ...b, w: e.nativeEvent.layout.width }))}>
+        <View style={styles.stripBox} onLayout={(e: LayoutChangeEvent) => {
+          // 17 พ.ย. (build 28 พังตอนเข้าแชทลูกค้า): อ่านค่าจาก event ทันที — บนเครื่องจริง nativeEvent เป็น null แล้วตอนตัวอัปเดต state ทำงานทีหลัง
+          const w = e.nativeEvent.layout.width;
+          setBox((b) => ({ ...b, w }));
+        }}>
           <ScrollView
             testID="sec-top-strip"
             horizontal
