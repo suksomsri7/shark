@@ -10,6 +10,15 @@ import { clearSignedUp, isFreshSignup } from "@/src/lib/post-signup";
 import { C } from "@/src/theme";
 import * as SplashScreen from "expo-splash-screen";
 import { LaunchOverlay } from "@/src/components/brand/LaunchOverlay";
+import { CrashOverlay, CrashScreen, installCrashGuard } from "@/src/lib/crash-guard";
+
+// 17 พ.ย. (build 28 หลุดตอนเข้าแชทลูกค้า): error ร้ายแรงของ JS ไม่ปิดแอป — แสดงข้อความบนจอให้ถ่ายภาพส่งทีมได้ (src/lib/crash-guard.tsx)
+installCrashGuard();
+
+/** error ตอนวาดจอ (expo-router ErrorBoundary ของ root) */
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => Promise<void> }) {
+  return <CrashScreen error={error} retry={retry} />;
+}
 
 // เปิดแอป (15 พ.ย. เจ้าของสั่ง): คง splash ของเครื่องไว้จนจอเปิดแอป (LaunchOverlay · โลโก้เคลื่อนไหวใหญ่) วาดทับตำแหน่งเดียวกันแล้วค่อยซ่อน
 void SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -79,6 +88,7 @@ export default function RootLayout() {
           </Gate>
         ) : null}
         <LaunchGate fontsReady={fontsReady} />
+        <CrashOverlay />
       </AuthProvider>
     </GestureHandlerRootView>
   );
