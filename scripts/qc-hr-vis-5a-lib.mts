@@ -1,7 +1,7 @@
 // QC HR VIS-5a helpers (pure + intl shim) · brief hr-brief-VIS-5a.md · notes hr-VIS-5a-oracle.md · ⚠️ ORACLE-EDIT only
 import Module, { createRequire } from "node:module";
 import { join } from "node:path";
-import { type Any, ROOT, rd, stripComments, diffHunks } from "./qc-hr-lib.mjs";
+import { type Any, ROOT, rd, stripComments, diffHunks, srcFiles } from "./qc-hr-lib.mjs";
 
 export const VIEWS = ["run", "hours", "adjust", "profiles", "docs", "ytd", "history"] as const;
 const H = "src/lib/modules/hr/";
@@ -125,3 +125,98 @@ export const ROUTE_SRC: Record<string, string> = {
  "bank-files/actions": `${H}bank-files/actions.ts`, "filings/actions": `${H}filings/actions.ts`, "payroll-opening-actions": `${H}payroll-opening-actions.ts`, "stock-charge-actions": `${H}stock-charge-actions.ts`, "payslip-actions": `${H}payslip-actions.ts`,
 };
 export const spOf = (q: string): Record<string, string> => Object.fromEntries(new URLSearchParams(q));
+
+// ═════════════ r4 A1 — inline "use server" closures (round-4 visual review A1 · controller ruling) ═════════════
+// A closure captured by an inline server action is sent to the browser as an encrypted bound argument (Next server-actions transform
+// `encryptActionBoundArgs(id, …captured)`); a function value there makes React flight log "Functions cannot be passed directly to Client
+// Components" on every render and the button crashes the page. A1 = TypeScript compiler API (binding-level) · A2 = the real Next SWC transform.
+export type CaptureHit = { file: string; line: number; action: string; name: string; kind: string; declLine: number };
+/** page.tsx / layout.tsx under the given app dirs */
+export const appPages = (dirs: string[]) => dirs.flatMap((d) => { try { return srcFiles(d); } catch { return []; } }).filter((f) => /\/(page|layout)\.tsx$/.test(f)).sort();
+const isFn = (n: Any, ts: Any) => ts.isArrowFunction(n) || ts.isFunctionExpression(n) || ts.isFunctionDeclaration(n) || ts.isMethodDeclaration(n);
+const unwrap = (n: Any, ts: Any): Any => (n && (ts.isParenthesizedExpression(n) || ts.isAsExpression(n) || ts.isSatisfiesExpression?.(n) || ts.isNonNullExpression(n) || ts.isTypeAssertionExpression?.(n)) ? unwrap(n.expression, ts) : n);
+const useServer = (fn: Any, ts: Any) => !!fn.body && ts.isBlock(fn.body) && fn.body.statements.some((s: Any, i: number) => i < 3 && ts.isExpressionStatement(s) && ts.isStringLiteral(s.expression) && s.expression.text === "use server");
+/** classify a binding a server action may close over: "" = serializable as far as the source shows */
+function fnKind(decl: Any, ts: Any, checker: Any): string {
+ if (ts.isFunctionDeclaration(decl)) return useServer(decl, ts) ? "" : "nested function declaration";
+ if (ts.isVariableDeclaration(decl)) {
+  const init = unwrap(decl.initializer, ts);
+  if (init && isFn(init, ts)) return useServer(init, ts) ? "" : `local ${ts.isArrowFunction(init) ? "arrow" : "function"} expression`;
+  if (init && ts.isObjectLiteralExpression(init)) {
+   const f = init.properties.filter((p: Any) => (ts.isMethodDeclaration(p) && !useServer(p, ts)) || (ts.isPropertyAssignment(p) && isFn(unwrap(p.initializer, ts), ts) && !useServer(unwrap(p.initializer, ts), ts)));
+   if (f.length) return `object literal with ${f.length} function member(s)`;
+  }
+ }
+ if (ts.isVariableDeclaration(decl) || ts.isParameter(decl) || ts.isBindingElement(decl)) {
+  try { const t = checker.getTypeAtLocation(decl.name ?? decl); if (t.getCallSignatures().length) return "function-typed binding"; } catch { /* no type = unknown, not flagged */ }
+ }
+ return "";
+}
+/** every inline "use server" function nested in another function of `files` that captures a function-valued local of an enclosing function */
+export async function serverActionCaptures(files: string[]): Promise<{ hits: CaptureHit[]; actions: number; locals: Map<string, Map<string, string>>; err: string }> {
+ const locals = new Map<string, Map<string, string>>(), hits: CaptureHit[] = [];
+ let actions = 0;
+ try {
+  const ts = ((await import("typescript")) as Any).default ?? (await import("typescript"));
+  const cfgPath = join(ROOT, "tsconfig.json"), cfg = ts.readConfigFile(cfgPath, ts.sys.readFile);
+  const opts = ts.parseJsonConfigFileContent(cfg.config, ts.sys, ROOT).options;
+  const program = ts.createProgram(files.map((f) => join(ROOT, f)), { ...opts, noEmit: true, incremental: false, tsBuildInfoFile: undefined });
+  const checker = program.getTypeChecker();
+  for (const f of files) {
+   const sf = program.getSourceFile(join(ROOT, f));
+   if (!sf) continue;
+   const lineOf = (n: Any) => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+   const loc = new Map<string, string>();
+   locals.set(f, loc);
+   const visitLocals = (n: Any, inFn: boolean) => { // name → kind for bindings declared inside any function (A2 resolves SWC bound names with this)
+    if (inFn && (ts.isVariableDeclaration(n) || ts.isFunctionDeclaration(n)) && n.name && ts.isIdentifier(n.name)) { const k = fnKind(n, ts, checker); if (k || !loc.has(n.name.text)) loc.set(n.name.text, k || loc.get(n.name.text) || ""); }
+    ts.forEachChild(n, (c: Any) => visitLocals(c, inFn || isFn(n, ts)));
+   };
+   visitLocals(sf, false);
+   const visit = (n: Any, chain: Any[]) => {
+    if (isFn(n, ts) && useServer(n, ts) && chain.length) {
+     actions++;
+     const outer = chain[0], seen = new Set<string>();
+     const label = ts.isPropertyAssignment(n.parent) || ts.isVariableDeclaration(n.parent) ? (n.parent.name?.getText(sf) ?? "?") : ts.isMethodDeclaration(n) || ts.isFunctionDeclaration(n) ? (n.name?.getText(sf) ?? "?") : "(inline)";
+     const walk = (x: Any) => {
+      if (ts.isIdentifier(x)) {
+       const p = x.parent;
+       const isKey = (ts.isPropertyAccessExpression(p) && p.name === x) || (ts.isPropertyAssignment(p) && p.name === x) || (ts.isJsxAttribute?.(p) && p.name === x) || ((ts.isVariableDeclaration(p) || ts.isParameter(p) || ts.isBindingElement(p) || ts.isFunctionDeclaration(p)) && p.name === x);
+       const sym = isKey ? null : ts.isShorthandPropertyAssignment(p) ? checker.getShorthandAssignmentValueSymbol(p) : checker.getSymbolAtLocation(x);
+       const decl = sym?.declarations?.[0];
+       if (decl && decl.getSourceFile() === sf && decl.pos >= outer.pos && decl.end <= outer.end && !(decl.pos >= n.pos && decl.end <= n.end) && !seen.has(x.text)) {
+        seen.add(x.text);
+        const k = fnKind(decl, ts, checker);
+        if (k) hits.push({ file: f, line: lineOf(n), action: label, name: x.text, kind: k, declLine: lineOf(decl) });
+       }
+      }
+      ts.forEachChild(x, walk);
+     };
+     ts.forEachChild(n.body, walk);
+    }
+    ts.forEachChild(n, (c: Any) => visit(c, isFn(n, ts) ? [...chain, n] : chain));
+   };
+   visit(sf, []);
+  }
+ } catch (e) { return { hits, actions, locals, err: String((e as Error)?.message ?? e).slice(0, 200) }; }
+ return { hits, actions, locals, err: "" };
+}
+/** the build's own transform: Next SWC server-actions pass (server layer) → bound argument names per inline action */
+export async function swcBoundArgs(files: string[]): Promise<{ per: Map<string, { regs: number; bound: string[][] }>; err: string }> {
+ const per = new Map<string, { regs: number; bound: string[][] }>();
+ try {
+  const swc = createRequire(join(ROOT, "package.json"))("next/dist/build/swc/index.js") as Any;
+  await swc.loadBindings?.();
+  for (const f of files) {
+   const out = await swc.transform(rd(f), {
+    filename: join(ROOT, f), sourceMaps: false,
+    jsc: { parser: { syntax: "typescript", tsx: true }, target: "es2022", transform: { react: { runtime: "automatic" } } },
+    serverComponents: { isReactServerLayer: true, cacheComponentsEnabled: false, useCacheEnabled: false, taintEnabled: false, pageExtensions: ["tsx"] },
+    serverActions: { isReactServerLayer: true, isDevelopment: false, useCacheEnabled: false, hashSalt: "", cacheKinds: ["default"] },
+   });
+   const code = String(out.code);
+   per.set(f, { regs: (code.match(/registerServerReference\(/g) ?? []).length, bound: [...code.matchAll(/encryptActionBoundArgs\("[0-9a-f]+",\s*([^)]*)\)/g)].map((m) => m[1]!.split(",").map((s) => s.trim()).filter(Boolean)) });
+  }
+ } catch (e) { return { per, err: String((e as Error)?.message ?? e).slice(0, 200) }; }
+ return { per, err: "" };
+}

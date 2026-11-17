@@ -7,7 +7,7 @@ import { type Any, type Def, ROOT, rd, errText, sha, stripComments, diffHunks, c
 import { installNetGuard, NET, sweepTenants, sweepResidue } from "./qc-hr-h4.3-lib.mjs";
 import { v1Item, v2Item } from "./qc-hr-h3.8-lib.mjs";
 import { changedFiles, fileAt, bodyOf } from "./qc-hr-priv-2-lib.mjs";
-import { VIEWS, MSG, LOC, installIntlShim, idsIn, idMatch, elById, textOfHtml, THAI, AMOUNT, labelOf, satArith, minus, vis5aUnmarked, oracleEditOk, payrollParams, ROUTES, ROUTE_SRC, spOf } from "./qc-hr-vis-5a-lib.mjs";
+import { VIEWS, MSG, LOC, installIntlShim, idsIn, idMatch, elById, textOfHtml, THAI, AMOUNT, labelOf, satArith, minus, vis5aUnmarked, oracleEditOk, payrollParams, ROUTES, ROUTE_SRC, spOf, appPages, serverActionCaptures, swcBoundArgs } from "./qc-hr-vis-5a-lib.mjs";
 
 const SUITE = "qc-hr-vis-5a", ARGV = process.argv.slice(2), FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run"), PFX = "qc-hr-vis5a-";
 const TICKET_BASE = "09713f4305eb3b8c1a5f8545f909efec0e30b96e";
@@ -16,10 +16,11 @@ const BASE = process.env.QC_VIS5A_BASE || git(["merge-base", "HEAD", "session/hr
 const H = "src/lib/modules/hr/";
 const F = { page: "src/app/app/sys/[id]/hr/payroll/page.tsx", payUi: `${H}payroll-ui.tsx`, runUi: `${H}payroll-run-ui.tsx`, repUi: `${H}reports-ui.tsx`, label: `${H}period-label.ts`, view: `${H}pay-run-view.ts`, th: "src/messages/th/common.json", en: "src/messages/en/common.json", inv: "scripts/hr-ui-inventory.json", mx: "scripts/walk-hr-matrix.json", payroll: `${H}payroll.ts`, rr: `${H}payroll-run-rules.ts` };
 /** brief §7 VIS5A_ALLOW (src: every hunk "HR VIS-5a" + ◂ · JSON data files: no comment syntax ⇒ exempt from the marker) */
-const ALLOW_SRC = [F.page, F.payUi, F.runUi, F.repUi, F.label, F.view];
+const ATT_PAGE = "src/app/app/sys/[id]/hr/attendance/page.tsx"; // ORACLE-EDIT (HR VIS-5a · controller r4 A1): the same closure defect sits in the corrections actions of this page — builder fixes it here (every hunk marked) ◂
+const ALLOW_SRC = [F.page, F.payUi, F.runUi, F.repUi, F.label, F.view, ATT_PAGE];
 const ALLOW_DATA = [F.th, F.en, F.inv, F.mx];
 const OWN = ["scripts/qc-hr-vis-5a.mts", "scripts/qc-hr-vis-5a-lib.mts"];
-const TOOL = ["scripts/seed-hr-walk.mts"]; // ORACLE-EDIT (HR VIS-5a · controller): walk seed OT row for the r3 add/OT column (every hunk "HR VIS-5a" + ◂, checked in S2) ◂
+const TOOL = ["scripts/seed-hr-walk.mts", "scripts/walk-hr.mts"]; // ORACLE-EDIT (HR VIS-5a · controller r4): + walker PAGE-CRASH / press probe / FIT-CLIP / ytd-link reveal ◂ // ORACLE-EDIT (HR VIS-5a · controller): walk seed OT row for the r3 add/OT column (every hunk "HR VIS-5a" + ◂, checked in S2) ◂
 /** brief §7 "Untouched" — whole files/dirs */
 const UNTOUCHED = [F.payroll, F.rr, `${H}privacy.ts`, `${H}privacy-shared.ts`, `${H}bank-files`, `${H}filings`, `${H}reports.ts`, `${H}reports-rules.ts`, `${H}scope.ts`, "src/lib/core", "prisma", ...srcFiles("src/lib/modules/hr").filter((f) => /actions\.ts$/.test(f))];
 /** loaders/gates the payroll page reads — bodies hashed vs base (privacy + I/O pins) */
@@ -97,6 +98,9 @@ const CHECKS: Def[] = [
  D("N1", "§7 inventory r3", "MR", "inventory rows for new ids · every id rendered on payroll has a payroll row (ids owned by another page: that page's row) · hr-run2-lines-* kind link"),
  D("T1", "r3 add/OT", "MR", "run table add vs OT: ≥1280 add excl. OT + OT col · <1280 stored add + 'รวม OT' · each row/total sums to net · no-OT row equal · limited totals in-scope"),
  D("N2", "Q7", "mR", "walk matrix states for hours/adjust/profiles/docs/ytd/history"),
+ D("A1", "r4 A1", "CR", "no inline \"use server\" in an HR page/layout captures a function-valued local of its component (TS compiler API · all HR pages)"),
+ D("A2", "r4 A1", "CR", "Next SWC server-actions transform (the build's): no bound argument of an HR inline action is function-valued · control: payroll page registers its actions"),
+ D("Y1", "r4 B2", "MR", "ytd link per viewer: owner + all-branch payroll → hr-run2-ytd-link to a non-empty ytd view · branch payroll: review text, no link to ?view=ytd"),
  D("Z1", "-", "CG", "residue · outbound · intl shim used · no missing message at render"),
 ];
 const R = makeRegistry(SUITE, "", CHECKS);
@@ -142,6 +146,22 @@ const CH = changedFiles(BASE).filter((f) => !/^(ledger|scratchpad)\//.test(f));
  const navIds = srcFiles("src").filter((p) => /\.tsx$/.test(p)).some((p) => /hr-pay-view-/.test(rd(p)));
  const r = { payViewOf: /\bpayViewOf\s*\(/.test(pg), weView: weL.length >= 2 && weL.every((l) => /view=hours/.test(l)), ytd: /\?view=ytd#hr-ytd-card/.test(ru) && !/href="#hr-ytd-card"/.test(ru), nav: navIds, imports: ["payroll-run-ui", "work-entries-ui", "stock-charge-ui", "payroll-opening-ui"].every((m) => new RegExp(`from\\s+["'][^"']*${m}["']`).test(pg)), runUi: /YTD_OPENING/.test(ru) && /#hr-ytd-card/.test(ru) && /PAY_SCOPE_EXCLUDED_TEXT/.test(ru) && /PAY_SCOPE_EXCLUDED_TEXT/.test(rd(F.payUi)) };
  chk("S7", all(r), "", fails(r));
+}
+// ═════════════ r4 A1: closures of inline server actions (controller ruling · round-4 review A1) ═════════════
+const A1_DIRS = ["src/app/app/sys/[id]/hr"], A1_INFO = ["src/app/app/sys/[id]/payroll", "src/app/app/me/hr"]; // fail = HR app pages · info = other HR-owned routes (listed, not failed)
+const A1_HITS: string[] = [];
+{
+ const files = appPages([...A1_DIRS, ...A1_INFO]), inHr = (f: string) => A1_DIRS.some((d) => f.startsWith(`${d}/`));
+ const cap = await serverActionCaptures(files);
+ const bad = cap.hits.filter((h) => inHr(h.file)), info = cap.hits.filter((h) => !inHr(h.file));
+ for (const h of cap.hits) A1_HITS.push(`${h.file}:${h.line} ${h.action} captures ${h.name} (${h.kind}, :${h.declLine})${inHr(h.file) ? "" : " [info]"}`);
+ const byFile = [...new Set(bad.map((h) => h.file))].map((f) => `${f.split("/hr/")[1] ?? f}: ${[...new Set(bad.filter((h) => h.file === f).map((h) => `${h.action}→${h.name}`))].join(" ")}`);
+ chk("A1", !cap.err && cap.actions > 0 && !bad.length, `${cap.actions} inline actions in ${files.length} files`, cap.err ? `analyzer: ${cap.err}` : `${bad.length} captures${info.length ? ` (+${info.length} info)` : ""} · ${byFile.join(" | ")}`);
+ const sw = await swcBoundArgs(files), a2: string[] = [], pay = sw.per.get(F.page);
+ for (const [f, v] of sw.per) for (const names of v.bound) for (const n of names) { const k = cap.locals.get(f)?.get(n); if (k && inHr(f)) a2.push(`${f.split("/hr/")[1] ?? f}:${n} (${k})`); }
+ const ctl = !!pay && pay.regs >= 7;
+ chk("A2", !sw.err && ctl && !a2.length, "", sw.err ? `swc: ${sw.err}` : `control=${ctl}(regs ${pay?.regs ?? 0}) bound fn args: ${L([...new Set(a2)], 10)} [${a2.length}]`);
+ console.log(`A1 hits (${A1_HITS.length}):\n  ${A1_HITS.join("\n  ") || "none"}`);
 }
 // ═════════════ pure ═════════════
 const { AsyncLocalStorage } = await import("node:async_hooks");
@@ -243,7 +263,7 @@ async function renderHtml(node: Any): Promise<string> {
 const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
 const SLUG = `${PFX}${Date.now()}${tag}`, fx = makeFixtures(P, coreHash, SLUG);
 const bkMonth = (n: number) => { const d = new Date(Date.now() + 7 * 3_600_000); const x = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + n, 1)); return x.toISOString().slice(0, 7); };
-const PER = { DRAFT: bkMonth(0), PAID: bkMonth(-1), APPROVED: bkMonth(-2), REVERSED: bkMonth(-3), V1: bkMonth(-4), NONE: bkMonth(-6) };
+const PER = { DRAFT: bkMonth(0), PAID: bkMonth(-1), APPROVED: bkMonth(-2), REVERSED: bkMonth(-3), V1: bkMonth(-4), NONE: bkMonth(-6), YTD: bkMonth(-5) }; // r4 Y1: YTD = second DRAFT whose anna row lacks an opening YTD
 const baht = (s: number) => `${s < 0 ? "−" : ""}฿${(Math.abs(s) / 100).toLocaleString("th-TH", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 const OT = { anna: 171_717, ben: 100_111 }, COM = { anna: 214_159, ben: 100_000 };
 let crashed = "";
@@ -255,7 +275,7 @@ try {
  const s0 = (await P.appSystem.findUnique({ where: { id: HRS } }))?.settings ?? {};
  await P.appSystem.update({ where: { id: HRS }, data: { settings: { ...(s0 as object), hrPayroll: { engineVersion: 2 } } } });
  const sc = { tenantId: TA, systemId: HRS };
- const W = { owner: await fx.mkUser(TA, "owner", `QCV5 owner ${tag}`, "OWNER", [], {}), payU1: await fx.mkUser(TA, "payu1", `QCV5 payu1 ${tag}`, "STAFF", [U1], { "hr.payroll.read": true }), mgr: await fx.mkUser(TA, "mgr", `QCV5 mgr ${tag}`, "MANAGER", [U1], {}) };
+ const W = { owner: await fx.mkUser(TA, "owner", `QCV5 owner ${tag}`, "OWNER", [], {}), payU1: await fx.mkUser(TA, "payu1", `QCV5 payu1 ${tag}`, "STAFF", [U1], { "hr.payroll.read": true }), mgr: await fx.mkUser(TA, "mgr", `QCV5 mgr ${tag}`, "MANAGER", [U1], {}), payAll: await fx.mkUser(TA, "payall", `QCV5 payall ${tag}`, "STAFF", [], { "hr.payroll.read": true, "hr.payroll.pay": true }) }; // r4 Y1: payAll = all-branch payroll (filings gate ⇒ ytd view)
  const E: Record<string, Any> = {};
  for (const [i, [key, unit, base]] of ([["anna", U1, 2_312_300], ["ben", U1, 1_876_500], ["cara", U2, 2_987_700]] as [string, string, number][]).entries()) {
   const name = `QCV5 ${key[0]!.toUpperCase()}${key.slice(1)} ${tag}`;
@@ -276,6 +296,11 @@ try {
   const its = (await P.hrPayrollItem.findMany({ where: { runId: run.id } })) as Any[], sum = (x: string) => its.reduce((a, i) => a + Number(i[x] ?? 0), 0);
   await P.hrPayrollRun.update({ where: { id: run.id }, data: Object.fromEntries(["Gross", "SsoEmployee", "SsoEmployer", "Wht", "Net", "Add", "Deduct"].map((x) => [`total${x}Satang`, sum(`${x[0]!.toLowerCase()}${x.slice(1)}Satang`)])) });
   RUN[st] = run.id;
+ }
+ { // r4 Y1 fixture: DRAFT v2 run in PER.YTD — anna's row stored ytdOpening "MISSING" and no live opening ⇒ review code YTD_OPENING (payroll.ts ytdReview)
+  const run = await P.hrPayrollRun.create({ data: { ...sc, periodKey: PER.YTD, payDate: new Date(`${PER.YTD}-28T12:00:00+07:00`), status: "DRAFT", engineVersion: 2, totalGrossSatang: 0, totalSsoEmployeeSatang: 0, totalSsoEmployerSatang: 0, totalWhtSatang: 0, totalNetSatang: 0, totalAddSatang: 0 } });
+  for (const [k, e] of Object.values(E).entries()) { const it = itemOf(e, 2, k + 1) as Any; if (e.key === "anna") it.snapshotJson = { ...it.snapshotJson, ytdOpening: "MISSING" }; await P.hrPayrollItem.create({ data: { ...sc, runId: run.id, employeeId: e.id, ...it } }); }
+  RUN.YTD = run.id;
  }
  const runRow = async (st: string) => (await P.hrPayrollRun.findUnique({ where: { id: RUN[st] } })) as Any;
  const itemsOf = async (st: string) => (await P.hrPayrollItem.findMany({ where: { runId: RUN[st] } })) as Any[];
@@ -435,6 +460,22 @@ try {
   const rendered = [...cache.entries()].filter(([k]) => k.endsWith(`|${base}`)).flatMap(([, h]) => [...idsIn(h).keys()]);
   const excused = N1S.code.filter((c) => !rendered.some((r) => idMatch(c, r)) && N1S.other.has(c)), noRow = N1S.code.filter((c) => !excused.includes(c));
   chk("N1", all(N1S.n1) && !noRow.length, "", `${fails(N1S.n1)} noRow=${L(noRow)} excused=${excused.join(",") || "none"}`);
+ }
+ // ── Y1 (r4 B2): the "กรอกยอดยกมา" link only for a viewer who has the ytd view; it resolves to a non-empty ytd view ──
+ {
+  const y1: string[] = [], rvTxt = String(MSG.th.hr.run2.rv_YTD_OPENING ?? "").split(" (")[0]!, card = ROOT_ID.ytd!;
+  for (const [n, w, want] of [["owner", W.owner, true], ["payAll", W.payAll, true], ["payU1", W.payU1, false]] as const) {
+   const h = await page(w, `view=run&period=${PER.YTD}`), sec = run2(h), ids = idList(h);
+   if (!ok(h) || !sec) { y1.push(`${n}: no run screen ${h.slice(0, 50)}`); continue; }
+   if (!rvTxt || !textOfHtml(sec).includes(rvTxt)) { y1.push(`${n}: control — no YTD_OPENING review text (fixture)`); continue; }
+   const link = elById(h, "hr-run2-ytd-link"), ytdHref = [...sec.matchAll(/href="([^"]*[?&](?:amp;)?view=ytd[^"]*)"/g)].map((m) => m[1]!.replace(/&amp;/g, "&"));
+   if (!want) { if (ids.includes("hr-run2-ytd-link") || ytdHref.length) y1.push(`${n}: link to ?view=ytd offered (${ytdHref[0] ?? "hr-run2-ytd-link"}) — viewer has no ytd view`); continue; }
+   const href = (/href="([^"]+)"/.exec(link)?.[1] ?? "").replace(/&amp;/g, "&");
+   if (!link || !href) { y1.push(`${n}: no hr-run2-ytd-link`); continue; }
+   const q = (href.split("?")[1] ?? "").split("#")[0]!, dest = await page(w, q), dIds = idList(dest), body = textOfHtml(elById(dest, "hr-ytd-card"));
+   if (!/(^|&)view=ytd(&|$)/.test(q) || !dIds.some((i) => card.test(i)) || body.length < 40) y1.push(`${n}: ${href} → ytd card ${dIds.some((i) => card.test(i)) ? `text ${body.length}` : "absent"}`);
+  }
+  chk("Y1", !y1.length, "owner · payAll link → ytd card · payU1 text only", L(y1, 4));
  }
  // ── 13b report ──
  {
