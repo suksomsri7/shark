@@ -143,7 +143,7 @@ export async function ProbationStats({ systemId, tenantId, viewer, emp }: { syst
   );
 }
 
-export async function ProfileProbation({ systemId, tenantId, viewer, emp, reviewTestId = "hr-people-prob-review" }: { systemId: string; tenantId: string; viewer: HrViewer; emp: EmployeeProfileDto; reviewTestId?: string }) {
+export async function ProfileProbation({ systemId, tenantId, viewer, emp, inPanel }: { systemId: string; tenantId: string; viewer: HrViewer; emp: EmployeeProfileDto; inPanel?: boolean }) {
   const probEnd = ymdOf(emp.probationEndAt);
   if (emp.employmentStatus !== "PROBATION" || !probEnd) return null;
   const tl = await getTranslations("hr.life");
@@ -172,7 +172,7 @@ export async function ProfileProbation({ systemId, tenantId, viewer, emp, review
         <ProbationStats systemId={systemId} tenantId={tenantId} viewer={viewer} emp={emp} />
       </div>
       {canReview && (
-        <Link href={profileHref(systemId, emp.id, "?tab=history#hr-life")} data-testid={reviewTestId} className="btn btn-primary min-h-[44px] whitespace-nowrap text-sm">
+        <Link href={profileHref(systemId, emp.id, "?tab=history#hr-life")} data-testid={inPanel ? "hr-people-panel-review" : "hr-people-prob-review"} className="btn btn-primary min-h-[44px] whitespace-nowrap text-sm">
           {t("prob.review")} ›
         </Link>
       )}

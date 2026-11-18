@@ -905,7 +905,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
             <ProfileTabs compact href={(k) => profileHref(systemId, pv.profile.id, `?tab=${k}`)} tab="general" tabs={pv.canSeeSensitive ? ["general", "docs", "schedule", "leave", "pay", "history"] : ["general", "docs", "schedule", "leave", "history"]} />
           </div>
           <div className="flex flex-1 flex-col gap-6 px-5 py-5">{/* HR VIS-5c */}
-            <ProfileProbation systemId={systemId} tenantId={auth.active.tenantId} viewer={viewer} emp={pv.profile} reviewTestId="hr-people-panel-review" />
+            <ProfileProbation systemId={systemId} tenantId={auth.active.tenantId} viewer={viewer} emp={pv.profile} inPanel />
             <EmployeeReadView systemId={systemId} emp={pv.profile} sensitive={pv.canSeeSensitive} canEdit={canEdit} compact />
             <ProfileChecklist systemId={systemId} tenantId={auth.active.tenantId} viewer={viewer} employeeId={pv.profile.id} life={pvLife} manageHref={profileHref(systemId, pv.profile.id, "?tab=history#hr-life")} />
             <ProfileConnections systemId={systemId} tenantId={auth.active.tenantId} emp={pv.profile} canEdit={canEdit} />
