@@ -1,0 +1,56 @@
+  ✅ [S1] [static] scope.ts exports pure inPayScope(scope, homeUnitId) + payScopeWhere(scope) (no borrowing term) + PAY_SCOPE_EXCLUDED_TEXT = the ruled Thai note · marked HR PRIV-2
+  ✅ [S2] [static] ONE helper: privacy (profile + loadPayslipForViewer) · payslip homeInScope · labor sees · payroll previewPayrollRunV2 · attendance-pay covers · reports money rows · payroll-ui + payroll-run-ui note use it — no second home-only predicate, no employeeInScope/unitWhere on a pay path
+  ✅ [S3] [static] [control] every run action (create/approve/markPaid/reverse/deleteDraft/recompute v1 · create/recompute/approve/pay/reverse v2) calls assertRunAllBranches · document gates (bank/filings/certs) need an all-branch viewer
+  ✅ [S4] [static] [control] frozen files unchanged vs ticket base (prisma · core · ai · hr/api · filings · bank-files · non-pay HR modules · older oracles + libs · package.json) · payroll-rules sha
+  ✅ [S5] [static] every changed src file is in the allowed list (or a new hr file whose header says HR PRIV-2) · every hunk of an allowed file is marked HR PRIV-2 ▸ … ◂ · no other ticket's marker removed
+  ✅ [S6] [static] [control] in-base guard: ticket base is an ancestor of HEAD · oracle + lib + brief present
+  ✅ [S7] [static] export refusals never interpolate employee names (no {names} in reports.ts / reports-rules texts) · export cells reuse the house sanitiser @/lib/core/csv (neutralizeFormula / csvCell)
+[env] qc-hr-priv-2 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-priv-2] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+  ✅ [P1] [pure] inPayScope truth table: OWNER/*/[] ⇒ true for every home incl. null · [U1] ⇒ U1 true · U2/U3/null false · payScopeWhere([U1]) has no `units` term · payScopeWhere([]) matches nothing · '*' ⇒ {}
+(node:2826123) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+fixture ok: PERIOD=2026-10 MONTH=2026-11 employees=10
+  ✅ [A1] [db] 🔴 F1: payU1s + payU1m open the profile of each borrowed employee (started-after · spanning · leaver-with-open-borrowing) WITHOUT nationalId/SSO/house-reg/bank/payType keys or sentinels · docs [] · canSeeSensitive false
+  ✅ [A2] [db] borrowed employee's profile for payU1m is byte-identical to mgrU1's (manager without payroll) — same DTO, same docs, same borrowings
+  ✅ [A3] [db] [control] payU1s sees every sensitive sentinel of a1/a2/aLeft (home U1 incl. the leaver) · OWNER + payAll see them for borrowed bNow
+  ✅ [A4] [db] latent twin + ruling 4: loadPayslipForViewer(payU1s, PAID run, bNow/bSpan) = null · a1 = slip (control) carrying none of the run's whole-run totals (gross/net/SSO/WHT/headcount) — only the slip's own figures
+  ✅ [A5] [db] [control] refusal parity: payU1s profile of c2 (U3) / cNo (no branch) / unknown id = null each · loadPayslipForViewer same
+  ✅ [B1] [db] 🔴 F2: payU1s + payU1m loadReport payroll-month · payroll-year · tax-month · tax-year · wages · register (PERIOD): rows = exactly the pay-scope people with a figure (a1,a2,aLeft ⊆) — no bNow/bSpan/bLeft row
+  ✅ [B2] [db] 🔴 F2: same 6 reports exported CSV + XLSX for payU1s/payU1m: no borrowed name, national id, slip amount or rate in the bytes
+  ✅ [B3] [db] OT report for payU1m (ruling 1): borrowed bSpan row STAYS with the same non-money cells mgrU1 sees · its money cells absent/null/empty · money totals = Σ in-pay-scope rows · excludedHeadcount 1 + note · CSV/XLSX carry the row but not its amount
+  ✅ [B4] [db] [control] OWNER + payAll payroll-month/tax-month/register include bNow + bSpan + bLeft rows · payU1s includes aLeft (home-U1 leaver) · bEnded (borrowing ended) absent for payU1s
+  ✅ [B5] [db] [control] money totals of every payU1s money report = Σ of its own rows (H3.9) · opening YTD / salary-cert / filing / bank previews refuse payU1s + payU1m (all-branch gate) and show bNow to payAll
+  ✅ [C1] [page] 🔴 F3: PayrollSection rendered for payU1m (HTML + every prop handed down): no borrowed / other-branch name, salary, rate, item or adjustment amount
+  ✅ [C2] [page] 🔴 F3: no whole-run total (gross/net/SSO/WHT) nor whole-run headcount of either run in HTML or props · the PAID run shows Σ of in-scope items + the note with N = hidden count for each run
+  ✅ [C3] [page] [control] OWNER render shows whole-run totals, every name, no exclusion note
+  ✅ [C5] [db] inbox (H2.11) of payU1s/payU1m: no adjustment item (nor its amount) of an out-of-pay-scope employee — as for mgrU1, whose inbox has no adjustment items at all (inbox.ts:71 ADJUSTMENT = payroll viewers only) · a1's bonus still listed with its amount
+  ✅ [C4] [db] previewPayrollRunV2(payU1m): rows ⊆ pay scope · totals = Σ rows · run.excludedHeadcount = hidden count (7 PAID / 6 DRAFT) · OWNER excludedHeadcount 0 + whole-run totals
+  ✅ [E1] [db] [regression] payU1m + mgrU1 still see borrowed bNow on listRoster(U1, today) · loadRosterBoard · loadAttendanceBoard(U1, punch day) · time report · bNow's profile opens (non-null)
+  ✅ [G1] [action] [control] payU1m (all pay keys, [U1]) approve DRAFT / markPaid / reverse PAID / delete + recompute DRAFT / create run (v1 + v2 actions) ⇒ the fixed all-branch text · nothing written
+  ✅ [D0] [R2] [control] stability: every covered payload digests identically twice before the change (else the doubling test proves nothing)
+  ✅ [D1] [R2] doubling every out-of-pay-scope employee's pay changes NO byte of payU1s/payU1m reports (9 × page/CSV/XLSX)
+  ✅ [D2] [R2] … nor of profile / loadPayslipForViewer / slipForViewer / slipHistory for every employee
+  ✅ [D3] [R2] … nor of the payroll page (HTML + props) for payU1m
+  ✅ [D4] [R2] … nor of previewPayrollRunV2 · labour day/week/month · attendance-pay + work-entry previews · opening YTD · certs · filings · bank preview · inbox · stock charges · team leave
+  ✅ [D5] [R2] [regression] … nor of AI tools T1–T4 as payU1s/payU1m · REST key hr-read (13 GETs + reports) · hrAdmin/mgrU1/emp profiles + time report
+  ✅ [D6] [R2] [positive control] OWNER payroll-month CSV · OWNER page · OWNER previewPayrollRunV2 · REST key hr-payroll-read payroll-month DO change
+  ✅ [E2] [db] [regression] payU1m still acts on bNow: leaveDetail ok · decideLeaveAs REJECTED ok · decideOtRequest REJECTED ok — results carry no money
+  ✅ [W1] [db] createEmployee / updateEmployee / saveEmployeeProfile refuse a name with each of 18 bad characters (C0 · DEL · C1 · ALM · ZW · LRM/RLM · LRE..RLO · WJ · isolates · LS/PS · BOM) · nothing stored
+  ✅ [W2] [db] those refusals are fixed text: no bad character, no part of the submitted name
+  ✅ [W3] [db] [control] Thai with tone marks · apostrophe · inner hyphen · emoji · digits are accepted by all three write paths
+  ✅ [W4] [db] 🔴 F4: with stored names carrying RLO/isolate/BEL and a formula prefix, OWNER exports of all 9 reports (CSV + XLSX) succeed
+  ✅ [W5] [db] those exports are sanitised: no bad character, no text cell a spreadsheet reads as a formula, no XLSX <f>
+RESIDUE none (tenants=1 users=7)
+  ✅ [Z1] residue: tenants qc-hr-priv2-* gone · no row of ours in any tenantId table · users/sessions gone · no outbound request
+BASE-EXPECTATION 17/39 as registered (RED-by-design 22 · GREEN controls 17) · off: S1(RED→pass) S2(RED→pass) S7(RED→pass) P1(RED→pass) A1(RED→pass) A2(RED→pass) A4(RED→pass) B1(RED→pass) B2(RED→pass) B3(RED→pass) C1(RED→pass) C2(RED→pass) C5(RED→pass) C4(RED→pass) D1(RED→pass) D2(RED→pass) D3(RED→pass) D4(RED→pass) W1(RED→pass) W2(RED→pass) W4(RED→pass) W5(RED→pass)
+
+===== qc-hr-priv-2 ===== passed 39/39
+JSON_SUMMARY {"suite":"qc-hr-priv-2","total":39,"passed":39,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":22,"baseGreen":17,"offBase":["S1(RED→pass)","S2(RED→pass)","S7(RED→pass)","P1(RED→pass)","A1(RED→pass)","A2(RED→pass)","A4(RED→pass)","B1(RED→pass)","B2(RED→pass)","B3(RED→pass)","C1(RED→pass)","C2(RED→pass)","C5(RED→pass)","C4(RED→pass)","D1(RED→pass)","D2(RED→pass)","D3(RED→pass)","D4(RED→pass)","W1(RED→pass)","W2(RED→pass)","W4(RED→pass)","W5(RED→pass)"]}

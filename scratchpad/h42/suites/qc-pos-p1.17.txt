@@ -1,0 +1,20 @@
+[env] qc-pos-p1.17 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (อนุญาตด้วย POS_QC_ALLOW_HOST=ep-orange-dust-aotwbyc7)
+(node:1703392) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P1.17-ST1] [static · R1] src/lib/modules/pos/reports.ts export ครบ 9: reportDailySales reportProducts reportStaff reportPayments reportMargin reportShifts reportTax reportCsv posDashboardCard
+  ✅ [P1.17-ST2] [static · R14] report-actions.ts "use server" บรรทัดแรก · export async function ล้วน · posReportAction / posReportCsvAction / posDashboardCardAction เรียกบริการ + catch · ไม่มี throw
+  ✅ [P1.17-ST3] [static · R12] core/permissions.ts โมดูล pos มี pos.report.view
+  ✅ [P1.17-ST4] [static · R6] PosSale.soldByUserId String? · migration ADD COLUMN "soldByUserId" nullable (ไม่มี DROP/RENAME/SET NOT NULL) · CreateSaleInput.soldByUserId?: string · submitRegisterSale ส่ง soldByUserId: actor.userId
+  ✅ [P1.17-ST5] [static · R15] ทุกคิวรี PosSale ใน reports.ts (prisma หรือ SQL ดิบ) กรองทั้ง unitId และ createdAt ⇒ ใช้ดัชนี (tenantId, unitId, createdAt)
+  ✅ [P1.17-ST6] [static · R3 R4] reports.ts อ่านอย่างเดียว (ไม่มี create/update/upsert/delete/$executeRaw) · ไม่คำนวณ VAT เอง (ไม่ import splitIncludedVat/posVatRateBp) · ไม่เรียก forceCloseStaleShifts
+  ✅ [P1.17-ST7] [static · P1.17U R6] report-actions.ts มี posReportOverviewAction เรียก reportOverview + catch · src/lib/modules/pos/report-overview.ts export reportOverview · อ่านอย่างเดียว (ไม่มี create/update/delete/$executeRaw) · ไม่คำนวณ VAT เอง
+🔴 หยุด! qc-pos-p1.17: จะเขียนแถวได้เฉพาะ QC4 (ep-frosty-lab) — DATABASE_URL, DIRECT_URL ไม่ใช่ (ยังไม่ได้เขียนอะไร)

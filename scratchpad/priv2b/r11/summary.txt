@@ -1,0 +1,12 @@
+priv2-f1 exit=0 "total":46,"passed":46 RESIDUE none (tenants=1 users=7) 
+priv2-f2 exit=0 "total":46,"passed":46 RESIDUE none (tenants=1 users=7) 
+priv2-f3 exit=0 "total":46,"passed":46 RESIDUE none (tenants=1 users=7) 
+priv2-u1 exit=0 "total":46,"passed":46 RESIDUE none (tenants=1 users=7) 
+qc-hr-h2.9 exit=0 "total":58,"passed":58 RESIDUE none (tenants=3 users=19) 
+qc-hr-h4.4 exit=0 "total":86,"passed":86 RESIDUE none (tenants=2 users=20) 
+qc-hr-h3.8 exit=0 "total":78,"passed":78 RESIDUE none (tenants=2 users=12) 
+qc-hf-hr-privacy exit=0 "total":194,"passed":194  
+fitness env 0 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness noenv 0 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr env 0 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr noenv 0 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0

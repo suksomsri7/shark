@@ -1,0 +1,64 @@
+  ✅ [S1] scope.ts helper + note
+  ✅ [S2] one helper on every pay path
+  ✅ [S3] run actions/doc gates all-branch
+  ❌ [S4] frozen · oracle edits marked (R9) — expected  | actual frozen,oracles changed: src/lib/ai/proposals.ts,src/lib/ai/tools.ts,src/lib/modules/hr/judge.ts,src/lib/modules/hr/ scripts/qc-hr-h3.2.mts,scripts/qc-hr-h3.9.mts,scripts/qc-hr-h4.3-lib.mts,scripts/qc-hr-leave-3-lib.mts,scripts/qc-hr-leave-3.mts base=2ab0c6b62
+  ❌ [S5] allowed files · marked hunks — expected  | actual outside=src/app/app/approvals/BulkApprovals.tsx,src/app/app/approvals/page.tsx,src/lib/ai/proposals.ts,src/lib/ai/tools.ts,src/lib/approval-effects.ts,src/lib/modules/approval/actions.ts,src/lib/modules/approval/service.ts,src/lib/modules/hr/index.ts,src/lib/modules/hr/judge.ts,src/lib/modules/hr/work-entries-rules.ts hunks=hr/service.ts:unmarked
+  ✅ [S6] base ancestor · files
+  ✅ [S7] no {names} · core/csv
+[env] qc-hr-priv-2 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-priv-2] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+  ✅ [P1] helper truth table
+(node:6711) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+fixture ok: PERIOD=2026-10 MONTH=2026-11
+  ✅ [A1] borrowed profile: no sensitive
+  ✅ [A2] borrowed profile = mgrU1
+  ✅ [A3] [control] sensitive where allowed
+  ✅ [A4] slip loader scope + no totals
+  ✅ [A5] [control] refusal parity
+  ✅ [A7] own slip = DB, no total* (R8)
+  ✅ [B1] money report rows in scope
+  ✅ [B2] money exports clean
+  ✅ [B3] OT report money withheld + note
+  ✅ [B4] [control] owner/payAll rows
+  ✅ [B5] [control] Σ rows · doc gates
+  ✅ [C1] page: no out-of-scope data
+  ✅ [C2] page: no whole-run figure · notes
+  ✅ [C3] [control] owner page
+  ✅ [C4] preview v2 scope/Σ/excluded
+  ✅ [C5] inbox: no out-of-scope adjustment
+  ✅ [N1] OT list: borrowed = mgrU1 (R6)
+  ✅ [N2] stock list + flags: no bSpan (R6)
+  ✅ [N4] [control] owner + in-scope money
+  ✅ [N5] stock claims/attention scope (R11)
+  ✅ [N3] salary doubling: OT/stock identical
+  ✅ [L1] labour ACTUAL split: borrowed U1 work days add nothing for payU1m · owner U1 share
+  ✅ [E1] [regression] borrowed on roster etc.
+  ✅ [G1] [control] run actions refused
+  ✅ [D0] [control] payloads stable
+  ✅ [D1] doubling: reports
+  ✅ [D2] doubling: profile/slips
+  ✅ [D3] doubling: page
+  ✅ [D4] doubling: other pay readers
+  ✅ [D5] [regression] doubling: AI/REST/non-pay
+  ✅ [D6] [positive control] owner changes
+  ✅ [E2] [regression] leave/OT decisions
+  ✅ [W1] write paths refuse bad chars
+  ✅ [W2] refusals fixed, no echo
+  ✅ [W3] [control] good names
+  ✅ [W6] booking names: refused / stripped (R10)
+  ✅ [W4] stored bad names export
+  ✅ [W5] exports sanitised
+RESIDUE none (tenants=1 users=7)
+  ✅ [Z1] residue · outbound
+BASE-EXPECTATION 45/47 as registered (RED-by-design 0 · GREEN controls 47) · off: S4(GREEN→fail) S5(GREEN→fail)
+
+===== qc-hr-priv-2 ===== passed 45/47 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-priv-2","total":47,"passed":45,"failed":["S4","S5"],"findings":[{"id":"S4","sev":"MAJOR"},{"id":"S5","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":0,"baseGreen":47,"offBase":["S4(GREEN→fail)","S5(GREEN→fail)"]}

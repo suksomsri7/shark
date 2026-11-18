@@ -1,0 +1,48 @@
+[env] qc-hr-payadjust · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+── สูตร OT ──
+  ✅ [OT-1] เงินเดือน 30,000 → OT ชั่วโมงละ 187.50 บาท
+  ✅ [OT-2] OT 6 ชั่วโมง = 1,125 บาท
+  ✅ [OT-3] อัตราที่ร้านตั้งเอง (multiplier 3 วันหยุด) คิดตามที่ส่งมา
+  ✅ [OT-4] รวมรายการ: ทิศทางมาจาก kind (บวก/หัก ไม่สลับกัน)
+  ✅ [OT-5] 🔴 หักมากกว่าเงินเดือน → 0 ไม่ติดลบ
+(node:380691) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [RQ-0] อัตรา OT ของพนักงานคนนี้ = 187.50 บาท/ชม.
+── ยื่น/อนุมัติ ──
+  ✅ [RQ-1] ยื่น OT 6 ชม. → คิดเงินให้ 1,125 บาท และสถานะรออนุมัติ
+  ✅ [RQ-2] งวดรูปแบบผิด → ปฏิเสธ
+  ✅ [RQ-3] ยอด 0 → ปฏิเสธ
+  ✅ [AP-1] 🔴 รายการที่ยังไม่อนุมัติ ไม่มีผลกับเงินเดือน (gross = เงินเดือนเปล่า)
+  ✅ [AP-2] 🔴 คนที่ไม่ใช่เจ้าของ อนุมัติรายการที่ตัวเองยื่นไม่ได้
+  ✅ [AP-3] คนอื่นอนุมัติได้
+  ✅ [AP-4] อนุมัติแล้วตัดสินซ้ำไม่ได้
+  ✅ [AP-5] เจ้าของอนุมัติรายการที่ตัวเองยื่นได้ (ร้านเล็กมีคนเดียว)
+── เข้ารอบจ่าย ──
+  ✅ [RN-1] gross = เงินเดือน + เพิ่ม − หัก (32,625 บาท)
+  ✅ [RN-2] แยกยอดเพิ่ม/หักไว้ในรายการ (3,125 / 500)
+  ✅ [RN-3] 🔴 ฐานประกันสังคมยังคิดจากเงินเดือนประจำ (17,500 เพดาน) ไม่ใช่ยอดรวม OT
+  ✅ [RN-4] สุทธิ = gross − ปสส. − ภาษี (ตรงทุกสตางค์)
+  ✅ [RN-5] ยอดรวมของรอบเก็บยอดเพิ่ม/หักไว้ด้วย
+  ✅ [RN-6] สลิปมีรายละเอียดรายการ (freeze ใน snapshot 3 บรรทัด)
+  ✅ [RN-7] 🔴 รายการถูกผูกกับรอบจ่ายแล้ว (runId ไม่ว่าง)
+  ✅ [RN-8] เข้ารอบจ่ายแล้วลบรายการไม่ได้
+  ✅ [RN-9] 🔴 งวดถัดไปไม่นับรายการเดิมซ้ำ (gross = เงินเดือนเปล่า)
+  ✅ [RN-10] 🔴 หักมากกว่าเงินเดือน → จ่าย 0 (ไม่ติดลบ)
+  ✅ [XT-1] 🔴 ร้านอื่นตัดสินรายการของเราไม่ได้
+  ✅ [XT-2] ร้านอื่นอ่านรายการของเราไม่เห็น
+  ✅ [XT-3] ร้านอื่นยื่นรายการให้พนักงานของเราไม่ได้
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: OT · คอมมิชชั่น · หักเงิน + สายอนุมัติ =====
+ผ่าน 27/27
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":27,"passed":27,"findings":[]}

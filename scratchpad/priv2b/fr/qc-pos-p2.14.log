@@ -1,0 +1,28 @@
+[env] qc-pos-p2.14 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (อนุญาตด้วย POS_QC_ALLOW_HOST=ep-orange-dust-aotwbyc7)
+(node:3038097) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ข้อสถิต (ไม่แตะ DB · ฐาน 92b7149d · P2.7U บนทิป: ใช่) ──
+  ✅ [P2.14-K1] [D14 DOC-1 มติ 8] facts การ์ด 10: platformCommission true · tableReservationsOnMap true · callQueueFromTable/voucherPayment/advanceBookingBill false "P4+" (CD-P312-K1 · เดิม "P3") · ไม่มี fact false ที่ติดป้ายใบที่ปิดแล้ว (แถว P2 ✅ ใน POS-MASTER-PLAN = P2.1–P2.13)
+  ✅ [P2.14-K2] [D15 DOC-2 มติ 4] git ls-files skills/shark-pos-api/{SKILL.md, references/recipes.md, references/endpoints.md} · gen-pos-api-docs/qc-pos-p2.13/qc-pos-api-skill อ่านทางนี้ (ไม่อ่าน .claude/skills/shark-pos-api) · scripts/sync-skills.sh (สองบ้าน · เทียบไบต์)
+  ✅ [P2.14-K3] [D16 TL-1 มติ 3] ไม่มี qc-* ใช้ merge-base กับ origin/session/pos (allow-list ว่างหลังชุด re-pin) — SKIP-with-reason จนชุด re-pin ท้ายใบลง
+  ✅ [P2.14-G1] [D17 มติ 5] scripts/pos-gates.json ครอบทุก qc-pos-* · qc-hf-* · ชุด regression (MASTER-PLAN §1 + มติ 5) · คำสั่ง fitness ±env/fitness-pos/gen-check/typecheck/visual · runner scripts/pos-gates-all.sh (ไม่ export CI · QC4 + ล็อก POS · SUMMARY.txt · --dry = แผนครบทุกแถว)
+  ✅ [P2.14-G2] [D17] ไม่มีแถวชี้ไฟล์ที่ไม่มี · mode forced|unforced ตามด่าน SKIP ของชุด · needs ตรงเครื่องหมาย // requires: · ไม่มีชื่อซ้ำ
+  ✅ [P2.14-G3] [D17] ทุกชุดในแผนผ่านตัวกรองของ qc-all เอง (scripts/qc-all-discovery.mts isQcAllSuite · qc-all.mts ใช้ตัวเดียวกัน)
+  ✅ [P2.14-G4] [D17 มติ 5] แดงที่ยอมรับ (accepted) มี reason + owner + opRef ที่มีอยู่จริงใน POS-OWNER-PENDING.md
+  ✅ [P2.14-V1] [D18 มติ 6] scripts/pos-visual-sweep.json: ทุก POS_PAGES มีรอบ th และ en · visual-pos มี EN_MOBILE_PAGES (register sales receipt-public display + qr-public) — qr-public SKIP-with-reason จน P2.7U
+  ✅ [P2.14-V2] [D18] ทุกค่าคงที่ wo-gated (/^p…/i.test(WO)) ของ visual-pos.mts มีรอบที่ wo ตรง
+  ✅ [P2.14-V3] [D18] ทุก page.tsx ใต้ sys/[id]/pos/** · (store)/{d,r,q}/** · developers/pos แมปกับหน้าใน POS_PAGES หรือข้อยกเว้นที่ระบุ · หน้าสาธารณะมีแถวทะเบียนปุ่ม — /q/** SKIP-with-reason จน P2.7U
+  ✅ [P2.14-V4] [D18 ⚠️6] ทุกหน้าพนักงานของ POS มีแถว pos-ui-inventory.json และ (หมุดสิทธิ์ใน qc-hf-pos-page-authz หรือการ์ดปฏิเสธในหน้าที่ระบุในแมนิเฟสต์) — ORACLE-ADD stock/shifts/settings/reports/price-rules
+  ✅ [P2.14-H1] [D19 มติ 7] ledger/HANDOVER-2026-10-xx-POS-P2.md มี §0–§7 · ทุกแถว P2.1–P2.14 + P2.9b + ใบ U ทุกใบ + HF ของเฟส มี SHA ที่เป็นบรรพบุรุษของ HEAD
+  ✅ [P2.14-H2] [D19 DOC-5] POS-CONTRACTS.md ตาราง event ⊇ ทุกคีย์ pos.* ใน outbox-consumers.ts (ตรงตัวพิมพ์)
+  ✅ [P2.14-H3] [D19] ledger/wo-notes/pos-P2.14-parity.md มีแถว · OPEN 0 · DEVIATION มีอ้างอิงมติ
+  ✅ [P2.14-A9] [C9 API-8 static] กฎรูปคำตอบทั้งทะเบียน: op ชนิด write/danger ทุกตัวคืน data รูปคงที่ (ไม่ return posData( ตรงจาก facade ที่ผลมีฟิลด์ duplicated ได้) — posResult/วัตถุระบุคีย์
+🔴 หยุด! qc-pos-p2.14: จะเขียนแถวได้เฉพาะ QC4 (ep-frosty-lab) — DATABASE_URL, DIRECT_URL ไม่ใช่ (ยังไม่ได้เขียนอะไร)

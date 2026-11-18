@@ -1,0 +1,23 @@
+[hr-seed-law-draft] ตรวจกับ src/lib/modules/hr/payroll-rules.ts: AST=ตรง · คิดจาก json 9145 ค่า ต่าง 0 · ok
+  v1:SSO                   SSO          1970-01-01 DRAFT {"employerEqualsEmployee":true,"maxBaseSatang":1500000,"minBaseSatang":165000,"rateBp":500,"rounding":"BAHT_HALF_UP"}
+  v1:SSO:2569              SSO          2026-01-01 DRAFT {"employerEqualsEmployee":true,"maxBaseSatang":1750000,"minBaseSatang":165000,"rateBp":500,"rounding":"BAHT_HALF_UP"}
+  v1:SSO:2572              SSO          2029-01-01 DRAFT {"employerEqualsEmployee":true,"maxBaseSatang":2000000,"minBaseSatang":165000,"rateBp":500,"rounding":"BAHT_HALF_UP"}
+  v1:SSO:2575              SSO          2032-01-01 DRAFT {"employerEqualsEmployee":true,"maxBaseSatang":2300000,"minBaseSatang":165000,"rateBp":500,"rounding":"BAHT_HALF_UP"}
+  v1:TAX_BRACKET           TAX_BRACKET  1970-01-01 DRAFT {"bands":[{"rateBp":0,"upToSatang":15000000},{"rateBp":500,"upToSatang":30000000},{"rateBp":1000,"upToSatang":50000000},{"rateBp":1500,"upToSatang":75000000},{"rateBp":2000,"upToSatang":100000000},{"rateBp":2500,"upToSatang":200000000},{"rateBp":3000,"upToSatang":500000000},{"rateBp":3500,"upToSatang":null}],"rounding":"SATANG_HALF_UP_ONCE"}
+  v1:DEDUCTION             DEDUCTION    1970-01-01 DRAFT {"childSatang":3000000,"expenseCapSatang":10000000,"expenseRateBp":5000,"personalSatang":6000000,"spouseSatang":6000000,"ssoAllowanceCapSatang":900000}
+  v1:DEDUCTION:2569        DEDUCTION    2026-01-01 DRAFT {"childSatang":3000000,"expenseCapSatang":10000000,"expenseRateBp":5000,"personalSatang":6000000,"spouseSatang":6000000,"ssoAllowanceCapSatang":1050000}
+  v1:DEDUCTION:2572        DEDUCTION    2029-01-01 DRAFT {"childSatang":3000000,"expenseCapSatang":10000000,"expenseRateBp":5000,"personalSatang":6000000,"spouseSatang":6000000,"ssoAllowanceCapSatang":1200000}
+  v1:DEDUCTION:2575        DEDUCTION    2032-01-01 DRAFT {"childSatang":3000000,"expenseCapSatang":10000000,"expenseRateBp":5000,"personalSatang":6000000,"spouseSatang":6000000,"ssoAllowanceCapSatang":1380000}
+  v1:OT                    OT           1970-01-01 DRAFT {"daysPerMonth":30,"hoursPerDay":8,"workdayMultiplierBp":15000}
+  digest b0aa6c9c77a4d8f13e0c5af7bd08a122f210b65c23353aa0c04cdb84d1bcce25
+[hr-seed-law-draft] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech · โหมด APPLY (เขียน) · prefix v1
+(node:3172990) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+created 6 · unchanged 4 · mismatched 0

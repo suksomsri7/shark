@@ -1,0 +1,5 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hr-b
+> tsc --noEmit
+
+EXIT 0

@@ -1,0 +1,62 @@
+  ✅ [S1] [static] scope.ts: inPayScope + payScopeWhere (no borrowing) + note text
+  ✅ [S2] [static] one helper on every pay path incl. ot money + stock rows/flags (R6)
+  ✅ [S3] [static] run actions + document gates all-branch
+  ✅ [S4] [static] frozen vs base · older oracles via ORACLE-EDIT PRIV-2 · h4.3-lib hunks ORACLE-EDIT (HR-PRIV-2 (R9)
+  ✅ [S5] [static] changed src ⊆ allowed · hunks marked HR PRIV-2
+  ✅ [S6] [static] ticket base ancestor · files present
+  ✅ [S7] [static] no {names} in refusals · core/csv sanitiser
+[env] qc-hr-priv-2 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-priv-2] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+  ✅ [P1] [pure] inPayScope / payScopeWhere truth table
+(node:3055727) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+fixture ok: PERIOD=2026-10 MONTH=2026-11
+  ✅ [A1] [db] borrowed profile: no sensitive data (payU1s/m)
+  ✅ [A2] [db] borrowed profile = mgrU1 DTO
+  ✅ [A3] [db] [control] in-scope sensitive visible · OWNER/payAll see bNow
+  ✅ [A4] [db] slip loader: borrowed null · a1 without whole-run totals
+  ✅ [A5] [db] [control] refusal parity
+  ✅ [A7] [db] own slip = DB figures · no total* keys (R8)
+  ✅ [B1] [db] 6 money reports rows ⊆ in-scope
+  ✅ [B2] [db] money exports clean
+  ✅ [B3] [db] OT report: borrowed row kept, money withheld, note
+  ✅ [B4] [db] [control] owner/payAll rows · aLeft/bEnded
+  ✅ [B5] [db] [control] Σ rows · document previews all-branch
+  ✅ [C1] [page] payroll page: no out-of-scope data
+  ✅ [C2] [page] no whole-run figure · notes
+  ✅ [C3] [page] [control] owner page
+  ✅ [C4] [db] preview v2 rows/Σ/excludedHeadcount
+  ✅ [C5] [db] inbox: no out-of-scope adjustment
+  ✅ [N1] [db] otRequestList: borrowed items = mgrU1's (no money) (R6 N1)
+  ✅ [N2] [db] stock list + cap flags: no bSpan (R6 N2)
+  ✅ [N4] [db] [control] owner money · in-scope money (R6)
+  ✅ [N3] [R2] hidden-salary doubling: ot list / stock / flags identical
+  ✅ [E1] [db] [regression] borrowed still on roster/attendance/time
+  ✅ [G1] [action] [control] 11 run actions refused
+  ✅ [D0] [R2] [control] payloads stable
+  ✅ [D1] [R2] doubling: reports identical
+  ✅ [D2] [R2] doubling: profile/slip loaders identical
+  ✅ [D3] [R2] doubling: payroll page identical
+  ✅ [D4] [R2] doubling: other pay readers + otRequestList identical
+  ✅ [D5] [R2] [regression] doubling: AI · REST · non-pay viewers identical
+  ✅ [D6] [R2] [positive control] owner/pay-key payloads change
+  ✅ [E2] [db] [regression] leave/OT decisions on borrowed
+  ✅ [W1] [db] write paths refuse 18 bad chars
+  ✅ [W2] [db] refusals fixed, no echo
+  ✅ [W3] [db] [control] good names accepted
+  ✅ [W6] [db] booking staff path names clean (R10)
+  ✅ [W4] [db] stored bad names: exports succeed
+  ✅ [W5] [db] exports sanitised
+RESIDUE none (tenants=1 users=7)
+  ✅ [Z1] residue none · no outbound
+BASE-EXPECTATION 39/45 as registered (RED-by-design 6 · GREEN controls 39) · off: S2(RED→pass) N1(RED→pass) N2(RED→pass) N3(RED→pass) D4(RED→pass) W6(RED→pass)
+
+===== qc-hr-priv-2 ===== passed 45/45 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-priv-2","total":45,"passed":45,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":6,"baseGreen":39,"offBase":["S2(RED→pass)","N1(RED→pass)","N2(RED→pass)","N3(RED→pass)","D4(RED→pass)","W6(RED→pass)"]}

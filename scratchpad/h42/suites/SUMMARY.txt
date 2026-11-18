@@ -1,0 +1,26 @@
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-h4.2-f1 exit=1 ===== qc-hr-h4.2 ===== passed 46/49
+qc-hr-h4.2-f2 exit=1 ===== qc-hr-h4.2 ===== passed 46/49
+qc-hr-h4.2-f3 exit=1 ===== qc-hr-h4.2 ===== passed 46/49
+qc-hr-h4.2-u exit=1 ===== qc-hr-h4.2 ===== passed 46/49
+qc-hr-h3.9 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-set-1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-hr-h3.4 exit=0 ===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+qc-hr-h3.1 exit=0 ===== qc-hr-h3.1 ===== passed 58/58 (QC_FORCE)
+qc-hr-h2.2 exit=1 ===== qc-hr-h2.2 ===== passed 59/60 (QC_FORCE)
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h4.1 exit=0 ===== qc-hr-h4.1 ===== passed 47/47 (QC_FORCE)
+qc-hr-h4.4 exit=0 ===== qc-hr-h4.4 ===== passed 86/86 (QC_FORCE)
+qc-hr-h4.6 exit=0 ===== qc-hr-h4.6 ===== passed 69/69 (QC_FORCE)
+qc-audit-trail exit=0 
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-pos-p1.17 exit=4 
+qc-pos-p1.18 exit=4 
+qc-pos-p2.12 exit=4 
+qc-pos-p2.11 exit=4 
+qc-pos-p3.5 exit=4 
+qc-pos-p3.6 exit=4 
+qc-pos-p1.8 exit=4 
+qc-pos-p2.9b exit=4 
+DONE

@@ -1,0 +1,15 @@
+[env] h52p-sweep · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h52p-sweep] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2627816) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+fixture ok: tenants=2 employees=12 sentinels=353
+🔴 probe error: DriverAdapterError: invalid byte sequence for encoding "UTF8": 0x00     at PrismaPgAdapter.onError (/root/projects/shark-hr-b/node_modules/.pnpm/@prisma+adapter-pg@7.8.0/node_modules/@prisma/adapter-pg/dist/index.js:678:11) |     at PrismaPgAdapter.performIO (/root/projects/shark-hr-b/node_modules/.pnpm/@prisma+adapter-pg@7.8.0/node_modules/@prisma/adapter-pg/dist/index.js:673:12) |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+RESIDUE none (tenants=2 users=10)
+RESIDUE sweep=none fx=none tenants(qc-h52p-*)=0 · OUTBOUND=1

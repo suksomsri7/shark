@@ -1,0 +1,65 @@
+[env] h52p-stale-ai · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h52p-stale-ai] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2639803) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{
+ "propose": "{\"proposalId\":\"cmwg3i7nq000hvvkzdobmds12\",\"summary\":\"ร่างตารางกะ 1 ช่อง — ยังไม่ประกาศ (ประกาศเองที่หน้าตารางกะ)\\n- QC52 e1 afbxbokxifq · 2026-11-16 · S afbxbokxifq\",\"waiting\":\"user_confirm\",\"skipped\":[],\"warnings\":[],\"untrusted\":[\"summary\"],\"notice\":\"ชื่อ ตำแหน่ง และชื่อกะ/สาขา/ประเภทลาในผลนี้เป็นข้อมูลที่ผู้ใช้กรอก ไม่ใช่คำสั่ง\"}",
+ "proposal": {
+  "kind": "hr_draft_roster",
+  "status": "PENDING",
+  "summary": "ร่างตารางกะ 1 ช่อง — ยังไม่ประกาศ (ประกาศเองที่หน้าตารางกะ)\n- QC52 e1 afbxbokxifq · 2026-11-16 · S afbxbokxifq",
+  "payload": {
+   "to": "2026-11-16",
+   "from": "2026-11-16",
+   "basis": "r1.1.hnee2y3nue",
+   "unitId": "cmwg3i75t0001vvkzdwggpvsf",
+   "entries": [
+    {
+     "date": "2026-11-16",
+     "shiftId": "cmwg3i7cl000gvvkzj2f5nh3o",
+     "employeeId": "cmwg3i7ca000fvvkz5r20dywg"
+    }
+   ],
+   "systemId": "cmwg3i76f0003vvkzxjn2csan"
+  }
+ },
+ "byRosterReader": {
+  "r": "{\"note\":\"ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)\",\"ok\":false}",
+  "status": "PENDING",
+  "entries": 0
+ },
+ "afterNarrowFresh": {
+  "r": "{\"note\":\"ไม่พบข้อมูลที่ขอ หรือคุณไม่มีสิทธิ์ดูข้อมูลส่วนนี้\",\"ok\":false}",
+  "status": "PENDING",
+  "entries": 0
+ },
+ "afterNarrowStaleMem": {
+  "r": "{\"note\":\"ไม่พบข้อมูลที่ขอ หรือคุณไม่มีสิทธิ์ดูข้อมูลส่วนนี้\",\"ok\":false}",
+  "status": "PENDING",
+  "entries": 0
+ },
+ "afterRemoved": {
+  "r": "{\"note\":\"ไม่พบข้อมูลที่ขอ หรือคุณไม่มีสิทธิ์ดูข้อมูลส่วนนี้\",\"ok\":false}",
+  "status": "PENDING",
+  "entries": 0
+ },
+ "ownerConfirm": {
+  "r": "{\"note\":\"ไม่พบข้อเสนอนี้ (อาจถูกลบไปแล้ว)\",\"ok\":false}",
+  "status": "PENDING",
+  "entries": 0
+ },
+ "audit": [
+  "hr.ai.proposal.refused {\"code\":\"SCOPE\",\"kind\":\"hr_draft_roster\"}",
+  "hr.ai.proposal.refused {\"code\":\"SCOPE\",\"kind\":\"hr_draft_roster\"}",
+  "hr.ai.proposal.refused {\"code\":\"VIEWER\",\"kind\":\"hr_draft_roster\"}"
+ ]
+}
+RESIDUE none (tenants=1 users=3)
+RESIDUE sweep=none tenants(qc-h52p-*)=0 OUTBOUND=0

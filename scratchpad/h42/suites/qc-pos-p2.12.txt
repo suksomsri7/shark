@@ -1,0 +1,16 @@
+[env] qc-pos-p2.12 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (อนุญาตด้วย POS_QC_ALLOW_HOST=ep-orange-dust-aotwbyc7)
+(node:1703834) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB · ฐาน b1f6202b / e6546359) ──
+  ❌ [P2.12-ST1] [§10 มติ 1 9] ไม่มี migration: prisma/ เท่า หมุดของเลน c5fc223b (หรือ e6546359) · ไม่มีไฟล์ใหม่ใต้ prisma/ · ไฟล์เลน A ไม่ถูกแตะ: RegisterSc — expected prisma/ เท่าฐาน · ไฟล์เลน A เท่าฐาน | actual prisma/ ต่างจากฐาน: prisma/migrations/20261201000000_hr_pin_hash/migration.sql, prisma/migrations/20261202000000_hr_payroll_run_live_unique/migration.sql, prisma/migrations/20261203000000_hr_link_unique_requester/migration.sql, prisma/migrations/20261204000000_hr_org_axis/migration.sql, prisma/migrations/20261205000000_hr_time_leave_model/migration.sql · ไฟล์เลน A ถูกแตะ: lib/outbox-consumers.ts, account/coa.ts, account/connections.ts, account/gl.ts, account/guard.ts, account/inbox-ai.ts, account/index.ts, account/journal-v2.ts, account/public-doc-pdf.tsx, account/public-doc.ts, account/rate-limit.ts, account/service.ts, member/assistant-actions.ts, member/reviews.ts
+  ✅ [P2.12-ST2] [§2 §4 มติ 2 9] reports.ts อ่านอย่างเดียว · ทุกคิวรี posSale กรอง unitId + createdAt (ตัวจับ p1.17 ST5) · คิวรี AuditLog/PosOrder/PosHeldCar
+  ✅ [P2.12-ST3] [ตารางชื่อ] REPORT_KINDS + CSV_HEADERS มี branches hourly anomalies · export reportBranches reportHourly reportAnomalies + ANOMALY_PERMISSIO
+🔴 หยุด! qc-pos-p2.12: จะเขียนแถวได้เฉพาะ QC4 (ep-frosty-lab) — DATABASE_URL, DIRECT_URL ไม่ใช่ (ยังไม่ได้เขียนอะไร)

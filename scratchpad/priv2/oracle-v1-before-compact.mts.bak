@@ -1,0 +1,699 @@
+// QC — HR PRIV-2 "one pay scope: borrowing never widens pay" · brief ledger/hr-briefs/hr-brief-PRIV-2.md · notes ledger/wo-notes/hr-PRIV-2-oracle.md
+// ⚠️ Oracle under change control — builder: ask for an ORACLE-EDIT (check id · exact hunk · reason), never edit.
+// Pay scope = HOME branch in the viewer's branches (payslip H3.8 Q2 = labour H4.2 R1); borrowings never count.
+// Fixture (tenant qc-hr-priv2-*): U1/U2/U3 · a1 a2 aLeft (home U1) · bNow (borrowed into U1 AFTER the period) bSpan (spans it) bEnded (ended inside it)
+//   bLeft (leaver, open borrowing) · c1 (U2) c2 (U3) cNo · PAID v1 run of PERIOD + DRAFT run · adjustments · OT · stock charges · roster/punch/leave.
+// Viewers: OWNER · payAll · payU1s (STAFF [U1] + hr.payroll.read) · payU1m (MANAGER [U1] + all pay keys) · hrAdmin · mgrU1 (no pay) · emp (= a1) · REST keys · AI.
+// SKIP while scope.ts has no "HR PRIV-2" marker (QC_FORCE=1 runs) · --list · statics base = QC_PRIV2_BASE or merge-base(HEAD, session/hr) (R9)
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 QC_H06_BASE=d350c26cb95cec22c9b0bcb6e897f79a18a7b0f7 pnpm exec tsx scripts/qc-hr-priv-2.mts
+import { existsSync, readdirSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { join } from "node:path";
+import { type Any, type Def, ROOT, rd, short, errText, canon, sha, commitInBase, changedVsBase, diffHunks, makeRegistry, qc4Env, makeFixtures, cleanupFx, residueOf, tagOf, addDay, dbDate, PAYROLL_RULES_FILE, PAYROLL_RULES_SHA, srcFiles } from "./qc-hr-lib.mjs";
+import { installNetGuard, NET, sweepTenants, sweepResidue } from "./qc-hr-h4.3-lib.mjs";
+import { v1Item } from "./qc-hr-h3.8-lib.mjs";
+import { unzipText, propsText, textOfAny, digest, stableText, BAD_SAMPLES, BAD_RE, GOOD_NAMES, formulaCell, changedFiles, unmarkedHunks, code, bodyOf, fileAt } from "./qc-hr-priv-2-lib.mjs";
+
+const SUITE = "qc-hr-priv-2";
+const ARGV = process.argv.slice(2);
+const FORCE = process.env.QC_FORCE === "1" || ARGV.includes("--force-run");
+const SLUG_PREFIX = "qc-hr-priv2-";
+const TICKET_BASE = "60659e7c0c93e858a6e4a38abd9463c9c5eeedef";
+const git = (a: string[]) => { try { return execFileSync("git", a, { cwd: ROOT, encoding: "utf8" }).trim(); } catch { return ""; } };
+/** R9: base = env, else merge-base(HEAD, session/hr) (absorbs later session/hr merges such as HR-MONEY-2), else the ticket base */
+const BASE = process.env.QC_PRIV2_BASE || git(["merge-base", "HEAD", "session/hr"]) || TICKET_BASE;
+const H = "src/lib/modules/hr/";
+const F = {
+  scope: `${H}scope.ts`, priv: `${H}privacy.ts`, slip: `${H}payslip.ts`, labor: `${H}labor.ts`, rep: `${H}reports.ts`, repRules: `${H}reports-rules.ts`, payroll: `${H}payroll.ts`, payUi: `${H}payroll-ui.tsx`,
+  runUi: `${H}payroll-run-ui.tsx`, ap: `${H}attendance-pay.ts`, acts: `${H}payroll-actions.ts`, bank: `${H}bank-files/service.ts`, fil: `${H}filings/service.ts`, ot: `${H}ot.ts`, stock: `${H}stock-charge.ts`,
+  booking: "src/lib/modules/booking/service.ts", h43lib: "scripts/qc-hr-h4.3-lib.mts",
+};
+const PAY_SCOPE_EXCLUDED_TEXT = "ไม่รวมพนักงานที่คุณไม่มีสิทธิ์ดูค่าจ้าง {n} คน";
+const T_RUN_ALL = "รอบจ่ายเงินเดือนครอบคลุมทุกสาขา — ต้องเป็นผู้ดูแลทุกสาขาจึงทำรายการได้";
+/** S5: files the builder may change — only via hunks marked "HR PRIV-2 ▸ … ◂" (R6: ot.ts + stock-charge.ts · R10: booking/service.ts) */
+const MARKED = [F.scope, F.priv, `${H}privacy-shared.ts`, F.slip, F.labor, F.rep, F.repRules, F.payroll, F.payUi, F.runUi, `${H}service.ts`, `${H}actions.ts`, F.ap, `${H}reports-ui.tsx`, `${H}inbox.ts`, F.ot, F.stock, F.booking];
+const HR_ALL = srcFiles("src/lib/modules/hr");
+const FROZEN = [
+  "prisma", "package.json", "src/lib/core", "src/lib/ai", `${H}api`, `${H}filings`, `${H}bank-files`, "scripts/qc-hr-lib.mts", "scripts/qc-hr-h3.8-lib.mts",
+  ...HR_ALL.filter((f) => !MARKED.includes(f) && /\/(payroll-rules|payroll-run-rules|payroll-rules-v2|payslip-rules|labor-rules|roster[^/]*|judge[^/]*|leave[^/]*|ot-[^/]*|inbox-[^/]*|swap[^/]*|correction[^/]*|lifecycle[^/]*|self[^/]*|clock[^/]*|pin|work-entries[^/]*|settings[^/]*|law[^/]*|ai[^/]*|payroll-opening[^/]*|stock-charge-[^/]*|line-[^/]*)\.tsx?$/.test(f)),
+];
+/** S4: older oracles may differ from BASE only in files carrying an ORACLE-EDIT naming PRIV-2; h4.3-lib (R9) in hunks that each carry `ORACLE-EDIT (HR-PRIV-2` */
+const OLD_ORACLES = readdirSync(join(ROOT, "scripts")).filter((n) => /^qc-.*\.mts$/.test(n) && !/^qc-hr-priv-2/.test(n) && n !== "qc-hr-lib.mts" && n !== "qc-hr-h3.8-lib.mts").map((n) => `scripts/${n}`);
+
+const D = (id: string, g: string, sev: "CRITICAL" | "MAJOR" | "MINOR", base: "RED" | "GREEN", t: string): Def => [id, g, sev, base, t];
+const CHECKS: Def[] = [
+  D("S1", "R1", "CRITICAL", "RED", "[static] scope.ts exports pure inPayScope + payScopeWhere (no borrowing term) + PAY_SCOPE_EXCLUDED_TEXT · marked"),
+  D("S2", "R1", "CRITICAL", "RED", "[static] ONE helper: privacy · payslip homeInScope · labor sees · previewPayrollRunV2 · attendance-pay covers · reports · run/page notes · ot money + stock rows (R6)"),
+  D("S3", "R4", "CRITICAL", "GREEN", "[static] [control] 11 run actions call assertRunAllBranches · bank/filing/cert gates all-branch"),
+  D("S4", "§files R9", "MAJOR", "GREEN", "[static] [control] frozen files unchanged vs base · older oracles only via ORACLE-EDIT …PRIV-2 · h4.3-lib only via hunks marked ORACLE-EDIT (HR-PRIV-2 · payroll-rules sha"),
+  D("S5", "§files", "MAJOR", "GREEN", "[static] changed src files ⊆ allowed list (or new hr file headed HR PRIV-2) · every hunk marked HR PRIV-2 ▸ … ◂ · no other marker removed"),
+  D("S6", "§base", "MAJOR", "GREEN", "[static] [control] ticket base is an ancestor of HEAD · oracle + lib + brief present"),
+  D("S7", "R5", "MAJOR", "RED", "[static] no {names} in export refusals · export cells reuse @/lib/core/csv (neutralizeFormula/csvCell)"),
+  D("P1", "R1", "CRITICAL", "RED", "[pure] inPayScope truth table (OWNER/*/[] all incl. null · [U1]: U1 only) · payScopeWhere shapes"),
+  D("A1", "R1a", "CRITICAL", "RED", "[db] F1: payU1s/payU1m profile of bNow/bSpan/bLeft has no sensitive key/sentinel/doc · canSeeSensitive false"),
+  D("A2", "R1a", "CRITICAL", "RED", "[db] borrowed employee's profile for payU1m = mgrU1's DTO byte for byte"),
+  D("A3", "R1a", "CRITICAL", "GREEN", "[db] [control] payU1s sees a1/a2/aLeft sensitive · OWNER + payAll see bNow's"),
+  D("A4", "R1a", "MAJOR", "RED", "[db] loadPayslipForViewer(payU1s): bNow/bSpan null · a1 slip without any whole-run total (ruling 4)"),
+  D("A5", "R1a", "MAJOR", "GREEN", "[db] [control] refusal parity: c2 / cNo / unknown id = null (profile + slip)"),
+  D("A7", "R8", "MAJOR", "RED", "[db] employee's OWN slip (emp = a1): item gross/net/each figure = DB row · run object has no total* key"),
+  D("B1", "R1b", "CRITICAL", "RED", "[db] F2: 6 money reports (PERIOD) for payU1s/payU1m: rows ⊆ {a1,a2,aLeft}"),
+  D("B2", "R1b", "CRITICAL", "RED", "[db] F2: same reports CSV + XLSX: no borrowed name / id / amount / rate"),
+  D("B3", "R1b", "MAJOR", "RED", "[db] OT report payU1m: bSpan row kept with mgrU1's non-money cells · money cells empty · Σ in-scope · excludedHeadcount 1 + note · exports without its amount"),
+  D("B4", "R1b", "CRITICAL", "GREEN", "[db] [control] OWNER/payAll reports include borrowed rows · payU1s has aLeft, not bEnded"),
+  D("B5", "R1b", "MAJOR", "GREEN", "[db] [control] payU1s money totals = Σ rows · opening/cert/filing/bank previews refuse limited viewers, show bNow to payAll"),
+  D("C1", "R1c", "CRITICAL", "RED", "[page] F3: PayrollSection for payU1m (HTML + props): no out-of-scope name / salary / item / adjustment amount"),
+  D("C2", "R1c", "CRITICAL", "RED", "[page] F3: no whole-run total/headcount · PAID shows Σ in-scope net · note with N per run"),
+  D("C3", "R1c", "MAJOR", "GREEN", "[page] [control] OWNER page: whole-run totals, every name, no note"),
+  D("C4", "R1c", "MAJOR", "RED", "[db] previewPayrollRunV2(payU1m): rows ⊆ scope · totals = Σ · excludedHeadcount 7/6 · OWNER 0 + whole totals"),
+  D("C5", "R1c", "MAJOR", "RED", "[db] inbox payU1s/payU1m: no adjustment item of an out-of-scope employee (as mgrU1: none) · a1's listed"),
+  D("N1", "R6 N1", "MAJOR", "RED", "[db] otRequestList(payU1m): borrowed bNow/bSpan items kept, = mgrU1's item (minutes, no amountSatang/segments)"),
+  D("N2", "R6 N2", "MAJOR", "RED", "[db] listStockCharges(payU1m) has no bSpan row · stockPeriodCapFlags(payU1m, [bSpan item]) excludes it"),
+  D("N3", "R6", "MAJOR", "RED", "[R2] doubling ONLY the hidden employees' salary changes nothing payU1m gets from otRequestList / listStockCharges / stockPeriodCapFlags"),
+  D("N4", "R6", "MAJOR", "GREEN", "[db] [control] OWNER: bNow OT amount · bSpan stock amount, overCap true, cap flag · payU1m: a1 OT amount + a1 stock amount"),
+  D("D0", "R2", "MAJOR", "GREEN", "[R2] [control] every covered payload digests identically twice before the change"),
+  D("D1", "R2", "CRITICAL", "RED", "[R2] doubling out-of-scope pay changes no byte of payU1s/payU1m reports (9 × page/CSV/XLSX)"),
+  D("D2", "R2", "CRITICAL", "RED", "[R2] … nor profile / loadPayslipForViewer / slipForViewer / slipHistory"),
+  D("D3", "R2", "CRITICAL", "RED", "[R2] … nor the payroll page (HTML + props) for payU1m"),
+  D("D4", "R2", "MAJOR", "RED", "[R2] … nor preview v2 · labour · ap/we previews · opening · certs · filings · bank · inbox · stock · team leave · otRequestList"),
+  D("D5", "R2", "MAJOR", "GREEN", "[R2] [regression] … nor AI T1–T4 (limited viewers) · REST hr-read · hrAdmin/mgrU1/emp profiles + time report"),
+  D("D6", "R2", "MAJOR", "GREEN", "[R2] [positive control] OWNER CSV/page/preview + REST pay key DO change"),
+  D("E1", "R3", "CRITICAL", "GREEN", "[db] [regression] payU1m + mgrU1 still see bNow on roster/board/attendance/time report · profile opens"),
+  D("E2", "R3", "MAJOR", "GREEN", "[db] [regression] payU1m: leaveDetail · decideLeaveAs + decideOtRequest REJECTED on bNow ok, no money"),
+  D("G1", "R4", "CRITICAL", "GREEN", "[action] [control] payU1m: 11 run actions ⇒ fixed all-branch text · nothing written"),
+  D("W1", "R5", "MAJOR", "RED", "[db] create/update/saveEmployeeProfile refuse each of 18 bad characters · nothing stored"),
+  D("W2", "R5", "MAJOR", "RED", "[db] those refusals: fixed text, no bad char, no echo of the name"),
+  D("W3", "R5", "MINOR", "GREEN", "[db] [control] Thai marks / apostrophe / hyphen / emoji / digits accepted"),
+  D("W4", "R5", "MAJOR", "RED", "[db] F4: stored bidi/BEL/formula names ⇒ OWNER exports of 9 reports (CSV + XLSX) succeed"),
+  D("W5", "R5", "MAJOR", "RED", "[db] those exports: no bad char · no formula text cell · no <f>"),
+  D("W6", "R10", "MAJOR", "RED", "[db] booking createStaff + linkStaffToHr with bad-character names: refused or the HrEmployee name stored clean"),
+  D("Z1", "-", "CRITICAL", "GREEN", "residue none · no outbound request"),
+];
+const R = makeRegistry(SUITE, "", CHECKS);
+if (ARGV.includes("--list")) { R.printList(); process.exit(0); }
+const { chk } = R;
+const all = (r: Record<string, unknown>) => Object.values(r).every(Boolean);
+const fails = (r: Record<string, unknown>) => Object.entries(r).filter(([, v]) => !v).map(([k]) => k).join(",") || "all";
+
+// ═════════════ statics ═════════════
+const scopeSrc = code(F.scope);
+const built = rd(F.scope).includes("HR PRIV-2");
+if (!built && !FORCE) R.skipExit([`${F.scope} has no HR PRIV-2 marker`]);
+{
+  const ex = (n: string) => new RegExp(`export\\s+(?:function|const)\\s+${n}\\b`).test(scopeSrc);
+  const where = bodyOf(scopeSrc, "payScopeWhere");
+  const text = /export\s+const\s+PAY_SCOPE_EXCLUDED_TEXT\s*=\s*"([^"]*)"/.exec(scopeSrc)?.[1] ?? "∅";
+  const r = { inPayScope: ex("inPayScope"), payScopeWhere: ex("payScopeWhere"), noBorrow: !!where && !/\bunits\b|borrow/i.test(where), text: text === PAY_SCOPE_EXCLUDED_TEXT, marked: built };
+  chk("S1", all(r), "exported · no borrowing · text · marked", fails(r));
+}
+{
+  const uses = (s: string) => /\b(inPayScope|payScopeWhere|payScopeEmployeeIds)\b/.test(s);
+  const priv = code(F.priv), lab = code(F.labor), ot = code(F.ot), st = code(F.stock);
+  const home = bodyOf(code(F.slip), "homeInScope"), cov = bodyOf(code(F.ap), "covers"), prev = bodyOf(code(F.payroll), "previewPayrollRunV2"), lps = bodyOf(priv, "loadPayslipForViewer");
+  const r = {
+    privProfile: uses(bodyOf(priv, "loadEmployeeProfileForViewer")), privSlip: uses(lps) && !/employeeInScope/.test(lps), slipHome: !home || uses(home),
+    laborSees: uses(lab.split("\n").find((l) => /\bsees\s*=/.test(l)) ?? ""), preview: uses(prev) && !/unitsOfViewer\(/.test(prev), apCovers: !cov || uses(cov), reports: uses(code(F.rep)),
+    uiNote: /PAY_SCOPE_EXCLUDED_TEXT/.test(code(F.payUi)) && /PAY_SCOPE_EXCLUDED_TEXT/.test(code(F.runUi)),
+    otMoney: uses(bodyOf(ot, "otRequestList") + bodyOf(ot, "toItems")), stockRows: uses(bodyOf(st, "listStockCharges")) && uses(bodyOf(st, "stockPeriodCapFlags")),
+    oneDef: HR_ALL.filter((f) => f !== F.scope && /(?:function|const)\s+(inPayScope|payScopeWhere)\b/.test(code(f))).length === 0,
+  };
+  chk("S2", all(r), "every pay path on the one helper", fails(r));
+}
+{
+  const acts = code(F.acts);
+  const miss = ["createPayrollRunAction", "approvePayrollRunAction", "reverseRunAction", "markPaidAction", "deleteDraftRunAction", "recomputeDraftRunAction", "createPayrollRunV2Action", "recomputeRunV2Action", "approveRunV2Action", "payRunV2Action", "reverseRunV2Action"].filter((n) => !/assertRunAllBranches\(auth\)/.test(bodyOf(acts, n)));
+  const docs = /isAllBranches\(/.test(bodyOf(code(F.bank), "bankGateOf")) && /bankGateOf\(m\)/.test(bodyOf(code(F.fil), "gate")) && /bankGateOf\(/.test(bodyOf(code(F.slip), "certGate"));
+  chk("S3", !miss.length && docs, "11 guarded · docs all-branch", `missing=${miss.join(",") || "none"} docs=${docs}`);
+}
+{
+  const ch = changedVsBase(BASE, FROZEN);
+  const oc = changedVsBase(BASE, OLD_ORACLES);
+  const oBad = oc.startsWith("changed: ") ? oc.slice(9).split(",").filter((f) => {
+    const hs = diffHunks(BASE, f) ?? [];
+    if (f === F.h43lib) return hs.some((h) => !h.added.some((l) => l.includes("ORACLE-EDIT (HR-PRIV-2")));
+    return !hs.some((h) => h.added.some((l) => /ORACLE-EDIT[^\n]*PRIV-2/.test(l)));
+  }) : oc === "unchanged" ? [] : [oc];
+  const r = { frozen: ch === "unchanged", oracles: !oBad.length, sha: sha(rd(PAYROLL_RULES_FILE)) === PAYROLL_RULES_SHA };
+  chk("S4", all(r), "frozen · oracles marked · sha", `${fails(r)} ${ch.slice(0, 120)} ${oBad.join(",")}`);
+}
+{
+  const changed = changedFiles(BASE).filter((f) => f.startsWith("src/"));
+  const ok = (f: string) => MARKED.includes(f) || /^src\/messages\/(th|en)\/common\.json$/.test(f) || (f.startsWith(H) && fileAt(BASE, f) === null && /HR PRIV-2/.test(rd(f).split("\n").slice(0, 3).join("\n")));
+  const outside = changed.filter((f) => !ok(f)), bad = unmarkedHunks(BASE, changed.filter((f) => MARKED.includes(f)));
+  chk("S5", !outside.length && !bad.length, "allowed · marked", `outside=${outside.join(",") || "none"} hunks=${bad.join(",") || "ok"}`);
+}
+{
+  const r = { inBase: commitInBase(TICKET_BASE, "HEAD"), files: ["scripts/qc-hr-priv-2.mts", "scripts/qc-hr-priv-2-lib.mts", "ledger/hr-briefs/hr-brief-PRIV-2.md"].every((p) => existsSync(join(ROOT, p))) };
+  chk("S6", all(r), "ancestor · files", `${fails(r)} base=${BASE.slice(0, 9)}`);
+}
+{
+  const rep = code(F.rep), rr = code(F.repRules);
+  const r = { noReplace: !/\{names\}/.test(rep), texts: !/\{names\}/.test(rd(F.repRules)), reuse: /from\s+["']@\/lib\/core\/csv["']/.test(rep + rr) && /\b(neutralizeFormula|csvCell|csvRow)\b/.test(rep + rr) };
+  chk("S7", all(r), "no {names} · core/csv", fails(r));
+}
+
+// ═════════════ DB ═════════════
+const { AsyncLocalStorage } = await import("node:async_hooks");
+(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage; // before any next/* module (technique of qc-hr-h1.1)
+installNetGuard();
+const { P, coreHash } = await qc4Env(SUITE);
+const M: Record<string, Any> = {};
+const MODS = { scope: "hr/scope", priv: "hr/privacy", svc: "hr/service", payroll: "hr/payroll", slip: "hr/payslip", rep: "hr/reports", RR: "hr/reports-rules", labor: "hr/labor", ap: "hr/attendance-pay", we: "hr/work-entries", open: "hr/payroll-opening", bank: "hr/bank-files/service", fil: "hr/filings/service", inbox: "hr/inbox", stock: "hr/stock-charge", leave: "hr/leave", roster: "hr/roster", board: "hr/roster-board", judge: "hr/judge", ot: "hr/ot", ui: "hr/payroll-ui", acts: "hr/payroll-actions", booking: "booking/service", sys: "system/service" };
+for (const [k, s] of Object.entries({ ...Object.fromEntries(Object.entries(MODS).map(([k, v]) => [k, `@/lib/modules/${v}`])), tools: "@/lib/ai/tools", actor: "@/lib/ai/actor", AK: "@/lib/api-keys/service", RT: "@/app/api/v1/hr/[...path]/route", money: "@/lib/ui/money" }))
+  M[k] = (await import(s).catch((e: unknown) => ({ __err: errText(e) }))) as Any;
+const badImp = Object.entries(M).filter(([, m]) => m?.__err).map(([k, m]) => `${k}:${m.__err}`);
+if (badImp.length) console.log(`import problems: ${badImp.join(" | ")}`);
+const REAL = { log: console.log, info: console.info, warn: console.warn, error: console.error };
+const mute = () => Object.assign(console, { log: () => {}, info: () => {}, warn: () => {}, error: () => {} });
+const unmute = () => Object.assign(console, REAL);
+async function call(m: Any, fn: string, ...a: unknown[]): Promise<Any> {
+  if (typeof m?.[fn] !== "function") return { __missing: fn };
+  mute();
+  try { return await m[fn](...a); } catch (e) { return { __throw: errText(e) }; } finally { unmute(); }
+}
+const okR = (r: Any) => !!r && typeof r === "object" && !("__missing" in r) && !("__throw" in r) && r.ok !== false;
+const NW = (await import("next/dist/server/app-render/work-async-storage.external.js" as string).catch(() => null)) as Any;
+const NU = (await import("next/dist/server/app-render/work-unit-async-storage.external.js" as string).catch(() => null)) as Any;
+const NC = (await import("next/dist/server/web/spec-extension/cookies.js" as string).catch(() => null)) as Any;
+async function inScope<T>(cookie: string, pathname: string, fn: () => Promise<T>): Promise<T> {
+  if (!NW?.workAsyncStorage || !NU?.workUnitAsyncStorage || !NC?.RequestCookies) throw new Error("no Next request scope");
+  const req = new Request(`http://qc.local${pathname}`, { headers: { cookie, "user-agent": SUITE, "x-forwarded-for": "203.0.113.142" } });
+  const jar = new NC.RequestCookies(req.headers);
+  const ws = { route: pathname, page: `${pathname}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [] };
+  const unit = { type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname, search: "" } };
+  return NW.workAsyncStorage.run(ws, () => NU.workUnitAsyncStorage.run(unit, fn));
+}
+async function renderHtml(node: Any): Promise<string> {
+  try { return String(((await import("react-dom/server" as string)) as Any).renderToStaticMarkup(node)); } catch {
+    const { prelude } = await ((await import("react-dom/static" as string)) as Any).prerenderToNodeStream(node);
+    let h = "";
+    for await (const c of prelude) h += String(c);
+    return h;
+  }
+}
+const fd = (o: Record<string, string>) => { const f = new FormData(); for (const [k, v] of Object.entries(o)) f.set(k, v); return f; };
+
+// ═════════════ fixture ═════════════
+const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
+const SLUG = `${SLUG_PREFIX}${Date.now()}${tag}`;
+const fx = makeFixtures(P, coreHash, SLUG);
+const D0 = new Date(Date.now() + 7 * 3_600_000).toISOString().slice(0, 10);
+const DM1 = addDay(D0, -1);
+const MONTH = D0.slice(0, 7);
+const PERIOD = addDay(D0, -34).slice(0, 7); // closed month ending ≥ 4 days before today ⇒ a borrowing from D0-3 starts AFTER it
+const PY = Number(PERIOD.slice(0, 4));
+const FIXED_NOW = new Date(`${D0}T05:00:00Z`);
+const bkk = (day: string, min: number) => new Date(Date.parse(`${day}T00:00:00+07:00`) + min * 60_000);
+const nidOf = (k: number) => { const b = `1${String(1_000_000_00000 + k * 7919 + (Date.now() % 997) * 13).slice(-11)}`; let s = 0; for (let i = 0; i < 12; i++) s += Number(b[i]) * (13 - i); return b + String((11 - (s % 11)) % 10); };
+type Emp = { key: string; id: string; home: string | null; k: number; name: string; nid: string; z: string; base: number; rate: number; gross: number; net: number; pay: "MONTHLY" | "HOURLY" };
+const IN_KEYS = ["a1", "a2", "aLeft"];
+const BORROWED = ["bNow", "bSpan", "bLeft"];
+const OUT_KEYS = ["bNow", "bSpan", "bEnded", "bLeft", "c1", "c2", "cNo"];
+const AMT = { bonusB: 654_321, bonusA: 123_457, otSpan: 333_331, otA1old: 111_119, otB: 444_443, otA1: 222_227, stockSpan: 400_000, dedSpan: 300_000, stockA1: 50_000, otSpan2: 555_557 };
+
+async function retotal(runId: string): Promise<void> {
+  const its = (await P.hrPayrollItem.findMany({ where: { runId } })) as Any[];
+  const s = (k: string) => its.reduce((x, i) => x + Number(i[k] ?? 0), 0);
+  await P.hrPayrollRun.update({ where: { id: runId }, data: { totalGrossSatang: s("grossSatang"), totalSsoEmployeeSatang: s("ssoEmployeeSatang"), totalSsoEmployerSatang: s("ssoEmployerSatang"), totalWhtSatang: s("whtSatang"), totalNetSatang: s("netSatang"), totalAddSatang: s("addSatang"), totalDeductSatang: s("deductSatang") } });
+}
+async function buildFixture() {
+  const TA = await fx.newTenant("", "QC PRIV2 shop");
+  const [U1, U2, U3] = [await fx.newUnit(TA, `QCP2 สาขาหนึ่ง ${tag}`, "u1"), await fx.newUnit(TA, `QCP2 สาขาสอง ${tag}`, "u2"), await fx.newUnit(TA, `QCP2 สาขาสาม ${tag}`, "u3")];
+  const HRS = (await M.sys.createSystem(TA, "HR", `HR ${tag}`)).id as string;
+  for (const u of [U1, U2, U3]) await M.sys.linkUnit(TA, HRS, u).catch(() => undefined);
+  const sc = { tenantId: TA, systemId: HRS };
+  const PAY = { "hr.payroll.read": true, "hr.payroll.create": true, "hr.payroll.approve": true, "hr.payroll.pay": true, "hr.payroll.reverse": true };
+  const mk = (t: string, r: "OWNER" | "MANAGER" | "STAFF", ua: string[], p: Record<string, boolean>) => fx.mkUser(TA, t, `QCP2 ${t} ${tag}`, r, ua, p);
+  const W = {
+    owner: await mk("owner", "OWNER", [], {}), payAll: await mk("payall", "STAFF", ["*"], PAY), payU1s: await mk("payu1s", "STAFF", [U1], { "hr.payroll.read": true }),
+    payU1m: await mk("payu1m", "MANAGER", [U1], { ...PAY, "hr.leave.read": true, "hr.leave.decide": true, "hr.payadjust.approve": true }),
+    hrAdmin: await mk("hradmin", "STAFF", ["*"], { "hr.employee.create": true }), mgrU1: await mk("mgru1", "MANAGER", [U1], {}), emp: await mk("emp", "STAFF", [], {}),
+  };
+  const defs: [string, string | null, "MONTHLY" | "HOURLY", Record<string, Any>][] = [
+    ["a1", U1, "MONTHLY", { linkedUserId: W.emp.id }], ["a2", U1, "HOURLY", {}], ["aLeft", U1, "MONTHLY", { status: "ENDED", active: false, endDate: DM1 }],
+    ["bNow", U2, "HOURLY", {}], ["bSpan", U2, "MONTHLY", {}], ["bEnded", U2, "MONTHLY", {}], ["bLeft", U2, "MONTHLY", { status: "ENDED", active: false, endDate: DM1 }],
+    ["c1", U2, "MONTHLY", {}], ["c2", U3, "HOURLY", {}], ["cNo", null, "MONTHLY", {}],
+  ];
+  const E: Record<string, Emp> = {};
+  let k = 0;
+  for (const [key, home, pay, o] of defs) {
+    k++;
+    const name = `QCP2 ${key} ${tag}`, z = `z${tag}${key}`, nid = nidOf(k);
+    const id = await fx.mkEmp(TA, HRS, name, { code: `P${k}`, startDate: "2025-01-01", position: "บาริสต้า", unitId: home, ...o });
+    await P.hrEmployee.update({ where: { id }, data: { nationalId: nid, ssoNumber: `${z}SSO`, houseRegAddress: `${z}HOUSE`, bankName: "KBank", bankAccountNo: `${7700000000 + k * 1013}`, bankAccountName: `${z}BANKNAME`, phone: `${z}PHONE`, birthDate: new Date(`198${k % 10}-0${(k % 9) + 1}-1${k % 9}T00:00:00Z`) } });
+    await P.hrEmployeeDoc.create({ data: { ...sc, employeeId: id, kind: "ID_CARD", title: "บัตร", url: `https://files.invalid/${z}DOC` } });
+    const base = 3_000_000 + k * 13_337 + 17, rate = 17_000 + k * 113 + 7;
+    await P.hrSalaryProfile.create({ data: { ...sc, employeeId: id, payType: pay, baseSalarySatang: pay === "MONTHLY" ? base : 0, hourlyRateSatang: pay === "HOURLY" ? rate : null, ssoEligible: true } });
+    const gross = 4_000_000 + k * 21_211 + 919;
+    E[key] = { key, id, home, k, name, nid, z, base, rate, gross, net: gross - 75_000 - (10_000 + k * 7), pay };
+  }
+  const borrow = (e: string, from: string, to: string | null) => P.hrEmployeeUnit.create({ data: { ...sc, employeeId: E[e]!.id, unitId: U1, fromDate: dbDate(from), toDate: to ? dbDate(to) : null } });
+  await borrow("bNow", addDay(D0, -3), null);
+  await borrow("bSpan", addDay(`${PERIOD}-01`, -40), null);
+  await borrow("bEnded", `${PERIOD}-05`, `${PERIOD}-20`);
+  await borrow("bLeft", `${PERIOD}-01`, null);
+  const SH1 = (await P.hrShift.create({ data: { ...sc, unitId: U1, name: `เช้า1 ${tag}`, startMin: 480, endMin: 1020, breakMin: 60 } })).id;
+  for (const day of [D0, DM1]) for (const e of ["a1", "bNow"]) await P.hrRosterEntry.create({ data: { ...sc, employeeId: E[e]!.id, date: dbDate(day), shiftId: SH1, unitId: U1, startMin: 480, endMin: 1020, breakMin: 60, crossesMidnight: false, published: true, publishedAt: new Date() } });
+  for (const e of ["a1", "bNow"]) for (const [kind, min] of [["IN", 485], ["OUT", 1022]] as const) await P.hrAttendance.create({ data: { ...sc, employeeId: E[e]!.id, kind, at: bkk(DM1, min), source: "MOBILE" } });
+  for (const e of ["a1", "bNow"]) await P.hrAttendanceDay.create({ data: { ...sc, employeeId: E[e]!.id, date: dbDate(DM1), slotKey: `qc-${e}`, unitId: U1, startMin: 480, endMin: 1020, status: "ON_TIME", workedMin: 480, judgedAt: new Date() } });
+  const pol = (await P.hrLeavePolicy.create({ data: { ...sc, category: "PERSONAL", name: `กิจ ${tag}`, quotaDays: 30, allowHalfDay: false, allowHours: false } })).id;
+  const leaveB = (await P.hrLeave.create({ data: { ...sc, employeeId: E.bNow!.id, policyId: pol, type: "PERSONAL", fromDate: dbDate(addDay(D0, 20)), toDate: dbDate(addDay(D0, 20)), status: "PENDING", reason: "ธุระ", days: 1 } })).id as string;
+  const ot = (e: string, day: string, status: string, amt: number | null) => P.hrOtRequest.create({ data: { ...sc, employeeId: E[e]!.id, date: dbDate(day), startAt: bkk(day, 1022), endAt: bkk(day, 1082), minutes: 60, timing: "AFTER", reason: "ปิดร้าน", status, ...(amt ? { amountSatang: amt, settledAt: bkk(day, 1200) } : {}) } }).then((r: Any) => r.id as string);
+  const otB = await ot("bNow", DM1, "PENDING", null);
+  await ot("a1", `${PERIOD}-12`, "APPROVED", AMT.otA1old);
+  await ot("bSpan", `${PERIOD}-12`, "APPROVED", AMT.otSpan);
+  const otBNow = await ot("bNow", addDay(D0, -2), "APPROVED", AMT.otB); // R6 N1: borrowed day, settled with money
+  await ot("a1", addDay(D0, -2), "APPROVED", AMT.otA1);
+  await ot("bSpan", addDay(D0, -2), "APPROVED", AMT.otSpan2);
+  const mkRun = async (periodKey: string, status: string, keys: string[]) => {
+    const run = await P.hrPayrollRun.create({ data: { ...sc, periodKey, payDate: new Date(`${periodKey}-28T12:00:00+07:00`), status, engineVersion: 1, totalGrossSatang: 0, totalSsoEmployeeSatang: 0, totalSsoEmployerSatang: 0, totalWhtSatang: 0, totalNetSatang: 0, totalAddSatang: 0 } });
+    for (const key of keys) { const e = E[key]!; await P.hrPayrollItem.create({ data: { ...sc, runId: run.id, employeeId: e.id, ...v1Item(e.gross, [], { add: 0, deduct: 0, gross: e.gross, ssoBase: 1_500_000, ee: 75_000, wht: 10_000 + e.k * 7 }) } }); }
+    await retotal(run.id);
+    return run.id as string;
+  };
+  const runPaid = await mkRun(PERIOD, "PAID", Object.keys(E));
+  const runDraft = await mkRun(MONTH, "DRAFT", Object.keys(E).filter((x) => x !== "aLeft" && x !== "bLeft"));
+  const adj = (e: string, kind: string, amt: number) => P.hrPayAdjustment.create({ data: { ...sc, employeeId: E[e]!.id, periodKey: MONTH, kind, amountSatang: amt, status: "PENDING", note: "QC" } }).then((r: Any) => r.id as string);
+  await adj("a1", "BONUS", AMT.bonusA);
+  await adj("bNow", "BONUS", AMT.bonusB);
+  // R6 N2: stock charges (bSpan borrowed MONTHLY: overCap + cap flag reveal its salary · a1 control)
+  await adj("bSpan", "DEDUCTION", AMT.dedSpan);
+  const stock = async (e: string, amt: number) => P.hrStockCharge.create({ data: { ...sc, employeeId: E[e]!.id, kind: "DAMAGE", requestKey: `qc-${e}-${tag}`, adjustmentId: await adj(e, "DEDUCTION", amt), description: "แก้วแตก", amountSatang: amt, consentRef: `C-${e}`, consentAt: dbDate(DM1), consentRecordedById: W.owner.id, requestedById: W.owner.id } }).then((r: Any) => r.id as string);
+  const stockSpan = await stock("bSpan", AMT.stockSpan);
+  await stock("a1", AMT.stockA1);
+  return { TA, U1, HRS, ctx: sc, W, E, runPaid, runDraft, leaveB, otB, otBNow, stockSpan };
+}
+
+// ═════════════ main ═════════════
+let crashed = "";
+const vOf = (w: Any) => ({ role: w.role, unitAccess: w.unitAccess, permissions: w.permissions, userId: w.id });
+try {
+  {
+    const S = M.scope;
+    let r: Record<string, boolean> = { has: typeof S?.inPayScope === "function" && typeof S?.payScopeWhere === "function" };
+    if (r.has) {
+      const sc = (role: string, ua: string[]) => S.hrScopeOf({ role, unitAccess: ua });
+      const u1 = sc("MANAGER", ["U1"]);
+      const w1 = canon(S.payScopeWhere(u1));
+      r = { ...r, all: [sc("OWNER", []), sc("STAFF", ["*"]), sc("STAFF", [])].every((s: Any) => ["U1", "U2", null].every((h) => S.inPayScope(s, h) === true)),
+        u1: S.inPayScope(u1, "U1") && [S.inPayScope(u1, "U2"), S.inPayScope(u1, "U3"), S.inPayScope(u1, null), S.inPayScope(u1, undefined)].every((x) => x === false),
+        where: !/"units"/.test(w1) && /U1/.test(w1) && canon(S.payScopeWhere(sc("OWNER", []))) === "{}" && /"in":\[\]/.test(canon(S.payScopeWhere({ unitIds: [] }))) };
+    }
+    chk("P1", all(r), "truth table · shapes", fails(r));
+  }
+  const X = await buildFixture();
+  const { ctx, W, E, U1, runPaid, runDraft } = X;
+  const keyOfId = new Map(Object.values(E).map((e) => [e.id, e.key]));
+  const LIM = { payU1s: vOf(W.payU1s), payU1m: vOf(W.payU1m) };
+  const money = (sat: number) => (typeof M.money?.formatBaht === "function" ? String(M.money.formatBaht(sat)) : `∅${sat}`);
+  const bahtForms = (sat: number) => [String(sat), (sat / 100).toFixed(2), (sat / 100).toLocaleString("en-US", { minimumFractionDigits: 2 })];
+  const sensOf = (e: Emp) => [e.nid, `${e.z}SSO`, `${e.z}HOUSE`, `${e.z}BANKNAME`, `${e.z}DOC`];
+  const payOf = (e: Emp) => [...bahtForms(e.gross), ...bahtForms(e.net), ...bahtForms(e.pay === "HOURLY" ? e.rate : e.base)].filter((s) => s.length >= 5);
+  const num = (v: unknown) => Number(String(v ?? "").replace(/[^\d.-]/g, "")) || 0;
+  console.log(`fixture ok: PERIOD=${PERIOD} MONTH=${MONTH}`);
+
+  // ── A: profile + slips ──
+  {
+    const prof = (v: Any, e: string) => call(M.priv, "loadEmployeeProfileForViewer", ctx, v, E[e]?.id ?? e);
+    const lps = (v: Any, e: string) => call(M.priv, "loadPayslipForViewer", ctx, v, runPaid, E[e]?.id ?? e);
+    const SENS = ["nationalId", "ssoNumber", "houseRegAddress", "bankName", "bankAccountNo", "bankAccountName", "payType"];
+    const a1: string[] = [], a2: string[] = [], c: string[] = [];
+    for (const [vn, v] of Object.entries(LIM)) for (const e of BORROWED) {
+      const r = await prof(v, e);
+      const keys = SENS.filter((k) => r?.profile && k in r.profile), sent = sensOf(E[e]!).filter((s) => textOfAny(r).includes(s));
+      if (!r?.profile || keys.length || sent.length || r.docs?.length || r.canSeeSensitive !== false) a1.push(`${vn}.${e}:${keys.join("/")}|${sent.length}|${r?.docs?.length}`);
+      if (vn === "payU1m" && canon(r) !== canon(await prof(vOf(W.mgrU1), e))) a2.push(e);
+    }
+    chk("A1", !a1.length, "no sensitive data", a1.slice(0, 6).join(" ") || "clean");
+    chk("A2", !a2.length, "= mgrU1 DTO", a2.join(",") || "same");
+    for (const e of IN_KEYS) { const t = textOfAny(await prof(LIM.payU1s, e)); if (!sensOf(E[e]!).every((s) => t.includes(s))) c.push(`payU1s.${e}`); }
+    for (const w of ["owner", "payAll"]) { const t = textOfAny(await prof(vOf((W as Any)[w]), "bNow")); if (!sensOf(E.bNow!).every((s) => t.includes(s))) c.push(`${w}.bNow`); }
+    chk("A3", !c.length, "visible where allowed", c.join(" ") || "ok");
+    const s = { bNow: await lps(LIM.payU1s, "bNow"), bSpan: await lps(LIM.payU1s, "bSpan"), a1: await lps(LIM.payU1s, "a1") };
+    const rt = await P.hrPayrollRun.findUnique({ where: { id: runPaid } });
+    const t1 = textOfAny(s.a1);
+    const whole = Object.entries({ gross: rt.totalGrossSatang, net: rt.totalNetSatang, sso: rt.totalSsoEmployeeSatang, wht: rt.totalWhtSatang }).filter(([, v]) => t1.includes(String(v))).map(([k]) => k);
+    chk("A4", s.bNow === null && s.bSpan === null && !!s.a1?.item && !whole.length, "null · null · slip w/o totals", `bNow=${s.bNow === null ? "null" : "SLIP"} bSpan=${s.bSpan === null ? "null" : "SLIP"} a1=${s.a1?.item ? "slip" : short(s.a1, 30)} whole=${whole.join("/") || "none"}`);
+    const unk = "c" + Math.random().toString(36).slice(2, 12) + "zz9q";
+    const par = [await prof(LIM.payU1s, "c2"), await prof(LIM.payU1s, "cNo"), await prof(LIM.payU1s, unk), await lps(LIM.payU1s, "c2"), await lps(LIM.payU1s, unk)];
+    chk("A5", par.every((x) => x === null), "5 × null", par.map((x) => (x === null ? "null" : short(x, 20))).join(","));
+    // A7 (R8): own slip
+    const own = await lps(vOf(W.emp), "a1");
+    const db = (await P.hrPayrollItem.findFirst({ where: { runId: runPaid, employeeId: E.a1!.id } })) as Any;
+    const FIG = ["grossSatang", "netSatang", "ssoBaseSatang", "ssoEmployeeSatang", "ssoEmployerSatang", "whtSatang", "addSatang", "deductSatang"];
+    const diff = FIG.filter((k) => k in (own?.item ?? {}) && own.item[k] !== db?.[k]);
+    const totals = Object.keys(own?.run ?? {}).filter((k) => /^total/i.test(k));
+    const r7 = { slip: !!own?.item, gross: own?.item?.grossSatang === db?.grossSatang, net: own?.item?.netSatang === db?.netSatang, figures: !diff.length, noTotals: !totals.length };
+    chk("A7", all(r7), "own figures = DB · no total*", `${fails(r7)} diff=${diff.join("/")} totals=${totals.join("/")}`);
+  }
+
+  // ── B: reports ──
+  const IDS: string[] = (M.RR.REPORT_IDS as string[]) ?? [];
+  const periodOf = (r: string) => { const k = M.RR.REPORT_CATALOG?.[r]?.period; return k === "year" ? String(PY) : k === "day" ? D0 : PERIOD; };
+  const MONEY6 = ["payroll-month", "payroll-year", "tax-month", "tax-year", "wages", "register"];
+  const rowsOf = (r: Any) => (Array.isArray(r?.rows) ? r.rows.map((x: Any) => keyOfId.get(x.employeeId) ?? "?") : null);
+  {
+    const b1: string[] = [], b2: string[] = [], b5: string[] = [];
+    for (const [vn, v] of Object.entries(LIM)) for (const rep of MONEY6) {
+      const page = await call(M.rep, "loadReport", ctx, v, { report: rep, period: periodOf(rep) });
+      const rows = rowsOf(page);
+      const out = (rows ?? ["∅"]).filter((k: string) => !IN_KEYS.includes(k));
+      if (out.length) b1.push(`${vn}.${rep}:${out.join("/")}`);
+      if (vn === "payU1s" && page?.totals) for (const [col, tot] of Object.entries(page.totals as Record<string, string>))
+        if (tot && /\d/.test(String(tot)) && Math.abs((page.rows as Any[]).reduce((x, rw) => x + num(rw.values?.[col]), 0) - num(tot)) > 0.001) b5.push(`${rep}.${col}`);
+      for (const format of ["CSV", "XLSX"]) {
+        const x = await call(M.rep, "exportReport", ctx, v, { report: rep, period: periodOf(rep), format });
+        const t = x?.ok ? textOfAny(x.bytes) : "";
+        const hits = BORROWED.filter((e) => [E[e]!.name, E[e]!.nid, ...payOf(E[e]!)].some((s) => t.includes(s)));
+        if (!x?.ok || hits.length) b2.push(`${vn}.${rep}.${format}:${x?.ok ? hits.join("/") : "refused"}`);
+      }
+    }
+    chk("B1", !b1.length, "rows ⊆ {a1,a2,aLeft}", b1.slice(0, 6).join(" | ") || "clean");
+    chk("B2", !b2.length, "clean exports", b2.slice(0, 6).join(" | ") || "clean");
+    const b3: string[] = [];
+    {
+      const MK: string[] = ((M.RR.REPORT_CATALOG?.ot?.columns ?? []) as Any[]).filter((c) => c.cls === "$").map((c) => c.key);
+      const page = await call(M.rep, "loadReport", ctx, LIM.payU1m, { report: "ot", period: PERIOD });
+      const mgr = await call(M.rep, "loadReport", ctx, vOf(W.mgrU1), { report: "ot", period: PERIOD });
+      const rowOf = (r: Any) => ((r?.rows ?? []) as Any[]).find((x) => x.employeeId === E.bSpan!.id);
+      const bp = rowOf(page), bm = rowOf(mgr);
+      if (!page?.ok || !bp || !bm) b3.push(`rows page=${!!bp} mgr=${!!bm}`);
+      else {
+        const leak = MK.filter((k) => bp.values?.[k] !== undefined && bp.values?.[k] !== null && bp.values?.[k] !== "");
+        if (leak.length) b3.push(`money ${leak.join("/")}`);
+        const d = Object.keys(bm.values ?? {}).filter((k) => !MK.includes(k) && String(bp.values?.[k] ?? "") !== String(bm.values[k] ?? ""));
+        if (d.length) b3.push(`op≠mgr ${d.join("/")}`);
+        const inRows = ((page.rows ?? []) as Any[]).filter((x) => IN_KEYS.includes(keyOfId.get(x.employeeId) ?? ""));
+        const badT = MK.filter((k) => page.totals?.[k] !== undefined && Math.abs(num(page.totals[k]) - inRows.reduce((a: number, x: Any) => a + num(x.values?.[k]), 0)) > 0.001);
+        if (badT.length) b3.push(`totals ${badT.join("/")}`);
+        if (page.excludedHeadcount !== 1) b3.push(`excluded=${page.excludedHeadcount}`);
+        if (!((page.notes ?? []) as string[]).includes(PAY_SCOPE_EXCLUDED_TEXT.replace("{n}", "1"))) b3.push("note");
+      }
+      for (const format of ["CSV", "XLSX"]) {
+        const x = await call(M.rep, "exportReport", ctx, LIM.payU1m, { report: "ot", period: PERIOD, format });
+        const t = x?.ok ? textOfAny(x.bytes) : "";
+        if (!x?.ok || !t.includes(E.bSpan!.name) || bahtForms(AMT.otSpan).some((f) => t.includes(f))) b3.push(`${format}:${x?.ok ? "row/amount" : "refused"}`);
+      }
+    }
+    chk("B3", !b3.length, "row kept · money withheld · note", b3.join(" | ") || "ok");
+    const b4: string[] = [];
+    for (const w of ["owner", "payAll"]) for (const rep of ["payroll-month", "tax-month", "register"]) { const rows = rowsOf(await call(M.rep, "loadReport", ctx, vOf((W as Any)[w]), { report: rep, period: periodOf(rep) })) ?? []; const miss = BORROWED.filter((e) => !rows.includes(e)); if (miss.length) b4.push(`${w}.${rep}:${miss.join("/")}`); }
+    { const rows = rowsOf(await call(M.rep, "loadReport", ctx, LIM.payU1s, { report: "payroll-month", period: PERIOD })) ?? []; if (!rows.includes("aLeft") || rows.includes("bEnded")) b4.push("payU1s aLeft/bEnded"); }
+    chk("B4", !b4.length, "controls", b4.join(" | ") || "ok");
+    const docs = async (v: Any) => ({ open: await call(M.open, "listOpeningYtd", ctx, v, { taxYear: PY }), certs: await call(M.slip, "listSalaryCertEmployees", ctx, v), fil: await call(M.fil, "listFilingEmployees", ctx, v), bank: await call(M.bank, "previewBankFile", ctx, v, { runId: runPaid, bank: "KBANK", format: "CSV" }) });
+    for (const [vn, v] of Object.entries(LIM)) { const o = Object.entries(await docs(v)).filter(([, r]) => okR(r)).map(([k]) => k); if (o.length) b5.push(`${vn} opens ${o.join("/")}`); }
+    { const d = await docs(vOf(W.payAll)); if (!(textOfAny(d.certs) + textOfAny(d.fil)).includes(E.bNow!.name)) b5.push("payAll lacks bNow"); }
+    chk("B5", !b5.length, "Σ rows · previews all-branch", b5.join(" | ") || "ok");
+  }
+
+  // ── C: payroll page · run preview · inbox ──
+  const pagePath = `/app/sys/${X.HRS}/hr/payroll`;
+  const renderPage = async (w: Any): Promise<{ html: string; props: string }> => {
+    try { return await inScope(w.cookie, pagePath, async () => { mute(); try { const n = await M.ui.PayrollSection({ systemId: X.HRS }); return { html: await renderHtml(n), props: propsText(n) }; } finally { unmute(); } }); } catch (e) { return { html: `THROW ${errText(e)}`, props: "" }; }
+  };
+  const runRow = async (id: string) => (await P.hrPayrollRun.findUnique({ where: { id } })) as Any;
+  {
+    const pg = await renderPage(W.payU1m);
+    const both = pg.html + "\u0001" + pg.props;
+    const c1: string[] = pg.html.startsWith("THROW") || pg.html.length < 200 ? [`render ${pg.html.slice(0, 80)}`] : [];
+    for (const e of OUT_KEYS) { const x = E[e]!; const v = x.pay === "HOURLY" ? x.rate : x.base; if ([x.name, money(x.gross), money(x.net), money(v), String(x.gross), String(v)].some((s) => both.includes(s))) c1.push(e); }
+    if (both.includes(money(AMT.bonusB)) || both.includes(String(AMT.bonusB))) c1.push("bNow bonus");
+    chk("C1", !c1.length, "no out-of-scope data", c1.join(" | ") || "clean");
+    const c2: string[] = [];
+    for (const [rid, label] of [[runPaid, "PAID"], [runDraft, "DRAFT"]] as [string, string][]) {
+      const t = await runRow(rid);
+      const its = (await P.hrPayrollItem.findMany({ where: { runId: rid } })) as Any[];
+      const shown = its.filter((i) => IN_KEYS.includes(keyOfId.get(i.employeeId) ?? ""));
+      for (const [k, v] of Object.entries({ gross: t.totalGrossSatang, net: t.totalNetSatang, sso: t.totalSsoEmployeeSatang, wht: t.totalWhtSatang })) if (both.includes(money(Number(v))) || both.includes(String(v))) c2.push(`${label}.${k}`);
+      if (new RegExp(`(^|[^\\d])${its.length} คน`).test(pg.html)) c2.push(`${label}.count`);
+      if (!pg.html.includes(PAY_SCOPE_EXCLUDED_TEXT.replace("{n}", String(its.length - shown.length)))) c2.push(`${label}.note`);
+      if (label === "PAID" && !pg.html.includes(money(shown.reduce((x, i) => x + i.netSatang, 0)))) c2.push("PAID.Σnet");
+    }
+    chk("C2", !c2.length, "no whole-run figure · notes", c2.join(" | ") || "ok");
+    const po = await renderPage(W.owner);
+    const c3 = { rendered: !po.html.startsWith("THROW"), total: po.html.includes(money((await runRow(runPaid)).totalNetSatang)), names: Object.values(E).filter((e) => !/Left$/.test(e.key)).every((e) => po.html.includes(e.name)), noNote: !po.html.includes("ไม่รวมพนักงานที่คุณไม่มีสิทธิ์ดูค่าจ้าง") };
+    chk("C3", all(c3), "owner full page", fails(c3));
+    const c4: string[] = [];
+    for (const [rid, hidden] of [[runPaid, 7], [runDraft, 6]] as [string, number][]) {
+      const pv = await call(M.payroll, "previewPayrollRunV2", ctx, LIM.payU1m, { runId: rid });
+      if (!pv?.ok) { c4.push(`${hidden}:${short(pv, 30)}`); continue; }
+      const out = (pv.rows as Any[]).map((r) => keyOfId.get(r.employeeId) ?? "?").filter((k) => !IN_KEYS.includes(k));
+      if (out.length) c4.push(`rows ${out.join("/")}`);
+      if (pv.run?.totals?.netSatang !== (pv.rows as Any[]).reduce((x, r) => x + r.netSatang, 0)) c4.push("Σ");
+      if (pv.run?.excludedHeadcount !== hidden) c4.push(`excluded=${pv.run?.excludedHeadcount}≠${hidden}`);
+      const ow = await call(M.payroll, "previewPayrollRunV2", ctx, vOf(W.owner), { runId: rid });
+      if (ow?.run?.excludedHeadcount !== 0 || ow?.run?.totals?.netSatang !== (await runRow(rid)).totalNetSatang) c4.push(`owner excluded=${ow?.run?.excludedHeadcount}`);
+    }
+    chk("C4", !c4.length, "scope · Σ · excludedHeadcount", c4.join(" | ") || "ok");
+    const adjItems = (r: Any): Any[] => { const out: Any[] = [], seen = new WeakSet(); const walk = (x: Any) => { if (!x || typeof x !== "object" || seen.has(x)) return; seen.add(x); if (typeof x.employeeId === "string" && x.detail && typeof x.detail === "object" && "amountSatang" in x.detail) out.push(x); for (const v of Object.values(x)) walk(v); }; walk(r); return out; };
+    const c5: string[] = [];
+    for (const [vn, v] of Object.entries(LIM)) {
+      const ib = await call(M.inbox, "listInbox", ctx, v, {});
+      if (!okR(ib)) { c5.push(`${vn}:${short(ib, 30)}`); continue; }
+      const out = adjItems(ib).filter((x) => !IN_KEYS.includes(keyOfId.get(x.employeeId) ?? ""));
+      if (out.length || textOfAny(ib).includes(String(AMT.bonusB))) c5.push(`${vn}:${out.map((x) => keyOfId.get(x.employeeId)).join("/") || "amount"}`);
+      if (vn === "payU1m" && !textOfAny(ib).includes(String(AMT.bonusA))) c5.push("a1 missing");
+    }
+    if (adjItems(await call(M.inbox, "listInbox", ctx, vOf(W.mgrU1), {})).length) c5.push("mgrU1 premise");
+    chk("C5", !c5.length, "no out-of-scope adjustment", c5.join(" | ") || "ok");
+  }
+
+  // ── N: R6 OT list + stock charges ──
+  {
+    const otl = (v: Any) => call(M.ot, "otRequestList", ctx, v, {});
+    const itemOf = (r: Any, id: string) => ((r?.items ?? []) as Any[]).find((x) => x.id === id);
+    const otRows = (await P.hrOtRequest.findMany({ where: { tenantId: X.TA, employeeId: { in: [E.bNow!.id, E.bSpan!.id] }, status: "APPROVED", date: { gte: dbDate(addDay(D0, -5)) } }, select: { id: true } })) as Any[];
+    const lm = await otl(LIM.payU1m), mg = await otl(vOf(W.mgrU1));
+    const n1: string[] = [];
+    for (const { id } of otRows) {
+      const a = itemOf(lm, id), b = itemOf(mg, id);
+      if (!a) n1.push(`${id.slice(-4)}:missing`);
+      else if ("amountSatang" in a || "segments" in a || canon(a) !== canon(b)) n1.push(`${keyOfId.get(a.employeeId)}:${"amountSatang" in a ? "money" : "≠mgr"}`);
+    }
+    chk("N1", !n1.length && otRows.length >= 2, "rows kept · no money · = mgrU1", n1.join(" ") || `ok (${otRows.length})`);
+    const ls = (v: Any) => call(M.stock, "listStockCharges", ctx, v, {});
+    const own = await ls(vOf(W.owner)), lim = await ls(LIM.payU1m);
+    const spanItem = ((own?.items ?? []) as Any[]).find((i) => i.id === X.stockSpan);
+    const flags = spanItem ? await call(M.stock, "stockPeriodCapFlags", ctx, LIM.payU1m, [spanItem]) : null;
+    const n2 = { listed: !((lim?.items ?? []) as Any[]).some((i) => i.employeeId === E.bSpan!.id), flags: !!spanItem && !(flags instanceof Set && flags.has(X.stockSpan)) };
+    chk("N2", all(n2) && okR(lim), "no bSpan row · no bSpan flag", `${fails(n2)} list=${okR(lim)}`);
+    const otA1 = ((lm?.items ?? []) as Any[]).find((i) => i.employeeId === E.a1!.id && i.amountSatang === AMT.otA1);
+    const ownOt = itemOf(await otl(vOf(W.owner)), X.otBNow);
+    const ownFlags = spanItem ? await call(M.stock, "stockPeriodCapFlags", ctx, vOf(W.owner), [spanItem]) : null;
+    const n4 = { ownerOt: ownOt?.amountSatang === AMT.otB, ownerStock: spanItem?.amountSatang === AMT.stockSpan && spanItem?.overCap === true, ownerFlag: ownFlags instanceof Set && ownFlags.has(X.stockSpan), limOtA1: !!otA1, limStockA1: ((lim?.items ?? []) as Any[]).some((i) => i.employeeId === E.a1!.id && i.amountSatang === AMT.stockA1) };
+    chk("N4", all(n4), "owner money · in-scope money", fails(n4));
+    // N3: salary-only doubling of the hidden employees
+    const snap = async () => { const l = await ls(LIM.payU1m); return [digest(await otl(LIM.payU1m)), digest(l), digest(await call(M.stock, "stockPeriodCapFlags", ctx, LIM.payU1m, [...((l?.items ?? []) as Any[]), ...(spanItem ? [spanItem] : [])]))]; };
+    const s1 = await snap();
+    const prof0 = (await P.hrSalaryProfile.findMany({ where: { employeeId: { in: [E.bNow!.id, E.bSpan!.id] } } })) as Any[];
+    for (const p of prof0) await P.hrSalaryProfile.update({ where: { id: p.id }, data: { baseSalarySatang: p.baseSalarySatang * 2, ...(p.hourlyRateSatang ? { hourlyRateSatang: p.hourlyRateSatang * 2 } : {}) } });
+    const s2 = await snap();
+    for (const p of prof0) await P.hrSalaryProfile.update({ where: { id: p.id }, data: { baseSalarySatang: p.baseSalarySatang, hourlyRateSatang: p.hourlyRateSatang } });
+    const ch = ["otRequestList", "listStockCharges", "capFlags"].filter((_, i) => s1[i] !== s2[i]);
+    chk("N3", !ch.length, "3 payloads identical", ch.length ? `changed: ${ch.join(",")}` : "identical");
+  }
+
+  // ── E1: R3 reads ──
+  {
+    const e1: string[] = [];
+    const has = (r: Any, w: string) => (textOfAny(r).includes(E.bNow!.id) || textOfAny(r).includes(E.bNow!.name) ? "" : w);
+    for (const [vn, w] of [["payU1m", W.payU1m], ["mgrU1", W.mgrU1]] as [string, Any][]) {
+      const v = vOf(w);
+      const p = [has(await call(M.roster, "listRoster", ctx, v, { from: D0, to: D0, unitId: U1 }), "roster"), has(await call(M.board, "loadRosterBoard", ctx, v, { week: D0, unit: U1 }), "board"),
+        has(await call(M.judge, "loadAttendanceBoard", ctx, v, { day: DM1, unit: U1 }), "attendance"), has(await call(M.rep, "loadReport", ctx, v, { report: "time", period: DM1.slice(0, 7) }), "time"),
+        (await call(M.priv, "loadEmployeeProfileForViewer", ctx, v, E.bNow!.id))?.profile ? "" : "profile"].filter(Boolean);
+      if (p.length) e1.push(`${vn}:${p.join("/")}`);
+    }
+    chk("E1", !e1.length, "bNow visible", e1.join(" | ") || "ok");
+  }
+
+  // ── G1: R4 ──
+  {
+    const act = async (fn: () => Promise<unknown>) => { try { return textOfAny(await inScope(W.payU1m.cookie, pagePath, async () => { mute(); try { return await fn(); } finally { unmute(); } })); } catch (e) { return e instanceof Error ? e.message : String(e); } };
+    const A = M.acts, S0 = { systemId: X.HRS };
+    const state = async () => canon({ runs: await P.hrPayrollRun.count({ where: { systemId: X.HRS } }), p: (await runRow(runPaid)).status, d: (await runRow(runDraft)).status });
+    const before = await state();
+    const n = String(await P.hrPayrollItem.count({ where: { runId: runDraft } })), net = String((await runRow(runDraft)).totalNetSatang);
+    const nextP = addDay(`${MONTH}-28`, 10).slice(0, 7);
+    const out: Record<string, string> = {
+      approve: await act(() => A.approvePayrollRunAction(fd({ ...S0, runId: runDraft, expectNet: net, expectItems: n }))), markPaid: await act(() => A.markPaidAction(fd({ ...S0, runId: runDraft }))),
+      reverse: await act(() => A.reverseRunAction(fd({ ...S0, runId: runPaid, reason: "ข้อสอบ" }))), del: await act(() => A.deleteDraftRunAction(fd({ ...S0, runId: runDraft }))),
+      recompute: await act(() => A.recomputeDraftRunAction(fd({ ...S0, runId: runDraft }))), create: await act(() => A.createPayrollRunAction(null, fd({ ...S0, periodKey: nextP, payDate: `${nextP}-28` }))),
+      createV2: await act(() => A.createPayrollRunV2Action(fd({ ...S0, periodKey: nextP, payDate: `${nextP}-28` }))), approveV2: await act(() => A.approveRunV2Action(fd({ ...S0, runId: runDraft, net, items: n }))),
+      payV2: await act(() => A.payRunV2Action(fd({ ...S0, runId: runDraft }))), reverseV2: await act(() => A.reverseRunV2Action(fd({ ...S0, runId: runPaid }))), recomputeV2: await act(() => A.recomputeRunV2Action(fd({ ...S0, runId: runDraft }))),
+    };
+    const nf = Object.entries(out).filter(([, t]) => !t.includes(T_RUN_ALL)).map(([k, t]) => `${k}="${short(t, 40)}"`);
+    const after = await state();
+    chk("G1", !nf.length && before === after, "11 × fixed · unchanged", `${nf.join(" ") || "all fixed"} ${before === after ? "unchanged" : `CHANGED ${after}`}`);
+  }
+
+  // ── R2: doubling test ──
+  {
+    type Cov = [string, string, () => Promise<unknown>];
+    const cov: Cov[] = [];
+    for (const [vn, v] of Object.entries(LIM)) {
+      for (const rep of IDS) { cov.push(["D1", `${vn}.${rep}.page`, () => call(M.rep, "loadReport", ctx, v, { report: rep, period: periodOf(rep) })]); for (const format of ["CSV", "XLSX"]) cov.push(["D1", `${vn}.${rep}.${format}`, () => call(M.rep, "exportReport", ctx, v, { report: rep, period: periodOf(rep), format })]); }
+      for (const e of Object.values(E)) {
+        cov.push(["D2", `${vn}.profile.${e.key}`, () => call(M.priv, "loadEmployeeProfileForViewer", ctx, v, e.id)], ["D2", `${vn}.lps.${e.key}`, () => call(M.priv, "loadPayslipForViewer", ctx, v, runPaid, e.id)],
+          ["D2", `${vn}.slip.${e.key}`, () => call(M.slip, "slipForViewer", ctx, v, { runId: runPaid, employeeId: e.id })], ["D2", `${vn}.hist.${e.key}`, () => call(M.slip, "slipHistory", ctx, v, { employeeId: e.id, taxYear: PY })]);
+      }
+      const d4: [string, () => Promise<unknown>][] = [
+        ["prevPaid", () => call(M.payroll, "previewPayrollRunV2", ctx, v, { runId: runPaid })], ["prevDraft", () => call(M.payroll, "previewPayrollRunV2", ctx, v, { runId: runDraft })],
+        ["laborDay", () => call(M.labor, "laborDay", ctx, v, { day: D0, unitId: U1 }, { now: FIXED_NOW })], ["laborDayAll", () => call(M.labor, "laborDay", ctx, v, { day: DM1 }, { now: FIXED_NOW })],
+        ["laborMonth", () => call(M.labor, "laborMonth", ctx, v, { periodKey: PERIOD, unitId: U1 }, { now: FIXED_NOW })], ["ap", () => call(M.ap, "attendanceDeductionPreview", ctx, v, { periodKey: MONTH })],
+        ["we", () => call(M.we, "workEntryPreview", ctx, v, { periodKey: MONTH })], ["open", () => call(M.open, "listOpeningYtd", ctx, v, { taxYear: PY })], ["certs", () => call(M.slip, "listSalaryCertEmployees", ctx, v)],
+        ["filings", () => call(M.fil, "listFilingEmployees", ctx, v)], ["bank", () => call(M.bank, "previewBankFile", ctx, v, { runId: runPaid, bank: "KBANK", format: "CSV" })], ["inbox", () => call(M.inbox, "listInbox", ctx, v, {})],
+        ["inboxCounts", () => call(M.inbox, "inboxCounts", ctx, v)], ["stock", () => call(M.stock, "listStockCharges", ctx, v, {})], ["teamLeave", () => call(M.leave, "teamLeaveBalances", ctx, v, { year: Number(D0.slice(0, 4)) })],
+        ["otList", () => call(M.ot, "otRequestList", ctx, v, {})],
+      ];
+      for (const [n, f] of d4) cov.push(["D4", `${vn}.${n}`, f]);
+      const actor = M.actor?.aiMemberActor?.(X.TA, v.userId, await P.membership.findFirst({ where: { tenantId: X.TA, userId: v.userId }, select: { role: true, unitAccess: true, permissions: true } }));
+      for (const [tool, args] of [["hr_who_is_on_today", { day: DM1 }], ["hr_late_report", { period: MONTH }], ["hr_labor_percent", { day: D0 }], ["hr_labor_percent", { periodKey: PERIOD }], ["hr_leave_balance", { year: Number(D0.slice(0, 4)) }]] as [string, Any][])
+        cov.push(["D5", `${vn}.ai.${tool}.${Object.keys(args)[0]}`, () => call(M.tools, "runTool", { tenantId: X.TA, actor }, tool, args)]);
+    }
+    cov.push(["D3", "payU1m.page", async () => { const p = await renderPage(W.payU1m); return p.html + "\u0002" + p.props; }]);
+    const key = async (l: string, scopes: string[]) => { mute(); try { return (await M.AK.createApiKey({ tenantId: X.TA }, `QCP2 ${l} ${tag}`, { scopes, systemId: X.HRS, createdById: W.owner.id })).rawKey as string; } catch (e) { return `∅${errText(e)}`; } finally { unmute(); } };
+    const READ = ["hr.employee.read", "hr.roster.read", "hr.leave.read"];
+    const KR: string[] = [], KP: string[] = []; // the REST limiter counts per key ⇒ a fresh key pair per snapshot round
+    for (let i = 0; i < 3; i++) { KR.push(await key(`read${i}`, READ)); KP.push(await key(`pay${i}`, [...READ, "hr.payroll.read"])); }
+    let ROUND = 0;
+    const api = async (raw: string, path: string) => {
+      if (typeof M.RT?.GET !== "function") return { __missing: "route" };
+      mute();
+      try { const res: Response = await M.RT.GET(new Request(`http://x/api/v1/hr${path}`, { headers: { authorization: `Bearer ${raw}` } }), { params: Promise.resolve({ path: path.split("?")[0]!.split("/").filter(Boolean) }) }); return `${res.status} ${await res.text()}`; } catch (e) { return `THROW ${errText(e)}`; } finally { unmute(); }
+    };
+    for (const p of ["/units", "/employees?pageSize=50", "/shifts", `/roster?from=${DM1}&to=${D0}`, `/attendance/day?day=${DM1}`, "/leave-policies", "/leaves?status=PENDING", `/leave-balances?year=${D0.slice(0, 4)}`,
+      ...[E.a1!, E.bNow!, E.c1!].flatMap((e) => [`/employees/${e.id}`, `/employees/${e.id}/payslips?taxYear=${PY}`, `/payslips/${runPaid}/${e.id}`]), ...IDS.map((r) => `/reports/${r}?period=${periodOf(r)}`)])
+      cov.push(["D5", `api.read${p.slice(0, 40)}`, () => api(KR[ROUND]!, p)]);
+    for (const vn of ["hrAdmin", "mgrU1", "emp"]) {
+      const v = vOf((W as Any)[vn]);
+      for (const e of Object.values(E)) cov.push(["D5", `${vn}.profile.${e.key}`, () => call(M.priv, "loadEmployeeProfileForViewer", ctx, v, e.id)]);
+      cov.push(["D5", `${vn}.time`, () => call(M.rep, "loadReport", ctx, v, { report: "time", period: MONTH })]);
+    }
+    const pos: Cov[] = [
+      ["D6", "owner.csv", () => call(M.rep, "exportReport", ctx, vOf(W.owner), { report: "payroll-month", period: PERIOD, format: "CSV" })],
+      ["D6", "owner.page", async () => { const p = await renderPage(W.owner); return p.html + "\u0002" + p.props; }],
+      ["D6", "owner.preview", () => call(M.payroll, "previewPayrollRunV2", ctx, vOf(W.owner), { runId: runPaid })],
+      ["D6", "api.pay", () => api(KP[ROUND]!, `/reports/payroll-month?period=${PERIOD}`)],
+    ];
+    const allC = [...cov, ...pos];
+    const TXT = new Map<string, string[]>();
+    const snap = async () => { const m = new Map<string, string>(); for (const [, n, f] of allC) { const v = await f(); m.set(n, digest(v)); if (process.env.QC_PRIV2_DUMP) TXT.set(n, [...(TXT.get(n) ?? []), stableText(v).slice(0, 4000)]); } return m; };
+    const dump = (names: string[]) => { if (process.env.QC_PRIV2_DUMP) writeFileSync(join(ROOT, "scratchpad/priv2/dump.json"), JSON.stringify(Object.fromEntries(names.map((n) => [n, TXT.get(n)])), null, 1)); };
+    const s1 = await snap();
+    ROUND = 1;
+    const s2 = await snap();
+    const unstable = allC.filter(([, n]) => s1.get(n) !== s2.get(n)).map(([, n]) => n);
+    dump(unstable);
+    chk("D0", !unstable.length, `${allC.length} stable`, unstable.slice(0, 8).join(",") || `${allC.length} stable`);
+    for (const k of OUT_KEYS) {
+      const e = E[k]!;
+      await P.hrSalaryProfile.updateMany({ where: { employeeId: e.id }, data: e.pay === "HOURLY" ? { hourlyRateSatang: e.rate * 2 } : { baseSalarySatang: e.base * 2 } });
+      for (const it of (await P.hrPayrollItem.findMany({ where: { employeeId: e.id } })) as Any[]) {
+        const sj = it.snapshotJson && typeof it.snapshotJson === "object" && typeof it.snapshotJson.baseSalarySatang === "number" ? { ...it.snapshotJson, baseSalarySatang: it.snapshotJson.baseSalarySatang * 2 } : it.snapshotJson;
+        await P.hrPayrollItem.update({ where: { id: it.id }, data: Object.fromEntries([...["grossSatang", "netSatang", "ssoBaseSatang", "ssoEmployeeSatang", "ssoEmployerSatang", "whtSatang", "addSatang", "deductSatang"].map((f) => [f, it[f] * 2]), ["snapshotJson", sj]]) });
+      }
+      await P.hrPayAdjustment.updateMany({ where: { employeeId: e.id }, data: { amountSatang: { multiply: 2 } } });
+      await P.hrOtRequest.updateMany({ where: { employeeId: e.id, amountSatang: { not: null } }, data: { amountSatang: { multiply: 2 } } });
+      await P.hrStockCharge.updateMany({ where: { employeeId: e.id }, data: { amountSatang: { multiply: 2 } } });
+    }
+    await retotal(runPaid);
+    await retotal(runDraft);
+    ROUND = 2;
+    const s3 = await snap();
+    for (const g of ["D1", "D2", "D3", "D4", "D5"]) { const list = cov.filter(([gg]) => gg === g); const c = list.filter(([, n]) => s1.get(n) !== s3.get(n)).map(([, n]) => n); chk(g, !c.length, `${list.length} identical`, c.length ? `${c.length}/${list.length}: ${c.slice(0, 8).join(",")}` : `${list.length} identical`); }
+    if (!unstable.length) dump(cov.filter(([, n]) => s1.get(n) !== s3.get(n)).map(([, n]) => n));
+    const same = pos.filter(([, n]) => s1.get(n) === s3.get(n)).map(([, n]) => n);
+    chk("D6", !same.length, "4 changed", same.join(",") || "all changed");
+  }
+
+  // ── E2: R3 actions ──
+  {
+    const v = LIM.payU1m;
+    const det = await call(M.leave, "leaveDetail", ctx, v, X.leaveB), lv = await call(M.leave, "decideLeaveAs", ctx, v, X.leaveB, "REJECTED"), ot = await call(M.ot, "decideOtRequest", ctx, v, X.otB, "REJECTED", { now: new Date() });
+    const st = { leave: (await P.hrLeave.findUnique({ where: { id: X.leaveB } }))?.status, ot: (await P.hrOtRequest.findUnique({ where: { id: X.otB } }))?.status };
+    const free = !payOf(E.bNow!).some((s) => (textOfAny(det) + textOfAny(lv) + textOfAny(ot)).includes(s));
+    chk("E2", det?.ok === true && lv?.ok === true && ot?.ok === true && st.leave === "REJECTED" && st.ot === "REJECTED" && free, "ok · REJECTED ×2 · no money", `${det?.ok} ${short(lv, 40)} ${short(ot, 40)} ${canon(st)} free=${free}`);
+  }
+
+  // ── W: R5 + R10 names ──
+  {
+    const w1: string[] = [], w2: string[] = [], w3: string[] = [];
+    const target = E.c1!.id;
+    const nameNow = async () => (await P.hrEmployee.findUnique({ where: { id: target }, select: { name: true } }))?.name;
+    const orig = await nameNow();
+    const reasonOf = (r: Any) => (r && typeof r === "object" ? String(r.reason ?? r.__throw ?? r.message ?? "") : String(r ?? ""));
+    for (const [cls, ch] of BAD_SAMPLES) {
+      const nm = `QCbad${cls}${ch}X${tag}`;
+      const n0 = await P.hrEmployee.count({ where: { systemId: X.HRS } });
+      const c = await call(M.svc, "createEmployee", ctx, { name: nm });
+      const created = (await P.hrEmployee.count({ where: { systemId: X.HRS } })) !== n0;
+      const u = await call(M.svc, "updateEmployee", ctx, target, { name: nm });
+      const nu = await nameNow();
+      const s = await call(M.svc, "saveEmployeeProfile", ctx, target, { name: nm });
+      const ns = await nameNow();
+      if (nu !== orig || ns !== orig) await P.hrEmployee.update({ where: { id: target }, data: { name: orig } });
+      if (created || nu !== orig || ns !== orig || u?.ok !== false || s?.ok !== false) w1.push(`${cls}:${created ? "C" : ""}${nu !== orig || u?.ok !== false ? "U" : ""}${ns !== orig || s?.ok !== false ? "S" : ""}`);
+      for (const [p, r] of [["C", c], ["U", u], ["S", s]] as [string, Any][]) {
+        if (p === "C" && created) { w2.push(`${cls}.C:accepted`); continue; }
+        const t = reasonOf(r);
+        if (!t || BAD_RE.test(t) || t.includes("QCbad") || t.includes(tag)) w2.push(`${cls}.${p}`);
+      }
+    }
+    for (const g of GOOD_NAMES) {
+      const nm = `${g} ${tag}`;
+      const c = await call(M.svc, "createEmployee", ctx, { name: nm });
+      const u = await call(M.svc, "updateEmployee", ctx, target, { name: nm });
+      const ok1 = (await nameNow()) === nm;
+      const s = await call(M.svc, "saveEmployeeProfile", ctx, target, { name: `${nm}.` });
+      const ok2 = (await nameNow()) === `${nm}.`;
+      await P.hrEmployee.update({ where: { id: target }, data: { name: orig } });
+      if (!c?.id || u?.ok !== true || !ok1 || s?.ok !== true || !ok2) w3.push(g);
+    }
+    chk("W1", !w1.length, "18 × refused ×3", w1.slice(0, 8).join(" ") || "all refused");
+    chk("W2", !w2.length, "fixed reason · no echo", w2.slice(0, 8).join(" ") || "clean");
+    chk("W3", !w3.length, "accepted", w3.join(" ") || "ok");
+    // W6 (R10): booking staff path
+    const w6: string[] = [];
+    for (const [cls, ch] of BAD_SAMPLES.filter(([c]) => ["C0-BEL", "RLO", "LRI", "ZWSP", "LS", "BOM"].includes(c))) {
+      const nm = `QCbk${cls}${ch}Y${tag}`;
+      const r = await call(M.booking, "createStaff", { tenantId: X.TA, unitId: U1, name: nm });
+      await P.bookingStaff.create({ data: { tenantId: X.TA, unitId: U1, name: `QCbl${cls}${ch}Z${tag}` } }).catch(() => undefined);
+      void r;
+    }
+    await call(M.booking, "linkStaffToHr", { tenantId: X.TA, unitId: U1 });
+    const made = (await P.hrEmployee.findMany({ where: { tenantId: X.TA, OR: [{ name: { contains: "QCbk" } }, { name: { contains: "QCbl" } }] }, select: { name: true } })) as Any[];
+    for (const m of made) if (BAD_RE.test(m.name)) w6.push(m.name.slice(0, 7));
+    chk("W6", !w6.length, "no bad char stored via booking", w6.length ? `${w6.length} dirty: ${[...new Set(w6)].join(",")}` : `clean (${made.length} stored)`);
+    // stored bad names (rows written before the rule) — exports still work, sanitised
+    await P.hrEmployee.update({ where: { id: E.a1!.id }, data: { name: `ab\u202ecd\u2066ef\u0007 ${tag}` } });
+    await P.hrEmployee.update({ where: { id: E.c1!.id }, data: { name: `=HYPERLINK("http://evil.invalid","x") ${tag}` } });
+    await P.hrEmployee.update({ where: { id: E.c2!.id }, data: { name: `@SUM(A1)\u200b ${tag}` } });
+    const w4: string[] = [], w5: string[] = [];
+    for (const rep of IDS) for (const format of ["CSV", "XLSX"]) {
+      const x = await call(M.rep, "exportReport", ctx, vOf(W.owner), { report: rep, period: periodOf(rep), format });
+      if (!x?.ok) { w4.push(`${rep}.${format}:${x?.code ?? short(x, 20)}`); continue; }
+      const buf = Buffer.from(x.bytes);
+      const t = format === "XLSX" ? unzipText(buf) : buf.toString("utf8");
+      if (BAD_RE.test((format === "XLSX" ? t.replace(/«[^»]*»/g, "") : t).replace(/\r?\n/g, "").replace(/^\ufeff/, ""))) w5.push(`${rep}.${format}:char`);
+      if (format === "CSV" && t.split(/\r?\n/).some((l) => l.split(",").some((c) => formulaCell(c)))) w5.push(`${rep}.CSV:formula`);
+      if (format === "XLSX" && (/<f>/.test(t) || [...t.matchAll(/<t[^>]*>([^<]*)<\/t>/g)].some((m) => formulaCell(m[1]!)))) w5.push(`${rep}.XLSX:formula`);
+    }
+    chk("W4", !w4.length, `${IDS.length * 2} ok`, w4.slice(0, 8).join(" ") || "all ok");
+    chk("W5", !w5.length && !w4.length, "sanitised", w4.length ? `${w4.length} refused` : w5.join(" ") || "clean");
+  }
+} catch (e) {
+  unmute();
+  crashed = errText(e);
+  console.log(`🔴 harness error: ${crashed} ${(e as Error)?.stack?.split("\n").slice(1, 4).join(" | ")}`);
+} finally {
+  unmute();
+  try { await sweepTenants(P, fx.tenants); } catch (e) { console.log(`sweep: ${errText(e)}`); }
+  await cleanupFx(P, fx, SLUG);
+  await P.apiKey?.deleteMany?.({ where: { tenantId: { in: fx.tenants } } }).catch(() => undefined);
+  const r1 = await sweepResidue(P, fx.tenants), r2 = await residueOf(P, fx, SLUG, SLUG_PREFIX);
+  const left = await P.tenant.count({ where: { slug: { startsWith: SLUG_PREFIX } } });
+  const net = NET.attempts.filter((a) => !/fetch:\??$/.test(a));
+  chk("Z1", !r1.length && !r2.length && left === 0 && !net.length, "no residue · no outbound", `sweep=${r1.join(",") || "none"} fx=${r2.join(",") || "none"} tenants=${left} outbound=${net.join(",") || 0}`);
+  await P.$disconnect?.();
+}
+process.exit(R.finish({ forced: FORCE, crashed, missing: [] }));

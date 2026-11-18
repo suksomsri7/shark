@@ -1,0 +1,22 @@
+[env] qc-pos-p1.8 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (อนุญาตด้วย POS_QC_ALLOW_HOST=ep-orange-dust-aotwbyc7)
+(node:1716741) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── S ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P1.8-S1] [R1 R2] schema: enum PosSaleDocType {SALE REFUND} · PosSale.docType PosSaleDocType @default(SALE) · refSaleId String? (ไม่มี @relation) · refundedSatang Int @default(0) · reasonCode String? · PosSaleLine.refLineId String? · restock Boolean?
+  ✅ [P1.8-S2] [R4] model PosDocCounter {tenantId unitId docType PosSaleDocType period String seq Int} @@unique([unitId, docType, period]) · core/scope.ts ลงทะเบียน PosDocCounter
+  ✅ [P1.8-S3] [R1 F15.2] migration เพิ่มล้วน: CREATE TYPE PosSaleDocType · CREATE TABLE PosDocCounter + unique (unitId,docType,period) · ADD COLUMN ที่ NOT NULL ต้องมี DEFAULT · ไม่มี DROP/RENAME/SET NOT NULL/ALTER TYPE ADD VALUE · ไม่มี FK และ index บน refSaleId/refLineId
+  ✅ [P1.8-S4] [R5 Q2] core/permissions.ts โมดูล pos มี pos.sale.refund (คนละคีย์กับ pos.sale.void)
+  ✅ [P1.8-S5] [R7 COMMON 4] outbox-consumers.ts ลงทะเบียน "pos.sale.refunded" ครอบ withAutomation · มี src/lib/modules/pos/refund-consumer.ts
+  ✅ [P1.8-S6] [R5 COMMON 6 · §7 CD1] ข้อความ pos.refund.errors.{noPermission saleNotFound saleNotRefundable refundExceeds refundEmpty paymentMismatch refundMethodInvalid shiftRequired reasonRequired idempotencyConflict validation hasRefunds} th (มีอักษรไทย) + en (ไม่มีอักษรไทย)
+  ✅ [P1.8-S7] [R9] refund-actions.ts: "use server" บรรทัดแรก · export เฉพาะ async function (ไม่มี export type/interface/const) · ไม่ throw · refundSaleAction เรียก refundSale + catch · saleForRefundAction เรียก saleForRefund + catch · revalidatePath · unstable_rethrow
+  ✅ [P1.8-S8] [R5 R7 COMMON 2-3] refund.ts export refundSale + saleForRefund · มี FOR UPDATE · ไม่แตะ posReceiptCounter / invItem.onHand · account/index export applyExternalRefund · point/lots + point facade export reversePartialEarn · member-bridges export onPosSaleRefunded · ลายเซ็น createSale/voidSale เดิม
+  ✅ [P1.8-S9] [R3] ไฟล์ตัวอ่านขั้นต่ำรู้จัก docType: pos/service.ts (daySummary/listSales/closeDaySummary) · pos/shift.ts (computeReport/offShiftCash) · pos/reports.ts
+🔴 หยุด! qc-pos-p1.8: จะเขียนแถวได้เฉพาะ QC4 (ep-frosty-lab) — DATABASE_URL, DIRECT_URL ไม่ใช่ (ยังไม่ได้เขียนอะไร)

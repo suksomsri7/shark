@@ -1,0 +1,27 @@
+[env] qc-booking-hours-hr · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:17073) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [BH-0.1] getUnitHours คืน 7 แถว (weekday 0-6) ค่าเริ่มต้นเปิด
+  ✅ [BH-1.1] setUnitHours+getUnitHours: บันทึกเวลา/วันปิดถูกต้อง
+  ✅ [BH-2.1] getAvailableSlots: วันเปิด 09:00-10:00 บริการ 60 นาที → 1 ช่อง (09:00) เมื่อมีช่าง
+  ✅ [BH-2.2] createStaff (พิมพ์เอง) → employeeId ว่าง + ชื่อตามที่กรอก
+  ✅ [BH-2.3] วันเปิด 09:00-10:00 + มีช่าง → ได้ 1 ช่อง (09:00)
+  ✅ [BH-3.1] วันปิดร้าน → ไม่มีช่องจอง (0)
+  ✅ [HR-1.1] listLinkableEmployees คืนพนักงานจากระบบ HR ที่เปิด
+  ✅ [HR-2.1] createStaff(employeeId) → set employeeId + ดึงชื่อจาก HR
+  ✅ [HR-2.2] createStaff(employeeId ผิด) → throw ไทย
+  ✅ [HR-1.2] ร้านไม่เปิด HR → listLinkableEmployees = []
+  ✅ [UI-1.1] หน้าใครรับคิวอ้าง queueRoster + setStaffReceivingAction (ไม่มีฟอร์มสร้างคนใหม่)
+  ✅ [UI-2.1] มีหน้า booking/hours (เวลาทำการ)
+  ✅ [UI-2.2] แท็บ booking มี 'เวลาทำการ'
+
+===== QC Booking Hours+HR =====
+ผ่าน 13/13
+JSON_SUMMARY {"total":13,"passed":13,"findings":[]}

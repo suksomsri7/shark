@@ -1,0 +1,59 @@
+[env] qc-catalog-services · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+── แก้ได้ที่เดียว (static) ──
+  ✅ [SS-1] POS ไม่มี action เพิ่ม/แก้ราคา/ลบบริการแล้ว
+  ✅ [SS-2] จองคิวไม่มี action สร้าง/แก้/ลบบริการแล้ว
+  ✅ [SS-3] มีหน้าบริการ + หน้าตั้งค่าในระบบสินค้า/บริการ
+  ✅ [SS-4] หน้าจองคิวอ้าง serviceRoster + setServiceOfferedAction (ไม่มีฟอร์มสร้างบริการ)
+  ✅ [SS-5] มีตัวแก้รูปในเบราว์เซอร์ (ครอป/สี/ข้อความ/ย่อขยาย)
+(node:3037531) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── SKU / หมวดหมู่ ──
+  ✅ [SK-1] SKU อัตโนมัติตามรูปแบบระบบ (SHOP-001)
+  ✅ [SK-2] สร้างหมวดบริการได้
+  ✅ [SK-3] หมวดที่ตั้งคำนำหน้าเอง ชนะค่าของระบบ (HAIR-002)
+  ✅ [SK-4] หมวดชื่อซ้ำ → ปฏิเสธ
+  ✅ [SK-5] คำนำหน้า SKU ที่ไม่ใช่ A-Z0-9 → ปฏิเสธ
+── บริการในแคตตาล็อก ──
+  ✅ [CT-1] บริการอยู่ใน listServices ไม่อยู่ใน listItems (หน้าสต็อก)
+  ✅ [CT-2] บริการไม่โผล่ในรายการ 'ใกล้หมด'
+  ✅ [CT-3] 🔴 รับเข้าสต็อกให้บริการ → ปฏิเสธ + บอกเหตุผลเป็นภาษาคน
+── จองคิวดึงจากแคตตาล็อก ──
+  ✅ [BK-1] บริการในแคตตาล็อกโผล่ในหน้าจอง (ยังไม่เปิดรับจอง)
+  ✅ [BK-2] ยังไม่เปิดรับจอง → ลูกค้าไม่เห็นบริการในหน้าจอง
+  ✅ [BK-3] เปิดรับจองได้ + สร้าง projection ผูกกับต้นฉบับ
+  ✅ [BK-4] หน้าจองเห็นบริการ ราคา/เวลา/มัดจำ ตรงกับแคตตาล็อก
+  ✅ [BK-5] 🔴 แก้ราคา/เวลาที่แคตตาล็อก → หน้าจองเห็นตาม (ไม่ต้องแก้ 2 ที่)
+  ✅ [BK-6] จองบริการจากแคตตาล็อกได้
+  ✅ [BK-7] ปิดรับจอง → ลูกค้าจองใหม่ไม่ได้ แต่นัดเดิมอยู่ครบ
+  ✅ [PS-1] POS เห็นบริการจากแคตตาล็อก (ต้นฉบับเดียวกับหน้าจอง)
+  ✅ [PS-2] POS ไม่เห็นบริการถ้าไม่ได้เชื่อมระบบสินค้า/บริการ
+  ✅ [PS-3] แคตตาล็อกสินค้าของ POS ไม่มีบริการปนมา (ไม่งั้นตัดสต็อกผิด)
+── ย้ายบริการเก่า ──
+  ✅ [MG-1] ย้ายบริการเก่าเข้าแคตตาล็อกได้
+  ✅ [MG-2] 🔴 นัดเก่ายังชี้บริการเดิมและไม่ถูกแตะ (ประวัติต้องนิ่ง)
+  ✅ [MG-3] กดย้ายซ้ำไม่สร้างซ้ำ
+  ✅ [MG-4] แคตตาล็อกมีบริการ 2 รายการ (ตัดผมชาย + โกนหนวด)
+── รูปสินค้า/บริการ ──
+  ✅ [IM-1] 🔴 ลิงก์รูปที่ไม่ใช่ http(s) → ปฏิเสธ (กัน XSS)
+  ✅ [IM-2] เพิ่มรูปได้ 2 รูป
+  ✅ [IM-3] ตั้งรูปหลักได้ (รูปแรกในลำดับ)
+  ✅ [IM-4] ลบรูปได้
+  ✅ [SK-6] ลบหมวด → ของยังอยู่ แค่หลุดหมวด
+  ✅ [XT-1] ร้านอื่นไม่เห็นบริการของเรา
+  ✅ [XT-2] 🔴 ร้านอื่นแนบรูปให้ของเราไม่ได้
+  ✅ [XT-3] 🔴 ร้านอื่นเปิดรับจองบริการของเราไม่ได้
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: สินค้า/บริการ แหล่งเดียว + หมวดหมู่/SKU/รูป =====
+ผ่าน 35/35
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":35,"passed":35,"findings":[]}

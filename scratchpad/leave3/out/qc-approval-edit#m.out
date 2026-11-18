@@ -1,0 +1,26 @@
+(node:1081344) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [APE-0] resolve ก่อนแก้: ยอด 6,000 เข้า policy (threshold 5,000)
+  ✅ [APE-1.1] listPolicies เห็นชื่อ+วงเงินใหม่
+  ✅ [APE-1.2] steps ถูกแทนทั้งชุด (เหลือ 1 ขั้น = OWNER · ของเดิม 2 ขั้นหาย)
+  ✅ [APE-1.3] ตาราง ApprovalStep เหลือ 1 แถวจริง (ไม่มี orphan)
+  ✅ [APE-2.1] resolve หลังแก้: ยอด 6,000 → null (ต่ำกว่าวงเงินใหม่ 8,000)
+  ✅ [APE-2.2] resolve หลังแก้: ยอด 8,000 → เข้า policy
+  ✅ [APE-3.1] steps ว่าง → throw
+  ✅ [APE-4.1] updatePolicy ข้ามร้าน → throw + ไม่แตะ (ชื่อ/วงเงิน/steps เดิม)
+  ✅ [APE-5.1] listMyRequests(user-1) คืนเฉพาะของ user-1 (2 คำขอ)
+  ✅ [APE-5.2] ไม่เห็นคำขอของ user-2 (lv-c)
+  ✅ [APE-5.3] แนบ policyName + totalSteps
+  ✅ [APE-5.4] listMyRequests(user-2) เห็นแค่ lv-c
+
+===== QC Approval Edit =====
+ผ่าน 12/12
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":12,"passed":12,"findings":[]}

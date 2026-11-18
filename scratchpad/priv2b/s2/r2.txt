@@ -1,0 +1,5 @@
+qc-hr-h4.3 exit=0 ===== qc-hr-h4.3 ===== passed 45/45 
+qc-hr-h3.9 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE) 
+qc-hr-priv-2 exit=0 ===== qc-hr-priv-2 ===== passed 46/46 (QC_FORCE) 
+typecheck exit=2 secs=435 errs=2 nonScratch=2
+ALL2

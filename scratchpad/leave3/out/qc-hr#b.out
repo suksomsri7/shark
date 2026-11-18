@@ -1,0 +1,24 @@
+[env] qc-hr · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+  ✅ [HR-R.1] ลา APPROVED 1-3 ส.ค. → วันที่ 2 ไม่ว่าง
+  ✅ [HR-R.2] วันที่ 5 ส.ค. ว่าง
+  ✅ [HR-R.3] workedMinutes IN 09:00 OUT 17:00 = 480
+(node:381195) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [HR-1.1] สร้างพนักงาน
+  ✅ [HR-2.1] ลงเวลา 2 รายการ (IN/OUT)
+  ✅ [HR-3.1] ขอลา = PENDING
+  ✅ [HR-3.2] ยังไม่อนุมัติ → วันที่ 2 ยังว่าง (availability นับเฉพาะ APPROVED)
+  ✅ [HR-4.1] อนุมัติลา → APPROVED
+  ✅ [HR-4.2] หลังอนุมัติ → วันที่ 2 ไม่ว่าง (C-2)
+
+===== QC HR =====
+ผ่าน 9/9
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":9,"passed":9,"findings":[]}

@@ -1,0 +1,29 @@
+[env] qc-hr-leave-3b · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-leave-3b] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:130040) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ❌ [LEAVE-3b-W1] edit [M,O]→[M] ∥ decide(expectedStep 1) under held request row, both orders ⇒ never at a missing step · edit ok ⇒ APPROVED + effect once · edit refused ⇒ PENDING@2 steps [1,2] — expected title | actual all decideFirst·edit=ok·PENDING@2·steps=[1]·use0·BAD×3 | editFirst·edit=ok·APPROVED@1·steps=[1]·use1·OK×3
+  ❌ [LEAVE-3b-W2] AI approval_decide by requestSummary: proposal stores requestId + expectedStep · confirm after another manager advanced ⇒ nothing decided, refused — expected title | actual proposed,captured tool={"error":"ต้องอยู่ในบทสนทนาก่อนจึงจะเสนอการกระทำได้"} payload={} exec={"note":"∅proposal","ok":false} req=PENDING@2
+  ❌ [LEAVE-3b-W4.1] pair day stored HrAttendanceDay.leaveHalf null (LEAVE, fraction 1.0) — expected title | actual half [{"fr":"1.0","h":"AM","st":"LEAVE"}]
+  ❌ [LEAVE-3b-W4.2] myWeek shows the pair day as full-day leave (half null) — expected title | actual full {"half":"AM","label":"ป่วย afclahgrqjw"}
+  ✅ [LEAVE-3b-W4.3] control: single AM half ⇒ stored leaveHalf AM · myWeek half AM
+  W7 signals single auto=false·needs=false·stale=true · pair auto=false·needs=false·stale=true · before ["ABSENT"] ["ABSENT:0.5"] · after {"q":["LEAVE"],"s":["LEAVE"]}
+  ✅ [LEAVE-3b-W7] late second half (approved after the day was judged) is picked up like a late single leave: STALE in the build · recompute ⇒ LEAVE (neither is auto-recomputed)
+  ❌ [LEAVE-3b-W3.1] OT on an approved AM+PM pair day ⇒ requestOt refused with the full-day text · OT filed before the 2nd half, approved after ⇒ decideOtRequest refused · PENDING — expected title | actual request,approval pair=true decide=true st=APPROVED
+  ✅ [LEAVE-3b-W3.2] control: full-day leave refuses OT (text) · single AM half allows OT
+  ❌ [LEAVE-3b-W5] cancelMyRequestAction returns the HR result: not-mine / decided / no-system ⇒ {ok:false, Thai reason} · own pending ⇒ {ok:true} — expected title | actual notMine,decided,noSystem,mine notMine=null decided=null noSystem=null mine=null
+  ❌ [LEAVE-3b-W6] listPending hides a step-2 request from the MANAGER who decided step 1 · other MANAGER sees it · OWNER who decided step 1 still sees it — expected title | actual mgrHidden
+RESIDUE none (tenants=1 users=8 activeLaw=0->0)
+  ✅ [LEAVE-3b-Z1] no residue · own law rows
+BASE-EXPECTATION 11/11 as registered (RED-by-design 7 · GREEN controls 4)
+
+===== qc-hr-leave-3b ===== passed 4/11 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-leave-3b","total":11,"passed":4,"failed":["LEAVE-3b-W1","LEAVE-3b-W2","LEAVE-3b-W4.1","LEAVE-3b-W4.2","LEAVE-3b-W3.1","LEAVE-3b-W5","LEAVE-3b-W6"],"findings":[{"id":"LEAVE-3b-W1","sev":"CRITICAL"},{"id":"LEAVE-3b-W2","sev":"CRITICAL"},{"id":"LEAVE-3b-W4.1","sev":"MAJOR"},{"id":"LEAVE-3b-W4.2","sev":"MAJOR"},{"id":"LEAVE-3b-W3.1","sev":"MAJOR"},{"id":"LEAVE-3b-W5","sev":"MAJOR"},{"id":"LEAVE-3b-W6","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":7,"baseGreen":4,"offBase":[]}
+exit=1

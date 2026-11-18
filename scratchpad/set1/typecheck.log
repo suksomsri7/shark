@@ -1,0 +1,32 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hr-b
+> tsc --noEmit
+
+scratchpad/set1/payroll.fixed.ts(2,53): error TS2307: Cannot find module './settings-lock' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(9,153): error TS2307: Cannot find module './payroll-journal-rules' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(12,26): error TS2307: Cannot find module './service' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(13,59): error TS2307: Cannot find module './payroll-digest' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(14,80): error TS2307: Cannot find module './work-entries' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(15,49): error TS2307: Cannot find module './scope' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(16,44): error TS2307: Cannot find module './stock-charge' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(18,82): error TS2307: Cannot find module './scope' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(19,28): error TS2307: Cannot find module './inbox-shared' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(29,8): error TS2307: Cannot find module './payroll-rules' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(30,76): error TS2307: Cannot find module './ot-rules' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(31,31): error TS2307: Cannot find module './law' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(32,47): error TS2307: Cannot find module './law' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(33,33): error TS2307: Cannot find module './payroll-run-rules' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(34,77): error TS2307: Cannot find module './payroll-run-rules' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(35,43): error TS2307: Cannot find module './payroll-rules-v2' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(36,108): error TS2307: Cannot find module './work-entries' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(38,26): error TS2307: Cannot find module './attendance-pay-rules' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(310,60): error TS2307: Cannot find module './attendance-pay' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(2034,34): error TS2307: Cannot find module './attendance-pay' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(2050,27): error TS2307: Cannot find module './attendance-pay' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(2052,83): error TS7006: Parameter 'p' implicitly has an 'any' type.
+scratchpad/set1/payroll.fixed.ts(2057,24): error TS2307: Cannot find module './attendance-pay' or its corresponding type declarations.
+scratchpad/set1/payroll.fixed.ts(2374,11): error TS7022: 'r' implicitly has type 'any' because it does not have a type annotation and is referenced directly or indirectly in its own initializer.
+scratchpad/set1/payroll.fixed.ts(2550,60): error TS7006: Parameter 'l' implicitly has an 'any' type.
+scratchpad/set1/payroll.fixed.ts(2550,107): error TS7006: Parameter 'l' implicitly has an 'any' type.
+ ELIFECYCLE  Command failed with exit code 2.
+exit 2 952s

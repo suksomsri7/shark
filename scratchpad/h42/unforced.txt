@@ -1,0 +1,3 @@
+⏭️  SKIPPED — qc-hr-h4.2: not built
+   • src/lib/modules/hr/labor-rules.ts absent (H4.2 not built)
+JSON_SUMMARY {"suite":"qc-hr-h4.2","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/labor-rules.ts absent (H4.2 not built)"],"registered":49}

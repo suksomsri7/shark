@@ -1,0 +1,7 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hr-b
+> tsc --noEmit
+
+src/lib/modules/hr/ai.ts(196,24): error TS2339: Property 'lateCount' does not exist on type '{ employeeId: string; name: string; unit: string | null; }'.
+src/lib/modules/hr/ai.ts(196,50): error TS2339: Property 'lateCount' does not exist on type '{ employeeId: string; name: string; unit: string | null; }'.
+ ELIFECYCLE  Command failed with exit code 2.

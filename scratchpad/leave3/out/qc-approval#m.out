@@ -1,0 +1,30 @@
+(node:1081091) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [AP-1.1] steps ว่าง → throw
+  ✅ [AP-1.2] resolve เจาะจงสุดชนะ (unit ตรง)
+  ✅ [AP-1.3] ยอดต่ำกว่า threshold → null (ไม่ต้องอนุมัติ)
+  ✅ [AP-1.4] ยอดถึง threshold → เจอ policy global
+  ✅ [AP-2.1] ไม่มี policy → autoApproved
+  ✅ [AP-2.2] มี policy → PENDING step 1 + outbox submitted
+  ✅ [AP-2.3] ยื่นซ้ำ entity เดิม → requestId เดิม
+  ✅ [AP-3.1] listPending สำหรับ MANAGER เห็นคำขอ
+  ✅ [AP-3.2] MANAGER อนุมัติ step 1 → เลื่อน step 2 ยัง PENDING
+  ✅ [AP-3.3] MANAGER ตัดสิน step OWNER → ok:false
+  ✅ [AP-3.4] OWNER อนุมัติขั้นสุดท้าย → APPROVED + decidedAt + outbox approved
+  ✅ [AP-3.5] ตัดสินซ้ำหลังจบ → ok:false
+  ✅ [AP-3.6] Decision append-only ครบ 2 แถว
+  ✅ [AP-4.1] REJECT ขั้นแรก → REJECTED ทันที + outbox rejected
+  ✅ [AP-4.2] cancel PENDING → CANCELLED · ซ้ำ false
+  ✅ [AP-4.3] tenant อื่นมองไม่เห็น (guard)
+
+===== QC Approval Engine =====
+ผ่าน 16/16
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":16,"passed":16,"findings":[]}

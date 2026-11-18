@@ -1,0 +1,42 @@
+seed exit=0 "total":34,"passed":34  
+priv2-f1 exit=0 "total":46,"passed":46 RESIDUE none (tenants=1 users=7) 
+priv2-f2 exit=0 "total":46,"passed":46 RESIDUE none (tenants=1 users=7) 
+priv2-f3 exit=0 "total":46,"passed":46 RESIDUE none (tenants=1 users=7) 
+priv2-u1 exit=0 "total":46,"passed":46 RESIDUE none (tenants=1 users=7) 
+qc-hr-money-2 exit=0 "total":57,"passed":57 RESIDUE none (tenants=1 users=4 activeLa 
+qc-hr-hf-sso exit=0 "total":41,"passed":41 RESIDUE none (tenants=1) 
+qc-hf-hr-privacy exit=0 "total":194,"passed":194  
+qc-hr-h0.2 exit=0 "total":58,"passed":58  
+qc-hr-h0.6 exit=0 "total":55,"passed":55 RESIDUE tenants=0 rows=0 audit=0 outbox= 
+qc-hr-h1.1 exit=0 "total":81,"passed":81 RESIDUE none (tenants=3 users=14) 
+qc-hr-h1.2 exit=0 "total":73,"passed":73 RESIDUE none (tenants=2 users=8) 
+qc-hr-h1.3 exit=0 "total":63,"passed":63 RESIDUE none (tenants=2 users=7) 
+qc-hr-h2.4 exit=0 "total":68,"passed":68  
+qc-hr-h2.9 exit=0 "total":58,"passed":58 RESIDUE none (tenants=3 users=19) 
+qc-hr-h2.10 exit=0 "total":57,"passed":57 RESIDUE none (tenants=2 users=11) 
+qc-hr-h2.11 exit=0 "total":70,"passed":70 RESIDUE none (tenants=2 users=13) 
+qc-hr-h3.2 exit=0 "total":64,"passed":64 RESIDUE none (tenants=2 users=6) 
+qc-hr-h3.4 exit=0 "total":85,"passed":85 RESIDUE none (tenants=3 users=17) · ACT 
+qc-hr-h3.4-ytd exit=0 "total":44,"passed":44 RESIDUE none (tenants=2 users=11) 
+qc-hr-h3.5 exit=0 "total":53,"passed":53 RESIDUE none (tenants=2 users=10) 
+qc-hr-h3.6 exit=0 "total":62,"passed":62 RESIDUE none (tenants=3 users=11) 
+qc-hr-h3.7 exit=0 "total":68,"passed":68 RESIDUE none (tenants=3 users=4) 
+qc-hr-h3.8 exit=0 "total":78,"passed":78 RESIDUE none (tenants=2 users=12) 
+qc-hr-h3.9 exit=0 "total":60,"passed":60 RESIDUE none (tenants=3 users=11) 
+qc-hr-h4.2 exit=0 "total":57,"passed":57 RESIDUE none (tenants=3 users=11) 
+qc-hr-h4.3 exit=1 "total":45,"passed":44 RESIDUE none (tenants=4 users=16)   ❌ [H43-S1.6] [static] [control] frozen unchanged vs base (ai/actor · service · persona · pos/account/crm · prisma · permissions · hr reports/judge/lea 
+qc-hr-h4.4 exit=0 "total":86,"passed":86 RESIDUE none (tenants=2 users=20) 
+qc-hr-h4.5 exit=0 "total":90,"passed":90 RESIDUE hrEmployee=1,membership=1,appSys 
+qc-hr-h4.6 exit=0 "total":69,"passed":69 RESIDUE none (tenants=2 users=11) 
+qc-hr-h4.8 exit=0 "total":48,"passed":48 RESIDUE none (tenants=2 users=5) 
+qc-hr-set-1 exit=0 "total":25,"passed":25 RESIDUE none (tenants=1 users=4) 
+qc-payroll exit=0 "total":19,"passed":19  
+qc-payroll-reverse exit=0 PASS — 14/14  
+qc-hr-payadjust exit=0 "total":27,"passed":27  
+qc-audit-trail exit=0 PASS — 21/21  
+qc-hr-leave-booking exit=0 "total":14,"passed":14  
+fitness env 0 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness noenv 0 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr env 0 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+fitness-hr noenv 0 FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+ALLDONE

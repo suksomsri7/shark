@@ -1,0 +1,96 @@
+[env] qc-hr-h2.5 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.5] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.5] modules: judge-rules=loaded · judge=loaded
+  ✅ [H2.5-S9.1] [static] judge-rules pure
+  ✅ [H2.5-S9.2] [static] one marked hourly hunk · minute job hr.attendance /5 · crm-cron import
+  ✅ [H2.5-S9.3] [static] actions use server + requireTenant · no now: · page gated + 3 loaders
+  ✅ [H2.5-S9.4] [static] new tables written only in judge.ts
+  ✅ [H2.5-S9.5] [static] [control] frozen shas · files unchanged vs base (n/a in base) · nav unchanged
+  ✅ [H2.5-S9.6] [static] messages hr.attendance labels · th = en
+  ✅ [H2.5-S9.7] [static] testids · inventory · tokens · 44 px · visual 2.5 · settings card id
+  ✅ [H2.5-S9.8] [static] seed: HQC attendance roster + finaliser + attendanceDays
+  ✅ [H2.5-S10.1] [static] migrations · schema · core/scope registry
+  ✅ [H2.5-S11.12] [pure+static] worked minutes floor · migration 000002 alert (systemId, date) index · seed now fixed · truncation guard
+  ✅ [H2.5-S1.1] [pure] V01–V05 on time · grace · late · grace boundary · grace 0
+  ✅ [H2.5-S1.2] [pure] V06–V09 early out · its grace · flag off · late+early ⇒ LATE
+  ✅ [H2.5-S1.3] [pure] V10–V12 OT floor to step (HQ10)
+  ✅ [H2.5-S1.4] [pure] V13–V14 breaks
+  ✅ [H2.5-S1.5] [pure] V15–V21 missing OUT · absent · leave full/AM/PM
+  ✅ [H2.5-S1.6] [pure] V22–V24 overnight · break across midnight · midnight end
+  ✅ [H2.5-S1.7] [pure] V25–V34 live phases · PENDING · absentAt · final boundary
+  ✅ [H2.5-S1.8] [pure] V35–V38 no shift: DAY_OFF (+OT) · NO_SCHEDULE
+  ✅ [H2.5-S1.9] [pure] V39–V40 several sessions
+  ✅ [H2.5-S1.10] [pure] 11 output keys · alertAt/absentAt literals · deterministic · input untouched
+  ✅ [H2.5-S1.11] [pure] attendancePolicyOf literals · default constant · engine version 1
+  ✅ [H2.5-S1.12] [pure] attributeSessions A1–A9
+(node:347376) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H2.5-S2.1] [db] linked session ⇒ LATE 20 · OT 30 · W490
+  ✅ [H2.5-S2.2] [db] D-H24-adopt: unlinked IN 04:30 adopted ⇒ ON_TIME W630, no DAY slot
+  ✅ [H2.5-S2.3] [db] D-H24-r2d: out-of-window / other employee's rosterEntryId never credits the entry
+  ✅ [H2.5-S2.4] [db] split day ⇒ two slots
+  ✅ [H2.5-S2.5] [db] overnight + break across midnight on start day · next day no double count
+  ✅ [H2.5-S2.6] [db] unrostered: NO_SCHEDULE · empty day · legacy template LATE 12 / DAY_OFF
+  ✅ [H2.5-S2.7] [db] roster in use ⇒ DAY_OFF · unpublished ignored · LEAVE · PENDING ⇒ ABSENT+pending · ended ⇒ none
+  ✅ [H2.5-S6.1] [db] board readers dto · non-readers null
+  ✅ [H2.5-S6.2] [db] branch scope · no other-branch id · unit param clamped · [] = all
+  ✅ [H2.5-S6.3] [db] DTO keys exact · no sensitive keys/values · leave type only for wide readers
+  ✅ [H2.5-S6.4] [db] board statuses (literal) · totals
+  ✅ [H2.5-S6.5] [db] calendar keys · literal summaries · scope/tenant null
+  ✅ [H2.5-S6.6] [db] self calendar via employeeOfUser · unlinked ⇒ mNoEmp
+  ✅ [H2.5-S3.1] [db] finaliser: one HrAttendanceDay per final slot = live values
+  ✅ [H2.5-S3.2] [db] second run: 0 · rows identical · no outbox/audit
+  ✅ [H2.5-S3.3] [db] not final / outside D−7 not written · holidayId · other tenant only on its own run
+  ✅ [H2.5-S3.4] [db] edits after snapshot do not rewrite · readers stored+stale
+  ✅ [H2.5-S4.1] [db] recompute refusals rNoPerm / rNotFound / rOwn / rReason · nothing written
+  ✅ [H2.5-S4.2] [db] recompute changes only that row (v2, recomputedBy/Reason) · no event
+  ✅ [H2.5-S4.3] [db] identical recompute ⇒ changed false · one audit before/after
+  ✅ [H2.5-S4.4] [db] APPROVED/PAID month ⇒ rPaid · REVERSED ok · owner on manager row
+  ✅ [H2.5-S5.1] [db] not-in alert: quiet before alertAt · one per absent employee at alertAt
+  ✅ [H2.5-S5.2] [db] fires once · payload 4 ids · key type#alertId · no names
+  ✅ [H2.5-S5.3] [db] consumer ×2 ⇒ one notification per scoped recipient · notifiedAt
+  ✅ [H2.5-S5.4] [db] texts byte-exact (manager, self) · system B settings honoured
+  ✅ [H2.5-S5.5] [db] absent alert at absentAt only without IN · key · text
+  ✅ [H2.5-S5.6] [static+runtime] consumers · one automation label each · not in webhooks file
+  ✅ [H2.5-S8.1] [race] finaliser waits on hr:clock:<emp> · includes holder's OUT
+  ✅ [H2.5-S8.2] [race] finaliser waits on roster key · judges edited entry
+  ✅ [H2.5-S8.3] [race] 5 parallel runs: 2 alerts · 2 events · then one row per slot
+  ✅ [H2.5-S8.4] [race] 3 parallel recomputes ⇒ one changed
+  ✅ [H2.5-S7.1] [db] policy default · hrClock and hrAttendance keep each other · audit
+  ✅ [H2.5-S7.2] [db] range texts · gate = saveClockPolicy · branch writer ⇒ shopWide
+  ✅ [H2.5-S11.1] [db] unrostered overnight session stays on the IN's day (incl. year end) · nothing on D+1
+  ✅ [H2.5-S11.2] [db] overnight HrWorkSchedule 22–06 ⇒ ON_TIME W483 on the start day
+  ✅ [H2.5-S11.3] [db] unlinked IN 23:58 for a 00:30 shift ⇒ matched (clock.ts window) · no MO day-off · no alert
+  ✅ [H2.5-S11.4] [db] orphaned rows (moved/deleted/unpublished entry): no second worked row · totals once · recompute re-keys
+  ✅ [H2.5-S11.5] [db] split-shift leave by time of day · fraction once per day (full 1.0 · AM/PM 0.5) · no alert on covered entry
+  ✅ [H2.5-S11.6] [db] (extends S3.1) single shift, AM half-day leave, no IN ⇒ ABSENT · leaveHalf AM · leaveFraction 0.5
+  ✅ [H2.5-S11.7] [db] inactive / ENDED employee ⇒ no alerts · no events · no rows from the job
+  ✅ [H2.5-S11.8] [db] half-day live board: absent threshold counts from the due time
+  ✅ [H2.5-S11.9] [db] holidayId on entry rows of a holiday · unrostered work on a holiday ⇒ DAY_OFF + holidayId
+  ✅ [H2.5-S11.10] [race] recompute waits on the payroll period lock and refuses rPaid
+  ✅ [H2.5-S11.11] [race] alert re-checks for an IN under hr:clock:<emp>
+  ✅ [H2.5-S11.13] [db] month view hides slots at branches outside the viewer's scope
+  ✅ [H2.5-S12.1] [race] approve and markPaid wait on the period lock a recompute holds · then recompute ⇒ rPaid
+  ✅ [H2.5-S12.2] [db] open session cap: OUT 33 h after its IN is its own day · IN day = missingOut
+  ✅ [H2.5-S12.3] [db] no-shift slot with an open session is not finalised before IN + cap · closed later ⇒ W480
+  ✅ [H2.5-S12.4] [db] PM leave on 10–14/17–21: morning row no leaveId/fraction · evening LEAVE 0.5
+  ✅ [H2.5-S12.5] [db] paged job: page size 2 alerts all 5 · maxPages 1 rotates pages so 3 runs finalise all 5
+  ✅ [H2.5-S12.6] [db+static] days needing recompute (orphaned) counted per viewer scope · board banner id · inventory
+  ✅ [H2.5-S13.1] [db] revoked (CANCELLED) leave never counts · revoked after finalising ⇒ stored+stale · recompute ⇒ ABSENT without leave
+  ✅ [H2.5-S13.2] [db] half-day AM through the H2.7 service (policy · requestLeave · decideLeave) ⇒ ABSENT · AM · 0.5
+  ✅ [H2.5-S13.3] [db] hourly leave (H2.7 hours, no clock times) ⇒ slot judged normally · leaveId · fraction = hours/8 (0.3) · no leaveHalf
+  ✅ [H2.5-S13.4] [db] holiday from the H2.8 preset table ⇒ holidayId on the row · branch row wins over shop-wide
+  ✅ [H2.5-S13.5] [db] leave-only changes flag stale: hourly 2 h cancelled after finalise · hourly approved after finalise · recompute clears
+RESIDUE none (tenants=2 users=13)
+  ✅ [H2.5-Z1] residue: qc-hr-h25-* tenants/rows/users/sessions/new tables gone
+BASE-EXPECTATION 2/79 as registered (RED-by-design 77 · GREEN controls 2) · off: H2.5-S9.1(RED→pass) H2.5-S9.2(RED→pass) H2.5-S9.3(RED→pass) H2.5-S9.4(RED→pass) H2.5-S9.6(RED→pass) H2.5-S9.7(RED→pass) H2.5-S9.8(RED→pass) H2.5-S10.1(RED→pass) H2.5-S11.12(RED→pass) H2.5-S1.1(RED→pass) H2.5-S1.2(RED→pass) H2.5-S1.3(RED→pass) H2.5-S1.4(RED→pass) H2.5-S1.5(RED→pass) H2.5-S1.6(RED→pass) H2.5-S1.7(RED→pass) H2.5-S1.8(RED→pass) H2.5-S1.9(RED→pass) H2.5-S1.10(RED→pass) H2.5-S1.11(RED→pass) H2.5-S1.12(RED→pass) H2.5-S2.1(RED→pass) H2.5-S2.2(RED→pass) H2.5-S2.3(RED→pass) H2.5-S2.4(RED→pass) H2.5-S2.5(RED→pass) H2.5-S2.6(RED→pass) H2.5-S2.7(RED→pass) H2.5-S6.1(RED→pass) H2.5-S6.2(RED→pass) H2.5-S6.3(RED→pass) H2.5-S6.4(RED→pass) H2.5-S6.5(RED→pass) H2.5-S6.6(RED→pass) H2.5-S3.1(RED→pass) H2.5-S3.2(RED→pass) H2.5-S3.3(RED→pass) H2.5-S3.4(RED→pass) H2.5-S4.1(RED→pass) H2.5-S4.2(RED→pass) H2.5-S4.3(RED→pass) H2.5-S4.4(RED→pass) H2.5-S5.1(RED→pass) H2.5-S5.2(RED→pass) H2.5-S5.3(RED→pass) H2.5-S5.4(RED→pass) H2.5-S5.5(RED→pass) H2.5-S5.6(RED→pass) H2.5-S8.1(RED→pass) H2.5-S8.2(RED→pass) H2.5-S8.3(RED→pass) H2.5-S8.4(RED→pass) H2.5-S7.1(RED→pass) H2.5-S7.2(RED→pass) H2.5-S11.1(RED→pass) H2.5-S11.2(RED→pass) H2.5-S11.3(RED→pass) H2.5-S11.4(RED→pass) H2.5-S11.5(RED→pass) H2.5-S11.6(RED→pass) H2.5-S11.7(RED→pass) H2.5-S11.8(RED→pass) H2.5-S11.9(RED→pass) H2.5-S11.10(RED→pass) H2.5-S11.11(RED→pass) H2.5-S11.13(RED→pass) H2.5-S12.1(RED→pass) H2.5-S12.2(RED→pass) H2.5-S12.3(RED→pass) H2.5-S12.4(RED→pass) H2.5-S12.5(RED→pass) H2.5-S12.6(RED→pass) H2.5-S13.1(RED→pass) H2.5-S13.2(RED→pass) H2.5-S13.3(RED→pass) H2.5-S13.4(RED→pass) H2.5-S13.5(RED→pass)
+
+===== qc-hr-h2.5 ===== passed 79/79 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.5","total":79,"passed":79,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":77,"baseGreen":2,"offBase":["H2.5-S9.1(RED→pass)","H2.5-S9.2(RED→pass)","H2.5-S9.3(RED→pass)","H2.5-S9.4(RED→pass)","H2.5-S9.6(RED→pass)","H2.5-S9.7(RED→pass)","H2.5-S9.8(RED→pass)","H2.5-S10.1(RED→pass)","H2.5-S11.12(RED→pass)","H2.5-S1.1(RED→pass)","H2.5-S1.2(RED→pass)","H2.5-S1.3(RED→pass)","H2.5-S1.4(RED→pass)","H2.5-S1.5(RED→pass)","H2.5-S1.6(RED→pass)","H2.5-S1.7(RED→pass)","H2.5-S1.8(RED→pass)","H2.5-S1.9(RED→pass)","H2.5-S1.10(RED→pass)","H2.5-S1.11(RED→pass)","H2.5-S1.12(RED→pass)","H2.5-S2.1(RED→pass)","H2.5-S2.2(RED→pass)","H2.5-S2.3(RED→pass)","H2.5-S2.4(RED→pass)","H2.5-S2.5(RED→pass)","H2.5-S2.6(RED→pass)","H2.5-S2.7(RED→pass)","H2.5-S6.1(RED→pass)","H2.5-S6.2(RED→pass)","H2.5-S6.3(RED→pass)","H2.5-S6.4(RED→pass)","H2.5-S6.5(RED→pass)","H2.5-S6.6(RED→pass)","H2.5-S3.1(RED→pass)","H2.5-S3.2(RED→pass)","H2.5-S3.3(RED→pass)","H2.5-S3.4(RED→pass)","H2.5-S4.1(RED→pass)","H2.5-S4.2(RED→pass)","H2.5-S4.3(RED→pass)","H2.5-S4.4(RED→pass)","H2.5-S5.1(RED→pass)","H2.5-S5.2(RED→pass)","H2.5-S5.3(RED→pass)","H2.5-S5.4(RED→pass)","H2.5-S5.5(RED→pass)","H2.5-S5.6(RED→pass)","H2.5-S8.1(RED→pass)","H2.5-S8.2(RED→pass)","H2.5-S8.3(RED→pass)","H2.5-S8.4(RED→pass)","H2.5-S7.1(RED→pass)","H2.5-S7.2(RED→pass)","H2.5-S11.1(RED→pass)","H2.5-S11.2(RED→pass)","H2.5-S11.3(RED→pass)","H2.5-S11.4(RED→pass)","H2.5-S11.5(RED→pass)","H2.5-S11.6(RED→pass)","H2.5-S11.7(RED→pass)","H2.5-S11.8(RED→pass)","H2.5-S11.9(RED→pass)","H2.5-S11.10(RED→pass)","H2.5-S11.11(RED→pass)","H2.5-S11.13(RED→pass)","H2.5-S12.1(RED→pass)","H2.5-S12.2(RED→pass)","H2.5-S12.3(RED→pass)","H2.5-S12.4(RED→pass)","H2.5-S12.5(RED→pass)","H2.5-S12.6(RED→pass)","H2.5-S13.1(RED→pass)","H2.5-S13.2(RED→pass)","H2.5-S13.3(RED→pass)","H2.5-S13.4(RED→pass)","H2.5-S13.5(RED→pass)"]}

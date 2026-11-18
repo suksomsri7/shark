@@ -1,0 +1,24 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hr-b
+> tsc --noEmit
+
+src/lib/modules/hr/labor-rules.ts(40,18): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(40,33): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(91,51): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(115,101): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(130,41): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(130,59): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(130,105): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(130,115): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(130,121): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(141,90): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(151,39): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(152,13): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(153,19): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(157,44): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(160,17): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(161,20): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(162,13): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(215,40): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+src/lib/modules/hr/labor-rules.ts(223,77): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+ ELIFECYCLE  Command failed with exit code 2.

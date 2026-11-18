@@ -1,0 +1,17 @@
+[env] qc-pos-p3.6 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (อนุญาตด้วย POS_QC_ALLOW_HOST=ep-orange-dust-aotwbyc7)
+(node:1714359) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB · หมุด 54913c60) ──
+  ✅ [P3.6-ST1] [R5 F15.2 R15 · ตารางชื่อ] สัญญา pos-sale-contract.json เทียบหมุด = เพิ่มอย่างเดียว + CreateSaleInput 4 ฟิลด์ optional · export ของ seam/crm-link/credit*/settings-shared/reports · RegisterSubmitInput/REGISTER_PAY_TYPES/REFUND_PAY_TYPES/รหัส+refusalMessageKey · permission · scope · POS_MODELS · account facade onAccount · ข้อความ th/en · facts
+  ❌ [P3.6-ST2] [§3 มติ 9] migration P3.6 = 2 โฟลเดอร์ (…_pos_p36_credit_enum: ADD VALUE ON_ACCOUNT อย่างเดียว · …_pos_p36_credit: ADD COLUMN nullable 3 + CREATE TABLE PosCreditAccount + unique(systemId, partyId)) · ไม่มี DROP/UPDATE/DELETE/NOT NULL · schema เพิ่มอย่างเดียว + ฟิลด์ครบ — expected ตามตารางชื่อ | actual schema ลบ/แก้บรรทัดเดิม 2: -  pinCode      String? // สำหรับ kiosk clock-in
+  ❌ [P3.6-ST3] [R2 R7 hard rules] POS → CRM/บัญชี ผ่าน facade เท่านั้น · crm/pos-seam.ts ไม่มี raw SQL/คำสั่งเขียน · ไฟล์ที่เปลี่ยนนอกโมดูลบัญชีไม่เขียน AccountDocument/JV · นอก CRM ไม่เขียน CrmDealPayment/CrmCommission · PosCreditAccount เขียนที่ credit.ts เท่านั้น · credit-actions "use server" async ล้วน + assertCan · credit-shared ไม่แตะ prisma — expected ตามตารางชื่อ | actual src/lib/approval-effects.ts เขียน accountDocument (ต้องผ่านฟังก์ชันบัญชี)
+  ✅ [P3.6-ST4] [R2 S5.12 hard rule] register-ui.tsx และ shift.ts ไบต์เท่าหมุด
+🔴 หยุด! qc-pos-p3.6: จะเขียนแถวได้เฉพาะ QC4 (ep-frosty-lab) — DATABASE_URL, DIRECT_URL ไม่ใช่ (ยังไม่ได้เขียนอะไร)

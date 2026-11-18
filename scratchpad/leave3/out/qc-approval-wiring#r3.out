@@ -1,0 +1,21 @@
+(node:197358) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [AW-1.1] PO เกิน threshold → คง DRAFT + ApprovalRequest PENDING
+  ✅ [AW-1.2] OWNER อนุมัติ + drain → PO ORDERED (effect ทำงาน)
+  ✅ [AW-1.3] PO ต่ำกว่า threshold → ORDERED ตรงเหมือนเดิม (ไม่มี request)
+  ✅ [AW-2.1] ยื่นใบลา (มี policy) → leave PENDING + request PENDING
+  ✅ [AW-2.2] อนุมัติ + drain → ใบลา APPROVED
+  ✅ [AW-2.3] ปฏิเสธ + drain → ใบลา REJECTED
+  ✅ [AW-3.1] notify เดิมยังส่ง (AppNotification จาก approval ≥3)
+
+===== QC Approval Wiring =====
+ผ่าน 7/7
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}

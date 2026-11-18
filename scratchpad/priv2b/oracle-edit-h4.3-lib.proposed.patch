@@ -1,0 +1,23 @@
+diff --git a/scripts/qc-hr-h4.3-lib.mts b/scripts/qc-hr-h4.3-lib.mts
+index 7742f0ec6..8359811b4 100644
+--- a/scripts/qc-hr-h4.3-lib.mts
++++ b/scripts/qc-hr-h4.3-lib.mts
+@@ -189,7 +189,8 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
+     const frozen = [`${AI}actor.ts`, `${AI}service.ts`, `${AI}persona.ts`, "src/lib/modules/pos", "src/lib/modules/account", "src/lib/modules/crm", "prisma", "src/lib/core/permissions.ts", "scripts/qc-hr-lib.mts", "package.json"];
+     const r = {
+       ai: changedVsBase(BASE, frozen) === "unchanged",
+-      hr: changedVsBase(BASE, hrFrozen) === "unchanged",
++      // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.5): hr frozen files strict → a file whose every hunk carries "HR PRIV-<n>" on an added line is accepted (unmarked still fails) ◂
++      hr: changedVsBase(BASE, hrFrozen) === "unchanged" || (changedVsBase(BASE, hrFrozen).startsWith("changed: ") && changedVsBase(BASE, hrFrozen).slice(9).split(",").every((f) => (diffHunks(BASE, f) ?? [{ added: [], removed: [] }]).every((h) => h.added.some((l) => /HR PRIV-\d+/.test(l))))),
+       labor: changedVsBase(BASE, laborOther) === "unchanged",
+       oracles: oracles.length === 0,
+     };
+@@ -200,7 +201,7 @@ export function runStatic(chk: Chk, ck: Ck, BASE: string, IN_BASE: boolean): voi
+     const marked = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
+     const need = [F.tools, F.access, F.kinds, F.props, F.plans, F.skills, F.digest, F.roster];
+     const bad: string[] = [];
+-    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT/;
++    const anyMark = /HR H\d+\.\d+|HR-SET-\d+|HR PRIV-\d+|POS P\d|CRM C\d|SEC S\d|H4\.2-FIX1|ORACLE-EDIT/; // ORACLE-EDIT (HR-PRIV-2 · controller ruling, notes §5.5): + "HR PRIV-<n>" ◂
+     const judge = (f: string, re: RegExp, mustHave: boolean) => {
+       const hs = diffHunks(BASE, f);
+       if (!hs) return void bad.push(`${f.split("/").pop()}:git`);

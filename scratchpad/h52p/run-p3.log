@@ -1,0 +1,152 @@
+[env] h52p-priv2 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h52p-priv2] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2897151) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+{
+ "diff": {
+  "payU1": [
+   "slipLoader:e2",
+   "stockList:e6",
+   "otList",
+   "stockList"
+  ],
+  "payU1m": [
+   "slipLoader:e2",
+   "stockList:e6",
+   "otList",
+   "stockList"
+  ],
+  "mgrU1": [],
+  "mgrAll": [
+   "listAdjustments(page)"
+  ],
+  "approver": [],
+  "emp": [
+   "listAdjustments(page)"
+  ],
+  "owner": [
+   "slipLoader:e2",
+   "slipLoader:e4",
+   "slipForViewer:e4",
+   "slipHistory:e4",
+   "stockList:e4",
+   "slipLoader:e6",
+   "slipForViewer:e6",
+   "slipHistory:e6",
+   "stockList:e6",
+   "otList",
+   "stockList",
+   "inboxList",
+   "teamOverviewWithPreview",
+   "preview",
+   "laborDay",
+   "laborDayAll",
+   "laborWeek",
+   "laborMonthPrevAll",
+   "laborMonthCur",
+   "listAdjustments(page)",
+   "rep:payroll-month:2026-10",
+   "csv:payroll-month:2026-10",
+   "rep:payroll-year:2026",
+   "csv:payroll-year:2026",
+   "rep:tax-month:2026-10",
+   "csv:tax-month:2026-10",
+   "rep:tax-year:2026",
+   "csv:tax-year:2026",
+   "rep:wages:2026-10",
+   "csv:wages:2026-10",
+   "rep:register:2026-11-14",
+   "csv:register:2026-11-14",
+   "payrollPage",
+   "ai:hr_labor_percent:{\"day\":\"2026-11-14\",\"unitId\":\"cmwg80wev0001gfkzshh6jc5t\"}",
+   "ai:hr_labor_percent:{\"periodKey\":\"2026-10\"}"
+  ]
+ },
+ "ownSlip": {
+  "runKeys": [
+   "accountSystemId",
+   "approvedAt",
+   "approvedById",
+   "bankFileKey",
+   "createdAt",
+   "createdById",
+   "engineVersion",
+   "filingJson",
+   "id",
+   "inputDigest",
+   "journalEntryId",
+   "note",
+   "payDate",
+   "periodKey",
+   "reversedAt",
+   "reversedById",
+   "status",
+   "stepsJson",
+   "systemId",
+   "tenantId"
+  ],
+  "itemOk": true,
+  "mySlip": "{\"bankMasked\":null,\"deductions\":[{\"amountSatang\":75000,\"code\":\"SSO\",\"count\":1,\"qty\":null},{\"amountSatang\":20006,\"code\":\"WHT\",\"count\":1,\"qty\":null}],\"deductionsSatang\":95006,\"earnings\":[{\"amountSatang\":3011717,\"code\":\"BASE\",\"count\":1,\"qty\":null}],\"earningsSatang\":3011717,\"employee\":{\"code\":\"C1\",\"name\":\"QC52 e1 afcbudwihdy\",\"position\":null},\"employerSsoSatang\":75000,\"engineVersion\":1,\"flags\":[],\"net",
+  "mySlips": "{\"ok\":true,\"years\":[{\"count\":1,\"grossSatang\":3011717,\"incomeSatang\":3011717,\"netSatang\":2916711,\"slips\":[{\"href\":\"/app/me/hr/pay/cmwg80wvg001bgfkzht5wr42e\",\"netSatang\":2916711,\"payDate\":\"2026-10-28\",\"periodKey\":\"2026-10\",\"runId\":\"cmwg80wvg001bgfkzht5wr42e\"}],\"ssoSatang\":75000,\"taxSatang\":20006,\"taxY",
+  "pdf": "ok 17751"
+ },
+ "nameWrites": {
+  "bidi": "{\"ok\":false,\"reason\":\"ชื่อพนักงานมีอักขระพิเศษที่ใช้ไม่ได้ (ตัวควบคุม · ตัวกลับทิศทาง · ตัวมองไม่เห็น · ขึ้นบรรทัดใหม่) — พิมพ์ชื่อใหม่ด้วยตัวอักษรธรรมดา\"}",
+  "zw": "{\"ok\":false,\"reason\":\"ชื่อพนักงานมีอักขระพิเศษที่ใช้ไม่ได้ (ตัวควบคุม · ตัวกลับทิศทาง · ตัวมองไม่เห็น · ขึ้นบรรทัดใหม่) — พิมพ์ชื่อใหม่ด้วยตัวอักษรธรรมดา\"}",
+  "ctrl": "{\"ok\":false,\"reason\":\"ชื่อพนักงานมีอักขระพิเศษที่ใช้ไม่ได้ (ตัวควบคุม · ตัวกลับทิศทาง · ตัวมองไม่เห็น · ขึ้นบรรทัดใหม่) — พิมพ์ชื่อใหม่ด้วยตัวอักษรธรรมดา\"}",
+  "formula": "{\"ok\":true}",
+  "plus": "{\"ok\":true}",
+  "at": "{\"ok\":true}"
+ },
+ "exports": {
+  "payroll-month": {
+   "ok": true,
+   "danger": [],
+   "bidiOrZw": true,
+   "names": [
+    "abdcef",
+    "\"'=HYPERLINK(\"\"http://x.invalid\"\"",
+    "'+cmd|' /C calc'!A0",
+    "'-2+3 zerowidth",
+    "'@SUM(A1)"
+   ]
+  },
+  "time": {
+   "ok": true,
+   "danger": [],
+   "bidiOrZw": true,
+   "names": []
+  },
+  "ot": {
+   "ok": true,
+   "danger": [],
+   "bidiOrZw": true,
+   "names": []
+  },
+  "wages": {
+   "ok": true,
+   "danger": [],
+   "bidiOrZw": true,
+   "names": [
+    "abdcef",
+    "\"'=HYPERLINK(\"\"http://x.invalid\"\"",
+    "'+cmd|' /C calc'!A0",
+    "'-2+3 zerowidth",
+    "'@SUM(A1)"
+   ]
+  },
+  "register": {
+   "ok": false,
+   "r": "{\"code\":\"FORMULA\",\"ok\":false,\"reason\":\"มีข้อความที่โปรแกรมตารางอาจอ่านเป็นสูตร — แก้ข้อความก่อนส่งออก\"}"
+  }
+ }
+}
+RESIDUE none (tenants=1 users=7)
+RESIDUE sweep=none tenants(qc-h52p-*)=0 OUTBOUND=1 fetch:

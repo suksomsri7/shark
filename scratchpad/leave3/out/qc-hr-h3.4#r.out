@@ -1,0 +1,109 @@
+[env] qc-hr-h3.4 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.4] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h3.4] rules=loaded · base=05e70d220 · H3.2 present
+  ✅ [H3.4-S1.1] [static] new files · rules pure (imports ./payroll-rules-v2 ./ot-rules only)
+  ✅ [H3.4-S1.2] [static] migrations: _kinds = 2 ADD VALUE only · _v2 additive (stepsJson · inputDigest · HrPayAdjustment.consentAt) · schema
+  ✅ [H3.4-S1.3] [static] single writer of HrPayrollRun/Item/HrPayAdjustment = payroll.ts (base writers tolerated)
+  ✅ [H3.4-S1.4] [static] law.ts only reader of HrLawTable · payroll.ts uses loadLawSet
+  ✅ [H3.4-S1.5] [static] no GPS/photo field in new code
+  ✅ [H3.4-S1.6] [static] payroll-rules.ts sha · frozen files unchanged vs base
+  ✅ [H3.4-S1.7] [static] marked hunks · V2_VARIABLE_PAY = false
+  ✅ [H3.4-S1.8] [static] keys hr.payroll.reverse · hr.payadjust.reject wired
+  ✅ [H3.4-S1.9] [static] UI testids · inventory · hr.run2 th=en · tokens · page · engine card
+  ✅ [H3.4-S1.10] [static] measured OT never priced · ot.ts subtracts run minutes
+  ✅ [H3.4-S2.1] [pure] monthly V01–V07
+  ✅ [H3.4-S2.2] [pure] proration V08–V11
+  ✅ [H3.4-S2.3] [pure] unpaid leave V12–V14
+  ✅ [H3.4-S2.4] [pure] daily V15–V24
+  ✅ [H3.4-S2.5] [pure] hourly V25–V28
+  ✅ [H3.4-S2.6] [pure] monthly holiday work V29–V32
+  ✅ [H3.4-S2.7] [pure] adjustments V33–V36
+  ✅ [H3.4-S2.8] [pure] r2 caps per category 10 % + total 20 % · consent (s.77) · carry · receivable V37–V44 V51 V61–V63 V65–V67
+  ✅ [H3.4-S2.13] [pure] r2 ÷30 proration (Feb/31-day) · s.56 SHOP vs PUBLIC · dated SSO row · SSO rounding · lateness refund V52–V60 V64
+  ✅ [H3.4-S2.14] [pure] r3 one-off tax Por.96 ข้อ 1(5) (bonus month · December · one-off allowance) · SSO wage components from the law row V68–V72
+  ✅ [H3.4-S2.9] [pure] refusals V45–V49
+  ✅ [H3.4-S2.10] [pure] V50 daily + commission: regular month = earned (placeholder)
+  ✅ [H3.4-S2.11] [pure] otAmount normalDayMin OTN-01…05
+  ✅ [H3.4-S2.12] [pure] classifyIncomeV2 REFUND outside 40(1)/SSO · TIP still BAD_KIND
+  ✅ [H3.4-S3.1] [pure] identities (gross · Σ lines · net ≥ 0 · carry)
+  ✅ [H3.4-S3.2] [pure] purity · RUN_V2_DEFAULTS
+  ✅ [H3.4-S3.3] [pure] two periods V38 · Σ 2,000,000
+  ✅ [H3.4-S3.4] [pure] perf: 300 employees × 31 days < 2,000 ms
+  ✅ [H3.4-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+(node:27910) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ℹ fixture OT_REQUEST mA = 175000 @2031-09 (want 175000 @2031-09) · REFUND true
+  ✅ [H3.4-S4.1] [db] engine setting rules
+  ✅ [H3.4-S4.2] [db] engine mismatch refusals
+  ✅ [H3.4-S4.3] [db] no ACTIVE law ⇒ LAW_MISSING · nothing written
+  ✅ [H3.4-S4.4] [db] PENDING OT request ⇒ OT_OPEN
+  ✅ [H3.4-S4.5] [db] create Sept: 3 items + totals literal (r2: SSO 875 · caps 10/20) · lawRowIds · ytd · 5 bound
+  ✅ [H3.4-S4.6] [db] lines literal · refs · no double pay · workDays
+  ✅ [H3.4-S6.1] [db] preview viewer matrix (manager: minutes only)
+  ✅ [H3.4-S6.2] [db] IDOR ⇒ identical no
+  ✅ [H3.4-S6.3] [db] confirmBranchHours rules
+  ✅ [H3.4-S4.7] [db] maker-checker SAME_PERSON · OWN_PAY · NO_ACTOR
+  ✅ [H3.4-S4.8] [db] inputs changed ⇒ INPUTS_CHANGED
+  ✅ [H3.4-S4.9] [db] rebuild makes pay3 the maker
+  ✅ [H3.4-S4.10] [db] 3 ∥ approve ⇒ 1 ok · JV 12,509,167 · days bound · carry rows literal
+  ✅ [H3.4-S4.11] [db] 2 ∥ markPaid ⇒ 1 ok · PAID
+  ✅ [H3.4-S4.12] [db] late OT request ⇒ 200,000 (run-priced minutes subtracted)
+  ✅ [H3.4-S4.13] [db] Oct literal (2572 SSO row ⇒ 1,000 ฿) · Σ advance 900,000 · claim 627,500 + carry 72,500
+  ✅ [H3.4-S4.14] [db] reverse Sept while carry bound ⇒ CARRY_BOUND
+  ✅ [H3.4-S4.15] [db] reverse Oct then Sept ⇒ 3 carry rows REJECTED · rows restored · JV reversed
+  ✅ [H3.4-S4.16] [db] stale ⇒ WORK_ENTRIES at create and approve
+  ✅ [H3.4-S4.17] [db] REFUND request only in engine-2 shops
+  ✅ [H3.4-S4.18] [db] (controller ruling 4, phase B) refused approve (NEGATIVE_NET) writes no carry/receivable rows · blocked item carries nothing
+  ✅ [H3.4-S4.30] [db] engine switch back to v1 refused while a v2 DRAFT exists (fixed text) · engine stays 2
+  ✅ [H3.4-S4.29] [db] SHOP holiday mapped from HrHoliday ⇒ snapshot holidayKinds = SHOP
+  ✅ [H3.4-S4.21] [db] (fix r1 F3) JV post fails ⇒ DRAFT · approvedBy null · 0 carry rows · Oct create refused YTD_DRAFT · re-approve ⇒ exactly one carry row 250,000
+  ✅ [H3.4-S4.22] [db] (fix r1 F5) reverse Sept while Oct v2 run is APPROVED ⇒ LATER_RUN (fixed text) · both runs unchanged
+  ✅ [H3.4-S4.26] [db] VARIABLE_PAY (DAILY profile) refused in the DB path · YTD_DRAFT refused (S4.21 window)
+  ✅ [H3.4-S4.28] [db] leaver final period ⇒ item receivable DAMAGES 300,000 · approve writes 0 carry rows · preview review RECEIVABLE
+  ✅ [H3.4-S4.25] [db] setAdjustmentConsent: no key ⇒ refused · bound row ⇒ refused · consent lifts the legal cap on a real run (400,000 applied vs 150,000 + CAP_NEEDS_CONSENT)
+  ✅ [H3.4-S4.23] [db] (fix r1 F6) consented stock charge above the cap (shop caps 30/40 %) ⇒ carried DAMAGES row keeps consent ⇒ next month applied beyond 10 %
+  ✅ [H3.4-S4.20] [db] (fix r1 F2) cancel a bound ALLOWANCE + a stock charge on a v2 draft ⇒ rebuilt with the v2 engine (snapshot v2 · net 1,917,500 · REFUND still bound · canceller = maker)
+  ✅ [H3.4-S4.24] [db] (fix r1 F8) payroll viewer limited to one unit ⇒ preview totals = Σ visible rows (scope UNITS)
+  ✅ [H3.4-S4.19] [db] (fix r1 F1) holiday worked 400 min (no roster) · OT request 200 min inside: run first ⇒ request pays 0 · request first ⇒ run 200 + request keeps 4,167
+  ℹ S4.27 refusals {"law":true,"amount":true,"carryIn":true,"workDay":true,"caps":true,"membership":true,"N":false,"NCode":"WORK_ENTRIES","finalOk":true,"otMinutes":true}
+  ✅ [H3.4-S4.27] [db] INPUTS_CHANGED for law activation · adjustment amount · work-day minutes · carry-in row · cap setting · membership (new member) · OT holiday-work minutes (S4.19)
+  ✅ [H3.4-S4.31] [db] (fix r2 G1) v1 Jul/Aug → engine 2 → Sept v2 approved ⇒ reversing the v1 Aug run refused LATER_RUN
+  ✅ [H3.4-S4.33] [db] (fix r2 G4) a second OT request on the same day off is refused (pinned H2.9 rule)
+  ✅ [H3.4-S4.32] [db] (fix r2 G3) Sat 420 min worked (no roster): request-first+revoke-after · run-first+request · revoke-before · revoke-then-new · reverse+rebuild ⇒ every employee 420 min / 87,500 exactly once
+  ✅ [H3.4-S4.34] [db] (fix r2 G5) markPaid during the posting window refused (posting) · finalize failure rolls back with no JV · re-approve ⇒ exactly one JV linked · carry once · work days unbound after the failure (G7)
+  ✅ [H3.4-S4.35] [db] (fix r2 G6) X creates · Y cancels a bound row (rebuild) ⇒ both X and Y refused SAME_PERSON · Z approves
+  ✅ [H3.4-S4.36] [db] (fix r3 H1) approve with a failing JV post ∥ markPaid 5–300 ms later ×4 ⇒ never PAID without JV · run back to DRAFT · no JV · no carry
+  ✅ [H3.4-S4.37] [db] (fix r3 H2/H3) shop without an accounting system: approve ∥ approve ×4 ⇒ one finished run (never DRAFT again) · carry once · losers NOT_DRAFT · no post_failed audit
+  ✅ [H3.4-S4.38] [db] (merge round) a v2 run APPROVED but not finalized (posting in progress) is refused by the bank-file service (STATUS text) · after finalizing it is accepted
+  ✅ [H3.4-S5.1] [race] 3 ∥ create ⇒ 1 ok · 2 dup
+  ✅ [H3.4-S5.2] [race] create waits on the period lock
+  ✅ [H3.4-S5.3] [race] approve-adjustment ∥ create ⇒ bound XOR moved
+  ✅ [H3.4-S5.4] [race] cancel ∥ create ⇒ gone XOR bound
+  ✅ [H3.4-S7.5] [db] (H3.2-guarded, fix r1 coverage) v2 approve before the deductions were synced ⇒ ATTENDANCE_SYNC (H3.2 gate) · run DRAFT
+  ✅ [H3.4-S7.1] [db] (H3.2-guarded) LATE_RULE −2,777 reduces taxable + SSO wage · net 1,909,723
+  ✅ [H3.4-S7.3] [db] (H3.2-guarded, controller phase B) bound LATE deduction → approve → reverse → rebuild → sync → approve ⇒ money = entitlement (one LATE row, −2,777 · net 1,909,723)
+  ✅ [H3.4-S7.4] [db+static] (controller, reviewer minor on H3.2) workEntrySourceEmployeesInTx finds punch-only staff by a distinct read (no TAKE cap on full punch rows)
+  ✅ [H3.4-S7.2] [db] (H3.2-guarded) stale approved row ⇒ create refused
+  ✅ [H3.4-S7.6] [db] (H3.2-guarded, fix r2 G2) stale late deduction bound to a v2 draft: correction → pull → sync waits → rebuild ok (stale left out) → sync supersedes → approve ⇒ corrected 2,361 settled once, no loop
+  ✅ [H3.4-S7.8] [db] (H3.2-guarded, merge round minors A/B) leaver's corrected row PENDING in P blocks approve (attPending) · one stale + one bindable approved row still refuses
+  ✅ [H3.4-S7.7] [db] (H3.2-guarded, fix r3 H5) leaver: corrected late deduction lands in the leaver's draft period, the draft must be rebuilt, then 2,361 is deducted once in Sept
+  ℹ listAttendance digest=8436a89981a0146a04c8954c6b0a49752eb7cb9c0661df9927bc356bd8fe46c9
+  ℹ leaves digest=f43008cba9f7bfae26638ae985e4c11565803988943cf3cf2f3921de10b8a62d
+  ℹ leaveItemsForViewer digest=54ef63446a674b6108da0bf977e2b50aab14cfd40252f18c94c0d4eb0f2798b1
+  ℹ monthlyAttendance digest=9a4c6047d670e99934b26da17183246f1c3ce07415ccc1c7f81f66cb09df1fb3
+  ℹ unavailable digest=840adc0a26e7efd47a1e90cc033305236855d619f8b06aaf42dbb91c3b5e9643
+  ✅ [H3.4-S8.1] [db] v1 golden: frozen MONTHLY digest/totals unchanged
+  ✅ [H3.4-S8.2] [db] v1 shop cycle unchanged
+RESIDUE none (tenants=3 users=17) · ACTIVE law rows after cleanup 0
+  ✅ [H3.4-Z1] no residue · ACTIVE law count restored
+BASE-EXPECTATION 13/85 as registered (RED-by-design 72 · GREEN controls 13) · off: H3.4-S1.1(RED→pass) H3.4-S1.2(RED→pass) H3.4-S1.3(RED→pass) H3.4-S1.4(RED→pass) H3.4-S1.5(RED→pass) H3.4-S1.7(RED→pass) H3.4-S1.8(RED→pass) H3.4-S1.9(RED→pass) H3.4-S1.10(RED→pass) H3.4-S2.1(RED→pass) H3.4-S2.2(RED→pass) H3.4-S2.3(RED→pass) H3.4-S2.4(RED→pass) H3.4-S2.5(RED→pass) H3.4-S2.6(RED→pass) H3.4-S2.7(RED→pass) H3.4-S2.8(RED→pass) H3.4-S2.13(RED→pass) H3.4-S2.14(RED→pass) H3.4-S2.9(RED→pass) H3.4-S2.10(RED→pass) H3.4-S2.11(RED→pass) H3.4-S2.12(RED→pass) H3.4-S3.1(RED→pass) H3.4-S3.2(RED→pass) H3.4-S3.3(RED→pass) H3.4-S3.4(RED→pass) H3.4-S4.1(RED→pass) H3.4-S4.2(RED→pass) H3.4-S4.3(RED→pass) H3.4-S4.4(RED→pass) H3.4-S4.5(RED→pass) H3.4-S4.6(RED→pass) H3.4-S6.1(RED→pass) H3.4-S6.2(RED→pass) H3.4-S6.3(RED→pass) H3.4-S4.7(RED→pass) H3.4-S4.8(RED→pass) H3.4-S4.9(RED→pass) H3.4-S4.10(RED→pass) H3.4-S4.11(RED→pass) H3.4-S4.12(RED→pass) H3.4-S4.13(RED→pass) H3.4-S4.14(RED→pass) H3.4-S4.15(RED→pass) H3.4-S4.16(RED→pass) H3.4-S4.17(RED→pass) H3.4-S4.18(RED→pass) H3.4-S4.30(RED→pass) H3.4-S4.29(RED→pass) H3.4-S4.21(RED→pass) H3.4-S4.22(RED→pass) H3.4-S4.26(RED→pass) H3.4-S4.28(RED→pass) H3.4-S4.25(RED→pass) H3.4-S4.23(RED→pass) H3.4-S4.20(RED→pass) H3.4-S4.24(RED→pass) H3.4-S4.19(RED→pass) H3.4-S4.27(RED→pass) H3.4-S4.31(RED→pass) H3.4-S4.33(RED→pass) H3.4-S4.32(RED→pass) H3.4-S4.34(RED→pass) H3.4-S4.35(RED→pass) H3.4-S4.36(RED→pass) H3.4-S4.37(RED→pass) H3.4-S4.38(RED→pass) H3.4-S5.1(RED→pass) H3.4-S5.2(RED→pass) H3.4-S5.3(RED→pass) H3.4-S5.4(RED→pass)
+
+===== qc-hr-h3.4 ===== passed 85/85 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.4","total":85,"passed":85,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":72,"baseGreen":13,"offBase":["H3.4-S1.1(RED→pass)","H3.4-S1.2(RED→pass)","H3.4-S1.3(RED→pass)","H3.4-S1.4(RED→pass)","H3.4-S1.5(RED→pass)","H3.4-S1.7(RED→pass)","H3.4-S1.8(RED→pass)","H3.4-S1.9(RED→pass)","H3.4-S1.10(RED→pass)","H3.4-S2.1(RED→pass)","H3.4-S2.2(RED→pass)","H3.4-S2.3(RED→pass)","H3.4-S2.4(RED→pass)","H3.4-S2.5(RED→pass)","H3.4-S2.6(RED→pass)","H3.4-S2.7(RED→pass)","H3.4-S2.8(RED→pass)","H3.4-S2.13(RED→pass)","H3.4-S2.14(RED→pass)","H3.4-S2.9(RED→pass)","H3.4-S2.10(RED→pass)","H3.4-S2.11(RED→pass)","H3.4-S2.12(RED→pass)","H3.4-S3.1(RED→pass)","H3.4-S3.2(RED→pass)","H3.4-S3.3(RED→pass)","H3.4-S3.4(RED→pass)","H3.4-S4.1(RED→pass)","H3.4-S4.2(RED→pass)","H3.4-S4.3(RED→pass)","H3.4-S4.4(RED→pass)","H3.4-S4.5(RED→pass)","H3.4-S4.6(RED→pass)","H3.4-S6.1(RED→pass)","H3.4-S6.2(RED→pass)","H3.4-S6.3(RED→pass)","H3.4-S4.7(RED→pass)","H3.4-S4.8(RED→pass)","H3.4-S4.9(RED→pass)","H3.4-S4.10(RED→pass)","H3.4-S4.11(RED→pass)","H3.4-S4.12(RED→pass)","H3.4-S4.13(RED→pass)","H3.4-S4.14(RED→pass)","H3.4-S4.15(RED→pass)","H3.4-S4.16(RED→pass)","H3.4-S4.17(RED→pass)","H3.4-S4.18(RED→pass)","H3.4-S4.30(RED→pass)","H3.4-S4.29(RED→pass)","H3.4-S4.21(RED→pass)","H3.4-S4.22(RED→pass)","H3.4-S4.26(RED→pass)","H3.4-S4.28(RED→pass)","H3.4-S4.25(RED→pass)","H3.4-S4.23(RED→pass)","H3.4-S4.20(RED→pass)","H3.4-S4.24(RED→pass)","H3.4-S4.19(RED→pass)","H3.4-S4.27(RED→pass)","H3.4-S4.31(RED→pass)","H3.4-S4.33(RED→pass)","H3.4-S4.32(RED→pass)","H3.4-S4.34(RED→pass)","H3.4-S4.35(RED→pass)","H3.4-S4.36(RED→pass)","H3.4-S4.37(RED→pass)","H3.4-S4.38(RED→pass)","H3.4-S5.1(RED→pass)","H3.4-S5.2(RED→pass)","H3.4-S5.3(RED→pass)","H3.4-S5.4(RED→pass)"]}

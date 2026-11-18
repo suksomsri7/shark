@@ -1,0 +1,223 @@
+{
+ "diff": {
+  "payU1": [
+   "slipLoader:e2",
+   "stockList:e6",
+   "otList",
+   "stockList"
+  ],
+  "payU1m": [
+   "slipLoader:e2",
+   "stockList:e6",
+   "otList",
+   "stockList"
+  ],
+  "mgrU1": [],
+  "mgrAll": [
+   "listAdjustments(page)"
+  ],
+  "approver": [],
+  "emp": [
+   "listAdjustments(page)"
+  ],
+  "owner": [
+   "slipLoader:e2",
+   "slipLoader:e4",
+   "slipForViewer:e4",
+   "slipHistory:e4",
+   "stockList:e4",
+   "slipLoader:e6",
+   "slipForViewer:e6",
+   "slipHistory:e6",
+   "stockList:e6",
+   "otList",
+   "stockList",
+   "inboxList",
+   "teamOverviewWithPreview",
+   "preview",
+   "laborDay",
+   "laborDayAll",
+   "laborWeek",
+   "laborMonthPrevAll",
+   "laborMonthCur",
+   "listAdjustments(page)",
+   "rep:payroll-month:2026-10",
+   "csv:payroll-month:2026-10",
+   "rep:payroll-year:2026",
+   "csv:payroll-year:2026",
+   "rep:tax-month:2026-10",
+   "csv:tax-month:2026-10",
+   "rep:tax-year:2026",
+   "csv:tax-year:2026",
+   "rep:wages:2026-10",
+   "csv:wages:2026-10",
+   "rep:register:2026-11-14",
+   "csv:register:2026-11-14",
+   "payrollPage",
+   "ai:hr_labor_percent:{\"day\":\"2026-11-14\",\"unitId\":\"cmwg80wev0001gfkzshh6jc5t\"}",
+   "ai:hr_labor_percent:{\"periodKey\":\"2026-10\"}"
+  ]
+ },
+ "changed": {
+  "payU1|slipLoader:e2": {
+   "b": "{\"employee\":{\"id\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"name\":\"QC52 e2 afcbudwihdy\",\"position\":null},\"item\":{\"addSatang\":0,\"deductSatang\":0,\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"grossSatang\":3021717,\"id\":\"cmwg80wwk001dgfkzmn7flmk7\",\"lawRowIds\":[],\"netSatang\":2926711,\"runId\":\"cmwg80wvg001bgfkzht5wr42e\",\"snapshotJson\":{\"addSatang\":0,\"adjustments\":[],\"baseSalarySatang\":3021717,\"computedAt\":\"2031-01-25T00:00:00.000Z\",\"deductSatang\":0,\"deductions\":{\"children\":0,\"spouse\":false},\"ssoEligible\":true,\"ssoEmployeeYearSatang\":900000},\"ssoBaseSatang\":1500000,\"ssoEmployeeSatang\":75000,\"ssoEmployerSatang\":75000,\"systemId\":\"cmwg80wfj0003gfkzlz9275hg\",\"tenantId\":\"cmwg80wb90000gfkzfylu61nq\",\"whtSatang\":20006,\"ytdJson\":null},\"run\":{\"accountSystemId\":null,\"approvedAt\":null,\"approvedById\":null,\"bankFileKey\":null,\"createdAt\":\"2026-11-14T09:46:23.212Z\",\"createdById\":null,\"engineVersion\":1,\"filingJson\":null,\"id\":\"cm",
+   "a": "{\"employee\":{\"id\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"name\":\"QC52 e2 afcbudwihdy\",\"position\":null},\"item\":{\"addSatang\":0,\"deductSatang\":0,\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"grossSatang\":3021717,\"id\":\"cmwg81bgg003agfkz57mwmdqs\",\"lawRowIds\":[],\"netSatang\":2926711,\"runId\":\"cmwg80wvg001bgfkzht5wr42e\",\"snapshotJson\":{\"addSatang\":0,\"adjustments\":[],\"baseSalarySatang\":3021717,\"computedAt\":\"2031-01-25T00:00:00.000Z\",\"deductSatang\":0,\"deductions\":{\"children\":0,\"spouse\":false},\"ssoEligible\":true,\"ssoEmployeeYearSatang\":900000},\"ssoBaseSatang\":1500000,\"ssoEmployeeSatang\":75000,\"ssoEmployerSatang\":75000,\"systemId\":\"cmwg80wfj0003gfkzlz9275hg\",\"tenantId\":\"cmwg80wb90000gfkzfylu61nq\",\"whtSatang\":20006,\"ytdJson\":null},\"run\":{\"accountSystemId\":null,\"approvedAt\":null,\"approvedById\":null,\"bankFileKey\":null,\"createdAt\":\"2026-11-14T09:46:23.212Z\",\"createdById\":null,\"engineVersion\":1,\"filingJson\":null,\"id\":\"cm"
+  },
+  "payU1|stockList:e6": {
+   "b": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}",
+   "a": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":false,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}"
+  },
+  "payU1|otList": {
+   "b": "{\"items\":[{\"amountSatang\":null,\"date\":\"2026-11-14\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"endAt\":\"2026-11-14T11:00:00.000Z\",\"id\":\"cmwg80wzm001lgfkzupmtcl2q\",\"multiplierBp\":null,\"paidMin\":null,\"reason\":null,\"requestedMin\":60,\"segments\":[],\"settled\":false,\"startAt\":\"2026-11-14T10:00:00.000Z\",\"status\":\"PENDING\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":37771,\"date\":\"2026-11-13\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"endAt\":\"2026-11-13T12:00:00.000Z\",\"id\":\"cmwg80wyo001igfkzm2l9flqh\",\"multiplierBp\":15000,\"paidMin\":120,\"reason\":null,\"requestedMin\":120,\"segments\":[{\"amountSatang\":37771,\"cls\":\"OT_WORKDAY\",\"minutes\":120,\"multiplierBp\":15000}],\"settled\":false,\"startAt\":\"2026-11-13T10:00:00.000Z\",\"status\":\"APPROVED\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":382",
+   "a": "{\"items\":[{\"amountSatang\":null,\"date\":\"2026-11-14\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"endAt\":\"2026-11-14T11:00:00.000Z\",\"id\":\"cmwg80wzm001lgfkzupmtcl2q\",\"multiplierBp\":null,\"paidMin\":null,\"reason\":null,\"requestedMin\":60,\"segments\":[],\"settled\":false,\"startAt\":\"2026-11-14T10:00:00.000Z\",\"status\":\"PENDING\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":37771,\"date\":\"2026-11-13\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"endAt\":\"2026-11-13T12:00:00.000Z\",\"id\":\"cmwg80wyo001igfkzm2l9flqh\",\"multiplierBp\":15000,\"paidMin\":120,\"reason\":null,\"requestedMin\":120,\"segments\":[{\"amountSatang\":37771,\"cls\":\"OT_WORKDAY\",\"minutes\":120,\"multiplierBp\":15000}],\"settled\":false,\"startAt\":\"2026-11-13T10:00:00.000Z\",\"status\":\"APPROVED\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":765"
+  },
+  "payU1|stockList": {
+   "b": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null},{\"amountSatang\":453258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.387Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"id\":\"cmwg80x0b001ngfkzao0y1n80\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}",
+   "a": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":false,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null},{\"amountSatang\":453258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.387Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"id\":\"cmwg80x0b001ngfkzao0y1n80\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}"
+  },
+  "payU1m|slipLoader:e2": {
+   "b": "{\"employee\":{\"id\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"name\":\"QC52 e2 afcbudwihdy\",\"position\":null},\"item\":{\"addSatang\":0,\"deductSatang\":0,\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"grossSatang\":3021717,\"id\":\"cmwg80wwk001dgfkzmn7flmk7\",\"lawRowIds\":[],\"netSatang\":2926711,\"runId\":\"cmwg80wvg001bgfkzht5wr42e\",\"snapshotJson\":{\"addSatang\":0,\"adjustments\":[],\"baseSalarySatang\":3021717,\"computedAt\":\"2031-01-25T00:00:00.000Z\",\"deductSatang\":0,\"deductions\":{\"children\":0,\"spouse\":false},\"ssoEligible\":true,\"ssoEmployeeYearSatang\":900000},\"ssoBaseSatang\":1500000,\"ssoEmployeeSatang\":75000,\"ssoEmployerSatang\":75000,\"systemId\":\"cmwg80wfj0003gfkzlz9275hg\",\"tenantId\":\"cmwg80wb90000gfkzfylu61nq\",\"whtSatang\":20006,\"ytdJson\":null},\"run\":{\"accountSystemId\":null,\"approvedAt\":null,\"approvedById\":null,\"bankFileKey\":null,\"createdAt\":\"2026-11-14T09:46:23.212Z\",\"createdById\":null,\"engineVersion\":1,\"filingJson\":null,\"id\":\"cm",
+   "a": "{\"employee\":{\"id\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"name\":\"QC52 e2 afcbudwihdy\",\"position\":null},\"item\":{\"addSatang\":0,\"deductSatang\":0,\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"grossSatang\":3021717,\"id\":\"cmwg81bgg003agfkz57mwmdqs\",\"lawRowIds\":[],\"netSatang\":2926711,\"runId\":\"cmwg80wvg001bgfkzht5wr42e\",\"snapshotJson\":{\"addSatang\":0,\"adjustments\":[],\"baseSalarySatang\":3021717,\"computedAt\":\"2031-01-25T00:00:00.000Z\",\"deductSatang\":0,\"deductions\":{\"children\":0,\"spouse\":false},\"ssoEligible\":true,\"ssoEmployeeYearSatang\":900000},\"ssoBaseSatang\":1500000,\"ssoEmployeeSatang\":75000,\"ssoEmployerSatang\":75000,\"systemId\":\"cmwg80wfj0003gfkzlz9275hg\",\"tenantId\":\"cmwg80wb90000gfkzfylu61nq\",\"whtSatang\":20006,\"ytdJson\":null},\"run\":{\"accountSystemId\":null,\"approvedAt\":null,\"approvedById\":null,\"bankFileKey\":null,\"createdAt\":\"2026-11-14T09:46:23.212Z\",\"createdById\":null,\"engineVersion\":1,\"filingJson\":null,\"id\":\"cm"
+  },
+  "payU1m|stockList:e6": {
+   "b": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}",
+   "a": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":false,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}"
+  },
+  "payU1m|otList": {
+   "b": "{\"items\":[{\"amountSatang\":null,\"date\":\"2026-11-14\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"endAt\":\"2026-11-14T11:00:00.000Z\",\"id\":\"cmwg80wzm001lgfkzupmtcl2q\",\"multiplierBp\":null,\"paidMin\":null,\"reason\":null,\"requestedMin\":60,\"segments\":[],\"settled\":false,\"startAt\":\"2026-11-14T10:00:00.000Z\",\"status\":\"PENDING\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":37771,\"date\":\"2026-11-13\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"endAt\":\"2026-11-13T12:00:00.000Z\",\"id\":\"cmwg80wyo001igfkzm2l9flqh\",\"multiplierBp\":15000,\"paidMin\":120,\"reason\":null,\"requestedMin\":120,\"segments\":[{\"amountSatang\":37771,\"cls\":\"OT_WORKDAY\",\"minutes\":120,\"multiplierBp\":15000}],\"settled\":false,\"startAt\":\"2026-11-13T10:00:00.000Z\",\"status\":\"APPROVED\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":382",
+   "a": "{\"items\":[{\"amountSatang\":null,\"date\":\"2026-11-14\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"endAt\":\"2026-11-14T11:00:00.000Z\",\"id\":\"cmwg80wzm001lgfkzupmtcl2q\",\"multiplierBp\":null,\"paidMin\":null,\"reason\":null,\"requestedMin\":60,\"segments\":[],\"settled\":false,\"startAt\":\"2026-11-14T10:00:00.000Z\",\"status\":\"PENDING\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":37771,\"date\":\"2026-11-13\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"endAt\":\"2026-11-13T12:00:00.000Z\",\"id\":\"cmwg80wyo001igfkzm2l9flqh\",\"multiplierBp\":15000,\"paidMin\":120,\"reason\":null,\"requestedMin\":120,\"segments\":[{\"amountSatang\":37771,\"cls\":\"OT_WORKDAY\",\"minutes\":120,\"multiplierBp\":15000}],\"settled\":false,\"startAt\":\"2026-11-13T10:00:00.000Z\",\"status\":\"APPROVED\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":765"
+  },
+  "payU1m|stockList": {
+   "b": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null},{\"amountSatang\":453258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.387Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"id\":\"cmwg80x0b001ngfkzao0y1n80\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}",
+   "a": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":false,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null},{\"amountSatang\":453258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.387Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"id\":\"cmwg80x0b001ngfkzao0y1n80\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}"
+  },
+  "mgrAll|listAdjustments(page)": {
+   "b": "[{\"amountSatang\":25000,\"consentAt\":null,\"consentById\":null,\"createdAt\":\"2026-11-14T09:46:23.449Z\",\"crmCommissionId\":null,\"decidedAt\":null,\"decidedById\":null,\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"hours\":2,\"id\":\"cmwg80x21001sgfkzbjmzkxhk\",\"kind\":\"OT\",\"note\":null,\"periodKey\":\"2026-11\",\"rateSatang\":12757,\"requestedById\":\"cmwg80wj10006gfkz452ww5sb\",\"runId\":null,\"sourceRef\":null,\"sourceType\":null,\"status\":\"PENDING\",\"systemId\":\"cmwg80wfj0003gfkzlz9275hg\",\"tenantId\":\"cmwg80wb90000gfkzfylu61nq\"},{\"amountSatang\":456258,\"consentAt\":null,\"consentById\":null,\"createdAt\":\"2026-11-14T09:46:23.427Z\",\"crmCommissionId\":null,\"decidedAt\":null,\"decidedById\":null,\"employeeId\":\"cmwg80wqc000ugfkzf3yci893\",\"hours\":null,\"id\":\"cmwg80x1f001qgfkzzmm6yac5\",\"kind\":\"DEDUCTION\",\"note\":null,\"periodKey\":\"2026-11\",\"rateSatang\":null,\"requestedById\":\"cmwg80wj10006gfkz452ww5sb\",\"runId\":null,\"sourceRef\":null,\"sourceType\":\"I",
+   "a": "[{\"amountSatang\":50000,\"consentAt\":null,\"consentById\":null,\"createdAt\":\"2026-11-14T09:46:23.449Z\",\"crmCommissionId\":null,\"decidedAt\":null,\"decidedById\":null,\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"hours\":2,\"id\":\"cmwg80x21001sgfkzbjmzkxhk\",\"kind\":\"OT\",\"note\":null,\"periodKey\":\"2026-11\",\"rateSatang\":25514,\"requestedById\":\"cmwg80wj10006gfkz452ww5sb\",\"runId\":null,\"sourceRef\":null,\"sourceType\":null,\"status\":\"PENDING\",\"systemId\":\"cmwg80wfj0003gfkzlz9275hg\",\"tenantId\":\"cmwg80wb90000gfkzfylu61nq\"},{\"amountSatang\":456258,\"consentAt\":null,\"consentById\":null,\"createdAt\":\"2026-11-14T09:46:23.427Z\",\"crmCommissionId\":null,\"decidedAt\":null,\"decidedById\":null,\"employeeId\":\"cmwg80wqc000ugfkzf3yci893\",\"hours\":null,\"id\":\"cmwg80x1f001qgfkzzmm6yac5\",\"kind\":\"DEDUCTION\",\"note\":null,\"periodKey\":\"2026-11\",\"rateSatang\":null,\"requestedById\":\"cmwg80wj10006gfkz452ww5sb\",\"runId\":null,\"sourceRef\":null,\"sourceType\":\"I"
+  },
+  "emp|listAdjustments(page)": {
+   "b": "[{\"amountSatang\":25000,\"consentAt\":null,\"consentById\":null,\"createdAt\":\"2026-11-14T09:46:23.449Z\",\"crmCommissionId\":null,\"decidedAt\":null,\"decidedById\":null,\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"hours\":2,\"id\":\"cmwg80x21001sgfkzbjmzkxhk\",\"kind\":\"OT\",\"note\":null,\"periodKey\":\"2026-11\",\"rateSatang\":12757,\"requestedById\":\"cmwg80wj10006gfkz452ww5sb\",\"runId\":null,\"sourceRef\":null,\"sourceType\":null,\"status\":\"PENDING\",\"systemId\":\"cmwg80wfj0003gfkzlz9275hg\",\"tenantId\":\"cmwg80wb90000gfkzfylu61nq\"},{\"amountSatang\":456258,\"consentAt\":null,\"consentById\":null,\"createdAt\":\"2026-11-14T09:46:23.427Z\",\"crmCommissionId\":null,\"decidedAt\":null,\"decidedById\":null,\"employeeId\":\"cmwg80wqc000ugfkzf3yci893\",\"hours\":null,\"id\":\"cmwg80x1f001qgfkzzmm6yac5\",\"kind\":\"DEDUCTION\",\"note\":null,\"periodKey\":\"2026-11\",\"rateSatang\":null,\"requestedById\":\"cmwg80wj10006gfkz452ww5sb\",\"runId\":null,\"sourceRef\":null,\"sourceType\":\"I",
+   "a": "[{\"amountSatang\":50000,\"consentAt\":null,\"consentById\":null,\"createdAt\":\"2026-11-14T09:46:23.449Z\",\"crmCommissionId\":null,\"decidedAt\":null,\"decidedById\":null,\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"hours\":2,\"id\":\"cmwg80x21001sgfkzbjmzkxhk\",\"kind\":\"OT\",\"note\":null,\"periodKey\":\"2026-11\",\"rateSatang\":25514,\"requestedById\":\"cmwg80wj10006gfkz452ww5sb\",\"runId\":null,\"sourceRef\":null,\"sourceType\":null,\"status\":\"PENDING\",\"systemId\":\"cmwg80wfj0003gfkzlz9275hg\",\"tenantId\":\"cmwg80wb90000gfkzfylu61nq\"},{\"amountSatang\":456258,\"consentAt\":null,\"consentById\":null,\"createdAt\":\"2026-11-14T09:46:23.427Z\",\"crmCommissionId\":null,\"decidedAt\":null,\"decidedById\":null,\"employeeId\":\"cmwg80wqc000ugfkzf3yci893\",\"hours\":null,\"id\":\"cmwg80x1f001qgfkzzmm6yac5\",\"kind\":\"DEDUCTION\",\"note\":null,\"periodKey\":\"2026-11\",\"rateSatang\":null,\"requestedById\":\"cmwg80wj10006gfkz452ww5sb\",\"runId\":null,\"sourceRef\":null,\"sourceType\":\"I"
+  }
+ },
+ "sample": {
+  "payU1_otList": "{\"items\":[{\"amountSatang\":null,\"date\":\"2026-11-14\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"endAt\":\"2026-11-14T11:00:00.000Z\",\"id\":\"cmwg80wzm001lgfkzupmtcl2q\",\"multiplierBp\":null,\"paidMin\":null,\"reason\":null,\"requestedMin\":60,\"segments\":[],\"settled\":false,\"startAt\":\"2026-11-14T10:00:00.000Z\",\"status\":\"PENDING\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":37771,\"date\":\"2026-11-13\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"endAt\":\"2026-11-13T12:00:00.000Z\",\"id\":\"cmwg80wyo001igfkzm2l9flqh\",\"multiplierBp\":15000,\"paidMin\":120,\"reason\":null,\"requestedMin\":120,\"segments\":[{\"amountSatang\":37771,\"cls\":\"OT_WORKDAY\",\"minutes\":120,\"multiplierBp\":15000}],\"settled\":false,\"startAt\":\"2026-11-13T10:00:00.000Z\",\"status\":\"APPROVED\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"amountSatang\":76542,\"date\":\"2026-11-13\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"endAt\":\"2026-11-13T12:00:00.000Z\",\"id\":\"cmwg80wyz001jgfkz07964f4b\",\"multiplierBp\":15000,\"paidMin\":120,\"reason\":null,\"requestedMin\":120,\"segments\":[{\"amountSatang\":76542,\"cls\":\"OT_WORKDAY\",\"minutes\":120,\"multiplierBp\":15000}],\"settled\":false,\"startAt\":\"2026-11-13T10:00:00.000Z\",\"status\":\"APPROVED\",\"timing\":\"AFTER\",\"warnWeek\":false}],\"ok\":true}",
+  "payU1_stock": "{\"items\":[{\"amountSatang\":459258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.416Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80x14001pgfkzzz2a47b3\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":false,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null},{\"amountSatang\":453258,\"consentAt\":\"2026-11-13\",\"consentRef\":\"C-1\",\"createdAt\":\"2026-11-14T09:46:23.387Z\",\"description\":\"แก้วแตก\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"id\":\"cmwg80x0b001ngfkzao0y1n80\",\"itemName\":null,\"kind\":\"DAMAGE\",\"movementId\":null,\"overCap\":true,\"periodKey\":\"2026-11\",\"qty\":null,\"refund\":null,\"requestedByName\":\"QC52 owner afcbudwihdy\",\"status\":\"PENDING\",\"unitCostSatang\":null}]}",
+  "payU1_stockCap": "[]",
+  "payU1_preview": "{\"ok\":true,\"review\":[],\"rows\":[{\"addSatang\":0,\"carry\":[],\"deductSatang\":0,\"employeeId\":\"cmwg80wpd000rgfkzlq002ub1\",\"flags\":[],\"grossSatang\":3011717,\"lines\":[{\"amountSatang\":3011717,\"code\":\"BASE\",\"day\":null,\"minutes\":null,\"ref\":\"profile\"}],\"name\":\"QC52 e1 afcbudwihdy\",\"netSatang\":2916711,\"payType\":\"MONTHLY\",\"review\":[],\"ssoEmployeeSatang\":75000,\"unitId\":\"cmwg80wev0001gfkzshh6jc5t\",\"whtSatang\":20006},{\"addSatang\":0,\"carry\":[],\"deductSatang\":0,\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"flags\":[],\"grossSatang\":3021717,\"lines\":[{\"amountSatang\":3021717,\"code\":\"BASE\",\"day\":null,\"minutes\":null,\"ref\":\"profile\"}],\"name\":\"QC52 e2 afcbudwihdy\",\"netSatang\":2926711,\"payType\":\"MONTHLY\",\"review\":[],\"ssoEmployeeSatang\":75000,\"unitId\":\"cmwg80wev0001gfkzshh6jc5t\",\"whtSatang\":20006},{\"addSatang\":0,\"carry\":[],\"",
+  "mgrAll_preview": "{\"ok\":false,\"reason\":\"ไม่พบรอบจ่ายนี้ หรือคุณไม่มีสิทธิ์ดู\"}",
+  "mgrU1_preview": "{\"ok\":true,\"rows\":[{\"days\":0,\"employeeId\":\"cmwg80wpd000rgfkzlq002ub1\",\"holidayPaidMin\":0,\"holidayWorkMin\":0,\"name\":\"QC52 e1 afcbudwihdy\",\"paidLeaveMin\":0,\"review\":[],\"unitId\":\"cmwg80wev0001gfkzshh6jc5t\",\"unpaidLeaveMin\":0,\"unplannedMin\":0,\"workMin\":0},{\"days\":0,\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"holidayPaidMin\":0,\"holidayWorkMin\":0,\"name\":\"QC52 e2 afcbudwihdy\",\"paidLeaveMin\":0,\"review\":[],\"unitId\":\"cmwg80wev0001gfkzshh6jc5t\",\"unpaidLeaveMin\":0,\"unplannedMin\":0,\"workMin\":0},{\"days\":0,\"empl",
+  "payU1_page": "{\"emps\":[\"cmwg80wpd000rgfkzlq002ub1\",\"cmwg80wpq000sgfkz4v4nj4p4\",\"cmwg80wq1000tgfkzyf3rhh4j\"],\"profs\":[[\"cmwg80wpd000rgfkzlq002ub1\",3011717,null],[\"cmwg80wpq000sgfkz4v4nj4p4\",3021717,null],[\"cmwg80wq1000tgfkzyf3rhh4j\",3031717,null]],\"runs\":[{\"fig\":[8780133,9065151,225000,60018],\"hidden\":3,\"items\":[[\"cmwg80wpd000rgfkzlq002ub1\",3011717,2916711],[\"cmwg80wpq000sgfkz4v4nj4p4\",3021717,2926711],[\"cmwg80wq1000tgfkzyf3rhh4j\",3031717,2936711]],\"n\":3,\"p\":\"2026-10\"}],\"stranded\":[]}",
+  "payU1_laborDay": "{\"basis\":\"ESTIMATE\",\"day\":\"2026-11-14\",\"demand\":null,\"flags\":{\"lawMissing\":true,\"noProfile\":0,\"truncated\":false},\"money\":{\"costSatang\":302172,\"excludedHeadcount\":1,\"hours\":[{\"costSatang\":22347,\"forecastSatang\":null,\"hour\":8,\"label\":\"08\",\"salesSatang\":null},{\"costSatang\":22347,\"forecastSatang\":null,\"hour\":9,\"label\":\"09\",\"salesSatang\":null},{\"costSatang\":22347,\"forecastSatang\":null,\"hour\":10,\"label\":\"10\",\"salesSatang\":null},{\"costSatang\":22347,\"forecastSatang\":null,\"hour\":11,\"label\":\"11\",\"salesSatang\":null},{\"costSatang\":22347,\"forecastSatang\":null,\"hour\":12,\"label\":\"12\",\"salesSatang\":null},{\"co",
+  "payU1_ot_csv": "{\"bytes\":\"<bytes:283:﻿รหัส,ชื่อ,สาขา,รออนุมัติ,อนุมัติ,ปฏิเสธ,นาทีที่อนุมัติ,OT วันทำงาน (นาที),ทำงานวันหยุด (นาที),OT วันหยุด (นาที),ทำงานวันหยุดที่คงจ่าย (นาที),OT วันทำงาน (บาท),ทำงานวันหยุด (บาท),OT วันหยุด (บาท),ทำงานวันหยุดที่คงจ่าย (บาท),รวม (บาท)\\r\\nรวม,,,0,0,0,0,0,0,0,0,0.00,0.00,0.00,0.00,0.00\\r\\n>\",\"columns\":[\"code\",\"name\",\"unit\",\"pending\",\"approved\",\"rejected\",\"approvedMin\",\"otWorkdayMin\",\"holidayWorkMin\",\"otHolidayMin\",\"keptHolidayWorkMin\",\"otWorkdayAmt\",\"holidayWorkAmt\",\"otHolidayAmt\",\"keptHolidayWorkAmt\",\"amount\"],\"contentType\":\"text/csv; charset=utf-8\",\"fileName\":\"HR_ot_2026-10.csv\",\"ok\":true,\"rowCount\":0}",
+  "payU1_inbox": "{\"counts\":{\"ADJUSTMENT\":1,\"CERT\":0,\"CORRECTION\":0,\"LEAVE\":0,\"OT\":1,\"SWAP\":0,\"decidable\":0,\"total\":2},\"items\":[{\"ageDays\":0,\"batchable\":false,\"blocker\":\"NO_RIGHT\",\"canDecide\":false,\"createdAt\":\"2026-11-14T09:46:23.362Z\",\"detail\":{\"date\":\"2026-11-14\",\"dayClass\":\"WORKDAY\",\"endAt\":\"2026-11-14T11:00:00.000Z\",\"multiplierBp\":null,\"reason\":null,\"requestedMin\":60,\"startAt\":\"2026-11-14T10:00:00.000Z\",\"timing\":\"AFTER\",\"warnWeek\":false},\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"id\":\"cmwg80wzm001lgfkzupmtcl2q\",\"impact\":{\"measuredMin\":null,\"weekWarn\":false},\"type\":\"OT\",\"unitId\":\"cmwg80wev0001gfkzshh6jc5t\"},{\"ageDays\":0,\"batchable\":false,\"blocker\":\"NO_RIGHT\",\"canDecide\":false,\"createdAt\":\"2026-11-14T09:46:23.374Z\",\"detail\":{\"amountSatang\":453258,\"consent\":{\"at\":\"2026-11-13\",\"employeeEnded\":false,\"ref\":\"C-1\"},\"kind\":\"DEDUCTION\",\"note\":null,\"periodKey\":\"2026-11\",\"source\":\"STOCK\"},\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"id\":\"cmwg80wzy001mgfkz7l99qd4j\",\"impact\":{\"targetPeriod\":\"2026-11\"},\"type\":\"ADJUSTMENT\",\"unitId\":\"cmwg80wev0001gfkzshh6jc5t\"}],\"nextCursor\":null,\"truncated\":[]}",
+  "approver_otList": "{\"items\":[{\"date\":\"2026-11-14\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wqx000wgfkz69od58rp\",\"employeeName\":\"QC52 e6 afcbudwihdy\",\"endAt\":\"2026-11-14T11:00:00.000Z\",\"id\":\"cmwg80wzm001lgfkzupmtcl2q\",\"multiplierBp\":null,\"paidMin\":null,\"reason\":null,\"requestedMin\":60,\"settled\":false,\"startAt\":\"2026-11-14T10:00:00.000Z\",\"status\":\"PENDING\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"date\":\"2026-11-13\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wpq000sgfkz4v4nj4p4\",\"employeeName\":\"QC52 e2 afcbudwihdy\",\"endAt\":\"2026-11-13T12:00:00.000Z\",\"id\":\"cmwg80wyo001igfkzm2l9flqh\",\"multiplierBp\":15000,\"paidMin\":120,\"reason\":null,\"requestedMin\":120,\"settled\":false,\"startAt\":\"2026-11-13T10:00:00.000Z\",\"status\":\"APPROVED\",\"timing\":\"AFTER\",\"warnWeek\":false},{\"date\":\"2026-11-13\",\"dayClass\":\"WORKDAY\",\"employeeId\":\"cmwg80wq"
+ },
+ "ownSlip": {
+  "runKeys": [
+   "accountSystemId",
+   "approvedAt",
+   "approvedById",
+   "bankFileKey",
+   "createdAt",
+   "createdById",
+   "engineVersion",
+   "filingJson",
+   "id",
+   "inputDigest",
+   "journalEntryId",
+   "note",
+   "payDate",
+   "periodKey",
+   "reversedAt",
+   "reversedById",
+   "status",
+   "stepsJson",
+   "systemId",
+   "tenantId"
+  ],
+  "itemOk": true,
+  "mySlip": "{\"bankMasked\":null,\"deductions\":[{\"amountSatang\":75000,\"code\":\"SSO\",\"count\":1,\"qty\":null},{\"amountSatang\":20006,\"code\":\"WHT\",\"count\":1,\"qty\":null}],\"deductionsSatang\":95006,\"earnings\":[{\"amountSatang\":3011717,\"code\":\"BASE\",\"count\":1,\"qty\":null}],\"earningsSatang\":3011717,\"employee\":{\"code\":\"C1\",\"name\":\"QC52 e1 afcbudwihdy\",\"position\":null},\"employerSsoSatang\":75000,\"engineVersion\":1,\"flags\":[],\"net",
+  "mySlips": "{\"ok\":true,\"years\":[{\"count\":1,\"grossSatang\":3011717,\"incomeSatang\":3011717,\"netSatang\":2916711,\"slips\":[{\"href\":\"/app/me/hr/pay/cmwg80wvg001bgfkzht5wr42e\",\"netSatang\":2916711,\"payDate\":\"2026-10-28\",\"periodKey\":\"2026-10\",\"runId\":\"cmwg80wvg001bgfkzht5wr42e\"}],\"ssoSatang\":75000,\"taxSatang\":20006,\"taxY",
+  "pdf": "ok 17751"
+ },
+ "payU1slipLoaderOwnBranch": {
+  "runKeys": [
+   "accountSystemId",
+   "approvedAt",
+   "approvedById",
+   "bankFileKey",
+   "createdAt",
+   "createdById",
+   "engineVersion",
+   "filingJson",
+   "id",
+   "inputDigest",
+   "journalEntryId",
+   "note",
+   "payDate",
+   "periodKey",
+   "reversedAt",
+   "reversedById",
+   "status",
+   "stepsJson",
+   "systemId",
+   "tenantId"
+  ],
+  "gross": 3021717
+ },
+ "ownerSlipLoader": {
+  "hasTotals": true
+ },
+ "nameWrites": {
+  "bidi": "{\"ok\":false,\"reason\":\"ชื่อพนักงานมีอักขระพิเศษที่ใช้ไม่ได้ (ตัวควบคุม · ตัวกลับทิศทาง · ตัวมองไม่เห็น · ขึ้นบรรทัดใหม่) — พิมพ์ชื่อใหม่ด้วยตัวอักษรธรรมดา\"}",
+  "zw": "{\"ok\":false,\"reason\":\"ชื่อพนักงานมีอักขระพิเศษที่ใช้ไม่ได้ (ตัวควบคุม · ตัวกลับทิศทาง · ตัวมองไม่เห็น · ขึ้นบรรทัดใหม่) — พิมพ์ชื่อใหม่ด้วยตัวอักษรธรรมดา\"}",
+  "ctrl": "{\"ok\":false,\"reason\":\"ชื่อพนักงานมีอักขระพิเศษที่ใช้ไม่ได้ (ตัวควบคุม · ตัวกลับทิศทาง · ตัวมองไม่เห็น · ขึ้นบรรทัดใหม่) — พิมพ์ชื่อใหม่ด้วยตัวอักษรธรรมดา\"}",
+  "formula": "{\"ok\":true}",
+  "plus": "{\"ok\":true}",
+  "at": "{\"ok\":true}"
+ },
+ "exports": {
+  "payroll-month": {
+   "ok": true,
+   "danger": [],
+   "bidiOrZw": true,
+   "names": [
+    "abdcef",
+    "\"'=HYPERLINK(\"\"http://x.invalid\"\"",
+    "'+cmd|' /C calc'!A0",
+    "'-2+3 zerowidth",
+    "'@SUM(A1)"
+   ]
+  },
+  "time": {
+   "ok": true,
+   "danger": [],
+   "bidiOrZw": true,
+   "names": []
+  },
+  "ot": {
+   "ok": true,
+   "danger": [],
+   "bidiOrZw": true,
+   "names": []
+  },
+  "wages": {
+   "ok": true,
+   "danger": [],
+   "bidiOrZw": true,
+   "names": [
+    "abdcef",
+    "\"'=HYPERLINK(\"\"http://x.invalid\"\"",
+    "'+cmd|' /C calc'!A0",
+    "'-2+3 zerowidth",
+    "'@SUM(A1)"
+   ]
+  },
+  "register": {
+   "ok": false,
+   "r": "{\"code\":\"FORMULA\",\"ok\":false,\"reason\":\"มีข้อความที่โปรแกรมตารางอาจอ่านเป็นสูตร — แก้ข้อความก่อนส่งออก\"}"
+  }
+ },
+ "pdfDirtyName": "ok 17507 payslip-2026-10-C1.pdf"
+}

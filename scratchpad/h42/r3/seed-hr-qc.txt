@@ -1,0 +1,51 @@
+[env] seed-hr-qc · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+📅 วันนี้ (เวลาไทย) 2026-11-14 · รอบที่จ่ายแล้ว 2026-10 · เดือนนี้ 2026-11
+  ✅ [T0] HR_TABLES ทุกตัวเป็น delegate จริงของ Prisma
+(node:1859917) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [D1] ลบร้านเดิม cmwfp4tel0000n2kzjcrfdvdb (667 แถว) — ไม่เหลือแถวที่มี tenantId นี้
+  ✅ [D2] ไม่มีผู้ใช้ QC ค้าง (อีเมล HQC)
+🏢 ร้าน "บ้านกาแฟสวนผึ้ง (QC HR)" cmwfqfuyr00004dkzdlx2jctf · HR cmwfqfuzv00034dkzmtp00vh0 · บัญชี cmwfqfv0500044dkzgdv6l8jo
+  ✅ [E1] พนักงาน 14 คน (9 จากภาพ + 5 กรณีขอบ)
+  ✅ [E2] ผูกบัญชีตรง HQC (น้ำฝน ↔ staff · ก้อย ↔ payrollSelf · ที่เหลือไม่ผูก)
+  ✅ [E2b] ผู้ดู 6 บทบาทของ brief ไม่ผูกพนักงาน (ยกเว้น staff ↔ น้ำฝน) · payrollSelf ↔ ก้อยคนเดียว
+  ✅ [U1] สาขาประจำ (HrEmployee.unitId) ตรง HQC unit ทั้ง 14 คน
+  ✅ [U2] ยืมตัวที่ยังเปิด = borrowedTo ของ HQC (เจ → หัวหิน)
+  ✅ [U3] สถานะการจ้าง: ลาออก = ENDED · ทดลองงาน = PROBATION · ที่เหลือ ACTIVE
+  ✅ [E3] ผู้ลาออก: active=false · endDate = วันสุดท้ายของเดือนก่อนงวดที่จ่าย
+  ✅ [E4] ผู้เริ่มงานอนาคต: startDate = วันที่ 1 ของเดือนหน้า
+  ✅ [E5] ทดลองงาน: startDate = วันที่ 1 ของเดือนนี้ (หลังงวดที่จ่ายเสมอ)
+  ✅ [E6] มี PIN ตรง HQC (ปุ้ยไม่มี · ที่เหลือที่ยังทำงานมี) — อ่าน hasPin ไม่พิมพ์ค่า
+  ✅ [S1] โปรไฟล์เงินเดือน 14 คน
+  ✅ [P1] H0.2 ตัดผู้ลาออก (ENDED_BEFORE) + ผู้เริ่มงานอนาคต/ผู้ทดลองงานเดือนนี้ (STARTS_AFTER) ออกจากรอบที่จ่าย — ครบและไม่เกิน
+  ✅ [P2] approveRun(expect = ยอด + itemsDigest) สำเร็จ
+  ✅ [P3] markPaid สำเร็จ
+  ✅ [P4] รอบ 2026-10 = PAID · มี journalEntryId
+  ✅ [P5] JV Dr = Cr (> 0)
+  ✅ [P6] Σ แถว = ยอดรอบ (11 คน) · ทุกแถว net = gross − ปสส. − ภาษี (gross รวมเพิ่ม/หักแล้ว — payableGrossSatang) · ไม่มี net < 0
+  ✅ [P7] 3 รายการอนุมัติแล้วผูกเข้ารอบที่จ่าย
+  ✅ [P8] รายการรออนุมัติเดือนนี้ 2 รายการ · ไม่ผูกรอบ · ไม่มีรอบเดือนนี้ (Q2)
+  ✅ [A1] ลงเวลา 120 แถว (9 คน × 7 วัน × 2 − ขาด 1 วัน − ลา 2 วัน) · น้ำฝนสาย 18 นาที (LATE)
+  ✅ [A2] มีสายครั้งเดียวในชุด (น้ำฝน)
+  ✅ [L1] ใบลา 2 ใบ: แพร APPROVED (ผู้จัดการตัดสิน) · มิ้นท์ PENDING
+  ✅ [TL1] ตั้งค่าเวลา/การลา (H1.2): กะ 4 (ทั้งร้าน · ข้ามเที่ยงคืน 1) · ประเภทการลา 4 (ค่าตั้งต้นรอเจ้าของยืนยัน (HQ12)) · วันหยุด 2 (ราชการ presetYear + ร้านเฉพาะหัวหิน) · ตารางงาน/สมุด/คำขอ 0
+  ✅ [LC1] วงจรพนักงาน (H4.4): รับเข้า 5/7 · ผู้ลาออก RESIGNED + รายการออก 6 · บันทึกเห็นได้ 1
+  ✅ [ML1] เงิน/กฎหมาย (H1.3): รอบจ่าย engineVersion 1 · นาทีทำงาน 0 · บันทึก 1 · งานรับเข้า-ออก 13 (H4.4) · แถวกฎหมาย v1 = 4 DRAFT (จาก hr-seed-law-draft --apply)
+  ✅ [RS1] ตารางกะภาพ 03 (H2.2): สัปดาห์ 2026-11-16 · 48 กะ · เผยแพร่ 1 ครั้ง (event 1) · แก้ 3 จุดยังไม่เผยแพร่
+  ✅ [RS2] ใบลารออนุมัติของแพร 2026-11-20–2026-11-20 (ชิปลาในภาพ 03) · ใบลารวม 3
+  ✅ [AJ2] ตารางกะวันนี้ 9 แถว (ประกาศแล้ว) · รอบ 07:30 เตือนยังไม่ลงเวลา 2 คน (กะเช้า) · ไม่ปิดวันเพิ่ม
+  ✅ [AJ1] ผลตัดสินรายวัน (H2.5 Q9): ตารางกะ 63 แถว (9 คน × 7 วัน) · ตัวปิดวัน (05:00 วันนี้) บันทึกครบ 63 แถว · มีสาย/ขาด/ลา · ไม่มีการเตือน
+  ✅ [IX1] คำขอรออนุมัติของกล่องรวม (H2.11): OT 1 · ยกกะ 1 (ตอบรับแล้ว) · แก้เวลา 1 · เบิกล่วงหน้า + หักค่าของ 2 · ใบลาเดิม
+🔎 ร้านอื่น ก่อน {"tenant":33,"hrEmployee":28,"hrPayrollRun":0,"customer":75,"posSale":519} · หลัง {"tenant":33,"hrEmployee":28,"hrPayrollRun":0,"customer":75,"posSale":519}
+  ✅ [O1] ร้านอื่นไม่เปลี่ยน (tenant · hrEmployee · hrPayrollRun · customer · posSale)
+💾 scripts/hr-expected.json · รอบ 2026-10 สุทธิ ฿173,035.17 · 11 คน · 40.0 วิ
+
+===== seed-hr-qc ===== ผ่าน 34/34
+JSON_SUMMARY {"suite":"seed-hr-qc","total":34,"passed":34,"findings":[],"counts":{"AccountJournalEntry":1,"AccountJournalLine":5,"AccountLedger":45,"AccountMapping":33,"AccountPeriod":1,"AppNotification":1,"AppSystem":2,"AppSystemUnit":4,"AuditLog":90,"BusinessUnit":2,"HrAttendance":120,"HrAttendanceAlert":2,"HrAttendanceDay":63,"HrEmployee":14,"HrEmployeeUnit":2,"HrHoliday":2,"HrLeave":3,"HrLeaveBalanceTxn":1,"HrLeavePolicy":4,"HrOnboardingTask":13,"HrOtRequest":1,"HrPayAdjustment":7,"HrPayrollItem":11,"HrPayrollRun":1,"HrReviewNote":1,"HrRosterEntry":120,"HrSalaryProfile":14,"HrShift":4,"HrShiftSwapRequest":1,"HrStockCharge":1,"HrTimeCorrection":1,"HrWorkSchedule":63,"Membership":8,"OutboxEvent":12,"Party":14,"User(qc emails)":8}}

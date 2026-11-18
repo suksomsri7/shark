@@ -1,0 +1,18 @@
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-h4.2-f1 exit=0 ===== qc-hr-h4.2 ===== passed 49/49
+qc-hr-h4.2-f2 exit=0 ===== qc-hr-h4.2 ===== passed 49/49
+qc-hr-h4.2-u exit=0 ===== qc-hr-h4.2 ===== passed 49/49
+qc-hr-h2.2 exit=0 ===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+qc-hr-h3.9 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+qc-hr-h3.8 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-set-1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-audit-trail exit=0 
+DONE
+fitness env exit=0 JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness noenv exit=0 JSON_SUMMARY {"total":54,"passed":54,"findings":[]}
+fitness-hr env exit=0 JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+fitness-hr noenv exit=0 JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}
+ALLDONE

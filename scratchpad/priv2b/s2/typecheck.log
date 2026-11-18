@@ -1,0 +1,7 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hr-b
+> tsc --noEmit
+
+scripts/qc-hr-priv-2.mts(260,17): error TS7006: Parameter 'e' implicitly has an 'any' type.
+scripts/qc-hr-priv-2.mts(261,16): error TS7006: Parameter 'e' implicitly has an 'any' type.
+ ELIFECYCLE  Command failed with exit code 2.

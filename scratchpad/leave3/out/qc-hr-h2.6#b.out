@@ -1,0 +1,73 @@
+[env] qc-hr-h2.6 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h2.6] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h2.6] modules: correction-rules=loaded · correction=loaded · hr-pos-evidence=loaded
+  ✅ [H2.6-S1.1] [static] files · pure rules
+  ✅ [H2.6-S1.3] [static] readers filter voidedAt · no other reader · sole writer
+  ✅ [H2.6-S1.4] [static] approval wiring (effect · label · allowlist · self-check · facade)
+  ✅ [H2.6-S1.6] [static] actions · self has no employeeId · no now: · testids · inventory · messages
+  ✅ [H2.6-S1.7] [control] frozen files unchanged · shas
+  ✅ [H2.6-S1.8] [control] every hot-file hunk vs base marked HR H2.6
+  ✅ [H2.6-VIS2.5] [static] ORACLE-EDIT (H2.12 VIS-2): correction form opens as a full-width sheet / centred dialog (fixed · inset-x-0 · w-full) with a backdrop that closes it — not inside the ≈140 px action cell (.qc-shots/hr/2.6/corr-day-form-owner-1440x900.png)
+  ✅ [H2.6-S2.1] [pure] rules + texts literal
+  ✅ [H2.6-S2.2] [pure] cleanCorrectionReason
+  ✅ [H2.6-S2.3] [pure] checkCorrection V1–V16
+  ✅ [H2.6-S2.4] [pure] sessionDayOf W1–W6
+(node:350526) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H2.6-S3.4] [db] PENDING row literal · evidence · no write · no chain
+  ✅ [H2.6-S4.1] [db] ADD OUT applied · stored ON_TIME W490 v2
+  ✅ [H2.6-S7.3] [db] POS evidence literal · never decides
+  ✅ [H2.6-S4.2] [db] CHANGE IN: original voided intact · replacement ON_TIME · W482
+  ✅ [H2.6-S4.3] [db] VOID duplicate IN · W482
+  ✅ [H2.6-S4.5] [db] overnight OUT belongs to D
+  ✅ [H2.6-S4.6] [db] kiosk originals · timesOverridden W365
+  ✅ [H2.6-S4.7] [db] orphaned stored row · one row W490
+  ✅ [H2.6-S4.8] [db] reject ⇒ rows byte-identical
+  ✅ [H2.6-S4.10] [db] decider gates
+  ✅ [H2.6-S4.4] [db] readers exclude voided rows
+  ✅ [H2.6-S3.1] [db] request refusals · nothing written · 35-day boundary
+  ✅ [H2.6-S3.3] [db] on-behalf gate matrix · filedOnBehalf
+  ✅ [H2.6-S3.5] [db] dupPending ×2 · tooMany
+  ✅ [H2.6-S3.6] [db] ORDER · TOO_LONG · DUP · SAME at request
+  ✅ [H2.6-S4.9] [db] cancel: notOwn · filer · then stale
+  ✅ [H2.6-S3.2] [db] self: unlinked · inactive · foreign employee/row
+  ✅ [H2.6-S7.1] [db] detail keys · viewer matrix · values
+  ✅ [H2.6-S7.4] [db] periodCount/repeat · lists scoped
+  ✅ [H2.6-S5.1] [db] chain request in tx · inChain · reject
+  ✅ [H2.6-S5.2] [db] core self-decision refused
+  ✅ [H2.6-S5.3] [db] core approve + effect ×2 once
+  ✅ [H2.6-S5.4] [db] chain apply after target voided ⇒ CANCELLED TARGET
+  ✅ [H2.6-S5.5] [db] employee cancels chained request
+  ✅ [H2.6-S6.1] [db] owner-auto with a policy
+  ✅ [H2.6-S9.5] [race] effect ×3 ⇒ one apply
+  ✅ [H2.6-S9.1] [race] payroll APPROVED meanwhile ⇒ paid
+  ✅ [H2.6-S9.2] [race] two deciders ⇒ one apply
+  ✅ [H2.6-S9.3] [race] kiosk punch meanwhile ⇒ dup
+  ✅ [H2.6-S9.4] [race] 5 parallel requests ⇒ 1 PENDING
+  ✅ [H2.6-S10.1] [db] ENDED employee
+  ✅ [H2.6-X2.1] [db] other tenant/system raw ids
+  ✅ [H2.6-S8.1] [db] one event per apply · payload · replay
+  ✅ [H2.6-S8.2] [db] notification recipients/titles
+  ✅ [H2.6-S7.2] [db] reason never in audit/outbox/notifications
+  ✅ [H2.6-S1.2] [static+db] migration · schema · live columns/indexes · only migration
+  ✅ [H2.6-S1.5] [static+runtime] consumer · one label · not webhooks
+  ✅ [H2.6-S11.1] [db] paid by session-owning day: IN moved into a paid month ⇒ later OUT fix refused, Feb untouched
+  ✅ [H2.6-S11.2] [db] overnight OUT in a paid month for an open-month session ⇒ accepted, nothing written to April
+  ✅ [H2.6-S11.3] [db] already-stale neighbour in a paid month does not block an unrelated next-day correction
+  ✅ [H2.6-S7.5] [db] evidence: only this user's open/close times · DTO branch-scoped
+  ✅ [H2.6-S7.6] [db] listCorrections complete for a narrow-scope manager (branch filter in the query)
+  ✅ [H2.6-S6.2] [db] owner self-filing applies at once · selfApplied on record + audit
+  ✅ [H2.6-X12.1] [control] fitness ± env
+RESIDUE none (tenants=3 users=18)
+  ✅ [H2.6-Z1] [control] residue none
+BASE-EXPECTATION 4/56 as registered (RED-by-design 52 · GREEN controls 4) · off: H2.6-S1.1(RED→pass) H2.6-S1.3(RED→pass) H2.6-S1.4(RED→pass) H2.6-S1.6(RED→pass) H2.6-VIS2.5(RED→pass) H2.6-S2.1(RED→pass) H2.6-S2.2(RED→pass) H2.6-S2.3(RED→pass) H2.6-S2.4(RED→pass) H2.6-S3.4(RED→pass) H2.6-S4.1(RED→pass) H2.6-S7.3(RED→pass) H2.6-S4.2(RED→pass) H2.6-S4.3(RED→pass) H2.6-S4.5(RED→pass) H2.6-S4.6(RED→pass) H2.6-S4.7(RED→pass) H2.6-S4.8(RED→pass) H2.6-S4.10(RED→pass) H2.6-S4.4(RED→pass) H2.6-S3.1(RED→pass) H2.6-S3.3(RED→pass) H2.6-S3.5(RED→pass) H2.6-S3.6(RED→pass) H2.6-S4.9(RED→pass) H2.6-S3.2(RED→pass) H2.6-S7.1(RED→pass) H2.6-S7.4(RED→pass) H2.6-S5.1(RED→pass) H2.6-S5.2(RED→pass) H2.6-S5.3(RED→pass) H2.6-S5.4(RED→pass) H2.6-S5.5(RED→pass) H2.6-S6.1(RED→pass) H2.6-S9.5(RED→pass) H2.6-S9.1(RED→pass) H2.6-S9.2(RED→pass) H2.6-S9.3(RED→pass) H2.6-S9.4(RED→pass) H2.6-S10.1(RED→pass) H2.6-X2.1(RED→pass) H2.6-S8.1(RED→pass) H2.6-S8.2(RED→pass) H2.6-S7.2(RED→pass) H2.6-S1.2(RED→pass) H2.6-S1.5(RED→pass) H2.6-S11.1(RED→pass) H2.6-S11.2(RED→pass) H2.6-S11.3(RED→pass) H2.6-S7.5(RED→pass) H2.6-S7.6(RED→pass) H2.6-S6.2(RED→pass)
+
+===== qc-hr-h2.6 ===== passed 56/56 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h2.6","total":56,"passed":56,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":52,"baseGreen":4,"offBase":["H2.6-S1.1(RED→pass)","H2.6-S1.3(RED→pass)","H2.6-S1.4(RED→pass)","H2.6-S1.6(RED→pass)","H2.6-VIS2.5(RED→pass)","H2.6-S2.1(RED→pass)","H2.6-S2.2(RED→pass)","H2.6-S2.3(RED→pass)","H2.6-S2.4(RED→pass)","H2.6-S3.4(RED→pass)","H2.6-S4.1(RED→pass)","H2.6-S7.3(RED→pass)","H2.6-S4.2(RED→pass)","H2.6-S4.3(RED→pass)","H2.6-S4.5(RED→pass)","H2.6-S4.6(RED→pass)","H2.6-S4.7(RED→pass)","H2.6-S4.8(RED→pass)","H2.6-S4.10(RED→pass)","H2.6-S4.4(RED→pass)","H2.6-S3.1(RED→pass)","H2.6-S3.3(RED→pass)","H2.6-S3.5(RED→pass)","H2.6-S3.6(RED→pass)","H2.6-S4.9(RED→pass)","H2.6-S3.2(RED→pass)","H2.6-S7.1(RED→pass)","H2.6-S7.4(RED→pass)","H2.6-S5.1(RED→pass)","H2.6-S5.2(RED→pass)","H2.6-S5.3(RED→pass)","H2.6-S5.4(RED→pass)","H2.6-S5.5(RED→pass)","H2.6-S6.1(RED→pass)","H2.6-S9.5(RED→pass)","H2.6-S9.1(RED→pass)","H2.6-S9.2(RED→pass)","H2.6-S9.3(RED→pass)","H2.6-S9.4(RED→pass)","H2.6-S10.1(RED→pass)","H2.6-X2.1(RED→pass)","H2.6-S8.1(RED→pass)","H2.6-S8.2(RED→pass)","H2.6-S7.2(RED→pass)","H2.6-S1.2(RED→pass)","H2.6-S1.5(RED→pass)","H2.6-S11.1(RED→pass)","H2.6-S11.2(RED→pass)","H2.6-S11.3(RED→pass)","H2.6-S7.5(RED→pass)","H2.6-S7.6(RED→pass)","H2.6-S6.2(RED→pass)"]}

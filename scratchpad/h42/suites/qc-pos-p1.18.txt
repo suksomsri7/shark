@@ -1,0 +1,31 @@
+[env] qc-pos-p1.18 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (อนุญาตด้วย POS_QC_ALLOW_HOST=ep-orange-dust-aotwbyc7)
+(node:1703558) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB) ──
+  ✅ [P1.18-ST1] [R1 CD4 มติ Q2] permissions.ts บล็อก pos มี "pos.settings.manage" และ "pos.settings.payment" ป้ายไทย (มีป้าย // POS P1.18) · payment-settings-actions ยัง assert pos.settings.payment (ไม่ ORACLE-EDIT P1.7/P1.7U)
+  ✅ [P1.18-ST2] [R7 hard rule F2] composition root src/lib/pos-integrations.ts export posIntegrationCards setPosAccountLink POS_INTEGRATION_CODES · ไฟล์ใต้ modules/pos ไม่ import chat/kanban/hr/ไฟล์ภายใน crm/crm-bridges/kanban-bridges/pos-integrations (static+dynamic · facade crm เดิมได้) · root import โมดูลอื่นผ่าน facade เท่านั้น (ยกเว้น pos/system)
+  ✅ [P1.18-ST3] [R8 R10 มติ Q4] facade เพิ่มอย่างเดียว: account/index.ts export setPosLinkEnabled (ห่อ connect/disconnect) · approval/index.ts export listPoliciesForEntities · ทั้งคู่ในบล็อก // POS P1.18 ▸ … ◂
+  ✅ [P1.18-ST4] [hard rule R12] ทุกไฟล์ "use server" (modules/pos · pos-integrations-actions · i18n/locale-actions) export async function ล้วน · settings-actions.ts 7 actions · pos-integrations-actions.ts 2 actions (requireTenant + catch + เรียกฟังก์ชันของตัวเอง) · setUiLocaleAction เรียก nextLocaleCookies + cookies()
+  ✅ [P1.18-ST5] [R13c มติ Q5] messages pos.nav.{overview register products stock sales shifts close reports settings} th+en (th = ป้ายเดิมตามลำดับ · en ไม่มีไทย) · pos/tabs.ts และบล็อก POS ของ app/layout.tsx ไม่มีอักษรไทย (ป้ายจาก messages)
+  ✅ [P1.18-ST6] [R13a R16 K1] ทุกรหัสใน union *Code ของ modules/pos มีคีย์ errors.<camel> ใน pos.json th และ en · มีรหัสใหม่ SETTINGS_SECTION_LOCKED CONFIRM_REQUIRED (PosSettingsRefusalCode) PIN_THROTTLED (RegisterRefusalCode) · settingsRefusalMessageKey ครอบทุกรหัส · REFUSAL_KEY มี PIN_THROTTLED · คีย์ th เป็นไทย
+  ✅ [P1.18-ST7] [R13b มติ Q8 · U-PHASE] ไม่มีอักษรไทยนอก t() ใต้ src/components/pos/** และ src/app/app/sys/[id]/pos/** (ทั้งต้นไม้ = 0) — ใบ S: SKIP-until-U (พิมพ์ฐานต่อไฟล์) · เฟส U: ต้องเป็น 0
+  ✅ [P1.18-ST8] [R3 มติ Q9] ตัวอ่านเดียว: held-cart.ts ใช้ posHeldCartExpireDays (ไม่แกะ heldCart.expireDays เอง) · reports.ts ไม่มี DAY_CUTOFF_MINUTES = 0 คงที่ + ใช้ posDayCutoffMinutes · service.ts ปิดวันอ่านค่าตัดวัน · payment-intent.ts เรียก promptpayIdForUnit ก่อน paymentProfile
+  ✅ [P1.18-ST9] [R12 มติ Q7] ReceiptPayload มี printLocale · receipt.ts ตั้ง printLocale · print/browser.ts + print/escpos.ts ใช้ printLocale ของ payload (ภาษาจอไม่ตัดสินภาษาพิมพ์) · i18n/locale-cookies.ts บริสุทธิ์ (ไม่ import next/headers / prisma)
+  ✅ [P1.18-ST10] [R3 R6] settings-general.ts เขียนผ่าน jsonb_set ใต้ FOR UPDATE (ไม่ appSystem.update ทั้งก้อน) + writeAudit · receipt-settings.ts + payment-settings.ts เขียน audit "pos.settings.updated" (hunk เล็ก)
+  ✅ [P1.18-ST11] [มติ Q9 V FU-c] pos/sales/page.tsx ใช้ posSalesReadScope (pos.sale.read หรือ pos.sale.create) · pos/settings/page.tsx ไม่คิด canEditReceipt จาก evaluate(pos.device.manage) ระดับร้านไม่มีสาขา (ใช้ canEdit.receipt / canManageAllLinkedUnits)
+
+── B L V ตัวอ่านบริสุทธิ์ ──
+  ✅ [P1.18-B1] [R3] posHeldCartExpireDays(settings): ไม่ตั้ง → 2 · 1 / 365 เก็บ · 0 / 366 / 2.5 / "3" / null → 2 · อ่านจาก settings.pos.heldCart.expireDays เท่านั้น
+  ✅ [P1.18-B2] [R3 R12 มติ Q7 Q9] posReceiptLocale: ไม่ตั้ง → th · "en" → en · "EN"/"jp"/1 → th · posDayCutoffMinutes: ไม่ตั้ง → 0 · 240 / 360 เก็บ · 361 / -1 / "240" / 2.5 → 0 (settings.pos.reports.dayCutoffMinutes)
+  ✅ [P1.18-B3] [มติ Q9 PP] promptpayIdForUnit(settings, unitId): settings.pos.payment.promptpayIdByUnit[unitId] (ตัดช่องว่าง) · ไม่มีสาขานั้น / แผนที่ผิดรูป / ค่าว่าง / ไม่ใช่สตริง → null
+  ✅ [P1.18-L1] [R12 CD5] nextLocaleCookies("en") → {ok:true, cookies:[LOCALE=en, lang=en]} ทั้งคู่ path "/" · maxAge 31536000 · sameSite "lax" · "th" เช่นกัน · "jp" / "" / null / "EN" → {ok:false, code VALIDATION} ไม่ throw
+  ✅ [P1.18-V1] [มติ Q9 sales gate] posSalesReadScope(m): พนักงานที่มีแค่ pos.sale.read ที่ U1 → {allUnits:false, unitIds:[U1]} · pos.sale.create เช่นกัน · ไม่มีทั้งสอง → null · OWNER → allUnits · posSalesScope เดิมไม่เปลี่ยน (read อย่างเดียว = null)
+🔴 หยุด! qc-pos-p1.18: จะเขียนแถวได้เฉพาะ QC4 (ep-frosty-lab) — DATABASE_URL, DIRECT_URL ไม่ใช่ (ยังไม่ได้เขียนอะไร)

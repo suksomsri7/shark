@@ -1,0 +1,70 @@
+[env] qc-hr-h3.5 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.5] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h3.5] build=loaded · service=loaded · base=da4cf43a9 (H3.5 in base)
+  ✅ [H3.5-S1.1] [static] migration 20270107000000_hr_bank_files: 3 CREATE TABLE (HrBankProfile · HrBankExportPreset · HrBankFile) + CHECKs · additive only
+  ✅ [H3.5-S1.2] [static] payroll.prisma 3 models · HrEmployee/HrPayrollRun/HrPayrollItem blocks unchanged vs base · scope.ts sys() ×3 · hr-qc-env ×3
+  ✅ [H3.5-S1.3] [static] pure layer bank-files/{build,codes,encode,kbank,ktb,generic,xlsx}.ts: imports ⊆ ./ + node:zlib · no db/clock/random/fetch
+  ✅ [H3.5-S1.4] [static] [control] no bankFileKey in bank-files/** or route · R7/S6.1 oracles + privacy 6-key list untouched (no ORACLE-EDIT needed)
+  ✅ [H3.5-S1.5] [static] [control] payroll-rules sha · frozen files/dirs unchanged vs base
+  ✅ [H3.5-S1.6] [static] marked hunks "HR H3.5" in payroll.prisma · core/scope.ts · hr-qc-env.mts · payroll page · settings page (every hunk marked)
+  ✅ [H3.5-S1.7] [static] download route: GET → downloadBankFile · attachment · no-store · nosniff · no bytes on refusal
+  ✅ [H3.5-S1.8] [static] UI testids · inventory rows wo H3.5 · hr.bank.* th = en · untested th/en exact · untested + legal texts used
+  ✅ [H3.5-S1.9] [static] client boundary: ui.tsx exists · no "use client" file under bank-files imports service/build/db or reads account fields
+  ✅ [H3.5-S1.10] [static] service: gate reads permissions "hr.payroll.read" ∧ "hr.payroll.pay" explicitly · actions "use server" · writeAudit actions named
+  ✅ [H3.5-S2.0] [pure] [control] goldens self-consistent: line lengths · header count/total = Σ details · G1/G3A key slices = research C3 tables
+  ✅ [H3.5-S2.1] [pure] BANK_TEXT = texts fixture (th + reasons + warnings) byte-exact
+  ✅ [H3.5-S2.2] [pure] resolveBankCode: 24 vectors (4 [V] codes · prefixes/suffixes · unknown ⇒ null)
+  ✅ [H3.5-S2.3] [pure] G1 KBank PCT ASCII byte-exact + meta + 5 not-included causes · TIS620 run = same bytes, charset windows-874
+  ✅ [H3.5-S2.4] [pure] G2 KBank PCT TIS-620 Thai names (fallback + cut 50) byte-exact · G2A ASCII ⇒ ENCODING text listing 3 employees
+  ✅ [H3.5-S2.5] [pure] G3A/G3B/G3C KTB iPay STANDARD byte-exact (era CE/BE × receiving branch ZEROS/SPACES) · SAME_BANK
+  ✅ [H3.5-S2.6] [pure] G4 KTB iPay DIRECT defaults (TIS620 · CE · SPACES · ref HR202611-0001 · service 02) byte-exact
+  ✅ [H3.5-S2.7] [pure] G5A/G5B/G5C generic CSV byte-exact (preset GENERIC · custom mapping SATANG/DMY_BE/summary/TIS620 · DMY_CE/BAHT)
+  ✅ [H3.5-S2.8] [pure] G6 XLSX = G5A rows (parseImportFile) · every cell string + numFmt 49 · G7 KTB_BUSINESS preset rows
+  ✅ [H3.5-S2.9] [pure] G8 formula cells ⇒ FORMULA text listing 2 employees (never neutralised)
+  ✅ [H3.5-S2.10] [pure] refusals: STATUS ×2 · NEGATIVE · MISMATCH · EMPTY (+ report) · OPTIONS ×4 · PROFILE ×4 · fixed texts
+  ✅ [H3.5-S2.11] [pure] properties ×40 sets × 4 formats: widths · header = Σ details · Σ file + Σ excluded = run net · deterministic · input not mutated
+  ✅ [H3.5-S2.12] [pure] edges: 1 satang · 21,474,836.47 · OVER_LIMIT at 3,000,000.01 only · EFFECTIVE_PAST · DUP_ACCOUNT · KTB NAME_CUT 100
+  ✅ [H3.5-S6.1] [pure] fix r1: effective year outside 2000–2400 (KTB CE/BE · PCT) ⇒ OPTIONS · bounds 2000-01-01 / 2400-12-31 BE ⇒ 498 · fixedLinesOk rejects 497/499
+  ✅ [H3.5-S6.3] [pure] fix r1: PCT item ≥ 10^15 ⇒ AMOUNT naming the employee · Σ ≥ 10^15 ⇒ AMOUNT naming the file total · 10^15−1 ⇒ 487 bytes
+  ✅ [H3.5-S6.4] [pure] fix r1: Thai cut at the last complete cluster (50×ก+่ · 49×ก+เก · 48×ก+กิ่ข · KTB 99×ก+ก้) padded with spaces · NAME_CUT · plain ASCII cut unchanged
+  ✅ [H3.5-S6.5] [pure] fix r1: formula after leading whitespace/control · leading tab outright · name/code trimmed · UTF-8 CSV control/bidi ⇒ ENCODING · XLSX bidi ⇒ ENCODING
+  ✅ [H3.5-S6.8] [pure] fix r1: BANK_TEXT_EN = fixture en · same keys as BANK_TEXT · {names} parity · no Thai in en · bankTextFor(locale)
+  ✅ [H3.5-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+(node:3222775) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H3.5-S3.0] [db] [control] fixture: 7 runs inserted (APPROVED/DRAFT/REVERSED/PAID/mismatch/v2/negative) · Σ items = totals · tenant has no ACCOUNT system
+  ✅ [H3.5-S3.1] [db] profile: owner saves · ackUntested · profileInput · non-owner profileOwner · read owner full / payroll masked / others no · audit {formatsEnabled}
+  ✅ [H3.5-S3.2] [db] DB1 KBank PCT via generateBankFile (owner, defaults) byte-exact · meta · notIncluded DTO · preview same counts
+  ✅ [H3.5-X8.1] [db] tenant without ACCOUNT/POS: S3.2 path ok and no account/POS row written
+  ✅ [H3.5-S3.3] [db] manifest row (sha · bytes · counts · createdAt = now · expiresAt +7 d · no account digits) · run row unchanged · no outbox/adjustment write
+  ✅ [H3.5-S3.4] [db] audit generate row: action · target · after keys exact + values · no account digits anywhere in audit · console silent on accounts
+  ✅ [H3.5-S3.5] [db] download: same bytes + audit + downloads 1 · account edited ⇒ changed · restored ⇒ ok · past expiry ⇒ expired
+  ✅ [H3.5-S3.6] [db] DRAFT/REVERSED ⇒ status · mismatch ⇒ mismatch · negative ⇒ negative · no manifest on refusal · PAID ok · v2 run ok
+  ✅ [H3.5-S3.7] [db] KTB on system A: off ⇒ formatOff · enabled with KBank debit ⇒ profile · system B DB2 KTB STANDARD byte-exact
+  ✅ [H3.5-S3.8] [db] generic CSV preset GENERIC on run 1: 5 rows · Σ = 80,122.67 · excluded 2 · header row
+  ✅ [H3.5-S3.9] [db] presets: save · duplicate name · 0 columns · bad field · list · generate with preset id · other system id ⇒ no · delete · audit
+  ✅ [H3.5-S3.10] [db] ASCII on run 1 ⇒ encoding text naming the Thai account holder's display name
+  ✅ [H3.5-S3.11] [db] DTOs: preview / rows / notIncluded / warnings / file list keys exact · no forbidden key · account digits only as •••last4
+  ✅ [H3.5-S4.1] [db] 10 viewers × 5 operations: owner + payroll(read+pay) ok · read-only · pay-only · branch-limited · managers · member · self · other tenant ⇒ no (identical bytes) · nothing written
+  ✅ [H3.5-S4.2] [db] cross-system/tenant: system B ctx with run/file of A · other tenant ctx ⇒ no (identical bytes)
+  ✅ [H3.5-S5.1] [db] 6 parallel generates ⇒ 6 manifests · one sha · audit 6
+  ✅ [H3.5-S5.2] [db] generate ∥ reverseRun (v2 run) ⇒ consistent · download after reverse ⇒ status
+  ✅ [H3.5-S6.2] [db] fix r1: generate KTB 9999-12-31 BE ⇒ options · no manifest · no audit
+  ✅ [H3.5-S6.6] [db] fix r1: route helper — rsc / next-router-prefetch ⇒ 204 · HEAD ⇒ 405 (ORACLE-EDIT H3.9 fix r1 F2a), no count, no audit · plain ⇒ 200 bytes +1/+1 · attachment sanitised · no-store · nosniff · 404/409/410 text, no bytes
+  ✅ [H3.5-S6.7] [db] fix r1: bank format switched off ⇒ download formatOff (CSV file unaffected) · on again ⇒ ok
+  ✅ [H3.5-S6.9] [db] fix r1: empty employee code sorts like null (last) · shop debit account changed ⇒ changed · restored ⇒ ok
+  ✅ [H3.5-S6.10] [db] fix r1: download ∥ reverseRun ×4 ⇒ consistent (ok-then-reversed or status) · later downloads ⇒ status · audit = real downloads
+  ✅ [H3.5-S6.11] [db+static] fix r1: page data for managers / read-only / pay-only / branch / member / self = nothing (canUseBankFiles false · runs/profile/presets NO) · owner + payroll true · both UI parts return null without the gate
+RESIDUE none (tenants=2 users=10)
+  ✅ [H3.5-Z1] no residue (3 new tables included)
+BASE-EXPECTATION 8/53 as registered (RED-by-design 45 · GREEN controls 8) · off: H3.5-S1.1(RED→pass) H3.5-S1.2(RED→pass) H3.5-S1.3(RED→pass) H3.5-S1.6(RED→pass) H3.5-S1.7(RED→pass) H3.5-S1.8(RED→pass) H3.5-S1.9(RED→pass) H3.5-S1.10(RED→pass) H3.5-S2.1(RED→pass) H3.5-S2.2(RED→pass) H3.5-S2.3(RED→pass) H3.5-S2.4(RED→pass) H3.5-S2.5(RED→pass) H3.5-S2.6(RED→pass) H3.5-S2.7(RED→pass) H3.5-S2.8(RED→pass) H3.5-S2.9(RED→pass) H3.5-S2.10(RED→pass) H3.5-S2.11(RED→pass) H3.5-S2.12(RED→pass) H3.5-S6.1(RED→pass) H3.5-S6.3(RED→pass) H3.5-S6.4(RED→pass) H3.5-S6.5(RED→pass) H3.5-S6.8(RED→pass) H3.5-S3.1(RED→pass) H3.5-S3.2(RED→pass) H3.5-X8.1(RED→pass) H3.5-S3.3(RED→pass) H3.5-S3.4(RED→pass) H3.5-S3.5(RED→pass) H3.5-S3.6(RED→pass) H3.5-S3.7(RED→pass) H3.5-S3.8(RED→pass) H3.5-S3.9(RED→pass) H3.5-S3.10(RED→pass) H3.5-S3.11(RED→pass) H3.5-S4.1(RED→pass) H3.5-S4.2(RED→pass) H3.5-S5.1(RED→pass) H3.5-S5.2(RED→pass) H3.5-S6.2(RED→pass) H3.5-S6.6(RED→pass) H3.5-S6.7(RED→pass) H3.5-S6.9(RED→pass)
+
+===== qc-hr-h3.5 ===== passed 53/53 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.5","total":53,"passed":53,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":45,"baseGreen":8,"offBase":["H3.5-S1.1(RED→pass)","H3.5-S1.2(RED→pass)","H3.5-S1.3(RED→pass)","H3.5-S1.6(RED→pass)","H3.5-S1.7(RED→pass)","H3.5-S1.8(RED→pass)","H3.5-S1.9(RED→pass)","H3.5-S1.10(RED→pass)","H3.5-S2.1(RED→pass)","H3.5-S2.2(RED→pass)","H3.5-S2.3(RED→pass)","H3.5-S2.4(RED→pass)","H3.5-S2.5(RED→pass)","H3.5-S2.6(RED→pass)","H3.5-S2.7(RED→pass)","H3.5-S2.8(RED→pass)","H3.5-S2.9(RED→pass)","H3.5-S2.10(RED→pass)","H3.5-S2.11(RED→pass)","H3.5-S2.12(RED→pass)","H3.5-S6.1(RED→pass)","H3.5-S6.3(RED→pass)","H3.5-S6.4(RED→pass)","H3.5-S6.5(RED→pass)","H3.5-S6.8(RED→pass)","H3.5-S3.1(RED→pass)","H3.5-S3.2(RED→pass)","H3.5-X8.1(RED→pass)","H3.5-S3.3(RED→pass)","H3.5-S3.4(RED→pass)","H3.5-S3.5(RED→pass)","H3.5-S3.6(RED→pass)","H3.5-S3.7(RED→pass)","H3.5-S3.8(RED→pass)","H3.5-S3.9(RED→pass)","H3.5-S3.10(RED→pass)","H3.5-S3.11(RED→pass)","H3.5-S4.1(RED→pass)","H3.5-S4.2(RED→pass)","H3.5-S5.1(RED→pass)","H3.5-S5.2(RED→pass)","H3.5-S6.2(RED→pass)","H3.5-S6.6(RED→pass)","H3.5-S6.7(RED→pass)","H3.5-S6.9(RED→pass)"]}

@@ -1,0 +1,46 @@
+[env] qc-hr-set-1 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-set-1] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+── [static] base aa380f6b0 ──
+  ✅ [SET-1-S1.1] [static] helper settings-lock.ts: exports lockHrSettings + writeHrSettingsKeys · advisory hr:clockpolicy:<sys> before the caller's own keys before the AppSystem row FOR UPDATE (id · tenantId · type HR) · writer re-reads under the row lock and changes only the patch keys · type-only imports
+  ✅ [SET-1-S1.2] [static] fitness: every src/lib/modules/hr/** file that writes AppSystem settings (appSystem.update/updateMany/upsert with settings · raw UPDATE "AppSystem") is settings-lock.ts or on the explicit allowlist (empty)
+  ✅ [SET-1-S1.3] [static] each writer fn (OT · lifecycle · clock ×2 · judge cursor · work entries · payroll engine · attendance-pay · report settings · H3.7 pay account) calls lockHrSettings + writeHrSettingsKeys and has no own appSystem settings read/write · OT/lifecycle/attendance-pay pass their own key (hr:otpolicy · hr:lifepolicy · policyLockKey) to the helper
+  ✅ [SET-1-S1.4] [static] lock order: outside settings-lock.ts no hr/** code takes hr:clockpolicy, hr:otpolicy, hr:lifepolicy or the exclusive hr:attpay:policy itself, and nothing locks the AppSystem row FOR UPDATE
+  ✅ [SET-1-S1.5] [static] hunks: every hunk in the 8 writer files vs base carries "HR-SET-1" · ot.ts + lifecycle.ts have ≥ 1 · payroll.ts removed lines ⊆ the stale lock/read/write lines (n/a once the helper is in the base)
+  ✅ [SET-1-S1.6] [static] [control] payroll-rules sha · prisma/ and law.ts unchanged vs base · helper has no law-table / payroll-rules access
+  ✅ [SET-1-X1] [run] fitness + fitness-hr without env ⇒ exit 0
+(node:1377728) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── [db] deterministic lost-update rounds ──
+  ✅ [SET-1-S2.1] [db] OT policy (saveOtPolicy): A clock-lock · B row-lock · C hr:otpolicy — blocked, then writer key hrOt + marker both survive (×2 each)
+  ✅ [SET-1-S2.2] [db] lifecycle policy (saveLifecyclePolicy): A · B · C hr:lifepolicy — blocked, hrLifecycle + marker survive (×2 each)
+  ✅ [SET-1-S2.3] [db] clock policy (saveClockPolicy): A · B — blocked, hrClock + marker survive (×2 each)
+  ✅ [SET-1-S2.4] [db] attendance policy (saveAttendancePolicy): A · B — blocked, hrAttendance + marker survive (×2 each)
+  ✅ [SET-1-S2.5] [db] work entries (setNormalMinutesPerDay): A · B — blocked, hrWork + marker survive (×2 each)
+  ✅ [SET-1-S2.6] [db] payroll engine (setPayrollEngine v1): A · B — blocked, hrPayroll + marker survive (×2 each)
+  ✅ [SET-1-S2.7] [db] attendance-pay (saveAttendancePayPolicy): A · B · C hr:attpay:policy — blocked, hrAttendancePay + marker survive (×2 each)
+  ✅ [SET-1-S2.8] [db] [control] report settings (setReportSettings OFF): A · B — blocked, hrReports + marker survive (×2 each)
+  ✅ [SET-1-S2.9] [db] judge cursor (runAttendanceJobs maxPages 1 → saveCursor): A · B — blocked, hrAttendanceCursor + marker survive (×2 each)
+  ✅ [SET-1-S2.10] [db] H3.7 default pay account (setPayrollPayAccount null → h37WritePaySetting): A · B — blocked, hrPayroll.payFinanceAccountId cleared + other hrPayroll keys + marker survive (×2 each)
+── [db] concurrent pairs ──
+  ✅ [SET-1-S3.1] [db] no deadlock / no lost update: OT + report settings concurrently ×10 — both ok, both keys = round values (base: lost updates by race)
+  ✅ [SET-1-S3.2] [db] no deadlock / no lost update: lifecycle + report settings concurrently ×10 (base: lost updates by race)
+  ✅ [SET-1-S3.3] [db] no deadlock / no lost update: clock policy + attendance-pay concurrently ×10
+── [db] pins ──
+  ✅ [SET-1-S4.1] [db] [control] audit rows unchanged in shape (1 row per save · action · targetType AppSystem · targetId · actor · before/after keys) + same return values for all 8 entry points · all 8 keys coexist
+  ✅ [SET-1-S4.2] [db] [control] OT save refusals unchanged (noPermission · shopWide · sAfter · sAhead · sRound) · nothing written · no audit · all-branch HR admin ok
+  ✅ [SET-1-S4.3] [db] [control] lifecycle save refusals unchanged (noPermission · shopWide · lead · template · failed · board · ownerSwitch) · nothing written · no audit · owner ok
+  ✅ [SET-1-S4.4] [db] misuse refused (review m2): writeHrSettingsKeys in a tx that did not call lockHrSettings throws and writes nothing · after lockHrSettings in the same tx it writes (positive control)
+RESIDUE none (tenants=1 users=4)
+  ✅ [SET-1-Z1] no residue (opsEvent included)
+BASE-EXPECTATION 8/25 as registered (RED-by-design 17 · GREEN controls 8) · off: SET-1-S1.1(RED→pass) SET-1-S1.2(RED→pass) SET-1-S1.3(RED→pass) SET-1-S1.4(RED→pass) SET-1-S1.5(RED→pass) SET-1-S2.1(RED→pass) SET-1-S2.2(RED→pass) SET-1-S2.3(RED→pass) SET-1-S2.4(RED→pass) SET-1-S2.5(RED→pass) SET-1-S2.6(RED→pass) SET-1-S2.7(RED→pass) SET-1-S2.9(RED→pass) SET-1-S2.10(RED→pass) SET-1-S3.1(RED→pass) SET-1-S3.2(RED→pass) SET-1-S4.4(RED→pass)
+
+===== qc-hr-set-1 ===== passed 25/25
+JSON_SUMMARY {"suite":"qc-hr-set-1","total":25,"passed":25,"failed":[],"findings":[],"skipped":false,"forced":false,"crashed":false,"missing":[],"baseRed":17,"baseGreen":8,"offBase":["SET-1-S1.1(RED→pass)","SET-1-S1.2(RED→pass)","SET-1-S1.3(RED→pass)","SET-1-S1.4(RED→pass)","SET-1-S1.5(RED→pass)","SET-1-S2.1(RED→pass)","SET-1-S2.2(RED→pass)","SET-1-S2.3(RED→pass)","SET-1-S2.4(RED→pass)","SET-1-S2.5(RED→pass)","SET-1-S2.6(RED→pass)","SET-1-S2.7(RED→pass)","SET-1-S2.9(RED→pass)","SET-1-S2.10(RED→pass)","SET-1-S3.1(RED→pass)","SET-1-S3.2(RED→pass)","SET-1-S4.4(RED→pass)"]}
+exit 0

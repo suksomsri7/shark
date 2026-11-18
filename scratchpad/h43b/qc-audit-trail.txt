@@ -1,0 +1,47 @@
+[env] qc-audit-trail · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:2084557) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── 1) เขียน→อ่าน + เรียงลำดับ + resolve ชื่อ ──
+  ✅ [A-1.1] listAuditLogs คืน 3 แถว
+  ✅ [A-1.2] เรียงใหม่สุดก่อน (payment.record มาก่อน)
+  ✅ [A-1.3] resolve ชื่อ actor ถูก (สมชาย เจ้าของร้าน)
+  ✅ [A-1.4] actionLabel เป็นไทย (บันทึกรับ/จ่ายเงิน)
+
+── 2) map action → ป้ายไทย ──
+  ✅ [A-2.1] hr.payroll.approve → อนุมัติรอบเงินเดือน
+  ✅ [A-2.2] hr.payroll.reverse → กลับรายการเงินเดือน
+  ✅ [A-2.3] unknown แต่มีกลุ่ม → 'บัญชี: <code>'
+  ✅ [A-2.4] unknown ไม่มีกลุ่ม → code ดิบ
+
+── 3) filter by action ──
+  ✅ [A-3.1] filter 'account.doc' → 2 แถว (create+issue)
+  ✅ [A-3.2] filter exact → 1 แถว
+  ✅ [A-3.3] filter ไม่ match → 0 แถว
+
+── 4) cross-tenant isolation ──
+  ✅ [A-4.1] listAuditLogs(A) ไม่คืน log ของร้าน B
+  ✅ [A-4.2] listAuditLogs(B) เห็นเฉพาะของ B (1 แถว)
+
+── 5) HR payroll → AuditLog (จุดเงินสำคัญ) ──
+  ✅ [A-5.0] payroll-actions.ts wire writeAudit ครบ approve/pay/reverse
+  ✅ [A-5.1] มี AuditLog hr.payroll.approve (targetType HrPayrollRun)
+  ✅ [A-5.2] มี AuditLog hr.payroll.reverse
+  ✅ [A-5.3] approve/reverse service สำเร็จจริง (ok:true) — audit มีเนื้อจริง
+
+── 6) pagination ──
+  ✅ [A-6.1] take:2 → คืน 2 แถว
+  ✅ [A-6.2] มี nextCursor เมื่อยังมีต่อ
+  ✅ [A-6.3] หน้าถัดไป (cursor) ไม่ซ้ำกับหน้าแรก
+
+── 7) distinct actions สำหรับ dropdown ──
+  ✅ [A-7.1] listAuditActions distinct + มี label
+
+✅ PASS — 21/21

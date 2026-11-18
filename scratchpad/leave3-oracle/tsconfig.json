@@ -1,0 +1,1 @@
+{ "extends": "../../tsconfig.json", "compilerOptions": { "noEmit": true, "incremental": false, "skipLibCheck": true }, "include": ["../../scripts/qc-hr-leave-3.mts", "../../scripts/qc-hr-leave-3-lib.mts", "../../scripts/qc-hr-leave-3b.mts", "../../next-env.d.ts"] }

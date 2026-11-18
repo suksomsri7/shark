@@ -1,0 +1,74 @@
+  ✅ [MONEY-2-ST1] payroll-rules.ts sha frozen
+  ✅ [MONEY-2-ST2] frozen files unchanged vs base
+  ✅ [MONEY-2-ST3] payroll/labor/leave/service: only "HR MONEY-2"-marked hunks
+  ✅ [MONEY-2-ST4] fl_REFUND_HELD in th + en
+  ✅ [MONEY-2-ST5] R5 text = CORRECTION_TEXT.paid (referenced, not copied)
+[env] qc-hr-money-2 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-money-2] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:363533) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[qc-hr-money-2] base=2ab0c6b62 (MONEY-2 in base) · tenant cmwgtyyos0000i5kzpi5j364x
+  ✅ [MONEY-2-Z0] own law rows: none before · 3 inserted
+  ✅ [MONEY-2-R1.1] [db] reverse ⇒ unbound refund REJECTED · audit refund_void DEDUCTION_REVERSED
+  ✅ [MONEY-2-R1.2] [db] re-create Aug deducts again · Sep BASE only · refund stays REJECTED
+  ✅ [MONEY-2-R1.3] [db] legacy cancel of claim ⇒ refund REJECTED · audit CLAIM_CANCELLED
+  ✅ [MONEY-2-R1.4] [db] build: refund without standing claim held · REFUND_HELD flag
+  ✅ [MONEY-2-R1.5] [db] approve: claim lost its run under a DRAFT ⇒ INPUTS_CHANGED
+  ✅ [MONEY-2-R1.0] [db] control: Sep draft carries REFUND:+50,000
+  ✅ [MONEY-2-R1.6] [db] reverse with refund bound to later DRAFT ⇒ REFUND_BOUND + text
+  ✅ [MONEY-2-R1.7] [db] draft deleted ⇒ reverse ok · refund REJECTED
+  ✅ [MONEY-2-R1.8] [db] refund paid in later APPROVED run ⇒ LATER_RUN · unchanged
+  ✅ [MONEY-2-R1.12] [db] (R6 review b; GREEN at fix tip 8175c1a92, RED at 60659e7c0) reverse voids a PENDING refund too
+  ✅ [MONEY-2-R1.9] [db] race A create ∥ reverse (row lock) ⇒ both wait · REFUND_BOUND
+  ✅ [MONEY-2-R1.10] [db] race B reverse ∥ create ⇒ both wait · refund REJECTED · Sep BASE only
+  ✅ [MONEY-2-R3.0] [db] control: eM 3 equal worked days
+  ✅ [MONEY-2-R2.0] [db] control: accrual Dr6000 6,800,000 · Dr6010 262,500 · Dr4900 40,000
+  ✅ [MONEY-2-R2.1] [db] owner ACTUAL all units 7,062,500
+  ✅ [MONEY-2-R2.2] [db] ACTUAL = Dr6000 + Dr6010
+  ✅ [MONEY-2-R2.3] [db] hr_labor_percent 7,062,500 ACTUAL
+  ✅ [MONEY-2-R3.1] [db] owner u1 2,058,334
+  ✅ [MONEY-2-R3.2] [db] owner u2 5,004,166 · u1+u2 = all
+  ✅ [MONEY-2-R2.5] [db] limited [u2]: 3,975,000 · excl 1 · partial
+  ✅ [MONEY-2-R3.3] [db] limited [u1] u1 2,058,334 · excl 0
+  ✅ [MONEY-2-R3.4] [db] (Q1) home without minutes ⇒ u1 1,029,166 · u2 2,058,334 · u3 0
+  ✅ [MONEY-2-R2.6] [db] doubling outsider ⇒ limited [u2] byte-identical
+  ✅ [MONEY-2-R2.7] [db] doubling control: owner u1 4,116,667 · u2 6,033,333
+  ✅ [MONEY-2-R2.4] [db] v1 ACTUAL 1,575,000
+  ✅ [MONEY-2-R1.11] [db] v1 reverse voids pending refund
+  ✅ [MONEY-2-R4.1] [db] v2 total 2,147,483,647 created
+  ✅ [MONEY-2-R4.2] [db] v2 recompute over limit ⇒ text · draft unchanged
+  ✅ [MONEY-2-R4.3] [db] v2 create over limit ⇒ RUN_LIMIT · nothing written
+  ✅ [MONEY-2-R4.4] [db] v1 total 2,147,483,647 created
+  ✅ [MONEY-2-R4.5] [db] v1 create over limit ⇒ PayrollInputError(text)
+  ✅ [MONEY-2-R4.7] [db] (R6 review a) recompute: only accrual overflows ⇒ RUN_LIMIT · draft untouched
+  ✅ [MONEY-2-R4.6] [db] (Q3) gross fits, accrual Dr6000 2.2e9 ⇒ RUN_LIMIT
+  ✅ [MONEY-2-R5.1] [db] approve UNPAID leave in APPROVED month ⇒ paid text · PENDING
+  ✅ [MONEY-2-R5.2] [db] approve PAID leave (no deduction) same month ⇒ ok
+  ✅ [MONEY-2-R5.3] [db] approve UNPAID leave, month without run ⇒ ok
+  ✅ [MONEY-2-R5.4] [db] owner UNPAID leave created-as-approved ⇒ refused · no row
+  ✅ [MONEY-2-R5.5] [db] control: same in September ⇒ APPROVED
+  ✅ [MONEY-2-R5.6] [db] (Q2) withdraw approved UNPAID leave ⇒ refused · APPROVED
+  ✅ [MONEY-2-R5.7] [db] (Q2) owner cancelLeave approved UNPAID ⇒ refused · APPROVED
+  ✅ [MONEY-2-R5.8] [db] (R6, was control) withdraw approved PAID leave in APPROVED month ⇒ refused · APPROVED
+  ✅ [MONEY-2-R5.9] [db] (Q4) chain apply UNPAID ⇒ PAID · CANCELLED · audit
+  ✅ [MONEY-2-R5.10] [db] (Q4) control: chain apply September ⇒ APPROVED
+  ✅ [MONEY-2-R5.11] [db] (D2; RED at 150877997) legacy APPROVED leave, policy null, APPROVED month: decideLeave revoke + owner cancelLeave ⇒ paid text · still APPROVED · control: same in September ⇒ revoked
+  ✅ [MONEY-2-R6.1] [db] (R6) ABSENT_RULE −300,000 run: approve PAID leave on 11 Aug ⇒ refused · PENDING · deductions + totals unchanged
+  ✅ [MONEY-2-R6.2] [db] (R6) owner PAID leave created-as-approved on 14 Aug ⇒ refused · no row · unchanged
+  ✅ [MONEY-2-R6.3] [db] (R6) chain apply PAID leave on 29 Aug ⇒ PAID · CANCELLED · unchanged
+  ✅ [MONEY-2-R6.4] [db] (R6) control: PAID leave on worked 5 Aug ⇒ approved
+  ✅ [MONEY-2-R6.5] [db] (R6) control: PAID leave 1 Sep (open month) ⇒ approved
+  ✅ [MONEY-2-Z2] no deadlock during races
+RESIDUE none (tenants=1 users=4 activeLaw=0->0)
+  ✅ [MONEY-2-Z1] no residue
+BASE-EXPECTATION 22/57 as registered (RED-by-design 35 · GREEN controls 22) · off: MONEY-2-ST4(RED→pass) MONEY-2-ST5(RED→pass) MONEY-2-R1.1(RED→pass) MONEY-2-R1.2(RED→pass) MONEY-2-R1.3(RED→pass) MONEY-2-R1.4(RED→pass) MONEY-2-R1.5(RED→pass) MONEY-2-R1.6(RED→pass) MONEY-2-R1.7(RED→pass) MONEY-2-R1.9(RED→pass) MONEY-2-R1.10(RED→pass) MONEY-2-R2.1(RED→pass) MONEY-2-R2.2(RED→pass) MONEY-2-R2.3(RED→pass) MONEY-2-R3.1(RED→pass) MONEY-2-R3.2(RED→pass) MONEY-2-R2.5(RED→pass) MONEY-2-R3.3(RED→pass) MONEY-2-R3.4(RED→pass) MONEY-2-R2.7(RED→pass) MONEY-2-R2.4(RED→pass) MONEY-2-R1.11(RED→pass) MONEY-2-R4.2(RED→pass) MONEY-2-R4.3(RED→pass) MONEY-2-R4.5(RED→pass) MONEY-2-R4.6(RED→pass) MONEY-2-R5.1(RED→pass) MONEY-2-R5.4(RED→pass) MONEY-2-R5.6(RED→pass) MONEY-2-R5.7(RED→pass) MONEY-2-R5.8(RED→pass) MONEY-2-R5.9(RED→pass) MONEY-2-R6.1(RED→pass) MONEY-2-R6.2(RED→pass) MONEY-2-R6.3(RED→pass)
+
+===== qc-hr-money-2 ===== passed 57/57 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-money-2","total":57,"passed":57,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":35,"baseGreen":22,"offBase":["MONEY-2-ST4(RED→pass)","MONEY-2-ST5(RED→pass)","MONEY-2-R1.1(RED→pass)","MONEY-2-R1.2(RED→pass)","MONEY-2-R1.3(RED→pass)","MONEY-2-R1.4(RED→pass)","MONEY-2-R1.5(RED→pass)","MONEY-2-R1.6(RED→pass)","MONEY-2-R1.7(RED→pass)","MONEY-2-R1.9(RED→pass)","MONEY-2-R1.10(RED→pass)","MONEY-2-R2.1(RED→pass)","MONEY-2-R2.2(RED→pass)","MONEY-2-R2.3(RED→pass)","MONEY-2-R3.1(RED→pass)","MONEY-2-R3.2(RED→pass)","MONEY-2-R2.5(RED→pass)","MONEY-2-R3.3(RED→pass)","MONEY-2-R3.4(RED→pass)","MONEY-2-R2.7(RED→pass)","MONEY-2-R2.4(RED→pass)","MONEY-2-R1.11(RED→pass)","MONEY-2-R4.2(RED→pass)","MONEY-2-R4.3(RED→pass)","MONEY-2-R4.5(RED→pass)","MONEY-2-R4.6(RED→pass)","MONEY-2-R5.1(RED→pass)","MONEY-2-R5.4(RED→pass)","MONEY-2-R5.6(RED→pass)","MONEY-2-R5.7(RED→pass)","MONEY-2-R5.8(RED→pass)","MONEY-2-R5.9(RED→pass)","MONEY-2-R6.1(RED→pass)","MONEY-2-R6.2(RED→pass)","MONEY-2-R6.3(RED→pass)"]}

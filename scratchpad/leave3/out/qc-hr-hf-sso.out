@@ -1,0 +1,57 @@
+[env] qc-hr-hf-sso · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-hf-sso] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+  ✅ [HF-SSO-S1.1] [static] no call of the frozen ssoContribution( / monthlyWhtSatang( under src/ outside payroll-rules.ts
+  ✅ [HF-SSO-S1.2] [static] payroll-rules.ts byte-identical (sha 75a66c0c…)
+  ✅ [HF-SSO-S1.3] [static] payroll-rules-sso.ts exists · pure (no Date/now · no @/ or DB import) · exports the 4 functions
+  ✅ [HF-SSO-S1.4] [static] payroll.ts (v1) calls ssoContributionForPeriod(…period…) and monthlyWhtForTaxYear(
+  ✅ [HF-SSO-S1.5] [static] H4.2 labor.ts takes the SSO ceiling from ssoLawForPeriod (no SSO law-row pick)
+  ✅ [HF-SSO-S1.6] [static] SSO_HIGH (payroll-opening.ts) takes the ceiling from ssoLawForPeriod (no SSO law-row read)
+  ✅ [HF-SSO-S1.7] [static] ssoHigh has no 15,000/750 literal — ceiling is a parameter
+  ✅ [HF-SSO-S1.8] [static] filings / reports / payslip / bank files call no SSO function (carry stored amounts)
+  ✅ [HF-SSO-S1.9] [static] v2: law.ts exports ssoLawDayOf · loadLawSet forwards ssoDay · payroll.ts v2 build passes ssoLawDayOf(…periodKey…)
+  ✅ [HF-SSO-P1.1] [pure] ssoContributionForPeriod 2025-12 × 9 wages (ceiling 15,000)
+  ✅ [HF-SSO-P1.2] [pure] 2026-01 × 9 wages (17,500)
+  ✅ [HF-SSO-P1.3] [pure] 2028-12 × 9 wages (17,500)
+  ✅ [HF-SSO-P1.4] [pure] 2029-01 × 9 wages (20,000)
+  ✅ [HF-SSO-P1.5] [pure] 2031-12 × 9 wages (20,000)
+  ✅ [HF-SSO-P1.6] [pure] 2032-01 × 9 wages (23,000)
+  ✅ [HF-SSO-P2.1] [pure] ssoLawForPeriod: 10 periods literal
+  ✅ [HF-SSO-P2.2] [pure] missing / malformed / non-string period ⇒ throws (ssoContributionForPeriod · ssoLawForPeriod)
+  ✅ [HF-SSO-P2.3] [pure] frozen ssoContribution unchanged (20,000 → 750 · cfg 3 % → 450 · 1,000 → 83)
+  ✅ [HF-SSO-P2.4] [pure] T-HR-08 vectors (งวด 2569 20,000 → 875 · 17,500 → 875 · 10,010 → 501 · 10,009 → 500 · 1,000 → 83 · ม.ค. 2572 20,000 → 1,000)
+  ✅ [HF-SSO-P2.5] [pure] ssoAllowanceCapSatang: 2025 9,000 · 2026 10,500 · 2028 10,500 · 2029 12,000 · 2031 12,000 · 2032 13,800 · bad year throws
+  ✅ [HF-SSO-P2.6] [pure] monthlyWhtForTaxYear 50,000/month: 2025 (9,000) 1,716.67 · 2026 T-HR-10 (10,500) 1,704.17 · 2029 (12,000) 1,691.67 · 2032 (13,800) 1,676.67 · cap applies
+  ✅ [HF-SSO-P2.7] [pure] frozen monthlyWhtSatang unchanged (50,000 with 10,500 ⇒ 1,716.67 — 9,000 cap)
+  ✅ [HF-SSO-P3.1] [pure] hr-seed-law-draft LAW_V1_ROWS: 4 dated SSO rows literal · 1970 row = old v1:SSO json · 1970 TAX/DED/OT unchanged
+  ✅ [HF-SSO-P3.2] [pure] hr-seed-law-draft verifyAgainstFrozen() ok
+  ✅ [HF-SSO-P3.3] [pure] parity: ssoV2(seed row) = ssoContributionForPeriod(first and last period of that row) on 12 wages
+  ✅ [HF-SSO-V2.1] [pure] v2 pick: period 2028-12 paid 2029-01-05 ⇒ SSO row 17,500 (TAX/DED by pay day) · period 2029-01 ⇒ 20,000 · ssoLawDayOf literal + throws
+  ✅ [HF-SSO-V2.2] [pure] v2 projection: 50,000 Jan 2026 on the seed rows ⇒ projected SSO 10,500 · annual tax 20,450 · WHT 1,704.17 (no 9,000 cap)
+(node:14024) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [HF-SSO-D1.1] [db] v1 run 2025-12: items literal (SSO 750 · WHT 1,716.67) + totals + marker 1,500,000
+  ✅ [HF-SSO-D1.2] [db] v1 run 2026-03: 875 · WHT 1,704.17 · totals · marker 1,750,000
+  ✅ [HF-SSO-D1.3] [db] v1 run 2028-12 paid 2029-01-05: SSO 875 (period decides) · marker 1,750,000
+  ✅ [HF-SSO-D1.4] [db] v1 run 2029-01: 1,000 · WHT 1,691.67 · marker 2,000,000
+  ✅ [HF-SSO-D1.5] [db] v1 run 2031-12 paid 2032-01-05: SSO 1,000 · marker 2,000,000
+  ✅ [HF-SSO-D1.6] [db] v1 run 2032-01: 1,150 / 1,000 · WHT 1,676.67 · marker 2,300,000
+  ✅ [HF-SSO-D2.1] [db] APPROVED run made before the fix (2026-01, 750): recompute refused · rows 750 · payslip 750 · no marker · no adjustment written
+  ✅ [HF-SSO-D2.2] [db] DRAFT made before the fix (2026-02, 750): approve ⇒ RECOMPUTE + literal text, with and without the viewer's exact expect · DRAFT · no JV
+  ✅ [HF-SSO-D2.3] [db] the refusal is audited (hr.payroll.approve.refused on that run)
+  ✅ [HF-SSO-D2.4] [db] recomputeDraftRun ⇒ 875/875 · totals literal · marker 1,750,000
+  ✅ [HF-SSO-D2.5] [db] approve after recompute ⇒ ok · APPROVED · rows 875
+  ✅ [HF-SSO-D2.6] [db] DRAFT made before the fix whose numbers are still right (2025-11, 750) approves
+  ✅ [HF-SSO-D2.7] [db] ORACLE-EDIT (HF-SSO-2569 · controller ruling · review MINOR): the RECOMPUTE re-derive is v1-only — a pre-fix 2026-04 run marked engineVersion 2 (no inputDigest) is not refused with RECOMPUTE
+RESIDUE none (tenants=1)
+  ✅ [HF-SSO-Z1] no residue (tenants/users of this suite)
+BASE-EXPECTATION 10/41 as registered (RED-by-design 31 · GREEN controls 10) · off: HF-SSO-S1.1(RED→pass) HF-SSO-S1.3(RED→pass) HF-SSO-S1.4(RED→pass) HF-SSO-S1.5(RED→pass) HF-SSO-S1.6(RED→pass) HF-SSO-S1.9(RED→pass) HF-SSO-P1.1(RED→pass) HF-SSO-P1.2(RED→pass) HF-SSO-P1.3(RED→pass) HF-SSO-P1.4(RED→pass) HF-SSO-P1.5(RED→pass) HF-SSO-P1.6(RED→pass) HF-SSO-P2.1(RED→pass) HF-SSO-P2.2(RED→pass) HF-SSO-P2.4(RED→pass) HF-SSO-P2.5(RED→pass) HF-SSO-P2.6(RED→pass) HF-SSO-P3.1(RED→pass) HF-SSO-P3.3(RED→pass) HF-SSO-V2.1(RED→pass) HF-SSO-V2.2(RED→pass) HF-SSO-D1.1(RED→pass) HF-SSO-D1.2(RED→pass) HF-SSO-D1.3(RED→pass) HF-SSO-D1.4(RED→pass) HF-SSO-D1.5(RED→pass) HF-SSO-D1.6(RED→pass) HF-SSO-D2.2(RED→pass) HF-SSO-D2.3(RED→pass) HF-SSO-D2.4(RED→pass) HF-SSO-D2.5(RED→pass)
+
+===== qc-hr-hf-sso ===== passed 41/41 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-hf-sso","total":41,"passed":41,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":31,"baseGreen":10,"offBase":["HF-SSO-S1.1(RED→pass)","HF-SSO-S1.3(RED→pass)","HF-SSO-S1.4(RED→pass)","HF-SSO-S1.5(RED→pass)","HF-SSO-S1.6(RED→pass)","HF-SSO-S1.9(RED→pass)","HF-SSO-P1.1(RED→pass)","HF-SSO-P1.2(RED→pass)","HF-SSO-P1.3(RED→pass)","HF-SSO-P1.4(RED→pass)","HF-SSO-P1.5(RED→pass)","HF-SSO-P1.6(RED→pass)","HF-SSO-P2.1(RED→pass)","HF-SSO-P2.2(RED→pass)","HF-SSO-P2.4(RED→pass)","HF-SSO-P2.5(RED→pass)","HF-SSO-P2.6(RED→pass)","HF-SSO-P3.1(RED→pass)","HF-SSO-P3.3(RED→pass)","HF-SSO-V2.1(RED→pass)","HF-SSO-V2.2(RED→pass)","HF-SSO-D1.1(RED→pass)","HF-SSO-D1.2(RED→pass)","HF-SSO-D1.3(RED→pass)","HF-SSO-D1.4(RED→pass)","HF-SSO-D1.5(RED→pass)","HF-SSO-D1.6(RED→pass)","HF-SSO-D2.2(RED→pass)","HF-SSO-D2.3(RED→pass)","HF-SSO-D2.4(RED→pass)","HF-SSO-D2.5(RED→pass)"]}

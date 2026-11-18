@@ -1,0 +1,69 @@
+  ✅ [LEAVE-3-ST1] payroll-rules.ts sha frozen
+  ✅ [LEAVE-3-ST2] changed ⊆ allowed (+ older qc-*.mts with every hunk ORACLE-EDIT…LEAVE-3) · frozen unchanged
+  ✅ [LEAVE-3-ST3] src hunks marked HR LEAVE-3 · no bare removal
+  ✅ [LEAVE-3-ST4] no settings write in changed src
+  ✅ [LEAVE-3-ST5] fixed texts: TWO_PERSON · R3 count template · R4 OWNER gate
+[env] qc-hr-leave-3 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-leave-3] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:1121934) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [LEAVE-3-R1.1] AM+PM paid no-show ⇒ LEAVE · fraction 1.0
+  ✅ [LEAVE-3-R1.2] work day 480/0/0 ld1.0 []
+  ✅ [LEAVE-3-R1.3] sync no wait · createPayrollRunV2 ok
+  ✅ [LEAVE-3-R1.4] paid+paid: no deduction line · gross 3,000,000
+  ✅ [LEAVE-3-R1.5] AM unpaid+PM paid ⇒ 240/240/0 · UNPAID −50,000 only
+  ✅ [LEAVE-3-R1.6] mirror (PM unpaid)
+  ✅ [LEAVE-3-R1.7] two shifts 09–13/13–17 ⇒ both LEAVE · 480
+  ✅ [LEAVE-3-R1.11] AM half + PM worked ⇒ 240 + work 240
+  ✅ [LEAVE-3-R1.12] full day · single AM no-show · 4 h unpaid · run ok
+  ✅ [LEAVE-3-R1.14] MONEY-2 paid-month gate refuses
+  ✅ [LEAVE-3-R1.9] AM approved + PM pending ⇒ PENDING_LEAVE
+  ✅ [LEAVE-3-R1.13] (Q7) legacy AM+AM ⇒ LEAVE_MISMATCH
+  ✅ [LEAVE-3-R1.10] PM revoked ⇒ ABSENT 240/0/240
+  ✅ [LEAVE-3-R1.8] base-shape stored row ⇒ STALE ⇒ recompute LEAVE ⇒ 480
+  ✅ [LEAVE-3-R2.1] OWNER replay expectedStep 1 ×2 ⇒ lost · step 2
+  ✅ [LEAVE-3-R2.2] same MANAGER both steps ⇒ TWO_PERSON · nothing written
+  ✅ [LEAVE-3-R2.3] bulkDecide([id,id]) ⇒ done 1 · step 2 · 1 decision
+  ✅ [LEAVE-3-R2.4] AI approval_decide: TWO_PERSON · stale expectedStep refused
+  ✅ [LEAVE-3-R2.5] OWNER both steps (no step) ⇒ APPROVED · 1 approval.owner_override {step 2, previousDeciderStep 1} · effect once
+  ✅ [LEAVE-3-R2.6] stale step: direct · bulkDecide map · bulk action ⇒ lost · decideAction bad step ⇒ text
+  ✅ [LEAVE-3-R2.15] OWNER double click via decideAction / bulkDecideAction ⇒ one step
+  ✅ [LEAVE-3-R2.7] held row lock: 2 OWNERs ⇒ 1 ok · same MANAGER ×2 ⇒ 1 step
+  ✅ [LEAVE-3-R2.8] single-step chain ± step: literal results/rows
+  ✅ [LEAVE-3-R2.9] two managers complete · effect once
+  ✅ [LEAVE-3-R2.10] SELF_APPROVAL literal (PO + HrLeave)
+  ✅ [LEAVE-3-R2.11] [static] callers pass a step · no other caller
+  ✅ [LEAVE-3-R2.12] [static] page step · hidden step:<id>
+  ✅ [LEAVE-3-R2.13] same-user double click seq + parallel ×N ⇒ ≤ 1 step
+  ✅ [LEAVE-3-R2.14] PurchaseOrder M→O two users · no override audit
+  ✅ [LEAVE-3-R3.1] stranding edit (step 2 → [1]) ⇒ text "1" · unchanged · decidable
+  ✅ [LEAVE-3-R3.2] non-stranding edits with pending (rename · role of current step · add step) ⇒ allowed · decidable
+  ✅ [LEAVE-3-R3.4] same steps reordered ⇒ allowed
+  ✅ [LEAVE-3-R3.7] renumber [1,2]→[1,3] at step 2 ⇒ refused
+  ✅ [LEAVE-3-R3.5] disabled chain still decidable
+  ✅ [LEAVE-3-R3.3] no pending ⇒ step change allowed
+  ✅ [LEAVE-3-R3.6] count = this policy only ⇒ "2"
+  ✅ [LEAVE-3-R4.1] withdraw HrLeave ⇒ both CANCELLED · audit 1 · 0 events · released
+  ✅ [LEAVE-3-R4.2] then decideLeaveAs refused
+  ✅ [LEAVE-3-R4.3] (Q5) legacy cancelled+decided ⇒ MANAGER text · OWNER ok
+  ✅ [LEAVE-3-R4.4] CH-4: cancelled, no decision ⇒ direct works
+  ✅ [LEAVE-3-R4.5] PO withdrawal ⇒ CANCELLED
+  ✅ [LEAVE-3-R4.6] not-mine withdrawal ⇒ nothing
+  ✅ [LEAVE-3-R4.8] decided request withdrawal ⇒ nothing
+  ✅ [LEAVE-3-R4.7] cancelLeave ∥ approve (A7b) consistent
+  ✅ [LEAVE-3-R4.11] action withdrawal ∥ approve ⇒ consistent
+  ✅ [LEAVE-3-R4.9] (Q6) withdraw correction ⇒ CANCELLED · direct refused
+  ✅ [LEAVE-3-R4.10] (Q6) withdraw swap ⇒ CANCELLED · direct refused
+RESIDUE none (tenants=1 users=10 activeLaw=0->0)
+  ✅ [LEAVE-3-Z1] no residue · own law rows
+BASE-EXPECTATION 53/53 as registered (RED-by-design 0 · GREEN controls 53)
+
+===== qc-hr-leave-3 ===== passed 53/53 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-leave-3","total":53,"passed":53,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":0,"baseGreen":53,"offBase":[]}

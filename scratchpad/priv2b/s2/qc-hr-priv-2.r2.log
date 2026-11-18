@@ -1,0 +1,63 @@
+  ✅ [S1] scope.ts helper + note
+  ✅ [S2] one helper on every pay path
+  ✅ [S3] run actions/doc gates all-branch
+  ✅ [S4] frozen · oracle edits marked (R9)
+  ✅ [S5] allowed files · marked hunks
+  ✅ [S6] base ancestor · files
+  ✅ [S7] no {names} · core/csv
+[env] qc-hr-priv-2 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-priv-2] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+  ✅ [P1] helper truth table
+(node:3259452) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+fixture ok: PERIOD=2026-10 MONTH=2026-11
+  ✅ [A1] borrowed profile: no sensitive
+  ✅ [A2] borrowed profile = mgrU1
+  ✅ [A3] [control] sensitive where allowed
+  ✅ [A4] slip loader scope + no totals
+  ✅ [A5] [control] refusal parity
+  ✅ [A7] own slip = DB, no total* (R8)
+  ✅ [B1] money report rows in scope
+  ✅ [B2] money exports clean
+  ✅ [B3] OT report money withheld + note
+  ✅ [B4] [control] owner/payAll rows
+  ✅ [B5] [control] Σ rows · doc gates
+  ✅ [C1] page: no out-of-scope data
+  ✅ [C2] page: no whole-run figure · notes
+  ✅ [C3] [control] owner page
+  ✅ [C4] preview v2 scope/Σ/excluded
+  ✅ [C5] inbox: no out-of-scope adjustment
+  ✅ [N1] OT list: borrowed = mgrU1 (R6)
+  ✅ [N2] stock list + flags: no bSpan (R6)
+  ✅ [N4] [control] owner + in-scope money
+  ✅ [N5] stock claims/attention scope (R11)
+  ✅ [N3] salary doubling: OT/stock identical
+  ✅ [E1] [regression] borrowed on roster etc.
+  ✅ [G1] [control] run actions refused
+  ✅ [D0] [control] payloads stable
+  ✅ [D1] doubling: reports
+  ✅ [D2] doubling: profile/slips
+  ✅ [D3] doubling: page
+  ✅ [D4] doubling: other pay readers
+  ✅ [D5] [regression] doubling: AI/REST/non-pay
+  ✅ [D6] [positive control] owner changes
+  ✅ [E2] [regression] leave/OT decisions
+  ✅ [W1] write paths refuse bad chars
+  ✅ [W2] refusals fixed, no echo
+  ✅ [W3] [control] good names
+  ✅ [W6] booking names: refused / stripped (R10)
+  ✅ [W4] stored bad names export
+  ✅ [W5] exports sanitised
+RESIDUE none (tenants=1 users=7)
+  ✅ [Z1] residue · outbound
+BASE-EXPECTATION 44/46 as registered (RED-by-design 2 · GREEN controls 44) · off: S2(RED→pass) N5(RED→pass)
+
+===== qc-hr-priv-2 ===== passed 46/46 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-priv-2","total":46,"passed":46,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":2,"baseGreen":44,"offBase":["S2(RED→pass)","N5(RED→pass)"]}

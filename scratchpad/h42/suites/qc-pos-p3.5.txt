@@ -1,0 +1,26 @@
+[env] qc-pos-p3.5 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (อนุญาตด้วย POS_QC_ALLOW_HOST=ep-orange-dust-aotwbyc7)
+(node:1714061) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ข้อสถิต (ไม่แตะ DB) ──
+  ❌ [P3.5-ST1] [R1 R2 มติ 5 11] hr/pos-seam.ts export 4 ชื่อ (onShiftToday workedMinutesBetween clockSelf adjustmentStatuses) ไม่มี .cr — expected seam 4 ชื่อ · index ต่อท้าย · POS→HR ผ่าน facade จาก hr-link เท่านั้น · fitness pos→hr · actions | actual hr/index.ts: ส่วนเดิมถูกแก้ (ต้องต่อท้ายอย่างเดียว)
+  ❌ [P3.5-ST2] [มติ 11 · หมุด 72669941] shift.ts ไบต์เท่าหมุด (p1.9 ST8) · ไม่มี hunk/ไฟล์ใหม่ใน pos/register*.ts(x) service.ts refund* — expected shift.ts = หมุด · ไม่มี hunk ในไฟล์ห้ามแตะ · schema เพิ่มอย่างเดียว · migration เดียว | actual schema มีบรรทัดถูกลบ/แก้ 2 (-  pinCode      String? // สำหรับ kiosk clock-in) · migration ใหม่ที่ไม่ใช่ของใบนี้: 20261201000000_hr_pin_hash,20261202000000_hr_payroll_run_live_unique,20261203000000_hr_link_unique_requester,20261204000000_hr_org_axis,20261205000000_hr_time_leave_model,20261205000001_hr_judgement_enums,20261206000000_hr_money_law_model,20261227000000_secretary_a,20261227100000_secretary_b,20261228000000_hr_clock_v2,20261228000001_hr_clock_break_kinds,20261228000002_hr_clock_purge_idx,20261230000000_hr_judgement,20261230000001_hr_judgement_leave,20261230000002_hr_judgement_alert_idx,20261231000000_hr_lifecycle,20270101000000_hr_time_correction,20270101000001_hr_time_correction_idx,20270102000000_hr_ot_settlement,20270103000000_hr_work_days,20270104000000_hr_stock_charge,20270105000000_hr_attendance_pay,20270106000000_hr_payroll_v2_kinds,20270106000001_hr_payroll_v2,20270107000000_hr_bank_files,20270108000000_hr_filings,20270109000000_hr_employee_register_fields
+  ✅ [P3.5-ST3] [R3 R6 R7 R9 R11 R13 R14 §3] model PosStaffCommission ครบคอลัมน์ R7 + enum ACCRUE|REVERSE · OPEN|SENT + sourceKey @uniqu
+  ✅ [P3.5-PV4] [R11 มติ 7] ไม่มีไฟล์ "use client" import pos/staff-commission · pos/hr-link · @/lib/modules/hr · REST ops/reports ไม่มี
+
+── คณิตบริสุทธิ์ (CM) ──
+  ✅ [P3.5-CM1] [R6 มติ 1] resolveStaffCommissionRate: product > category > default · สินค้าที่มีแค่ fixedSatang ชนะหมวด (bp 0) · ไม่มีส
+  ✅ [P3.5-CM2] [R7 มติ 8] staffCommissionAmount ปัดครึ่งขึ้น: (5,1000bp)=1 · (15,1000)=2 · (14,1000)=1 · (3,5000)=2 · (1,4999)=0 · (999
+  ✅ [P3.5-CM3] [R7] fixedSatang × qty: (10000,{0,250},3)=750 · (10000,{1000,250},2)=1500 · (10000,{0,0},5)=0
+  ✅ [P3.5-CM4] [R7 มติ 8] staffCommissionBases(lineTotals, SC, grand) = lineNets ของบัญชีทุกสตางค์ (200 สุ่ม) · Σ(total − base) = ส่วนล
+  ✅ [P3.5-CM5] [R8 มติ 9] staffCommissionRefundShare 3 ใบ (200 สุ่ม): ใบที่ยังไม่ครบ = min(halfUp(accrual × refund / net), ที่เหลือ) · 
+  ✅ [P3.5-CM6] [R3 R6] ตัวอ่านค่าตั้ง: posScheduleGate clamp early/late 0–180 · ttl 0–720 · ไม่ใช่จำนวนเต็ม = ค่าปริยาย · คีย์แปลกไม่ออ
+  ✅ [P3.5-CM7] [fix2 N4 · ORACLE-ADD ผู้คุม 17 ต.ค.] staffCommissionRefundShare บรรทัดสุทธิ ≤ 0 (ของแถม · ค่าคอมฯ คงที่ต่อชิ้น) แบ่งตาม
+🔴 หยุด! qc-pos-p3.5: จะเขียนแถวได้เฉพาะ QC4 (ep-frosty-lab) — DATABASE_URL, DIRECT_URL ไม่ใช่ (ยังไม่ได้เขียนอะไร)

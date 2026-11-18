@@ -1,0 +1,34 @@
+[env] qc-hr-leave-booking · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:381970) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [LV-0] createStaff ผูกทะเบียนพนักงานให้แล้ว (ของ 313d04a)
+  ✅ [LV-1] ก่อนลา: ช่าง A มีช่องว่างในวันนั้น
+  ✅ [LV-1b] จองนัดกับช่าง A ได้ตามปกติ
+── ใบลารออนุมัติ ──
+  ✅ [LV-2] รออนุมัติ → ช่องจองยังอยู่ (ร้านยังไม่ตัดสิน)
+  ✅ [LV-2b] รออนุมัติ → ยังไม่ติดป้ายเตือนนัดที่ชน
+── อนุมัติลาแล้ว ──
+  ✅ [LV-3] 🔴 อนุมัติแล้ว → ช่าง A ไม่มีช่องว่างเลยในวันนั้น
+  ✅ [LV-4] 'ใครก็ได้' ยังจองได้ → ตกไปช่าง B ทุกช่อง (ร้านไม่เสียยอด)
+  ✅ [LV-5] 🔴 ยิงจองตรง ๆ กับช่างที่ลา → ถูกปฏิเสธ + บอกเหตุผลเป็นภาษาคน
+  ✅ [LV-6] ช่างที่ไม่ผูกทะเบียนพนักงาน = จองได้ปกติ (ห้ามปิดช่องมั่ว)
+  ✅ [LV-7] นัดที่ค้างอยู่ในวันที่ช่างลา → ติดป้ายเตือน
+  ✅ [LV-8] 🔴 นัดเดิมไม่ถูกยกเลิกอัตโนมัติ (สัญญากับลูกค้า ร้านต้องเป็นคนตัดสิน)
+  ✅ [LV-8b] นัดของช่างที่ไม่ได้ลา ไม่ติดป้าย
+  ✅ [LV-9] ไม่อนุมัติ → ช่องจองของช่าง A กลับมาเอง
+  ✅ [LV-10] ร้านที่ไม่เปิดระบบทีมงาน → จองได้ปกติ (ไม่มีใบลาในระบบ)
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: ลาอนุมัติ → ปิดช่องจอง (C-2) =====
+ผ่าน 14/14
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":14,"passed":14,"findings":[]}

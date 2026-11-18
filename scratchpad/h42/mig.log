@@ -1,0 +1,10 @@
+Loaded Prisma config from prisma.config.ts.
+
+Prisma schema loaded from prisma/schema.
+Datasource "db": PostgreSQL database "neondb", schema "public" at "ep-orange-dust-aotwbyc7.c-2.ap-southeast-1.aws.neon.tech"
+
+223 migrations found in prisma/migrations
+
+
+No pending migrations to apply.
+mig exit 0

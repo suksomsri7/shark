@@ -1,0 +1,46 @@
+[env] qc-hr-roster · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+── ชื่อระบบ + แท็บไม่เพี้ยน ──
+  ✅ [NM-1] ชื่อระบบ: พนักงาน HR · ขายหน้าร้าน POS · สินค้า/บริการ
+  ✅ [NM-2] แท็บ POS ในเมนูตรงกับ posTabs (คีย์ pos.nav.* ชุดเดียวกันทุกที่)
+  ✅ [NM-3] แท็บ HR ในเมนูตรงกับ hrTabs (สองทาง)
+  ✅ [NM-4] หน้าขาย POS มีจริง + ทุกหน้า POS ใช้แท็บชุดเดียว (posTabs)
+(node:381662) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── ใครรับคิว ──
+  ✅ [RS-1] เพิ่มพนักงานที่ HR → โผล่ในรายการใครรับคิว (ยังไม่รับคิว)
+  ✅ [RS-2] ยังไม่ติ๊กใครรับคิว → ลูกค้าไม่มีช่องจอง
+  ✅ [RS-3] ติ๊กรับคิว → มีทะเบียนผู้รับคิวผูกกับพนักงานคนเดิม (ไม่สร้างคนใหม่)
+  ✅ [RS-4] ติ๊กแล้วลูกค้าจองได้
+  ✅ [RS-5] จองนัดกับผู้รับคิวได้
+  ✅ [RS-6] 🔴 ปิดรับคิว → HR ยังมีชื่อคนนี้อยู่ (บั๊กเดิมคือลบที่จองคิวแล้ว HR ยังมีชื่อ = คนละความหมาย)
+  ✅ [RS-7] ปิดรับคิว → ไม่มีช่องจองใหม่ แต่นัดเดิมยังอยู่
+── ลบพนักงานแบบ soft delete ──
+  ✅ [DL-1] ลบพนักงานได้ (soft delete)
+  ✅ [DL-2] 🔴 ประวัติลงเวลา + นัดที่รับไว้ ยังอยู่ครบหลังลบ
+  ✅ [DL-3] ลบแล้วหายจากรายชื่อพนักงาน แต่ไปอยู่ 'ลบแล้ว' (กู้คืนได้)
+  ✅ [DL-4] 🔴 ลบพนักงาน → หยุดรับคิวเองทันที (ไม่ต้องไปปิดในระบบจองอีกที)
+  ✅ [DL-5] ยิงจองตรงกับคนที่ถูกลบ → ปฏิเสธ
+  ✅ [DL-6] ลบแล้วไม่โผล่ในรายการใครรับคิว
+  ✅ [DL-7] กู้คืนได้ → กลับมารับคิวตามเดิม
+── แก้ข้อมูลพนักงาน ──
+  ✅ [ED-1] แก้ชื่อ/ตำแหน่ง/เบอร์ได้
+  ✅ [ED-2] ตำแหน่งงานบันทึกจริง
+  ✅ [ED-3] แก้ชื่อที่ HR → ชื่อในทะเบียนผู้รับคิวตามไปด้วย (จอ 2 ที่ต้องตรงกัน)
+  ✅ [ED-4] ชื่อว่าง → ปฏิเสธ (ไม่ปล่อยให้ทะเบียนมีคนไม่มีชื่อ)
+  ✅ [XT-1] 🔴 ร้านอื่นเอาพนักงานของเราไปรับคิวไม่ได้
+  ✅ [XT-2] รายการใครรับคิวของร้านอื่นว่าง
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: ทะเบียนพนักงานแหล่งเดียว + ใครรับคิว =====
+ผ่าน 24/24
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":24,"passed":24,"findings":[]}

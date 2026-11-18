@@ -1,0 +1,81 @@
+[env] qc-hr-h3.2 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.2] DB host = ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h3.2] rules=loaded · attendance-pay=loaded · base=05e70d220 (H3.2 in base)
+  ✅ [H3.2-S1.1] [static] attendance-pay*.ts never write HrPayAdjustment · no emitOutbox
+  ✅ [H3.2-S1.2] [static] no OT pricing tokens in attendance-pay*.ts + payroll.ts H3.2 block (no kind OT)
+  ✅ [H3.2-S1.3] [static] rules file pure (imports ⊆ node:crypto · no clock/random/db)
+  ✅ [H3.2-S1.4] [static] payroll.ts writer · approve hook · cancel refusal · marked hunks
+  ✅ [H3.2-S1.5] [static] work-entries.ts: workEntryStatesInTx in a marked pure-addition hunk (n/a once in base)
+  ✅ [H3.2-S1.6] [static] migration 20270105000000 additive · model · scope · hr-qc-env
+  ✅ [H3.2-S1.7] [static] actions · UI testids · inventory · hr.attpay th=en · warn · pages
+  ✅ [H3.2-S1.8] [static] payroll-rules sha · frozen files unchanged vs base
+  ✅ [H3.2-S2.1] [pure] policy default + 6 lenient vectors · ATT_TEXT byte-exact
+  ✅ [H3.2-S2.2] [pure] ฿15,000/480 late 1·4·5·29·30·31·180 (7 vectors)
+  ✅ [H3.2-S2.3] [pure] early out 45 · late+early one line · absent 480 · half-day 240 (4)
+  ✅ [H3.2-S2.4] [pure] ฿14,000 and ฿12,345: late 30 · absent 480 (4)
+  ✅ [H3.2-S2.5] [pure] N 420 late/absent cap · cap le ≤ N − a (2 + 2)
+  ✅ [H3.2-S2.6] [pure] freeMin 5 · step 15 · both (3 multi-day vectors)
+  ✅ [H3.2-S2.7] [pure] per-day floor (1,040 not 1,041) · 1-satang edges · max-int base (5)
+  ✅ [H3.2-S2.8] [pure] day classes HOLIDAY/DAY_OFF/UNSCHEDULED · info flags · toggles (5)
+  ✅ [H3.2-S2.9] [pure] refusal codes OFF/PAY_TYPE/NO_BASE/BAD_INPUT/BLOCKED + order (10)
+  ✅ [H3.2-S2.10] [pure] digest 64-hex deterministic · basis-sensitive · purity
+  ✅ [H3.2-S2.11] [pure] delta plan (16 vectors)
+  ✅ [H3.2-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+(node:383741) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H3.2-S3.1] [db] default OFF: policy = default · sync refused off · nothing written
+  ✅ [H3.2-S3.2] [db] save policy: owner only · sFree · sStep · stored literal
+  ✅ [H3.2-S3.3] [db] sync refused: manager/member syncNo · bad period · nothing written
+  ✅ [H3.2-S4.2] [db] sync before build ⇒ all wait MISSING · 0 rows
+  ✅ [H3.2-S4.1] [db] fixture sanity: H3.1 day minutes · states · H2.9 OT
+  ✅ [H3.2-S4.3] [db] first sync (payroll user): 5 rows literal · notes
+  ✅ [H3.2-S4.4] [db] header rows: lines literal · entitled · base · N · gen · digest
+  ✅ [H3.2-S4.5] [db] wait/skip codes (REVIEW · PAY_TYPE · NO_PROFILE)
+  ✅ [H3.2-S4.6] [db] no double pay with H2.9 OT on a late day
+  ✅ [H3.2-S9.1] [db] preview viewer matrix (money keys payroll only)
+  ✅ [H3.2-S9.2] [db] preview literals (eL · eF · eH)
+  ✅ [H3.2-S9.3] [db] lines reader: payroll literal · others identical bytes
+  ✅ [H3.2-S9.4] [db] self reader: own row · keys · noEmp · no forbidden keys
+  ✅ [H3.2-S5.1] [db] idempotent: sync again + 2 in parallel ⇒ created 0 · same ids · 5 rows
+  ✅ [H3.2-S5.2] [race] sync waits on hr:payroll:run:<sys>:<P> then completes
+  ✅ [H3.2-S6.1] [db] approval: requester refused · employee refused · owner approves eL/eS
+  ✅ [H3.2-S6.2] [db] leave approved later ⇒ approve refused stale · sync waits OUTDATED
+  ✅ [H3.2-S6.3] [db] cancelAdjustment of a rule row ⇒ attRow · row kept
+  ✅ [H3.2-S7.1] [db] rebuild + sync ⇒ ABSENT REJECTED (SUPERSEDED) · approved LATE kept
+  ✅ [H3.2-S7.2] [db] H2.6 correction ⇒ rebuild + sync ⇒ eM PENDING REJECTED
+  ✅ [H3.2-S7.3] [db] policy freeMin 5 ⇒ superseded + new PENDING literals
+  ✅ [H3.2-S7.4] [db] OFF ⇒ PENDING withdrawn (POLICY_OFF) · APPROVED kept · sync refused off
+  ✅ [H3.2-S7.5] [db] ON again ⇒ gen 3 rows · E = approved ⇒ nothing
+  ✅ [H3.2-S8.1] [db] Aug DRAFT run ⇒ deduction targets 2031-09
+  ✅ [H3.2-S8.2] [db] approved + bound to the APPROVED Sept run · sync Sept (frozen) allowed, writes nothing (ORACLE-EDIT fix r1 R3)
+  ✅ [H3.2-S8.3] [db] correction after binding ⇒ refund in 2031-10 · bound untouched · Σ 0
+  ✅ [H3.2-S8.4] [db] sync again ⇒ no second refund
+  ✅ [H3.2-S8.5] [db] ORACLE-EDIT (controller · D1 closed): correction after approval ⇒ createPayrollRun does not bind the stale deduction
+  ✅ [H3.2-S8.6] [db] ORACLE-EDIT (controller · D1 closed): delete draft + rebuild + sync ⇒ corrected PENDING 1,041 · approved ⇒ binds
+  ✅ [H3.2-S8.7] [db] ORACLE-EDIT (controller · D1 closed): leave after binding ⇒ approveRun refused runStale · recompute leaves it unbound
+  ✅ [H3.2-S8.8] [db] ORACLE-EDIT (fix r1 R2): bound-in-draft 3,125 goes stale ⇒ sync waits RUN_STALE, writes nothing · recompute + sync ⇒ 1,041 · settled Aug+Sep 1,041 · no refund
+  ✅ [H3.2-S8.9] [db] ORACLE-EDIT (fix r1 R1): approved 3,125 stale before binding ⇒ approve(Aug) refused runSync ⇒ recompute + sync ⇒ 1,041 ⇒ settled 1,041
+  ✅ [H3.2-S8.10] [db] ORACLE-EDIT (fix r1 R3): Aug frozen without sync (legacy) ⇒ sync(Aug) allowed ⇒ refund 2,084 binds in Oct ⇒ settled 1,041
+  ✅ [H3.2-S8.11] [db] ORACLE-EDIT (fix r1 R3): raise / policy change after Aug freeze ⇒ row not stale, binds in Sept ⇒ settled 3,125 (×2)
+  ✅ [H3.2-S8.12] [pure] ORACLE-EDIT (fix r1 R5): period cap Σ ≤ base salary (31 absent days · 30 absent + late)
+  ✅ [H3.2-S8.13] [db] ORACLE-EDIT (fix r1 R6): other-tenant viewer on this shop's ctx ⇒ sync/save/preview/lines refused · nothing written
+  ✅ [H3.2-S8.14] [db] ORACLE-EDIT (fix r1 R8): human reject of 3,125 sticks on re-sync · new time data ⇒ new PENDING 1,041
+  ✅ [H3.2-S8.15] [db] ORACLE-EDIT (fix r2 F1): Aug frozen with the rule never on · raise to 3,000,000 · rule on in Nov ⇒ sync Aug writes nothing (NO_SNAPSHOT)
+  ✅ [H3.2-S8.16] [db] ORACLE-EDIT (fix r2 F2): in-force interval opens at the current period · July (before) approves without sync · OFF ⇒ stale approved Aug row still blocks · sync while OFF clears it
+  ✅ [H3.2-S8.17] [db] ORACLE-EDIT (fix r2 F3): run member without work hours passes the gate (a) · base → 0 ⇒ sync supersedes the approved row and the gate clears (b)
+  ✅ [H3.2-S8.18] [db] ORACLE-EDIT (fix r2 F4): sync ∥ OFF ×4 ⇒ no PENDING and no live header (behavioural)
+  ✅ [H3.2-S8.19] [db] ORACLE-EDIT (fix r3 N1): rule on · late 30 never pulled ⇒ approve(Aug) refused · pull + sync + approve ⇒ settled 3,125 (also with sync before pull)
+  ✅ [H3.2-S8.20] [db] ORACLE-EDIT (fix r3 · H2.11 merge): inbox decideAdjustmentAs on an attendance row goes through the H3.2 gate (stale refused · re-synced row approves)
+RESIDUE none (tenants=2 users=6)
+  ✅ [H3.2-Z1] no residue
+BASE-EXPECTATION 4/64 as registered (RED-by-design 60 · GREEN controls 4) · off: H3.2-S1.1(RED→pass) H3.2-S1.2(RED→pass) H3.2-S1.3(RED→pass) H3.2-S1.4(RED→pass) H3.2-S1.5(RED→pass) H3.2-S1.6(RED→pass) H3.2-S1.7(RED→pass) H3.2-S2.1(RED→pass) H3.2-S2.2(RED→pass) H3.2-S2.3(RED→pass) H3.2-S2.4(RED→pass) H3.2-S2.5(RED→pass) H3.2-S2.6(RED→pass) H3.2-S2.7(RED→pass) H3.2-S2.8(RED→pass) H3.2-S2.9(RED→pass) H3.2-S2.10(RED→pass) H3.2-S2.11(RED→pass) H3.2-S3.1(RED→pass) H3.2-S3.2(RED→pass) H3.2-S3.3(RED→pass) H3.2-S4.2(RED→pass) H3.2-S4.3(RED→pass) H3.2-S4.4(RED→pass) H3.2-S4.5(RED→pass) H3.2-S4.6(RED→pass) H3.2-S9.1(RED→pass) H3.2-S9.2(RED→pass) H3.2-S9.3(RED→pass) H3.2-S9.4(RED→pass) H3.2-S5.1(RED→pass) H3.2-S5.2(RED→pass) H3.2-S6.1(RED→pass) H3.2-S6.2(RED→pass) H3.2-S6.3(RED→pass) H3.2-S7.1(RED→pass) H3.2-S7.2(RED→pass) H3.2-S7.3(RED→pass) H3.2-S7.4(RED→pass) H3.2-S7.5(RED→pass) H3.2-S8.1(RED→pass) H3.2-S8.2(RED→pass) H3.2-S8.3(RED→pass) H3.2-S8.4(RED→pass) H3.2-S8.5(RED→pass) H3.2-S8.6(RED→pass) H3.2-S8.7(RED→pass) H3.2-S8.8(RED→pass) H3.2-S8.9(RED→pass) H3.2-S8.10(RED→pass) H3.2-S8.11(RED→pass) H3.2-S8.12(RED→pass) H3.2-S8.13(RED→pass) H3.2-S8.14(RED→pass) H3.2-S8.15(RED→pass) H3.2-S8.16(RED→pass) H3.2-S8.17(RED→pass) H3.2-S8.18(RED→pass) H3.2-S8.19(RED→pass) H3.2-S8.20(RED→pass)
+
+===== qc-hr-h3.2 ===== passed 64/64 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.2","total":64,"passed":64,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":60,"baseGreen":4,"offBase":["H3.2-S1.1(RED→pass)","H3.2-S1.2(RED→pass)","H3.2-S1.3(RED→pass)","H3.2-S1.4(RED→pass)","H3.2-S1.5(RED→pass)","H3.2-S1.6(RED→pass)","H3.2-S1.7(RED→pass)","H3.2-S2.1(RED→pass)","H3.2-S2.2(RED→pass)","H3.2-S2.3(RED→pass)","H3.2-S2.4(RED→pass)","H3.2-S2.5(RED→pass)","H3.2-S2.6(RED→pass)","H3.2-S2.7(RED→pass)","H3.2-S2.8(RED→pass)","H3.2-S2.9(RED→pass)","H3.2-S2.10(RED→pass)","H3.2-S2.11(RED→pass)","H3.2-S3.1(RED→pass)","H3.2-S3.2(RED→pass)","H3.2-S3.3(RED→pass)","H3.2-S4.2(RED→pass)","H3.2-S4.3(RED→pass)","H3.2-S4.4(RED→pass)","H3.2-S4.5(RED→pass)","H3.2-S4.6(RED→pass)","H3.2-S9.1(RED→pass)","H3.2-S9.2(RED→pass)","H3.2-S9.3(RED→pass)","H3.2-S9.4(RED→pass)","H3.2-S5.1(RED→pass)","H3.2-S5.2(RED→pass)","H3.2-S6.1(RED→pass)","H3.2-S6.2(RED→pass)","H3.2-S6.3(RED→pass)","H3.2-S7.1(RED→pass)","H3.2-S7.2(RED→pass)","H3.2-S7.3(RED→pass)","H3.2-S7.4(RED→pass)","H3.2-S7.5(RED→pass)","H3.2-S8.1(RED→pass)","H3.2-S8.2(RED→pass)","H3.2-S8.3(RED→pass)","H3.2-S8.4(RED→pass)","H3.2-S8.5(RED→pass)","H3.2-S8.6(RED→pass)","H3.2-S8.7(RED→pass)","H3.2-S8.8(RED→pass)","H3.2-S8.9(RED→pass)","H3.2-S8.10(RED→pass)","H3.2-S8.11(RED→pass)","H3.2-S8.12(RED→pass)","H3.2-S8.13(RED→pass)","H3.2-S8.14(RED→pass)","H3.2-S8.15(RED→pass)","H3.2-S8.16(RED→pass)","H3.2-S8.17(RED→pass)","H3.2-S8.18(RED→pass)","H3.2-S8.19(RED→pass)","H3.2-S8.20(RED→pass)"]}

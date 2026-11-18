@@ -1,0 +1,21 @@
+[env] qc-ai-plan · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:2225117) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [PL-1.1] tool propose_plan ลงทะเบียน
+  ✅ [PL-1.2] kind ปลอม → throw
+  ✅ [PL-2.1] แผน 3 ขั้นรันต่อเนื่องจบ → DONE + สต็อกจบที่ 18
+  ✅ [PL-2.2] results รายงานทีละขั้น (3 แถว ok หมด)
+  ✅ [PL-2.3] รันซ้ำแผนเดิม → ok:false (ไม่ทำซ้ำ)
+  ✅ [PL-3.1] step 2 ล้ม → หยุด (step 3 ไม่รัน · สต็อก 23 ไม่ใช่ 122) + plan FAILED
+  ✅ [PL-4.1] แผนมี step destructive → needsSecondConfirm (ยังไม่รัน)
+
+===== QC AI Plan =====
+ผ่าน 7/7
+JSON_SUMMARY {"total":7,"passed":7,"findings":[]}

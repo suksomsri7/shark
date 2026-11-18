@@ -1,0 +1,54 @@
+[env] qc-hr-attendance · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:16273) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── ยังไม่ตั้งตาราง ห้ามตัดสิน ──
+  ✅ [AT-1] 🔴 ยังไม่ตั้งตาราง → NO_SCHEDULE (ไม่ใช่ LATE)
+  ✅ [AT-1b] เก็บคำตัดสินติดแถวไว้จริง
+  ✅ [AT-2] ออกงานไม่ตัดสิน (judgement ว่าง)
+── ตั้งตารางแล้ว: ตรงเวลา/สาย ──
+  ✅ [AT-3] ลงเวลาจริงตอนนี้ (1:03 ไทย) ตัดสินตามตาราง
+  ✅ [AT-3b] บันทึกเวลาที่ควรเข้า (dueMin=540) ไว้เป็นหลักฐาน
+  ✅ [AT-3c] ไม่สาย → lateMin = 0
+  ✅ [AT-4] 09:15 พอดี (ผ่อนผัน 15) = ตรงเวลา
+  ✅ [AT-5] 09:16 = สาย 16 นาที (รายงานจริง ไม่หักผ่อนผัน)
+── แก้ตารางทีหลัง อดีตต้องไม่ขยับ ──
+  ✅ [AT-6] 🔴 เลื่อนเวลาเข้างานเป็น 05:00 แล้วบันทึกเดิมต้องไม่เปลี่ยนคำตัดสิน
+── สรุปเดือน: ขาด/ลา/สาย ──
+  ✅ [AT-7] ใบลารออนุมัติ ยังไม่ช่วยกันขาด (นับเป็นขาด 2 วัน: เมื่อวาน + วันที่ขอลา)
+  ✅ [AT-8] อนุมัติลาแล้ว → วันนั้นเป็น 'ลา' ไม่ใช่ 'ขาด'
+  ✅ [AT-9] นับสายจากคำตัดสินที่บันทึกไว้ (1 ครั้ง 30 นาที)
+  ✅ [AT-10] ชั่วโมงทำงานจับคู่ IN/OUT ของวันสาย = 8 ชม. 30 น.
+  ✅ [AT-11] 🔴 วันนี้ยังไม่จบ ห้ามนับ (ต้องเข้า 2 วัน = เมื่อวาน+สองวันก่อน)
+  ✅ [AT-12] 🔴 ตารางเพิ่งตั้งวันนี้ → ขาดงาน 0 วัน (ห้ามย้อนไปกล่าวหา)
+  ✅ [AT-13] ทุกวันเป็นวันหยุดประจำ → ขาดงาน 0 · ต้องเข้า 0
+  ✅ [AT-14] มาลงเวลาในวันหยุดของตัวเอง = DAY_OFF (ไม่นับสาย)
+── kiosk PIN ──
+  ✅ [KI-1] PIN ต้องเป็นเลข 4-6 หลัก (ตัวอักษร/สั้นไป = ปฏิเสธ)
+  ✅ [KI-2] ตั้ง PIN 4 หลักได้
+  ✅ [KI-3] PIN ซ้ำกับคนอื่นในร้าน → เตือน ไม่ให้ตั้ง (กันสับสน)
+  ✅ [KI-4] PIN ผิด → ไม่บันทึกเวลา
+  ✅ [KI-5] คนที่ยังไม่มี PIN → บอกให้ไปตั้ง ไม่ใช่ 'PIN ผิด' (ไม่โทษพนักงาน)
+  ✅ [KI-6] PIN ถูก → ครั้งแรกของวัน = เข้างาน + ตัดสินตามตาราง
+  ✅ [KI-7] กดอีกครั้ง = ออกงาน (พนักงานไม่ต้องเลือกเข้า/ออกเอง)
+  ✅ [KI-8] กดครั้งที่สาม = เข้างานอีกรอบ (พักเที่ยงกลับมา)
+  ✅ [KI-9] จอ kiosk บอกได้ว่าใครยังไม่มี PIN
+  ✅ [KI-10] 🔴 action kiosk มีด่านกันเดา PIN (rate limit)
+  ✅ [KI-11] มีหน้าจอลงเวลา + แท็บในเมนู
+  ✅ [AT-15] ร้านอื่นถามสรุปของพนักงานเราไม่ได้ (ว่างเปล่า)
+  ✅ [AT-16] รายชื่อคนที่ตั้งตารางแล้ว ไม่รั่วข้ามร้าน
+  ✅ [AT-17] 🔴 ร้านอื่นรู้ PIN ก็ลงเวลาให้พนักงานเราไม่ได้
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: สาย/ขาดงาน (HR attendance) =====
+ผ่าน 31/31
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":31,"passed":31,"findings":[]}

@@ -1,0 +1,19 @@
+[env] qc-pos-p2.11 · ไฟล์ .env.qc-hr · DB ep-orange-dust-aotwbyc7-pooler.c-2.ap-southeast-1.aws.neon.tech (อนุญาตด้วย POS_QC_ALLOW_HOST=ep-orange-dust-aotwbyc7)
+(node:1710313) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ST ข้อสถิต (ไม่แตะ DB · ฐาน adfcee44 / f164d9d6) ──
+  ❌ [P2.11-ST1] [§10 มติ 1 · ไม่มี migration] prisma/ (schema + migrations) ไม่ต่างจาก หมุดของเลน 05975437 (หรือ f164d9d6) · ไม่มีไฟล์ใหม่ใต้ prisma/ — expected prisma/ เท่าฐาน · ไม่มีไฟล์ใหม่ | actual prisma/ ต่างจากฐาน: prisma/migrations/20261201000000_hr_pin_hash/migration.sql, prisma/migrations/20261202000000_hr_payroll_run_live_unique/migration.sql, prisma/migrations/20261203000000_hr_link_unique_requester/migration.sql, prisma/migrations/20261204000000_hr_org_axis/migration.sql, prisma/migrations/20261205000000_hr_time_leave_model/migration.sql
+  ✅ [P2.11-ST2] [F15.1 · มติ 6 · m(i)] PosProductChannelPrice + PosRecipeChoiceLine เขียนใน catalog.ts เท่านั้น · posUnitInventoryMap export ที่เดียวใน src/
+  ✅ [P2.11-ST3] [§4 §5 มติ 4 5 Q6] reports.ts REPORT_KINDS มี "channels" + CSV_HEADERS.channels + export reportChannels · report-overview.ts OVERVIEW_SECTIO
+  ❌ [P2.11-ST4] [§3 มติ 9] ไฟล์เลน A ไม่ถูกแตะ (= merge-base หรือ f164d9d6): pos/service.ts · register*.ts · tender*.ts · refund*.ts · account-bridge.ts · o — expected ไฟล์เลน A เท่าฐาน · receipt*.ts มีแต่ hunk ที่มีเครื่องหมาย P2.11 | actual ไฟล์เลน A ถูกแตะ: outbox-consumers.ts, coa.ts, connections.ts, gl.ts, guard.ts, inbox-ai.ts, index.ts, journal-v2.ts, public-doc-pdf.tsx, public-doc.ts, rate-limit.ts, service.ts
+  ✅ [P2.11-FU3] [l-price] CatalogError มี field + reason · catalog-price-actions.ts refusalOf ส่ง field + reason ต่อ · price-shared.ts PRICE_REFUSAL_REASONS
+  ✅ [P2.11-FU1] [k · ORACLE-EDIT qc-pos-p2.2 ST1] qc-pos-p2.2.mts มี function p22MigrationTouched(sql) ที่ตั้งอยู่เดี่ยว (ST1 ใช้กรองไฟล์) · ตรวจข้อความสังเ
+🔴 หยุด! qc-pos-p2.11: จะเขียนแถวได้เฉพาะ QC4 (ep-frosty-lab) — DATABASE_URL, DIRECT_URL ไม่ใช่ (ยังไม่ได้เขียนอะไร)
