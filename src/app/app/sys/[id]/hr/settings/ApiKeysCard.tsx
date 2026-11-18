@@ -24,6 +24,7 @@ const refusalKey = (code: string) => (code === "PERMISSION_DENIED" ? "refusal.de
 
 export function ApiKeysCard({ systemId }: { systemId: string }) {
   const t = useTranslations("hr.apiKeys");
+  const tv = useTranslations("hr.setview"); // HR VIS-5d ◂
   const locale = useLocale();
   const [keys, setKeys] = useState<KeyRow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -74,10 +75,11 @@ export function ApiKeysCard({ systemId }: { systemId: string }) {
     }
   };
   const date = (iso: string) => formatShortDate(iso, locale);
+  const why = busy ? tv("keys.busy") : !name.trim() ? tv("keys.needName") : pay && !consent ? tv("keys.needConsent") : ""; // HR VIS-5d ▸ readable reason of a disabled button ◂
 
   return (
-    <section className="card flex flex-col gap-3" id="hr-api-keys" data-testid="hr-apikeys-card">
-      <h2 className="text-sm font-medium">{t("title")}</h2>
+    <section className="flex flex-col gap-3 rounded-[18px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-5" id="hr-api-keys" data-testid="hr-apikeys-card">{/* HR VIS-5d ▸ card shell like the other settings cards ◂ */}
+      <h2 className="text-base font-bold">{t("title")}</h2>{/* HR VIS-5d ◂ */}
       <p className="text-xs text-[color:var(--color-muted)]">{t("desc")}</p>
       {error && (
         <p role="alert" className="text-xs text-[color:var(--color-danger)]" data-testid="hr-apikeys-error">
@@ -115,7 +117,7 @@ export function ApiKeysCard({ systemId }: { systemId: string }) {
                 {!k.revokedAt &&
                   (confirmId === k.id ? (
                     <span className="flex gap-2">
-                      <button type="button" className={btn} disabled={busy} data-testid="hr-apikeys-revoke-confirm" onClick={() => void revoke(k.id)}>
+                      <button type="button" className={btn} disabled={busy} title={busy ? tv("keys.busy") : undefined} data-testid="hr-apikeys-revoke-confirm" onClick={() => void revoke(k.id)}>{/* HR VIS-5d ◂ */}
                         {t("revokeConfirm")}
                       </button>
                       <button type="button" className={ghost} onClick={() => setConfirmId(null)}>
@@ -171,9 +173,14 @@ export function ApiKeysCard({ systemId }: { systemId: string }) {
             <span>{t("consent")}</span>
           </label>
         )}
-        <button type="submit" className={`${btn} self-start`} disabled={busy || !name.trim() || (pay && !consent)} data-testid="hr-apikeys-issue">
+        <button type="submit" className={`${btn} self-start`} disabled={busy || !name.trim() || (pay && !consent)} aria-describedby={why ? "hr-apikeys-why" : undefined} data-testid="hr-apikeys-issue">{/* HR VIS-5d ◂ */}
           {t("issue")}
         </button>
+        {why && (
+          <p id="hr-apikeys-why" className="text-xs text-[color:var(--color-muted)]">
+            {why}
+          </p>
+        )}{/* HR VIS-5d ◂ */}
       </form>
       <a href="/developers/hr.md" className="text-xs underline" data-testid="hr-apikeys-docs">
         {t("docs")}

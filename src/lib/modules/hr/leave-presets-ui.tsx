@@ -39,9 +39,9 @@ export async function LeavePresetSection({ systemId, policies, onAdd, canAdd }: 
                 {r.perEvent && <p className={`text-xs ${muted}`}>{t("perEvent")}</p>}
                 {!r.supported ? (
                   <>
-                    <button type="button" disabled aria-disabled="true" className={`${btn} self-start opacity-50`} data-testid={`hr-settings-law-preset-off-${r.key}`}>
+                    <span className={`self-start rounded-lg border border-[color:var(--color-line)] px-3 py-1.5 text-xs font-semibold ${muted}`} data-testid={`hr-settings-law-preset-off-${r.key}`}>{/* HR VIS-5d ▸ a status chip, not a disabled button (§7.3 · the note below says why) ◂ */}
                       {t("unsupported")}
-                    </button>
+                    </span>{/* HR VIS-5d ◂ */}
                     <p className={`text-xs ${muted}`}>{t("unsupportedNote")}</p>
                   </>
                 ) : r.existing ? (

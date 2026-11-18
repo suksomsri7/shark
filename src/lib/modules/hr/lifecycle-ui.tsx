@@ -33,6 +33,8 @@ import {
   setTaskDoneAction,
   startChecklistAction,
 } from "./lifecycle-actions";
+import { SetReadOnly } from "./settings-ui"; // HR VIS-5d ▸ read-only values + reason (§7.3) ◂
+import { TemplateRowsEditor } from "./TemplateRowsEditor"; // HR VIS-5d ▸ Q8 ◂
 
 type Life = Awaited<ReturnType<typeof loadLifecycleForViewer>>;
 const muted = "text-[color:var(--color-muted)]";
@@ -437,20 +439,49 @@ export async function LifecycleSettings({ systemId }: { systemId: string }) {
   if (!canSeeLifecycle(viewer)) return null;
   const ctx = { tenantId: auth.active.tenantId, systemId };
   const t = await getTranslations("hr.life");
+  const tv = await getTranslations("hr.setview"); // HR VIS-5d ◂
   const [pol, boards] = await Promise.all([getLifecyclePolicy(ctx), lifecycleBoards(ctx, viewer)]);
   const shopWide = viewer.role === "OWNER" || (Array.isArray(viewer.unitAccess) && (viewer.unitAccess.length === 0 || viewer.unitAccess.includes("*")));
-  return <SettingsForm systemId={systemId} pol={pol} boards={boards} t={t} editable={shopWide} owner={viewer.role === "OWNER"} />;
+  return <SettingsForm systemId={systemId} pol={pol} boards={boards} t={t} tv={tv} editable={shopWide} owner={viewer.role === "OWNER"} />; // HR VIS-5d ◂
 }
 
-function SettingsForm({ systemId, pol, boards, t, editable, owner }: { systemId: string; pol: LifecyclePolicy; boards: { id: string; name: string }[]; t: Awaited<ReturnType<typeof getTranslations>>; editable: boolean; owner: boolean }) {
+function SettingsForm({ systemId, pol, boards, t, tv, editable, owner }: { systemId: string; pol: LifecyclePolicy; boards: { id: string; name: string }[]; t: Awaited<ReturnType<typeof getTranslations>>; tv: Awaited<ReturnType<typeof getTranslations>>; editable: boolean; owner: boolean }) {
+  // HR VIS-5d ▸ §7.3: a viewer the save would refuse (branch-limited) sees the values as text + the reason — no disabled fieldset ◂
+  const yesNo = (b: boolean) => (b ? tv("ro.yes") : tv("ro.no")); // HR VIS-5d ◂
+  const tplList = (rows: LifeTemplateRow[]) => rows.map((r) => `${r.title} (${r.dueDays})`).join(" · ") || tv("ro.none"); // HR VIS-5d ◂
+  const lockedOn = (k: "autoRevokePin" | "revokeAppAccess", label: string) => (
+    <p className="flex min-h-11 items-center gap-2 text-sm">
+      <input type="hidden" name={k} value="on" />
+      <span className="flex-1">{label}</span>
+      <b className="text-xs">{tv("ro.ownerOnly")}</b>
+    </p>
+  ); // HR VIS-5d ▸ owner-only switch that is on: value as text (was a disabled checkbox) · the hidden "on" is the value the form sent before ◂
+  const tpl = { title: tv("tpl.title"), days: tv("tpl.days"), add: tv("tpl.add"), remove: tv("tpl.remove"), up: tv("tpl.up"), down: tv("tpl.down") }; // HR VIS-5d ◂
   return (
-    <section id="hr-life" data-testid="hr-life-settings" className="card flex flex-col gap-3 p-4">
-      <h2 className="text-base font-semibold">{t("settings.title")}</h2>
+    <section id="hr-life" data-testid="hr-life-settings" className="flex flex-col gap-3 rounded-[18px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-5">{/* HR VIS-5d ◂ */}
+      <h2 className="text-base font-bold">{t("settings.title")}</h2>{/* HR VIS-5d ◂ */}
       <p className={`text-xs ${muted}`}>{t("settings.desc")}</p>
-      {!editable && <p className={`text-xs ${muted}`}>{t("settings.shopWide")}</p>}
+      {!editable && (
+        <SetReadOnly
+          testid="hr-set-readonly-life"
+          reason={tv("ro.life")}
+          rows={[
+            [t("settings.leadProbation"), String(pol.probationLeadDays)],
+            [t("settings.leadContract"), String(pol.contractLeadDays)],
+            [t("settings.kanban"), yesNo(pol.kanban.enabled)],
+            [t("settings.board"), boards.find((b) => b.id === pol.kanban.boardId)?.name ?? tv("ro.none")],
+            [t("settings.assign"), pol.assignTo === "OWNER" ? t("settings.assignOwner") : t("settings.assignManager")],
+            [t("settings.autoPin"), yesNo(pol.autoRevokePin)],
+            [t("settings.revokeApp"), yesNo(pol.revokeAppAccess)],
+            [t("settings.tplOn"), tplList(pol.onboardingTemplate)],
+            [t("settings.tplOff"), tplList(pol.offboardingTemplate)],
+          ]}
+        />
+      )}{/* HR VIS-5d ◂ */}
+      {editable && (<>{/* HR VIS-5d ▸ form only for the viewer who can save ◂ */}
       <form action={saveLifecyclePolicyAction} className="flex flex-col gap-3">
         <input type="hidden" name="systemId" value={systemId} />
-        <fieldset disabled={!editable} className="flex flex-col gap-3">
+        <fieldset className="flex flex-col gap-3">{/* HR VIS-5d ▸ never disabled (form rendered only when editable) ◂ */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <label className={`flex flex-col gap-1 text-xs ${muted}`}>
               {t("settings.leadProbation")}
@@ -486,31 +517,39 @@ function SettingsForm({ systemId, pol, boards, t, editable, owner }: { systemId:
             </label>
           </div>
           {/* r2-8: ปิดสองข้อนี้ได้เฉพาะเจ้าของร้าน — คนอื่นเห็นแบบล็อกเมื่อเปิดอยู่ (ค่าเดิมส่งไปกับฟอร์ม) */}
+          {pol.autoRevokePin && !owner ? lockedOn("autoRevokePin", t("settings.autoPin")) : ( // HR VIS-5d ◂
           <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input type="checkbox" name="autoRevokePin" defaultChecked={pol.autoRevokePin} disabled={pol.autoRevokePin && !owner} className="h-5 w-5" />
+            <input type="checkbox" name="autoRevokePin" defaultChecked={pol.autoRevokePin} className="h-5 w-5" />{/* HR VIS-5d ◂ */}
             {t("settings.autoPin")}
           </label>
-          {pol.autoRevokePin && !owner && <input type="hidden" name="autoRevokePin" value="on" />}
+          )}{/* HR VIS-5d ◂ */}
+          {pol.revokeAppAccess && !owner ? lockedOn("revokeAppAccess", t("settings.revokeApp")) : (
           <label className="flex min-h-11 items-center gap-2 text-sm">
-            <input type="checkbox" name="revokeAppAccess" defaultChecked={pol.revokeAppAccess} disabled={pol.revokeAppAccess && !owner} className="h-5 w-5" />
+            <input type="checkbox" name="revokeAppAccess" defaultChecked={pol.revokeAppAccess} className="h-5 w-5" />{/* HR VIS-5d ◂ */}
             {t("settings.revokeApp")}
           </label>
-          {pol.revokeAppAccess && !owner && <input type="hidden" name="revokeAppAccess" value="on" />}
+          )}{/* HR VIS-5d ◂ */}
           {!owner && <p className={`text-xs ${muted}`}>{t("settings.ownerSwitch")}</p>}
-          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-            {t("settings.tplOn")}
-            <textarea name="onboardingTemplate" rows={7} defaultValue={tplText(pol.onboardingTemplate)} data-testid="hr-life-template-onboarding" className="input font-mono" />
-          </label>
-          <label className={`flex flex-col gap-1 text-xs ${muted}`}>
-            {t("settings.tplOff")}
-            <textarea name="offboardingTemplate" rows={6} defaultValue={tplText(pol.offboardingTemplate)} data-testid="hr-life-template-offboarding" className="input font-mono" />
-          </label>
-          <p className={`text-xs ${muted}`}>{t("settings.tplHelp")}</p>
-          <button type="submit" className={`${btn} self-start`}>
+          <div className={`flex flex-col gap-1 text-xs ${muted}`}>{/* HR VIS-5d ▸ Q8 row editor over the original textarea ◂ */}
+            <span>{t("settings.tplOn")}</span>
+            <TemplateRowsEditor initial={pol.onboardingTemplate} labels={tpl} prefix="on">
+            <textarea name="onboardingTemplate" rows={7} defaultValue={tplText(pol.onboardingTemplate)} aria-label={t("settings.tplOn")} data-testid="hr-life-template-onboarding" className="input font-mono" />
+            <p className={`text-xs ${muted}`}>{t("settings.tplHelp")}</p>
+            </TemplateRowsEditor>
+          </div>{/* HR VIS-5d ◂ */}
+          <div className={`flex flex-col gap-1 text-xs ${muted}`}>{/* HR VIS-5d ◂ */}
+            <span>{t("settings.tplOff")}</span>
+            <TemplateRowsEditor initial={pol.offboardingTemplate} labels={tpl} prefix="off">
+            <textarea name="offboardingTemplate" rows={6} defaultValue={tplText(pol.offboardingTemplate)} aria-label={t("settings.tplOff")} data-testid="hr-life-template-offboarding" className="input font-mono" />
+            <p className={`text-xs ${muted}`}>{t("settings.tplHelp")}</p>
+            </TemplateRowsEditor>
+          </div>{/* HR VIS-5d ◂ */}
+          <button type="submit" className={`${btn} self-start`} data-testid="hr-life-save">{/* HR VIS-5d ▸ testid for the press probe (controller ruling 5) ◂ */}
             {t("settings.save")}
           </button>
         </fieldset>
       </form>
+      </>)}{/* HR VIS-5d ◂ */}
     </section>
   );
 }

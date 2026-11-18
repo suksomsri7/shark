@@ -116,6 +116,7 @@ export function LineSettingsCard({
   saveAction: (fd: FormData) => Promise<Res>;
 }) {
   const t = useTranslations("hr.line");
+  const tv = useTranslations("hr.setview"); // HR VIS-5d ◂
   const [state, run, pending] = useActionState<Res, FormData>((_p, fd) => saveAction(fd), null);
   return (
     <section className="card flex flex-col gap-3 p-4" id="hr-line-settings" data-testid="hr-line-settings-card">
@@ -129,10 +130,36 @@ export function LineSettingsCard({
       <p className="text-sm" data-testid="hr-line-settings-sent">
         {t("sentThisMonth", { n: sentThisMonth, cap: policy.monthlyCap })}
       </p>
+      {!canSave && (
+        <div className="flex flex-col gap-2">{/* HR VIS-5d ▸ §7.3: a viewer the save would refuse sees the values as text + the reason (no disabled inputs) ◂ */}
+          <p role="note" data-testid="hr-set-readonly-line" className="rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-3 py-2 text-xs text-[color:var(--color-muted)]">
+            {tv("ro.line")}
+          </p>
+          <dl className="flex flex-col text-sm">
+            {(
+              [
+                [t("enabled"), policy.enabled ? tv("ro.yes") : tv("ro.no")],
+                [tv("ro.events"), EVENTS.filter((k) => policy.events[k]).map((k) => t(`ev${k}`)).join(" · ") || tv("ro.none")],
+                [t("mode"), policy.mode === "DIGEST" ? t("modeDigest") : t("modeImmediate")],
+                [t("digestAt"), policy.digestAt],
+                [t("cap"), String(policy.monthlyCap)],
+                [t("fallbackUnit"), units.find((u) => u.id === policy.unitId)?.name ?? t("none")],
+              ] as [string, string][]
+            ).map(([k, v]) => (
+              <div key={k} className="flex items-baseline gap-3 border-t border-[color:var(--color-line)] py-2 first:border-t-0">
+                <dt className="flex-1 text-[color:var(--color-muted)]">{k}</dt>
+                <dd className="text-right font-medium tabular-nums">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <p className={muted}>{t("costNote")}</p>
+        </div>
+      )}{/* HR VIS-5d ◂ */}
+      {canSave && (<>{/* HR VIS-5d ▸ form only for the viewer who can save ◂ */}
       <form action={run} className="flex flex-col gap-3">
         <input type="hidden" name="systemId" value={systemId} />
         <label className="flex min-h-[44px] items-center gap-2 text-sm">
-          <input type="checkbox" name="enabled" defaultChecked={policy.enabled} disabled={!canSave} data-testid="hr-line-settings-enabled" />
+          <input type="checkbox" name="enabled" defaultChecked={policy.enabled} disabled={!canSave} className="h-5 w-5" data-testid="hr-line-settings-enabled" />{/* HR VIS-5d ◂ */}
           {t("enabled")}
         </label>
         <fieldset className="flex flex-col gap-1">
@@ -140,7 +167,7 @@ export function LineSettingsCard({
           <div className="flex flex-wrap gap-3">
             {EVENTS.map((k) => (
               <label key={k} className="flex min-h-[44px] items-center gap-2 text-sm">
-                <input type="checkbox" name={`ev_${k}`} defaultChecked={policy.events[k]} disabled={!canSave} />
+                <input type="checkbox" name={`ev_${k}`} defaultChecked={policy.events[k]} disabled={!canSave} className="h-5 w-5" />{/* HR VIS-5d ◂ */}
                 {t(`ev${k}`)}
               </label>
             ))}
@@ -186,6 +213,7 @@ export function LineSettingsCard({
           </p>
         )}
       </form>
+      </>)}{/* HR VIS-5d ◂ */}
     </section>
   );
 }

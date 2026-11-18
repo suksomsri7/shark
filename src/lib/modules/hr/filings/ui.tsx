@@ -23,6 +23,7 @@ import {
   previewFiling,
   type FilingRequest,
 } from "./service";
+import { SetReadOnly } from "../settings-ui"; // HR VIS-5d ▸ read-only values + reason (§7.3) ◂
 
 const btn = "btn btn-primary min-h-[44px] text-sm";
 const ghost = "btn btn-ghost min-h-[44px] text-sm";
@@ -415,6 +416,7 @@ export async function FilingSettingsCard({ systemId, msg }: { systemId: string; 
   const owner = auth.active.role === "OWNER";
   const flash = msg ? await flashOf(msg) : null;
   const L = FIELD_LABEL[lang] as Record<string, string>;
+  const tv = await getTranslations("hr.setview"); // HR VIS-5d ◂
   const text = (k: string, v: string | null | undefined, extra: Record<string, string | number> = {}) => (
     <label key={k} className={label}>
       {L[k] ?? k}
@@ -428,7 +430,22 @@ export async function FilingSettingsCard({ systemId, msg }: { systemId: string; 
       </h2>
       <p className={muted}>{t("profileDesc")}</p>
       <Flash f={flash} />
-      {!owner ? <p className={muted}>{tx.profileOwner}</p> : null}
+      {!owner ? (
+        <SetReadOnly
+          testid="hr-set-readonly-filing"
+          reason={tx.profileOwner}
+          rows={[
+            ...(["taxId", "branchNo", "employerName", "employerAddress", "deptName", "rdUserId", "ssoAccountNo", "ssoBranchNo", "signerName", "certPrefix"] as const).map((k): [string, string] => [L[k] ?? k, p?.[k] ? String(p[k]) : "—"]),
+            [L.formFlag ?? "formFlag", String(p?.rdFormFlag ?? 2) === "1" ? t("formFlag1") : t("formFlag2")],
+            [L.slashMode ?? "slashMode", (p?.rdSlashMode ?? "DASH") === "EXCLUDE" ? t("slashExclude") : t("slashDash")],
+            [L.encoding ?? "encoding", (p?.ssoEncoding ?? "TIS620") === "UTF8" ? "UTF-8" : "TIS-620"],
+            [L.wageMode ?? "wageMode", (p?.ssoWageMode ?? "CLAMPED") === "ACTUAL" ? t("wageActual") : t("wageClamped")],
+            [t("branchType"), p?.branchType || t("branchTypeNone")],
+            [t("lto"), p?.lto ? tv("ro.yes") : tv("ro.no")],
+          ]}
+        />
+      ) : null}{/* HR VIS-5d ▸ §7.3: non-owner sees values as text + the reason (the form below renders for the owner only) ◂ */}
+      {owner && (<>{/* HR VIS-5d ◂ */}
       <form action={saveFilingProfileAction} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
         <input type="hidden" name="systemId" value={systemId} />
         {text("taxId", p?.taxId, { inputMode: "numeric", maxLength: 13 })}
@@ -490,6 +507,8 @@ export async function FilingSettingsCard({ systemId, msg }: { systemId: string; 
           </button>
         ) : null}
       </form>
+      </>)}{/* HR VIS-5d ◂ */}
+      {!owner && <p className={muted}>{tx.wageU}</p>}{/* HR VIS-5d ▸ the wage-basis note stays visible to the read-only viewer ◂ */}
     </section>
   );
 }
