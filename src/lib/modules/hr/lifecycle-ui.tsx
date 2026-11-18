@@ -33,7 +33,7 @@ import {
   setTaskDoneAction,
   startChecklistAction,
 } from "./lifecycle-actions";
-import { SetReadOnly } from "./settings-ui"; // HR VIS-5d ▸ read-only values + reason (§7.3) ◂
+import { roNoteCls, SetReadOnly } from "./settings-ui"; // HR VIS-5d ▸ read-only values + reason (§7.3) ◂
 import { TemplateRowsEditor } from "./TemplateRowsEditor"; // HR VIS-5d ▸ Q8 ◂
 
 type Life = Awaited<ReturnType<typeof loadLifecycleForViewer>>;
@@ -463,8 +463,7 @@ function SettingsForm({ systemId, pol, boards, t, tv, editable, owner }: { syste
       <p className={`text-xs ${muted}`}>{t("settings.desc")}</p>
       {!editable && (
         <SetReadOnly
-          testid="hr-set-readonly-life"
-          reason={tv("ro.life")}
+          note={<p role="note" data-testid="hr-set-readonly-life" className={roNoteCls}>{tv("ro.life")}</p>}
           rows={[
             [t("settings.leadProbation"), String(pol.probationLeadDays)],
             [t("settings.leadContract"), String(pol.contractLeadDays)],

@@ -1043,32 +1043,6 @@
   },
   {
    "page": "/app/sys/[id]/hr/settings",
-   "testid": "hr-settings-stub-note",
-   "kind": "display",
-   "interactive": false,
-   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
-   "conditional": "ไม่แสดงแล้ว — ถอดใน VIS-5d (Q4: หน้าตั้งค่าเต็มตามภาพ 08)",
-   "roles": [
-    "owner",
-    "manager",
-    "manager-branch"
-   ],
-   "hiddenFor": [
-    "kiosk",
-    "member",
-    "staff",
-    "payroll",
-    "payrollSelf"
-   ],
-   "expect": {
-    "type": "display"
-   },
-   "wo": "H1.2",
-   "oracle": "qc-hr-h1.2",
-   "note": "role=note บอกว่าเป็นหน้าย่อ"
-  },
-  {
-   "page": "/app/sys/[id]/hr/settings",
    "testid": "hr-settings-message",
    "kind": "display",
    "interactive": false,
@@ -15553,6 +15527,33 @@
   },
   {
    "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-nav-staff",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "เจ้าของร้านเท่านั้น (Q3)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/settings/staff"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "รายการเมนู สิทธิ์ผู้จัดการ → หน้าผู้ใช้งานและสิทธิ์ของร้าน"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
    "testid": "hr-set-connections",
    "kind": "display",
    "interactive": false,
@@ -15790,11 +15791,11 @@
   },
   {
    "page": "/app/sys/[id]/hr/settings",
-   "testid": "hr-set-readonly-*",
+   "testid": "hr-set-readonly-line",
    "kind": "display",
    "interactive": false,
-   "file": "src/lib/modules/hr/settings-ui.tsx",
-   "conditional": "* = line (ผู้ดูแลบางสาขา) | life (ผู้ถือคีย์ที่ดูแลบางสาขา) | filing (ผู้ผ่านด่านแบบยื่นที่ไม่ใช่เจ้าของร้าน)",
+   "file": "src/lib/modules/hr/line-ui.tsx",
+   "conditional": "ผู้ตั้งค่าที่ดูแลบางสาขา (บันทึก LINE ได้เฉพาะผู้ดูแลทุกสาขา)",
    "roles": [
     "manager-branch"
    ],
@@ -15813,7 +15814,51 @@
   },
   {
    "page": "/app/sys/[id]/hr/settings",
-   "testid": "hr-set-tpl-*",
+   "testid": "hr-set-readonly-life",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "ผู้ถือคีย์ hr.employee.create ที่ดูแลบางสาขา (ค่าวงจรพนักงานใช้ทั้งร้าน)",
+   "roles": [],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "บรรทัดเหตุผล + ค่าที่อ่านได้ แทนช่องที่บันทึกไม่ได้ (§7.3)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-readonly-filing",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/filings/ui.tsx",
+   "conditional": "ผู้ผ่านด่านแบบยื่นที่ไม่ใช่เจ้าของร้าน (hr.payroll.read + hr.payroll.pay ทุกสาขา)",
+   "roles": [
+    "payroll"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "บรรทัดเหตุผล + ค่าที่อ่านได้ แทนช่องที่บันทึกไม่ได้ (§7.3)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-tpl-*-add",
    "kind": "button",
    "interactive": true,
    "file": "src/lib/modules/hr/TemplateRowsEditor.tsx",
@@ -15835,7 +15880,137 @@
    },
    "wo": "VIS-5d",
    "oracle": "qc-hr-vis-5d",
-   "note": "ตัวแก้แม่แบบรายการรับเข้า/ออกจากงาน: * = on|off - title|days|up|down|remove - n · add (เขียนลง textarea เดิม)"
+   "note": "ตัวแก้แม่แบบ (Q8) · * แรก = on | off · เพิ่มรายการ · เขียนลง textarea เดิม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-tpl-*-title-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/TemplateRowsEditor.tsx",
+   "conditional": "แท็บวงจรพนักงาน · ผู้แก้ได้ (ทุกสาขา) · มี JS (ไม่มี JS = textarea เดิม)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "ตัวแก้แม่แบบ (Q8) · * แรก = on | off · ชื่อรายการ · เขียนลง textarea เดิม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-tpl-*-days-*",
+   "kind": "input",
+   "interactive": true,
+   "file": "src/lib/modules/hr/TemplateRowsEditor.tsx",
+   "conditional": "แท็บวงจรพนักงาน · ผู้แก้ได้ (ทุกสาขา) · มี JS (ไม่มี JS = textarea เดิม)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "ตัวแก้แม่แบบ (Q8) · * แรก = on | off · ครบกำหนด (วัน) · เขียนลง textarea เดิม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-tpl-*-up-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/TemplateRowsEditor.tsx",
+   "conditional": "แท็บวงจรพนักงาน · ผู้แก้ได้ (ทุกสาขา) · มี JS (ไม่มี JS = textarea เดิม)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "ตัวแก้แม่แบบ (Q8) · * แรก = on | off · เลื่อนขึ้น · เขียนลง textarea เดิม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-tpl-*-down-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/TemplateRowsEditor.tsx",
+   "conditional": "แท็บวงจรพนักงาน · ผู้แก้ได้ (ทุกสาขา) · มี JS (ไม่มี JS = textarea เดิม)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "ตัวแก้แม่แบบ (Q8) · * แรก = on | off · เลื่อนลง · เขียนลง textarea เดิม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-tpl-*-remove-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/TemplateRowsEditor.tsx",
+   "conditional": "แท็บวงจรพนักงาน · ผู้แก้ได้ (ทุกสาขา) · มี JS (ไม่มี JS = textarea เดิม)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "ตัวแก้แม่แบบ (Q8) · * แรก = on | off · ลบรายการ · เขียนลง textarea เดิม"
   },
   {
    "page": "/app/sys/[id]/hr/settings",

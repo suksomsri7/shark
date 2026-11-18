@@ -23,7 +23,7 @@ import {
   previewFiling,
   type FilingRequest,
 } from "./service";
-import { SetReadOnly } from "../settings-ui"; // HR VIS-5d ▸ read-only values + reason (§7.3) ◂
+import { roNoteCls, SetReadOnly } from "../settings-ui"; // HR VIS-5d ▸ read-only values + reason (§7.3) ◂
 
 const btn = "btn btn-primary min-h-[44px] text-sm";
 const ghost = "btn btn-ghost min-h-[44px] text-sm";
@@ -432,8 +432,7 @@ export async function FilingSettingsCard({ systemId, msg }: { systemId: string; 
       <Flash f={flash} />
       {!owner ? (
         <SetReadOnly
-          testid="hr-set-readonly-filing"
-          reason={tx.profileOwner}
+          note={<p role="note" data-testid="hr-set-readonly-filing" className={roNoteCls}>{tx.profileOwner}</p>}
           rows={[
             ...(["taxId", "branchNo", "employerName", "employerAddress", "deptName", "rdUserId", "ssoAccountNo", "ssoBranchNo", "signerName", "certPrefix"] as const).map((k): [string, string] => [L[k] ?? k, p?.[k] ? String(p[k]) : "—"]),
             [L.formFlag ?? "formFlag", String(p?.rdFormFlag ?? 2) === "1" ? t("formFlag1") : t("formFlag2")],

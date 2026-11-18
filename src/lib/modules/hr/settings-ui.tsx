@@ -102,13 +102,12 @@ export function SetCard({ title, extra, foot, children, id, testid, labelledBy }
   );
 }
 
-/** read-only value list (replaces controls the viewer's action would refuse · §7.3) + the reason line */
-export function SetReadOnly({ testid, reason, rows }: { testid: string; reason: string; rows: [string, ReactNode][] }) {
+/** read-only value list (replaces controls the viewer's action would refuse · §7.3) — the caller passes the reason line (its testid literal stays in the card file) */
+export const roNoteCls = `rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-3 py-2 text-xs ${muted}`;
+export function SetReadOnly({ note, rows }: { note: ReactNode; rows: [string, ReactNode][] }) {
   return (
     <div className="flex flex-col gap-2">
-      <p role="note" data-testid={testid} className={`rounded-xl border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-3 py-2 text-xs ${muted}`}>
-        {reason}
-      </p>
+      {note}
       <dl className="flex flex-col text-sm">
         {rows.map(([k, v]) => (
           <div key={k} className="flex items-baseline gap-3 border-t border-[color:var(--color-line)] py-2 first:border-t-0">
