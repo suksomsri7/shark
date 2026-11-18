@@ -1,0 +1,79 @@
+[env] qc-hr-h3.9 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.9] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h3.9] rules=loaded · service=loaded · route=loaded · H3.4=loaded
+── [static] base 0a0691c7d (H3.9 in base) · H3.4 present ──
+  ✅ [H3.9-S1.1] [static] files: reports-rules.ts · reports.ts · reports-ui.tsx · reports-route.ts · reports page · export route · register migration
+  ✅ [H3.9-S1.2] [static] migration 20270109000000: CREATE TABLE "HrEmployeeRegister" (employeeId UNIQUE · nationality ≤ 60 CHECK · otherBenefits ≤ 500 CHECK) only · model in hr.prisma · HrEmployee/HrSalaryProfile/HrPayrollRun/HrPayrollItem blocks unchanged · core scope sys() · hr-qc-env
+  ✅ [H3.9-S1.3] [static] pure layer reports-rules.ts: imports ⊆ ./bank-files/{generic,xlsx,encode} (+ type-only) · no db/clock/random/process/fetch
+  ✅ [H3.9-S1.4] [static] one CSV/XLSX writer: reports*.ts import csvBytes + xlsxBytes from bank-files · no own quoting/zip/BOM code
+  ✅ [H3.9-S1.5] [static] [control] payroll-rules sha · frozen files/dirs unchanged vs base · no new tab label in hrTabs/layout
+  ✅ [H3.9-S1.6] [static] reports*.ts + page + route: no banned token (bank/houseReg/sso no./PIN/GPS/photo/device/attachment/offboard/ytdJson/lawRowIds/sourceRef/HrLawTable/HrWorkEntry) · no punch-table read · no recompute fn · nationalId only in reports.ts
+  ✅ [H3.9-S1.7] [static] export route: GET → reportExportGet · router fetch 204 first · page imports a scope.ts guard + reports.ts loader
+  ✅ [H3.9-S1.8] [static] nav decision: hrTabs + layout HR labels = base (no "รายงาน" tab) · overview/hub link to /hr/reports (testid hr-overview-reports-link) · nav.ts unchanged
+  ✅ [H3.9-S1.9] [static] UI testids (report page + register card) · inventory rows wo H3.9 · hr.report th = en keys · visual spec "3.9" · no "use client" report file imports reports.ts/db or reads sensitive fields
+  ✅ [H3.9-S1.11] [static] membership gate pinned: every exported async fn of reports.ts calls gateOf( · page/route/actions reach report data only through reports.ts
+  ✅ [H3.9-S1.10] [static] every hunk in shared files marked "HR H3.9" (core scope · hr-qc-env · hr.prisma · hub/overview · employee page · messages · inventory · visual)
+  ✅ [H3.9-S2.0] [pure] [control] fixture self-consistency: catalog keys unique · golden widths = catalog · golden totals = Σ golden rows (own baht/tenths parser)
+── [pure] ──
+  ✅ [H3.9-S2.1] [pure] REPORT_TEXT / REPORT_TEXT_EN = texts fixture byte-exact · reportTextFor(locale)
+  ✅ [H3.9-S2.2] [pure] REPORT_IDS + REPORT_CATALOG = fixture (key · class P/$/I · sum · th · en · period kind · totals · thaiOnly) · REPORT_LIMITS
+  ✅ [H3.9-S2.3] [pure] columnsFor(report, {money, fullId}, page
+  ✅ [H3.9-S2.4] [pure] maskCitizenId · bahtText · tenthsText · addressOf vectors
+  ✅ [H3.9-S2.5] [pure] ageOn vectors (birthday on the day · leap day · future/null ⇒ null)
+  ✅ [H3.9-S2.6] [pure] absentMinOf · whtIncomeOf (v1 base+add · v2 whtIncomeSatang · non-integer/negative ⇒ 0) · wagePartsOf (v1 / v2 line codes)
+  ✅ [H3.9-S2.7] [pure] reportTable(golden) = header (th · en · register always th) + rows + totals row ("รวม"/"Total") for every golden
+  ✅ [H3.9-S2.8] [pure] reportBytes CSV = BOM + independent CSV text · XLSX parseImportFile = same table · deterministic · input not mutated
+  ✅ [H3.9-S2.9] [pure] exportProblem: numeric/date cells exempt · formula (incl. after whitespace) ⇒ FORMULA names · control char ⇒ ENCODING first
+  ✅ [H3.9-S2.10] [pure] periodOk vectors (month/year/day kinds · 2000–2600 · malformed ⇒ false · unknown report ⇒ false)
+  ✅ [H3.9-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+(node:2108029) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H3.9-S3.0] [db] [control] fixture inserted: 5 employees · 2 units · judge days · corrections · OT · leave ledger · 5 runs (Σ items = run totals)
+  ✅ [H3.9-S3.1] [db] time 2031-10 owner = golden (rows · totals · order code→name→id) · out-of-period rows ignored · notes timeNote
+  ✅ [H3.9-S3.2] [db] leave 2031 = teamLeaveBalances rows 1:1 (owner) · e1/P1 row golden · ruling Q1: payroll all-branch = owner rows · payroll branch = u1 rows only · no reason anywhere
+  ✅ [H3.9-S3.3] [db] ot 2031-10 owner = golden (status counts · settled segments by class · ฿) · CANCELLED / unsettled segments ignored
+  ✅ [H3.9-S3.4] [db] payroll-month 2031-10 / 2031-09 / 2031-08 (REVERSED) / 2031-11 (DRAFT) + payroll-year 2031 = goldens · read stored item columns
+  ✅ [H3.9-S3.5] [db] tax-month 2031-11 / 2031-10 / 2031-09 (Bangkok pay month) + tax-year 2031 / 2030 = goldens · income 40(1) rule v1/v2 · notes taxNote
+  ✅ [H3.9-S3.6] [db] wages (s.114) 2031-10 (v2-shaped lines) / 2031-09 (v1 snapshot) = goldens · notes s114Note
+  ✅ [H3.9-S3.7] [db] register 2031-10-31 owner: page + export (setting OFF ⇒ IDs masked) = golden · leaver kept · warnings counts · notes duty/under-10/retention
+  ✅ [H3.9-S3.8] [db] saveRegisterFields: gates (owner · hr-admin in branch · benefits needs payroll) · out of branch/other ⇒ NO · limits ⇒ registerInput · audit fields only · loadRegisterFields keys by gate
+  ✅ [H3.9-S3.9] [db] owner exports: time CSV + register CSV = independent CSV text of golden · XLSX = same table · file names · content types
+  ✅ [H3.9-S3.10] [db] revoked OT (ruling A): APPROVED+revokedAt and CANCELLED+revokedAt never in approved count/minutes · kept HOLIDAY_WORK minutes only in keptHolidayWorkMin (฿ only for money viewers)
+  ✅ [H3.9-S3.11] [db] register "10 or more" note (ruling B): all-branch viewers get duty/under-10 · branch-limited payroll viewer gets neither (no shop-wide count signal)
+  ✅ [H3.9-S3.12] [db] fix r1/r2: register as of a date — hired after the date not listed · end date = last employed day (ended only when endDate < as-of) · ENDED without endDate = ended, blank end date
+  ✅ [H3.9-S4.1] [db] gate matrix 10 viewers × 9 reports × page/export = design matrix (ok ⇔ allowed · NO otherwise)
+  ✅ [H3.9-S4.2] [db] column sets: DTO keys + export header = columnsFor(viewer access) for every allowed cell of the matrix
+  ✅ [H3.9-S4.3] [db] branch: u1 viewers see u1 rows only · totals from visible rows (≠ run totals) · unassigned hidden · unit filter in/out of scope · unknown unit ⇒ []
+  ✅ [H3.9-S4.4] [db] national ID, setting OFF (default): no full ID in any page or export of any viewer (register export masked too)
+  ✅ [H3.9-S4.5] [db] manager / hr-admin: no $ key · no money value (OT ฿ strings absent from DTO and export text) · payroll/tax/wages/register NO
+  ✅ [H3.9-S4.6] [db] forbidden keys absent from every DTO (HR_FORBIDDEN_DTO_KEYS + snapshot/ytd/GPS/photo/attachment) · sentinel secrets absent from DTOs, exports, audit
+  ✅ [H3.9-S4.7] [db] cross-tenant / cross-system ctx ⇒ NO with identical bytes · own empty system ⇒ ok rows []
+  ✅ [H3.9-S4.10] [db] membership gate on every entry point: non-member (other tenant owner) and role-claim mismatch ⇒ NO for loadReport · exportReport · reportExportGet (404) · get/setReportSettings · load/saveRegisterFields · nothing written
+  ✅ [H3.9-S4.11] [db] fix r1: XLSX exports of every non-owner allowed cell parsed — no full ID · no secret · managers/hr-admin/leave reader: no ฿ strings
+  ✅ [H3.9-S4.8] [db] ruling Q2 setting "full national ID in register export": owner only (others settingOwner) · ON needs acknowledge (ackFullId) · default OFF · other settings keys kept · audit hr.report.setting
+  ✅ [H3.9-S4.9] [db] setting ON: register export full for owner / all-branch payroll only · branch payroll masked · pages + tax exports masked · export audit fullId true/false · OFF again ⇒ masked
+  ✅ [H3.9-S5.1] [db] export audit: 1 row hr.report.export · targetType HrReport · after keys exactly {report period format rowCount columns unitId fullId} · no values · refusals not audited
+  ✅ [H3.9-S5.2] [db] route helper: rsc / next-router-prefetch ⇒ 204 no audit · 200 attachment + no-store + nosniff + type · 404 NO text · 400 input text · 409 formula text · no bytes on refusal
+  ✅ [H3.9-S5.5] [db] fix r1: route HEAD/POST ⇒ 405 no audit (reports + bank-file helper) · injected source cap ⇒ LIMIT text (time · ot · payroll-year · tax-year · wages · corrections) not truncated totals · no audit
+  ✅ [H3.9-S5.3] [db] input refusals: bad report / period / format / unit type ⇒ INPUT text · not audited · nothing written
+  ✅ [H3.9-S5.4] [db] export guard on real data: position "+SUM(A1)" ⇒ FORMULA naming the employee · page still ok · nationality with BEL ⇒ ENCODING
+  ✅ [H3.9-S6.1] [db] performance: time 300 employees × 31 days ≤ 12 queries · ≤ 5000 ms · totals exact
+  ✅ [H3.9-S6.2] [db] performance: tax-year + payroll-year 12 runs × 300 items ≤ 12 queries each · ≤ 5000 ms · totals exact
+  ✅ [H3.9-S6.3] [db] performance: register 300 + time CSV export 300 rows ≤ 12 queries · ≤ 5000 ms
+  ✅ [H3.9-S7.1] [db] [needs H3.4] item from computeRunItemV2 stored as H3.4 stores it ⇒ payroll-month = item columns · tax-month income = whtIncomeSatang · wages = Σ lines by code
+  ✅ [H3.9-S7.2] [static] [needs H3.4] seam: payroll.ts writes the snapshot keys the reports read (engineVersion 2 · whtIncomeSatang · lines · payType) · reports never import payroll-run-rules
+  ✅ [H3.9-S7.3] [db] [needs H3.4] ruling Q5: v2 runs count only when finalized (journalEntryId set or stepsJson.finalized = true) · unfinalized v2 APPROVED excluded from payroll/tax/wages · v1 rule unchanged
+  ✅ [H3.9-S4.12] [db] fix r1/r2: settings lost update, deterministic — raw tx holds hr:clockpolicy + reads; setReportSettings(OFF) blocks; raw tx writes stale settings + another key; OFF and the other key both survive (×3)
+RESIDUE none (tenants=3 users=11)
+  ✅ [H3.9-Z1] no residue (HrEmployeeRegister included)
+BASE-EXPECTATION 5/60 as registered (RED-by-design 55 · GREEN controls 5) · off: H3.9-S1.1(RED→pass) H3.9-S1.2(RED→pass) H3.9-S1.3(RED→pass) H3.9-S1.4(RED→pass) H3.9-S1.6(RED→pass) H3.9-S1.7(RED→pass) H3.9-S1.8(RED→pass) H3.9-S1.9(RED→pass) H3.9-S1.11(RED→pass) H3.9-S1.10(RED→pass) H3.9-S2.1(RED→pass) H3.9-S2.2(RED→pass) H3.9-S2.3(RED→pass) H3.9-S2.4(RED→pass) H3.9-S2.5(RED→pass) H3.9-S2.6(RED→pass) H3.9-S2.7(RED→pass) H3.9-S2.8(RED→pass) H3.9-S2.9(RED→pass) H3.9-S2.10(RED→pass) H3.9-S3.1(RED→pass) H3.9-S3.2(RED→pass) H3.9-S3.3(RED→pass) H3.9-S3.4(RED→pass) H3.9-S3.5(RED→pass) H3.9-S3.6(RED→pass) H3.9-S3.7(RED→pass) H3.9-S3.8(RED→pass) H3.9-S3.9(RED→pass) H3.9-S3.10(RED→pass) H3.9-S3.11(RED→pass) H3.9-S3.12(RED→pass) H3.9-S4.1(RED→pass) H3.9-S4.2(RED→pass) H3.9-S4.3(RED→pass) H3.9-S4.4(RED→pass) H3.9-S4.5(RED→pass) H3.9-S4.6(RED→pass) H3.9-S4.7(RED→pass) H3.9-S4.10(RED→pass) H3.9-S4.11(RED→pass) H3.9-S4.8(RED→pass) H3.9-S4.9(RED→pass) H3.9-S5.1(RED→pass) H3.9-S5.2(RED→pass) H3.9-S5.5(RED→pass) H3.9-S5.3(RED→pass) H3.9-S5.4(RED→pass) H3.9-S6.1(RED→pass) H3.9-S6.2(RED→pass) H3.9-S6.3(RED→pass) H3.9-S7.1(RED→pass) H3.9-S7.2(RED→pass) H3.9-S7.3(RED→pass) H3.9-S4.12(RED→pass)
+
+===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.9","total":60,"passed":60,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":55,"baseGreen":5,"offBase":["H3.9-S1.1(RED→pass)","H3.9-S1.2(RED→pass)","H3.9-S1.3(RED→pass)","H3.9-S1.4(RED→pass)","H3.9-S1.6(RED→pass)","H3.9-S1.7(RED→pass)","H3.9-S1.8(RED→pass)","H3.9-S1.9(RED→pass)","H3.9-S1.11(RED→pass)","H3.9-S1.10(RED→pass)","H3.9-S2.1(RED→pass)","H3.9-S2.2(RED→pass)","H3.9-S2.3(RED→pass)","H3.9-S2.4(RED→pass)","H3.9-S2.5(RED→pass)","H3.9-S2.6(RED→pass)","H3.9-S2.7(RED→pass)","H3.9-S2.8(RED→pass)","H3.9-S2.9(RED→pass)","H3.9-S2.10(RED→pass)","H3.9-S3.1(RED→pass)","H3.9-S3.2(RED→pass)","H3.9-S3.3(RED→pass)","H3.9-S3.4(RED→pass)","H3.9-S3.5(RED→pass)","H3.9-S3.6(RED→pass)","H3.9-S3.7(RED→pass)","H3.9-S3.8(RED→pass)","H3.9-S3.9(RED→pass)","H3.9-S3.10(RED→pass)","H3.9-S3.11(RED→pass)","H3.9-S3.12(RED→pass)","H3.9-S4.1(RED→pass)","H3.9-S4.2(RED→pass)","H3.9-S4.3(RED→pass)","H3.9-S4.4(RED→pass)","H3.9-S4.5(RED→pass)","H3.9-S4.6(RED→pass)","H3.9-S4.7(RED→pass)","H3.9-S4.10(RED→pass)","H3.9-S4.11(RED→pass)","H3.9-S4.8(RED→pass)","H3.9-S4.9(RED→pass)","H3.9-S5.1(RED→pass)","H3.9-S5.2(RED→pass)","H3.9-S5.5(RED→pass)","H3.9-S5.3(RED→pass)","H3.9-S5.4(RED→pass)","H3.9-S6.1(RED→pass)","H3.9-S6.2(RED→pass)","H3.9-S6.3(RED→pass)","H3.9-S7.1(RED→pass)","H3.9-S7.2(RED→pass)","H3.9-S7.3(RED→pass)","H3.9-S4.12(RED→pass)"]}

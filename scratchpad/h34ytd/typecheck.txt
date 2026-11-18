@@ -1,0 +1,7 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hr-l3
+> tsc --noEmit
+
+scripts/qc-hr-h3.8.mts(669,3): error TS1135: Argument expression expected.
+ ELIFECYCLE  Command failed with exit code 2.
+exit=2 secs=328

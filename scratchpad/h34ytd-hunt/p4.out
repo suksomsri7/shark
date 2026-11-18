@@ -1,0 +1,22 @@
+[env] hunt-h34y-p4 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-h34y-p4] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+save e: true
+save eL: true
+leaver cert: {"ok":true}
+leaver edit after cert: {"ok":false,"code":"CERT_ISSUED","reason":"ออกหนังสือรับรอง 50 ทวิ ของปีนี้แล้ว — ยกเลิกใบก่อนแก้ยอดยกมา"}
+50ทวิ: {"ok":true,"total":36000000,"tax":205000,"sso":1087500}
+1ก: {"amount":36000000,"tax":205000}
+tax-year: {"employeeId":"cmwfqjqjx000wackz9wl2vicl","values":{"code":"B01","name":"B01 afbkdgwfqsm","unit":"สาขาเหนือ afbkdgwfqsm","citizenId":"•••3454","months":"12","income":"360000.00","wht":"2050.00","ssoEmployee":"10875.00","ssoEmployer":"3875.00"}}
+slipHistory: {"inc":36000000,"tax":205000,"sso":1087500,"opening":{"asOfDay":"2031-08-31","months":8,"incomeSatang":24000000,"taxSatang":136664,"ssoSatang":700000},"count":4}
+after-issue save rev2: {"ok":false,"code":"CERT_ISSUED","reason":"ออกหนังสือรับรอง 50 ทวิ ของปีนี้แล้ว — ยกเลิกใบก่อนแก้ยอดยกมา"}
+after-issue clear: {"ok":false,"code":"CERT_ISSUED","reason":"ออกหนังสือรับรอง 50 ทวิ ของปีนี้แล้ว — ยกเลิกใบก่อนแก้ยอดยกมา"}
+after-issue bulk: {"ok":false,"code":"CERT_ISSUED","reason":"ออกหนังสือรับรอง 50 ทวิ ของปีนี้แล้ว — ยกเลิกใบก่อนแก้ยอดยกมา","employeeId":"cmwfqjqjx000wackz9wl2vicl"}
+after-issue zero: {"ok":false,"code":"CERT_ISSUED","reason":"ออกหนังสือรับรอง 50 ทวิ ของปีนี้แล้ว — ยกเลิกใบก่อนแก้ยอดยกมา"}
+rehire row opening: {"ok":true,"rev":1,"warnings":[]}
+live rows of e: [[1,24000000]]
+cert list stale: [["eL",false],["e",false]]
+void: true
+after-void save: {"ok":true,"rev":2,"warnings":[]}
+reissue total: 36000100
+audits ฿?: ["hr.payroll.opening.save:by+rev+taxYear+employeeId","hr.payroll.opening.save:by+rev+taxYear+employeeId","hr.payroll.opening.refused:code","hr.payroll.opening.refused:code","hr.payroll.opening.refused:code","hr.payroll.opening.refused:code","hr.payroll.opening.refused:code","hr.payroll.opening.save:by+rev+taxYear+emplo…
+RESIDUE none (tenants=2 users=9 activeLaw=0->0)

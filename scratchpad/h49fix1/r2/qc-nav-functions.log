@@ -1,0 +1,55 @@
+  ✅ [S0] หา childrenFor ใน layout.tsx
+  ✅ [S0.1] ทะเบียนบัญชี account/nav.ts ครบ (157 รายการ) และ layout ไม่กางเมนูย่อยบัญชี (คำสั่งเจ้าของ 6 ก.ย.)
+  ✅ [S0.2] ตามลิงก์บอร์ดงานไปที่ kanban/nav.ts ได้ (8 รายการพร้อมใช้)
+  ✅ [S0.3] ตามลิงก์สมาชิกไปที่ member/nav.ts ได้ (35 รายการพร้อมใช้)
+  ✅ [S1] child href ทุกอันมี page.tsx จริง (155 links)
+  ✅ [S1.2] href บัญชีที่มี ?tab= ทุกอัน ตรงกับแท็บจริงใน list-tabs.ts (54 links)
+  ✅ [S2] ระบบที่ควรกาง children ครบ (business 6 + feature 13)
+  ✅ [S3] POS children มี ขายหน้าร้าน (register) + ปิดวัน (close)
+  ✅ [S4] จำนวนระบบที่กาง children = 19 (เดิม 2 → ควร ≥ 19)
+  ❌ [S5] accordion กางครบทุก sub-route จริง (completeness: hotel/restaurant/shop/queue/ticket/booking/POS/HR/INVENTORY/CRM/MARKETING/COUPON/MEMBER/POINT/REWARD/CHAT/MEETING/KANBAN) — ไม่ครบ:
+     - HOTEL: ขาด /hotel/calendar, /hotel/channels/inbox, /hotel/channels, /hotel/folio/unmatched, /hotel/guests, /hotel/guests/rr4/print, /hotel/housekeeping/logs, /hotel/housekeeping, /hotel/rates, /hotel/reports/audit, /hotel/reports, /hotel/reservations/new, /hotel/settings, /hotel/tm30
+     - BOOKING: ขาด /booking/calendar, /booking/day
+  ✅ [S6] KB accordion: child href มีไฟล์จริง + กางครบ (2 ประกาศ / 2 route)
+
+  ── completeness (route จริง vs accordion) ──
+     HOTEL · 3/17 route
+     RESTAURANT · 7/7 route
+     SHOP · 2/2 route
+     QUEUE · 2/2 route
+     TICKET · 2/2 route
+     BOOKING · 5/10 route
+     POS · 15/15 route
+     HR · 10/11 route
+     INVENTORY · 8/8 route
+     CRM · 37/37 route
+     MARKETING · 2/2 route
+     COUPON · 2/2 route
+     MEMBER · 39/39 route
+     POINT · 4/4 route
+     REWARD · 4/4 route
+     MEETING · 2/2 route
+     KANBAN · 8/8 route
+
+  ── ระบบที่กาง children ──
+     🏢 HOTEL · 3 ฟังก์ชันย่อย
+     🏢 RESTAURANT · 7 ฟังก์ชันย่อย
+     🏢 SHOP · 2 ฟังก์ชันย่อย
+     🏢 QUEUE · 2 ฟังก์ชันย่อย
+     🏢 TICKET · 2 ฟังก์ชันย่อย
+     🏢 BOOKING · 5 ฟังก์ชันย่อย
+     ⚙️  POS · 15 ฟังก์ชันย่อย
+     ⚙️  ACCOUNT · 0 ฟังก์ชันย่อย
+     ⚙️  HR · 10 ฟังก์ชันย่อย
+     ⚙️  INVENTORY · 8 ฟังก์ชันย่อย
+     ⚙️  CRM · 37 ฟังก์ชันย่อย
+     ⚙️  MARKETING · 2 ฟังก์ชันย่อย
+     ⚙️  COUPON · 2 ฟังก์ชันย่อย
+     ⚙️  MEMBER · 41 ฟังก์ชันย่อย
+     ⚙️  POINT · 4 ฟังก์ชันย่อย
+     ⚙️  REWARD · 4 ฟังก์ชันย่อย
+     ⚙️  CHAT · 0 ฟังก์ชันย่อย
+     ⚙️  MEETING · 2 ฟังก์ชันย่อย
+     ⚙️  KANBAN · 9 ฟังก์ชันย่อย
+
+  ❌ ตก 1 (CRITICAL 1) — 11 เช็ก

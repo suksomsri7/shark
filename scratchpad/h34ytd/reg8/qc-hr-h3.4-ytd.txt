@@ -1,0 +1,62 @@
+[env] qc-hr-h3.4-ytd · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.4-ytd] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h3.4-ytd] pure=loaded · svc=loaded · base=0a0691c7d
+  ✅ [H3.4Y-S1.1] [static] migration 20270110000001_hr_opening_ytd: table · CHECK wht ≤ income · year(asOf) = taxYear · months 0–12 · year 2000–2400 · ≥ 0 · rev ≥ 1 · UNIQUE (sys, emp, year, rev) · partial unique live · FK RESTRICT · additive
+  ✅ [H3.4Y-S1.2] [static] schema model HrPayrollOpeningYtd · hr.prisma back-relation · core/scope.ts sys() · hr-qc-env delete order
+  ✅ [H3.4Y-S1.3] [static] pure payroll-opening-rules.ts: type-only imports · no db/clock/random · exports OPENING_TEXT parseOpening withOpening openingMissing openingFilingItem
+  ✅ [H3.4Y-S1.4] [static] every hunk outside the new files carries "HR H3.4-YTD" (messages/inventory additive) · payroll.ts + filings/service.ts + reports.ts touched
+  ✅ [H3.4Y-S1.5] [static] [control] frozen files identical vs base · other oracles only ORACLE-EDIT H3.4-YTD hunks (h3.7 · h0.1 · h3.8) · payroll-rules sha
+  ✅ [H3.4Y-S1.6] [static] save/clear lock hr50 (seed 36) then hr:ytd · payroll.ts and 50 ทวิ issue take hr:ytd · tx client only inside $transaction
+  ✅ [H3.4Y-S1.7] [static] opening code: no ID/bank fields · no account import (no JV) · no outbox · not in AI tools/outbox consumers · actions "use server"
+  ✅ [H3.4Y-S1.8] [static] UI testids hr-ytd-* · role=alert · review YTD_OPENING links #hr-ytd-card · payroll page card · hr.ytd th=en · inventory wo H3.4-YTD · tokens · 44 px
+  ✅ [H3.4Y-S1.9] [run] [control] fitness + fitness-hr without env ⇒ exit 0
+  ✅ [H3.4Y-S2.0] [pure] [control] worked example re-derived (205,000 · 17,083 · 136,664 · 17,084 · 22,779/22,779/22,778 · 51,250) + base whtYtdV2 agrees
+  ✅ [H3.4Y-S2.1] [pure] withOpening → whtYtdV2 Sept: no opening 0 · opening 17,084 · WHT-0 opening 51,250 · SSO 1,000,000 still 17,084
+  ✅ [H3.4Y-S2.2] [pure] withOpening adds only same tax year ∧ asOf < onDay · BKK 2031-12-31T16:59:59Z in / T17:00Z out · input untouched
+  ✅ [H3.4Y-S2.3] [pure] parseOpening vectors (FIELDS · WHT_OVER · AS_OF · months ≤ month(asOf) · safe ints) · reason = OPENING_TEXT
+  ✅ [H3.4Y-S2.4] [pure] openingMissing vectors (unknown start warns · never in January · start ≥ P-01 no · opening / earlier run no)
+  ✅ [H3.4Y-S2.5] [pure] openingFilingItem = FilingItem {runId "opening:<id>", v2, APPROVED, payDate asOf, income, tax = wht, ssoEmployee = sso, other 0}
+  ✅ [H3.4Y-S2.6] [pure] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 4/8): parseOpening asOf before startDay ⇒ FIELDS (= start ok) · over-withheld opening ⇒ whtYtdV2 0 (never negative)
+(node:2133156) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H3.4Y-S3.0] [db] [control] fixture: tenants · v2/v1 HR systems · employees · profiles · QC law rows ACTIVE
+  ✅ [H3.4Y-S3.1] [db] opening saved → v2 Sept run: WHT 17,084 · snapshot ytdOpening {id, rev 1} · ytdJson prior = opening · no YTD_OPENING review · approve ok
+  ✅ [H3.4Y-S3.2] [db] no opening: create not refused · WHT 0 · ytdOpening "MISSING" · review {employeeId, name, day null, YTD_OPENING} (not for a 09-01 starter) · list state MISSING · approve ok · review kept after approve
+  ✅ [H3.4Y-S3.3] [db] catch-up: opening saved after Sept approved at 0 · Oct 22,779 · Nov 22,779 · Dec 22,778 · year WHT 205,000 · Sept item unchanged
+  ✅ [H3.4Y-S3.11] [db] 50 ทวิ = items + opening (36,000,000 / 205,000 / SSO) · not stale · candidate · live cert ⇒ save CERT_ISSUED + locked · void ⇒ save ok ⇒ re-issue 36,000,100
+  ✅ [H3.4Y-S4.2] [race] save ∥ 50 ทวิ issue (both wait on hr50): cert includes the opening, or save ⇒ CERT_ISSUED
+  ✅ [H3.4Y-S3.19] [db] ORACLE-EDIT (H3.4-YTD · controller ruling Q12): H3.8 slip history 2031 = 50 ทวิ (income · tax · SSO incl. the opening) · one "opening" line (asOf · months · amounts) · slips/count/net unchanged · payroll reader ✓ · manager / member / other tenant refused · never on a single slip · no key without an opening · gone after clear
+  ✅ [H3.4Y-S3.12] [db] ภ.ง.ด.1ก 2031 includes the opening · opening-only leaver listed (1ก + candidates) · ภ.ง.ด.1 2031-08 / 2031-09 and สปส.1-10 bytes identical with and without openings
+  ✅ [H3.4Y-S3.13] [db] tax-year = items + opening (income · wht · SSO · months 12) + one extra note · without ⇒ items only · tax-month / payroll-year identical with and without
+  ✅ [H3.4Y-S3.4] [db] opening WHT 0 ⇒ Sept WHT 51,250
+  ✅ [H3.4Y-S3.5] [db] DRAFT Sept then opening ⇒ approve INPUTS_CHANGED (still DRAFT, item unchanged) · rebuild ⇒ 17,084 + marker · approve ok
+  ✅ [H3.4Y-S3.6] [db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 1a/1b/2): zero opening on a DRAFT: YTD_OPENING gone · YTD_REBUILD shown · approve INPUTS_CHANGED · rebuild ⇒ marker = zero row · approve ok · after approve no YTD_OPENING · row months 0 / amounts 0
+  ✅ [H3.4Y-S3.20] [db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 1b/2): DRAFT + revision of same amounts (months/asOf) ⇒ YTD_REBUILD · approve INPUTS_CHANGED · clear on DRAFT ⇒ YTD_REBUILD · rebuild ⇒ marker = live rev · approve ok · approved marker names the live rev
+  ✅ [H3.4Y-S3.22] [db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 4): asOf before the employee's start date ⇒ FIELDS, nothing written · asOf = start date ok
+  ✅ [H3.4Y-S3.7] [db] OVERLAP vs DRAFT and APPROVED Sept (payDay 09-25 ≤ asOf 09-30) · REVERSED does not count · v2 and v1 create ⇒ OPENING_OVERLAP, no run · refused audits {code}
+  ✅ [H3.4Y-S3.8] [db] BKK boundary in DB: payDate 2031-12-31T16:59:59Z uses the 2031 opening · T17:00:00Z does not · asOf 2032-01-01 / future asOf ⇒ AS_OF, nothing written
+  ✅ [H3.4Y-S3.9] [db] FIELDS (negative · non-int · string) · WHT_OVER · months > month(asOf) ⇒ FIELDS · year ⇒ YEAR · nothing written · SSO 1,000,000 saved + SSO_HIGH
+  ✅ [H3.4Y-S3.10] [db] rev history: edit ⇒ rev 2, rev 1 intact + superseded · stale expectRev ⇒ REV_CHANGED · clear ⇒ no live row + audit · DB partial unique + CHECK hold
+  ✅ [H3.4Y-S3.14] [db] engine-v1 shop: save ok · v1 WHT 17,083 (golden) · 50 ทวิ and 1ก include the opening (27,000,000 / 153,747)
+  ✅ [H3.4Y-S3.15] [db] viewer matrix list/save/bulk/clear: owner + gate holder ([] read+pay) ok · unit list · no pay · manager · staff HR key · member · the employee · other tenant · role claim ≠ DB ⇒ NO identical, nothing written · own row ⇒ OWN
+  ✅ [H3.4Y-S3.16] [db] DTO keys exact · no sensitive keys · manager preview without YTD_OPENING / opening amounts · no outbox event
+  ✅ [H3.4Y-S3.18] [db] bulk: all-or-nothing (one bad row ⇒ nothing) · 301 rows refused · 2 rows ⇒ 2 live rows rev 1
+  ✅ [H3.4Y-S3.17] [db] audits save {employeeId, taxYear, rev, by ONE
+[S3.21] bulk 300 changed rows: 312 ms
+  ✅ [H3.4Y-S3.21] [db] ORACLE-EDIT (H3.4-YTD fix round · controller ruling 3): bulk unchanged rows ⇒ no new rev/audit · own unchanged row passes (changed own row ⇒ OWN, nothing written) · 301 changed ⇒ FIELDS · 300 changed ⇒ ok < 20 s (timed) · list > 500 ⇒ truncated + 500 rows
+  ✅ [H3.4Y-S4.1] [race] save ∥ create: period lock held ⇒ save first ⇒ item holds {id, rev} · hr50 held ⇒ create first ⇒ approve INPUTS_CHANGED · free run ⇒ one of the two
+  ✅ [H3.4Y-S4.3] [race] two saves, same expectRev, both waiting ⇒ one ok · one REV_CHANGED · one live row
+  ✅ [H3.4Y-S4.4] [race] bulk ∥ single on a shared employee, both waiting ⇒ serial, no deadlock · exactly one wins · all-or-nothing kept
+RESIDUE none (tenants=2 users=11)
+  ✅ [H3.4Y-Z1] no residue · QC law rows removed · ACTIVE law count restored
+BASE-EXPECTATION 5/44 as registered (RED-by-design 39 · GREEN controls 5) · off: H3.4Y-S1.1(RED→pass) H3.4Y-S1.2(RED→pass) H3.4Y-S1.3(RED→pass) H3.4Y-S1.4(RED→pass) H3.4Y-S1.6(RED→pass) H3.4Y-S1.7(RED→pass) H3.4Y-S1.8(RED→pass) H3.4Y-S2.1(RED→pass) H3.4Y-S2.2(RED→pass) H3.4Y-S2.3(RED→pass) H3.4Y-S2.4(RED→pass) H3.4Y-S2.5(RED→pass) H3.4Y-S2.6(RED→pass) H3.4Y-S3.1(RED→pass) H3.4Y-S3.2(RED→pass) H3.4Y-S3.3(RED→pass) H3.4Y-S3.11(RED→pass) H3.4Y-S4.2(RED→pass) H3.4Y-S3.19(RED→pass) H3.4Y-S3.12(RED→pass) H3.4Y-S3.13(RED→pass) H3.4Y-S3.4(RED→pass) H3.4Y-S3.5(RED→pass) H3.4Y-S3.6(RED→pass) H3.4Y-S3.20(RED→pass) H3.4Y-S3.22(RED→pass) H3.4Y-S3.7(RED→pass) H3.4Y-S3.8(RED→pass) H3.4Y-S3.9(RED→pass) H3.4Y-S3.10(RED→pass) H3.4Y-S3.14(RED→pass) H3.4Y-S3.15(RED→pass) H3.4Y-S3.16(RED→pass) H3.4Y-S3.18(RED→pass) H3.4Y-S3.17(RED→pass) H3.4Y-S3.21(RED→pass) H3.4Y-S4.1(RED→pass) H3.4Y-S4.3(RED→pass) H3.4Y-S4.4(RED→pass)
+
+===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.4-ytd","total":44,"passed":44,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":39,"baseGreen":5,"offBase":["H3.4Y-S1.1(RED→pass)","H3.4Y-S1.2(RED→pass)","H3.4Y-S1.3(RED→pass)","H3.4Y-S1.4(RED→pass)","H3.4Y-S1.6(RED→pass)","H3.4Y-S1.7(RED→pass)","H3.4Y-S1.8(RED→pass)","H3.4Y-S2.1(RED→pass)","H3.4Y-S2.2(RED→pass)","H3.4Y-S2.3(RED→pass)","H3.4Y-S2.4(RED→pass)","H3.4Y-S2.5(RED→pass)","H3.4Y-S2.6(RED→pass)","H3.4Y-S3.1(RED→pass)","H3.4Y-S3.2(RED→pass)","H3.4Y-S3.3(RED→pass)","H3.4Y-S3.11(RED→pass)","H3.4Y-S4.2(RED→pass)","H3.4Y-S3.19(RED→pass)","H3.4Y-S3.12(RED→pass)","H3.4Y-S3.13(RED→pass)","H3.4Y-S3.4(RED→pass)","H3.4Y-S3.5(RED→pass)","H3.4Y-S3.6(RED→pass)","H3.4Y-S3.20(RED→pass)","H3.4Y-S3.22(RED→pass)","H3.4Y-S3.7(RED→pass)","H3.4Y-S3.8(RED→pass)","H3.4Y-S3.9(RED→pass)","H3.4Y-S3.10(RED→pass)","H3.4Y-S3.14(RED→pass)","H3.4Y-S3.15(RED→pass)","H3.4Y-S3.16(RED→pass)","H3.4Y-S3.18(RED→pass)","H3.4Y-S3.17(RED→pass)","H3.4Y-S3.21(RED→pass)","H3.4Y-S4.1(RED→pass)","H3.4Y-S4.3(RED→pass)","H3.4Y-S4.4(RED→pass)"]}

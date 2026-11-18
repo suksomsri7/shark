@@ -1,0 +1,29 @@
+[env] h310-p2 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h310-p2] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2215466) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+C1.approve||reverse {"res":[{"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"},{"ok":false,"note":"รอบนี้ยังไม่ได้ลงบัญชี — ไม่มีรายการให้กลับ (รอบที่ยังเป็นร่าง ยกเลิกได้ด้วยปุ่ม \"ลบร่าง\")","code":"NO_JV"}],"blocked":[true,true],"run":"APPROVED","entries":["ADJUST:POSTED:accrual"]}
+C1b.reverse||approve {"res":[{"ok":false,"note":"รอบนี้ยังไม่ได้ลงบัญชี — ไม่มีรายการให้กลับ (รอบที่ยังเป็นร่าง ยกเลิกได้ด้วยปุ่ม \"ลบร่าง\")","code":"NO_JV"},{"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}],"blocked":[true,true],"run":"APPROVED","entries":["ADJUST:POSTED:accrual"]}
+C2.pay||reverse {"res":[{"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"},{"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}],"blocked":[true,true],"run":"REVERSED","entries":["ADJUST:REVERSED:accrual","PAYMENT:REVERSED:pay","REVERSAL:POSTED:REVERSAL","REVERSAL:POSTED:REVERSAL"]}
+C2b.reverse||pay {"res":[{"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"},{"ok":false,"note":"ต้องอนุมัติรอบก่อนจึงจ่ายได้","code":"NOT_APPROVED"}],"blocked":[true,true],"run":"REVERSED","entries":["ADJUST:REVERSED:accrual","REVERSAL:POSTED:REVERSAL"]}
+C3a.reverse||issue {"res":[{"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"},{"ok":true,"issued":1,"skipped":[]}],"blocked":[true,false],"run":"REVERSED","entries":["ADJUST:REVERSED:accrual","PAYMENT:REVERSED:pay","REVERSAL:POSTED:REVERSAL","REVERSAL:POSTED:REVERSAL"]}
+C3a.certAfterReverse {"n":1,"docNo":"HR50-2031-0001","keys":["v","kind","rows","docNo","funds","payee","payer","bookNo","formSeq","taxYear","formType","issueDate","taxYearBe","signerName","totalSatang","payCondition","totalTaxText","totalTaxSatang"],"list":[{"id":"cmwfvq7x300gngqkze7vvg7gg","employeeId":"cmwfvq5z200g3gqkziex9t712","name":"C3a01 afbpjbxijun","taxYear":2031,"kind":"ANNUAL","docNo":"HR50-2031-0001","formSeq":1,"issuedAt":"2032-01-05T03:00:00.000Z","voided":false,"downloads":0,"stale":true}]}
+C3a.certJsonMoney {"v":1,"kind":"ANNUAL","rows":[{"row":"1","label":"เงินเดือน ค่าจ้าง เบี้ยเลี้ยง โบนัส ฯลฯ ตามมาตรา 40 (1)","paidWhen":"2574","taxSatang":0,"amountSatang":3000000}],"docNo":"HR50-2031-0001","funds":{"govSatang":0,"ssoSatang":87500,"providentSatang":0},"payee":{"name":"นาย เอก ทดสอบ","taxId":"1102000123454","address":"ทุ่งพญาไท ราชเทวี กรุงเทพมหานคร 10400"},"payer":{"name":"บริษัท คิวซี ฮันเตอร์ จำกัด","taxId":"0105555000013","address":"1 ถนนทดสอบ แขวงทุ่งพญาไท เขตราชเทวี กรุงเทพมหานคร 10400","branchNo":"000000"},"bookNo":"2574","formSeq":1,"taxYear":2031,"formType":"PND1A","issueDate":"2032-01…
+C3a.candidates {"ok":true,"items":[]}
+C3b.issue||reverse {"res":[{"ok":false,"code":"CERT_NONE","reason":"ไม่มีเงินได้ของปีภาษีนี้ที่ออกหนังสือรับรองได้"},{"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}],"blocked":[true,false],"run":"REVERSED","certs":0}
+C4a.reverse||download {"gen":true,"res":[{"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"},{"ok":true,"bytes":318}],"blocked":[true,false],"run":"REVERSED","entries":["ADJUST:REVERSED:accrual","REVERSAL:POSTED:REVERSAL"]}
+C4b.reverse||download {"res":[{"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"},{"ok":true}],"blocked":[true,false],"again":{"ok":false,"code":"STATUS"},"run":"REVERSED"}
+C5.approve||openingSave {"res":[{"ok":false,"note":"ข้อมูลเงินเดือนเปลี่ยนหลังสร้างร่าง — กด 'ดึงข้อมูลใหม่' แล้วตรวจอีกครั้ง","code":"INPUTS_CHANGED"},{"ok":true,"rev":1,"warnings":[]}],"blocked":[true,false],"run":"DRAFT","entries":[]}
+Z.dupKeys []
+Z.dupReversals []
+Z.paidWithoutPay []
+Z.reversedWithLiveEntry []
+Z.deadlockOps PrismaClientKnownRequestError: Invalid `prisma.$queryRawUnsafe()` invocation: Raw query failed. Code: `42P01`. Message: `relation "OpsLog" does not exist`
+RESIDUE none (tenants=1 users=5 activeLaw=0->0)

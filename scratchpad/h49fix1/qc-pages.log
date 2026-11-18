@@ -1,0 +1,54 @@
+[env] qc-pages · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+── registry sync ──
+  ✅ [RG-1] ทุกเมนูใน childrenFor มี widget ใน registry (105 เมนู)
+  ✅ [RG-2] registry ไม่มี key ซ้ำ
+  ✅ [RG-3] มีหน้า /app/pages + /app/pages/[pageId] + /p/[slug] + /api/page-login
+  ✅ [RG-4] 🔴 route login มีด่านกันเดา PIN (rate limit ต่อสมาชิก + ต่อ IP)
+  ✅ [RG-5] 🔴 updateWidgetAction เป็น patch บางส่วน (ช่องที่ไม่ส่งมา = ไม่แตะ ไม่ใช่ล้างค่า)
+(node:3871325) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+── Page + ขอบเขต widget ──
+  ✅ [PG-1] สร้าง Page ได้ + มี slug สาธารณะ
+  ✅ [PG-2] widget ที่เลือกได้ = เมนูจองคิว + POS (ผูกกิจการนี้) + HR (ระดับร้าน)
+  ✅ [PG-3] 🔴 เมนูของกิจการอื่น/ระบบที่ไม่ได้เปิด ไม่โผล่ให้เลือก (มติ: เห็นเฉพาะของกิจการนั้น)
+  ✅ [PG-4] เพิ่ม widget ได้
+  ✅ [PG-5] 🔴 เพิ่ม widget ของกิจการอื่น → ปฏิเสธ
+  ✅ [PG-6] เพิ่มซ้ำ → ปฏิเสธ
+  ✅ [PG-7] จัดลำดับใหม่ถูกบันทึก (id มั่วถูกเมิน)
+  ✅ [PG-8] render: business → /app/u/<slug>/... · feature → /app/sys/<id>/...
+── สมาชิก + PIN ──
+  ✅ [PM-1] เพิ่มพนักงานเข้า Page ได้
+  ✅ [PM-2] ชื่อบนจอ login = ชื่อคน ไม่ใช่อีเมล
+  ✅ [PM-3] 🔴 ยังไม่ตั้ง PIN → เข้าไม่ได้
+  ✅ [PM-4] PIN ไม่ใช่ตัวเลข 4-8 หลัก → ปฏิเสธ
+  ✅ [PM-5] 🔴 PIN ผิด → เข้าไม่ได้
+  ✅ [PM-6] PIN ถูก → ได้ user/tenant ที่ถูกต้อง
+  ✅ [PM-7] จอ login ไม่มีอีเมลหลุด (มีแต่ชื่อที่ตั้ง)
+── สิทธิ์เข้าดู ──
+  ✅ [AC-1] OWNER เข้าได้ + เห็นทุก widget
+  ✅ [AC-2] พนักงานใน Page เข้าได้ (ค่าเริ่มต้นเห็นทุก widget ของหน้า)
+  ✅ [AC-3] จำกัดราย widget → เห็นเฉพาะที่อนุญาต
+  ✅ [AC-4] 🔴 คนนอกร้าน login ค้างอยู่ → ไม่เข้า Page นี้
+  ✅ [AC-5] เอาออกจาก Page → login ไม่ได้ + สิทธิ์หาย
+  ✅ [PG-9] ปิด Page → หน้า/login หายทั้งคู่
+── ข้ามร้าน ──
+  ✅ [XT-1] ร้านอื่นอ่าน Page ของเราไม่เห็น
+  ✅ [XT-2] 🔴 ร้านอื่นเพิ่ม widget ให้ Page เราไม่ได้
+  ✅ [XT-3] 🔴 ร้านอื่นตั้ง PIN ให้สมาชิกเราไม่ได้
+  ✅ [XT-4] ร้านอื่นสั่งจัดลำดับ Page เรา → ไม่มีผล
+  ✅ [XT-5] ร้านอื่นลบ Page เราไม่ได้
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC: ระบบการจัดการ (Page + Widget + PIN) =====
+ผ่าน 31/31
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":31,"passed":31,"findings":[]}

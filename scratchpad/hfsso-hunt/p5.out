@@ -1,0 +1,25 @@
+[env] hunt-hfsso-p5 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-hfsso-p5] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2656454) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ACTIVE law rows before = 0
+opening old cap 8×750: {"ok":true,"warnings":[]}
+opening 8×750+1: {"ok":true,"warnings":[]}
+opening 8×875: {"ok":true,"warnings":[]}
+opening 8×875+1: {"ok":true,"warnings":["SSO_HIGH"]}
+opening 2025 12×750: {"ok":true,"warnings":[]}
+opening 2025 12×750+1: {"ok":true,"warnings":["SSO_HIGH"]}
+opening 2029 1×1000 (Dec-2028 875 paid Jan): {"ok":false,"code":"AS_OF","reason":"วันที่ยอดถึงต้องอยู่ในปีภาษีที่เลือก และไม่เลยวันนี้"}
+opening Q1: {"ok":true,"w":[]}
+v2 run 2026-09: {"ok":true}
+v2 item (expect se 87500 · projectedSso 950000 · tax 2,055,000 · wht 170416): [{"se":87500,"w":170416,"y":{"prior":{"ssoSatang":600000,"whtSatang":1373336,"incomeSatang":40000000},"monthIndex":9,"annualTaxSatang":2055000,"remainingMonths":3,"projectedNetSatang":43050000,"projectedSsoSatang":950000,"projectedIncomeSatang":60000000}}]
+opening v1 shop: {"ok":true,"w":[]}
+v1 run 2026-09: [{"e":"cmwg3qu0d0019qekzlsbmouk7","g":5000000,"n":4742083,"w":170417,"sb":1750000,"se":87500,"sr":87500,"a":0,"d":0}]
+RESIDUE none (tenants=1 users=2 activeLaw=0->0)

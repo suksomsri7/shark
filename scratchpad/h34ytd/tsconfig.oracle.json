@@ -1,0 +1,5 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": { "noEmit": true, "incremental": false, "skipLibCheck": true },
+  "include": ["../../scripts/qc-hr-h3.7.mts", "../../scripts/qc-hr-h3.4-ytd.mts", "../../scripts/qc-hr-h3.4-ytd-lib.mts", "../../next-env.d.ts"]
+}

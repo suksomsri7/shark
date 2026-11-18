@@ -1,0 +1,54 @@
+  ✅ [S1] payroll-rules sha · payroll-run-rules byte-identical · untouched files = base
+  ✅ [S2] changed files ⊆ allow list · older oracle edits marked ORACLE-EDIT (HR VIS-5a · controller)
+  ✅ [S3] every src hunk adds HR VIS-5a ◂ · new file marker in first 3 lines
+  ✅ [S4] action + loader/gate bodies hash = base · privacy lines kept verbatim
+  ✅ [S5] no new *Satang arithmetic in tsx · no new "use client" file
+  ✅ [S6] fitness-hr F16.1 clean
+  ❌ [S7] page: payViewOf · we → view=hours · ytd link ?view=ytd · nav hr-pay-view-* · old imports kept — expected  | actual payViewOf,weView,ytd,nav
+[env] qc-hr-vis-5a · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-vis-5a] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+  ❌ [V1] payViewOf vectors (redirects · links · GET forms · default · unknown · explicit) — expected 47 vectors | actual 1 bad: payViewOf: ∅ src/lib/modules/hr/pay-run-view.ts
+  ❌ [V2] [meta] vector table covers every payroll param the frozen actions emit — expected  | actual bank-files/actions:effectiveDate | bank-files/actions:encoding | bank-files/actions:ktbMode | bank-files/actions:ktbDateEra | bank-files/actions:ktbReceivingBranch | filings/actions:title | filings/actions:firstName | filings/actions:lastName
+  ❌ [P1] periodLabel vectors th/en — expected  | actual periodLabel: ∅ src/lib/modules/hr/period-label.ts
+  ✅ [I1] hr.run2 th=en · every key the run screen uses exists in th and en
+  ❌ [I2] hr.payview.* 7 views th+en · hr.run2.title without engine wording · page desc via messages — expected  | actual payview,titleTh,titleEn,desc
+  ✅ [I3] no Thai literal in added code lines (payroll-ui.tsx moved sections exempt)
+  ❌ [N1] inventory rows for new ids · hr-run2-lines-* kind link — expected  | actual newRows,codeRows,linesLink noRow=hr-run2-banner | hr-run2-drawer | hr-run2-excluded | hr-run2-doclink-* | hr-run2-totals | hr-run2-bar | hr-run2-jv | hr-pay-view-*
+  ❌ [N2] walk matrix states for hours/adjust/profiles/docs/ytd/history — expected  | actual missing view=hours,adjust,profiles,docs,ytd,history
+  ✅ [K2] every base inventory id of /hr/payroll still in code
+  ✅ [K3] hr-run2-* written only in payroll-run-ui.tsx · base hr-run2 ids kept
+  ❌ [K4] new run-screen ids in payroll-run-ui.tsx (banner · drawer · excluded · doclink · totals · bar · jv) — expected  | actual missing=hr-run2-banner | hr-run2-drawer | hr-run2-excluded | hr-run2-doclink-* | hr-run2-totals | hr-run2-bar | hr-run2-jv excludedOnNote=false
+  ❌ [K5] run table: no min-w-[ · md:table-cell · one table — expected  | actual noMinW,md
+(node:225521) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+fixture ok: {"DRAFT":"2026-11","PAID":"2026-10","APPROVED":"2026-09","REVERSED":"2026-08","V1":"2026-07","NONE":"2026-05"}
+  ❌ [W1] page per view renders only its own sections + nav — expected  | actual run:+hours/adjust/profiles/docs/ytd/history | run:nav | hours:+run/adjust/profiles/docs/ytd/history | hours:nav | adjust:+run/hours/profiles/docs/ytd/history | adjust:nav | profiles:+run/hours/adjust/docs/ytd/history
+  ❌ [K1] PayrollSection parts: disjoint · union = default — expected  | actual profiles=full | hr-salary-ot-rate∈profiles+attendance | hr-payroll-create∈profiles+attendance | hr-payroll-run-2026-11-approve-trigger∈profiles+attendance | hr-payroll-run-2026-11-recompute-trigger∈profiles+attendance
+  ✅ [R0] [control] period without run: create shown
+  ❌ [R1] live run in period: no create control — expected  | actual APPROVED:create | PAID:create | DRAFT:create
+  ❌ [R2] REVERSED: banner + read-only table + create · no run buttons — expected  | actual banner,bannerText,table ids=hr-run2-row-cmwgsac4c000l0hkzszi6zjvh,hr-run2-row-cmwgsac62000p0hkzd026nahd,hr-run2-row-cmwgsac7p000t0hkzjgauwf94,hr-run2-row-cmwgsac99000x0hkzx5064cvs,hr-run2-create,hr-run2-sync
+  ❌ [R3] v1 run: banner + history link · no v2 controls — expected  | actual banner,history,noV2,table ids=hr-run2-row-cmwgsac4c000l0hkzszi6zjvh,hr-run2-row-cmwgsac62000p0hkzd026nahd,hr-run2-row-cmwgsac7p000t0hkzjgauwf94,hr-run2-row-cmwgsac99000x0hkzx5064cvs,hr-run2-create,hr-run2-sync
+  ❌ [R4] period label th/en · no ISO period · no engine wording — expected  | actual th: no "ก.ย. 2569" | th: ISO 2026-09,2026-11 | th: engine wording | en: no "Sep 2026" | en: ISO 2026-09,2026-11 | en: engine wording
+  ✅ [R5] [privacy] limited viewer: in-scope rows/totals only + excluded note
+  ❌ [R6] hr-run2-excluded: limited viewer only — expected  | actual limited=false owner=false
+  ✅ [R7] [privacy] no whole-run figure for limited · accounting callout without amounts
+  ✅ [R8] [privacy] manager: no ฿ in run screen
+  ❌ [R9] ?emp= drawer with that row's lines · unknown emp → none — expected  | actual drawer,name,ot
+  ✅ [R10] [privacy] ?emp out of pay scope shows nothing of that person
+  ❌ [R11] OT + commission tiles = Σ stored lines — expected ฿2,718.28 · ฿3,171.59 | actual  รวมจ่ายสุทธิ ฿75,104.45 ยอดจ่ายก่อนภาษี/ประกันสังคม ฿77,654.87 รายการเพิ่ม ฿5,889.87 หักสาย/ขาด/เบิก/ค่าเสียหาย ฿0.00 ประกันสังคม ลูกจ้าง −฿2,250.00 ประกันสังค
+  ❌ [R12] en run screen: no Thai from UI strings — expected  | actual ฿75,104.45 ฿77,654.87 ฿5,889.87 ฿0.00 −฿2,250.00
+  ❌ [B1] 13b screen: status translated · engine column hidden · net sticky right-0 — expected  | actual th: no table <div class="flex flex-col gap-5"><div class="flex  | en: no table <div class="flex flex-col gap-5"><div class="flex 
+  ❌ [B2] [control] 13b data/CSV unchanged (engine + raw status kept) — expected  | actual raw,csv 
+RESIDUE none (tenants=1 users=3)
+  ✅ [Z1] residue · outbound · intl shim used
+BASE-EXPECTATION 34/37 as registered (RED-by-design 18 · GREEN controls 19) · off: V2(GREEN→fail) R12(GREEN→fail) B2(GREEN→fail)
+
+===== qc-hr-vis-5a ===== passed 16/37 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-vis-5a","total":37,"passed":16,"failed":["S7","V1","V2","P1","I2","N1","N2","K4","K5","W1","K1","R1","R2","R3","R4","R6","R9","R11","R12","B1","B2"],"findings":[{"id":"S7","sev":"MAJOR"},{"id":"V1","sev":"CRITICAL"},{"id":"V2","sev":"MAJOR"},{"id":"P1","sev":"MAJOR"},{"id":"I2","sev":"MAJOR"},{"id":"N1","sev":"MAJOR"},{"id":"N2","sev":"MINOR"},{"id":"K4","sev":"MAJOR"},{"id":"K5","sev":"MAJOR"},{"id":"W1","sev":"MAJOR"},{"id":"K1","sev":"MAJOR"},{"id":"R1","sev":"MAJOR"},{"id":"R2","sev":"MAJOR"},{"id":"R3","sev":"MAJOR"},{"id":"R4","sev":"MAJOR"},{"id":"R6","sev":"MAJOR"},{"id":"R9","sev":"MAJOR"},{"id":"R11","sev":"MINOR"},{"id":"R12","sev":"MINOR"},{"id":"B1","sev":"MAJOR"},{"id":"B2","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":18,"baseGreen":19,"offBase":["V2(GREEN→fail)","R12(GREEN→fail)","B2(GREEN→fail)"]}

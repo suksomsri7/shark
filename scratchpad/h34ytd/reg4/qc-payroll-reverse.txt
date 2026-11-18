@@ -1,0 +1,26 @@
+[env] qc-payroll-reverse · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1776686) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [RV-0] setup: approve → APPROVED + มี journalEntryId + Dr=Cr
+  ✅ [RV-0.1] JV เดิมสมดุล Dr=Cr>0
+  ✅ [RV-1.1] reverseRun → ok:true + run REVERSED
+  ✅ [RV-1.2] entry เดิมถูก mark REVERSED (ไม่ลบ — immutable)
+  ✅ [RV-1.3] มี reversal entry 1 ใบ (journal=REVERSAL, reversalOfId=เดิม)
+  ✅ [RV-1.4] reversal สลับ dr/cr → Dr=cr0, Cr=dr0 (สมดุล)
+  ✅ [RV-2.1] trial balance: ทุกบัญชี net = 0 หลังกลับรายการ
+  ✅ [RV-2.2] งบทดลองรวม Σdebit = Σcredit
+  ✅ [RV-3.1] reverseRun ซ้ำ → ok:false
+  ✅ [RV-3.2] ไม่สร้าง reversal เบิ้ล (ยัง 1 ใบ)
+  ✅ [RV-4.1] reverse run DRAFT (ไม่มี JV) → ok:false
+  ✅ [RV-4.2] run DRAFT คงสถานะ DRAFT (ไม่ถูกแตะ)
+  ✅ [RV-5.1] ต่าง tenant/system เรียก reverse runId เดิม → ไม่พบ (ok:false)
+  ✅ [RV-5.2] run เดิมไม่ถูกแตะจาก tenant อื่น (ยัง REVERSED)
+
+✅ PASS — 14/14

@@ -1,0 +1,2 @@
+qc-hr-h3.8 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+DONE

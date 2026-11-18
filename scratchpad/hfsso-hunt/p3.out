@@ -1,0 +1,30 @@
+[env] hunt-hfsso-p3 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-hfsso-p3] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2653636) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ACTIVE law rows before = 0
+v2 ytd 2025-12: {"prior":{"ssoSatang":0,"whtSatang":0,"incomeSatang":0},"monthIndex":1,"annualTaxSatang":2060000,"remainingMonths":11,"projectedNetSatang":43100000,"projectedSsoSatang":900000,"projectedIncomeSatang":60000000}
+v2 ytd 2026-01: {"prior":{"ssoSatang":75000,"whtSatang":171667,"incomeSatang":5000000},"monthIndex":1,"annualTaxSatang":2545000,"remainingMonths":11,"projectedNetSatang":47950000,"projectedSsoSatang":1125000,"projectedIncomeSatang":65000000}
+v2 ytd 2028-12: {"prior":{"ssoSatang":0,"whtSatang":0,"incomeSatang":0},"monthIndex":1,"annualTaxSatang":2045000,"remainingMonths":11,"projectedNetSatang":42950000,"projectedSsoSatang":1050000,"projectedIncomeSatang":60000000}
+v2 ytd 2029-01: {"prior":{"ssoSatang":87500,"whtSatang":170417,"incomeSatang":5000000},"monthIndex":1,"annualTaxSatang":2530000,"remainingMonths":11,"projectedNetSatang":47800000,"projectedSsoSatang":1287500,"projectedIncomeSatang":65000000}
+v2 ytd 2031-12: {"prior":{"ssoSatang":0,"whtSatang":0,"incomeSatang":0},"monthIndex":1,"annualTaxSatang":2030000,"remainingMonths":11,"projectedNetSatang":42800000,"projectedSsoSatang":1200000,"projectedIncomeSatang":60000000}
+v2 ytd 2032-01: {"prior":{"ssoSatang":100000,"whtSatang":169167,"incomeSatang":5000000},"monthIndex":1,"annualTaxSatang":2512000,"remainingMonths":11,"projectedNetSatang":47620000,"projectedSsoSatang":1480000,"projectedIncomeSatang":65000000}
+row: {"pk":"2025-12","pay":"2026-01-05","v1X":"75000/171667","v2X":"75000/171667","v1Y":"75000/0","v2Y":"75000/0","marker":1500000,"v2":"ok","a2":true}
+row: {"pk":"2026-01","pay":"2026-01-30","v1X":"87500/170417","v2X":"87500/197778","v1Y":"87500/0","v2Y":"87500/0","marker":1750000,"v2":"ok","a2":true}
+row: {"pk":"2028-12","pay":"2029-01-05","v1X":"87500/170417","v2X":"87500/170417","v1Y":"87500/0","v2Y":"87500/0","marker":1750000,"v2":"ok","a2":true}
+row: {"pk":"2029-01","pay":"2029-01-31","v1X":"100000/169167","v2X":"100000/196632","v1Y":"100000/0","v2Y":"100000/0","marker":2000000,"v2":"ok","a2":true}
+row: {"pk":"2031-12","pay":"2032-01-05","v1X":"100000/169167","v2X":"100000/169167","v1Y":"100000/0","v2Y":"100000/0","marker":2000000,"v2":"ok","a2":true}
+row: {"pk":"2032-01","pay":"2032-01-30","v1X":"115000/167667","v2X":"115000/195236","v1Y":"100000/0","v2Y":"100000/0","marker":2300000,"v2":"ok","a2":true}
+laborDay 2025-12-15: {"ok":true,"basis":"ESTIMATE","money":{"costSatang":230644,"wageSatang":225806,"ssoSatang":4838,"salesSatang":null,"soFarSatang":null,"pctTenths":null,"targetTenths":280,"hours":[],"shifts":[],"unallocatedSatang":230644,"excludedHeadcount":0,"partial":false,"truncated":false},"flags":{"noProfile":0,"lawMissing":false,"truncated":false}}
+laborDay 2026-01-15: {"ok":true,"basis":"ESTIMATE","money":{"costSatang":231452,"wageSatang":225806,"ssoSatang":5646,"salesSatang":null,"soFarSatang":null,"pctTenths":null,"targetTenths":280,"hours":[],"shifts":[],"unallocatedSatang":231452,"excludedHeadcount":0,"partial":false,"truncated":false},"flags":{"noProfile":0,"lawMissing":false,"truncated":false}}
+laborDay 2026-02-15: {"ok":true,"basis":"ESTIMATE","money":{"costSatang":256250,"wageSatang":250000,"ssoSatang":6250,"salesSatang":null,"soFarSatang":null,"pctTenths":null,"targetTenths":280,"hours":[],"shifts":[],"unallocatedSatang":256250,"excludedHeadcount":0,"partial":false,"truncated":false},"flags":{"noProfile":0,"lawMissing":false,"truncated":false}}
+laborDay 2029-01-15: {"ok":true,"basis":"ESTIMATE","money":{"costSatang":232258,"wageSatang":225806,"ssoSatang":6452,"salesSatang":null,"soFarSatang":null,"pctTenths":null,"targetTenths":280,"hours":[],"shifts":[],"unallocatedSatang":232258,"excludedHeadcount":0,"partial":false,"truncated":false},"flags":{"noProfile":0,"lawMissing":false,"truncated":false}}
+laborMonth 2026-02 (estimate): {"ok":true,"basis":"ESTIMATE","cost":7175000,"flags":{"noProfile":0,"lawMissing":false,"truncated":false}}
+RESIDUE none (tenants=1 users=2 activeLaw=0->0)

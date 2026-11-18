@@ -1,0 +1,163 @@
+
+═══ QC CRM v2 · C3.3 — commissions → payroll ═══
+[env] DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c33-deaqzc
+
+── S0 · structure ──
+  ✅ [C3.3-S0.1] commissions.ts exports listRules · createRule · updateRule · onPaid · onWon · reverse · approve · reject · syncPayroll · mine · list · pending · report, and commissions-shared.ts is pure (no prisma/next/server-only/./db) exporting commissionOf + COMMISSION_WAITING_LABEL = "รอผูกพนักงาน"
+  ✅ [C3.3-S0.2] facade: crm/index.ts exports the `commissions` namespace inside a `// CRM C3.3 ▸ … ◂` block (crm.commissions.onPaid reachable) · R-D: the bridge file src/lib/platform/crm-bridges/commissions.ts exists (C3.3 is its only owner) [static + runtime]
+  ✅ [C3.3-S0.3] 3 registries (a new event without a consumer stalls the whole queue): hr.payroll.paid · crm.commission.created · crm.commission.approved · crm.commission.reversed are each declared EXACTLY ONCE across automation/labels.ts + webhooks/labels.ts and each has a consumer in outbox-consumers.ts (block `// CRM C3.3 ▸`)
+  ✅ [C3.3-S0.4] C3.3 ships NO migration (crm_v2_c already has CrmCommissionRule/CrmCommission/HrPayAdjustment.crmCommissionId — R-C.1) · hr/index.ts stays a re-export-only facade (no db) · the payroll pick-up job `crm.commissions.payroll` is registered in platform/minute-jobs.ts
+(node:1785069) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── S1 · PAID partial payments ──
+  [arith] d11 T=2,000,000 · PCT 500bp ⇒ full ⌊2,000,000·500/10⁴⌋=100000 · shares F(600,000)=30000 · F(2,000,000)−F(600,000)=70000
+  [arith] d12 T=3,333,333 ⇒ full ⌊3,333,333·500/10⁴⌋=166666 · running total 55555 + 111111 = 166666 (naive per-payment floor 166665 loses 1)
+  ✅ [C3.3-S1.1] two partial payments of one deal through the real C2.7 money path (recordDocPayment → COUNTED) ⇒ exactly TWO CrmCommission rows — one per payment: refType DEAL_PAYMENT · refId = the incarnation key <CrmDealPayment id>#c<countedAt ms> (R-C.4 + round-5 B1) · basis PAID · basisSatang = the frozen pre-VAT base T (ruling B1) · user = the owner · status PENDING (approval chain exists) · periodKey = Thai month of countedAt (2026-09)
+  ✅ [C3.3-S1.2] partial payment = proportional commission (§11.6): 600,000 + 1,400,000 of T 2,000,000 at 5 % ⇒ 30000 + 70000 = 100000 (the full commission) exactly
+  ✅ [C3.3-S1.3] no satang lost (running-total rounding): T 3,333,333 · 5 % ⇒ full 166666; payments 1,111,111 then 2,222,222 ⇒ 55555 + 111111 = 166666 (a per-payment floor would pay 166665) · Σ rows = full
+  ✅ [C3.3-S1.4] replay: the same payment again through recordDocPayment (skipped DUPLICATE) · onPaid of an already-paid row ×2 in a row and ×2 in parallel (+ another in parallel) ⇒ the commission rows are byte-identical (no second row, no amount change, no throw)
+  ✅ [C3.3-S1.5] the dedupe is a database fact, not a check-then-insert: the UNIQUE index (dealId, ruleId, userId, refId) exists on the live table and a second row with the same four values as a product-written commission is refused (23505) inside a rolled-back transaction
+
+── S2 · WON rules ──
+  [arith] dW1 T=2,345,678 · WON FIXED 15,000 + ⌊T·300/10⁴⌋ = 85370 · PAID 2 % full ⌊T·200/10⁴⌋=46913 · share of 1,000,000 = ⌊46913·1,000,000/2,345,678⌋ = 19999
+  ✅ [C3.3-S2.1] WON rule: moving the deal to WON (deals.moveDeal, the real path) ⇒ ONE row of the WON rule for the owner = 85370 (FIXED 15,000 + 3 % of T) · basis WON · refId '' · basisSatang = T · periodKey = Thai month of the WON history row (2026-11) — and NO row of the PAID rule on the win; the later payment of 1,000,000 adds only the PAID-rule row 19999 (the WON rule does not fire on money)
+  ✅ [C3.3-S2.2] WON is idempotent and gated: onWon ×2 in a row + ×2 in parallel + the crm.deal.won event redelivered ×4 ⇒ still ONE WON row · a deal moved to LOST (and onWon forced on it) ⇒ no row · an OPEN deal that is paid in full gets only the PAID-rule row (16000), never a WON row
+  ✅ [C3.3-S2.3] ruling S2 — no self-approval: a MANAGER approving his OWN commission (50,000, under his cap) ⇒ FORBIDDEN (Thai), the row stays PENDING and it is not in his own pending() list (the OWNER still sees it there) · the OWNER approving his own commission ⇒ APPROVED
+  [arith] S2.4 WON 10 %: first win on 100,000 ⇒ 10000 · reopened (hook skipped) · value 50,000 · re-win ⇒ old row removed, new 5000
+  ✅ [C3.3-S2.4] round-5 S4 — previous-win rows are retired: a deal won at 100,000 (10000) is reopened without the reopen hook, its value lowered to 50,000 and won again ⇒ the old row is REMOVED (row gone · audit crm.commission.remove · event crm.commission.removed) and ONE new row of 5000 exists (refId '', same rule) · onWon ×2 + ×2 in parallel + the won events redelivered ⇒ unchanged
+
+── S3 · TIERED / split ──
+  [arith] TIERED marginal 3 %≤1e7 · 5 %≤3e7 · 7 % above: T=10,000,000 ⇒ 300000 · T=10,000,100 ⇒ (1e7·300 + 100·500)/10⁴ = 300005 (flat 5 % would be 500,005) · T=35,000,000 ⇒ (1e7·300+2e7·500+5e6·700)/10⁴ = 1650000
+  ✅ [C3.3-S3.1] TIERED is MARGINAL (mockup 10: "5% แรก ฿0–500,000 · 8% ส่วนเกิน") with one floor: exactly on a tier boundary the lower rate applies to all of it (300000) · 100 satang above it only that excess earns the next rate (300005) · across three tiers 1650000
+  [arith] dT4 TIERED full 1650000 paid 12,345,678 + 22,654,322 ⇒ ⌊1650000·12,345,678/35,000,000⌋ = 582010 + 1067990
+  ✅ [C3.3-S3.2] TIERED × partial payments: the full tiered commission 1650000 is shared by the running total — 582010 + 1067990 = 1650000, not the tier rate applied to each payment on its own
+  [arith] dS1 T=1,000,015 · 10 % ⇒ 100001 · pool ⌊100001·3333/10⁴⌋ = 33330+rem · each of 3 = 11110 · owner = 66671
+  ✅ [C3.3-S3.3] split (splitCollaboratorsBp 3333, 3 collaborators, equal shares — §11.6): 4 rows · each collaborator 11110 · owner 66671 (the rounding remainder stays with the owner) · Σ = 100001 exactly
+  [arith] dS2 full 200000 · payment shares 70000/130000 · split 1 collaborator: p1 thana 46669 + c1 23331 · p2 pook 86671 + c1 43329
+  ✅ [C3.3-S3.4] split × partial payments × owner change: each payment's share is split on its own (payment 1: thana 46669 + collaborator 23331; payment 2 after the owner became pook: pook 86671 + collaborator 43329) · the owner listed as a collaborator is not paid twice · Σ = 200000
+
+── M · money gates ──
+  ✅ [C3.3-M1] minDealSatang 100,000 is inclusive: a deal of 99,999 earns nothing · a deal of exactly 100,000 earns 10,000
+  ✅ [C3.3-M2] periodKey = Thai month of (countedAt + payoutDelayDays): 25 Sep + 7 d ⇒ 2026-10 · 20 Sep + 7 d ⇒ 2026-09 · counted 2026-09-30T17:30Z (= 1 Oct 00:30 Thai) with no delay ⇒ 2026-10 (a UTC month would say 2026-09)
+  ✅ [C3.3-M3] rule scope: a rule limited to pipeline A pays a deal of pipeline A (10,000) and nothing for a deal of pipeline B in the same CRM system
+  ✅ [C3.3-M4] money is BigInt satang end to end: CrmCommission.amountSatang/basisSatang + rule.minDealSatang are int8 · two commissions of 2,000,000,000 each are stored exactly · report() sums them in SQL to 4000000000 (> int32) and returns it exactly (net and totals)
+  ✅ [C3.3-M5] X1/X6 — the amount comes from the CrmDealPayment row, never from the input: onPaid with a forged satang 999,999 on a raw 50,000 payment pays 5000 · onPaid naming another deal for that payment row writes nothing on that deal (no row / NOT_FOUND)
+  [arith] M6 FIXED 15,000 + ⌊300,000·300/10⁴⌋ = 24000 · 3 sales of 107,000 gross = 100,000 net ⇒ F(100k)/F(200k)−F(100k)/F(300k)−F(200k) = 8000 + 8000 + 8000 (gross shares would be 8560 + 8560 + 6880 · a drifting base 321,000 would pay 24630) · TIERED 5 %≤500k/8 % on 1,000,000 = 25,000 + 40,000 = 65000 · 2 × 535,000 gross = 500,000 net ⇒ 32500 + 32500
+  ✅ [C3.3-M6] rulings B1 + S-a drift-proof pre-VAT base: 3 POS sales of 107,000 (100,000 + 7 % VAT) on a deal valued 300,000 while wonValueSatang drifts 107k→214k→321k ⇒ FIXED ฿150 + 3 % pays exactly 24000 in total (8000/8000/8000), never 24630 · TIERED 5 % ≤ 500,000 / 8 % above on a deal of 1,000,000 paid by two sales of 535,000 (500,000 net) ⇒ exactly 65000 (32500/32500, the running total is proportional) · every payment enters the running total pre-VAT · every row's basisSatang = the frozen base
+  [arith] M7 T 10,000,000 · 10 % ⇒ full 1000000 · p1 6M ⇒ 600000 · p2 6M ⇒ F(12M)−600000 = 400000 · void p1 ⇒ −600000 · p3 4M ⇒ F(6M+4M)−400000 = 400000 · net 1000000
+  ✅ [C3.3-M7] ruling B2 self-healing running total [VAT mode: the fixture's invoices are id-only (no account document) ⇒ no VAT, net = gross, so Σ shares = F_T(Σ net counted)]: T 10,000,000 at 10 % · p1 6M (600000) · p2 6M (400000) · p1 voided (reversal −600000) · p3 4M (400000) ⇒ net exactly 1000000 = the full commission — the voided payment's share is earned again by the next payment, never lost and never paid twice
+
+── S4 · approval → HrPayAdjustment ──
+  ✅ [C3.3-S4.1] approvalRequired (default) + a `crm.commission` chain ⇒ every new commission is PENDING and submitted to the central approval engine: ApprovalRequest(entityType "crm.commission" — R-C.10 · entityId = commission id · amountSatang = the amount · systemId = the CRM system) and CrmCommission.approvalRequestId points at it
+  ✅ [C3.3-S4.2] the OWNER approves in the approval inbox (approval.decide → approval.request.approved → effect) ⇒ commission APPROVED (decidedAt) ⇒ ONE HrPayAdjustment through the HR facade: kind COMMISSION · amount = commission · employee = the user's linked employee · HR's own 4-eyes status PENDING · periodKey 2026-09 · crmCommissionId ↔ hrPayAdjustmentId linked both ways
+  ✅ [C3.3-S4.3] a user with NO linked employee: approved ⇒ status APPROVED, no HrPayAdjustment, hrPayAdjustmentId null, and his "my commissions" row says "รอผูกพนักงาน" (payroll = WAITING_EMPLOYEE)
+  ✅ [C3.3-S4.4] the link appears ⇒ syncPayroll picks the waiting commission up: ×2 in a row + ×2 in parallel ⇒ exactly ONE adjustment (COMMISSION 30000 · employee = the new link · period 2026-09) and the commission points at it
+  ✅ [C3.3-S4.5] never pay the wrong person: a user whose linked employee is INACTIVE (employeeOfUser still returns it — MASTER-PLAN C0.3 note) stays APPROVED waiting even after syncPayroll · a commission whose approval was REJECTED is REJECTED with no adjustment
+  ✅ [C3.3-S4.6] ruling S6: approvalRequired with NO `crm.commission` chain ⇒ the row stays PENDING (no ApprovalRequest, no adjustment) even after 3 more advances (1 + 2 in parallel) and a syncPayroll · the OWNER got exactly ONE `commission.pending` notification for it and there is exactly ONE `crm.commission.escalate` flag
+
+── S7 · approval cap ──
+  ✅ [C3.3-S7.1] manual approve within the cap: a MANAGER whose crm._maxCommissionApproveSatang = 100000 approves a commission of exactly 100000 (≤ cap is inclusive) ⇒ APPROVED + one COMMISSION adjustment
+  ✅ [C3.3-S7.2] above the cap (100001 > 100000) the MANAGER gets APPROVAL_REQUIRED (Thai) and nothing changes (still PENDING, request still attached, no adjustment) · the OWNER (no cap) approves it ⇒ APPROVED + one adjustment
+
+── S5 · reversal (before the payroll run) ──
+  ✅ [C3.3-S5.1] reverse BEFORE approval: the payment is voided (reverseDocPayment — the C2.7 path) ⇒ the PENDING commission becomes REJECTED (or is removed) with NO negative row and NO adjustment · an approval of its request arriving later changes nothing (status-guarded effect)
+  ✅ [C3.3-S0.5] round-5 N5 — event `crm.commission.removed`: declared EXACTLY ONCE across the two label registries with a consumer in outbox-consumers.ts · emitted when the PENDING commission of a voided payment is deleted (S5.1): one event, key `crm.commission.removed#<id>`, payload ids + amount only (amountSatang = the removed amount, status PENDING), no PII
+  ✅ [C3.3-S5.2] reverse AFTER approval while HR has NOT approved the adjustment yet (PENDING, no run — ruling B3): ONE REVERSED row = −70000 · reversedOfId = the original · refType REVERSAL · refId = original id · periodKey 2026-10 (first month after 2026-09 without a payroll run) · the original's un-approved HR adjustment is withdrawn (row gone, link cleared), NOTHING deducted, the reversal row carries the settled note · the original row keeps APPROVED
+  ✅ [C3.3-X4.2] X4 (M10) reversal never double-reverses: the void replayed + commissions.reverse(refId) ×2 in a row + ×2 in parallel ⇒ still ONE negative row, still NO deduction and NO adjustment for the original (ruling B3 — its un-approved adjustment was withdrawn), the settled note stays
+  ✅ [C3.3-S5.4] a waiting (no employee) APPROVED commission that is reversed: ONE REVERSED row −80000 and no adjustment · when the employee link appears later, syncPayroll sends NEITHER the original nor the reversal to payroll (they cancel out — nothing was ever paid)
+  ✅ [C3.3-X9.2] X9: reject without a reason ⇒ VALIDATION (nothing changes) · with a reason ⇒ REJECTED + audit `crm.commission.reject` carrying the reason · the MANAGER approve of S7.1 audited `crm.commission.approve` with its reason · the S5.2 reversal audited `crm.commission.reverse` on the original
+
+── S6 · hr.payroll.paid ──
+  ✅ [C3.3-S6.1] markPaid emits `hr.payroll.paid` INSIDE the transaction of its guarded APPROVED→PAID update [static: $transaction + emitOutbox in markPaid] · exactly ONE event for the run (a second markPaid ⇒ ok:false, no second event) · key `hr.payroll.paid#<runId>` · payload exactly { runId, periodKey } · systemId = the HR system
+  ✅ [C3.3-S6.2] after `hr.payroll.paid` is consumed: the three commissions whose adjustments were in that run (thana · pook · nok) are PAID · commissions whose adjustments are still PENDING at HR (S7 ×2 · the S5.2 original) stay APPROVED · the S5.2 reversal row stays REVERSED
+  ✅ [C3.3-X4.3] X4: `hr.payroll.paid` replay (×2 in a row + ×2 in parallel) and a third markPaid ⇒ still one event and every commission row byte-identical (PAID rows unchanged, nothing flips back or twice)
+
+── S5.3 · reversal after PAID ──
+  ✅ [C3.3-S5.3] reverse AFTER PAID: the PAID row stays PAID · ONE REVERSED row −200000 and ONE DEDUCTION adjustment for pook's employee in 2026-11 — the first month after 2026-09 with no payroll run (2026-10 already has a DRAFT run) · the closed run 2026-09 (run + items + its adjustments) and the 2026-10 run are byte-identical — a closed payroll run is never edited
+
+── X4.4 · X4.5 ──
+  ✅ [C3.3-X4.4] X4: the approval-approved event of an already-approved commission redelivered ×3 (incl. 2 in parallel), and the chain approving a request the MANAGER had already settled by hand ⇒ still exactly ONE adjustment per commission
+  ✅ [C3.3-X4.5] the partial unique on HrPayAdjustment.crmCommissionId is real: two NULL rows coexist (ordinary HR adjustments untouched) but a second row for the same commission is refused (23505, rolled back) · and through the HR facade `requestAdjustment({ …, crmCommissionId })` a second adjustment for the same commission is refused (ok:false or a thrown error) — the count stays 1
+
+── X1 · scope ──
+  ✅ [C3.3-X1.1] a STAFF sees only his own commissions: mine(thana) = exactly thana's rows of THIS CRM system (his rows in 8 other systems excluded) · mine(nok) = nok's rows · list() without crm.commission.view ⇒ FORBIDDEN/NOT_FOUND · report() for him has only his own row
+  ✅ [C3.3-X1.2] the approval list needs crm.commission.approve: a STAFF gets FORBIDDEN/NOT_FOUND from pending() and from approve() (the row stays PENDING, no audit) · the MANAGER's pending() = exactly the PENDING rows of this system (SQL)
+  ✅ [C3.3-X1.3] cross-tenant / cross-system ⇒ NOT_FOUND, never 403 and never a leak: approve() through another tenant's ctx or another CRM system of the same tenant · mine() with a foreign ctx · a rule naming a pipeline of another system ⇒ VALIDATION/NOT_FOUND with nothing written
+  ✅ [C3.3-X1.4] R-E.14: a uiVersion-1 CRM system is untouched — its (raw) rules and a COUNTED payment produce NO commission: recordDocPayment skips (V1), onPaid/onWon return without writing (or CrmV2DisabledError), createRule/mine ⇒ CrmV2DisabledError · 0 commission rows, rules unchanged
+  ✅ [C3.3-X1.5] the bridge entry points are tenant-bound too: onPaid through another tenant's ctx naming this tenant's deal/payment ⇒ NOT_FOUND or a silent no-op, nothing written in either tenant · the OWNER's pending() works (positive control)
+
+── X9.1 · rules ──
+  ✅ [C3.3-X9.1] rules CRUD: the OWNER creates a TIERED rule (mockup 10) and updates it (500→600 bp) — audited `crm.commission.rule.*` with before/after · MANAGER and STAFF ⇒ FORBIDDEN (crm.settings.manage is owner-only by default) · 7 bad configs (pct > 100 %, negative fixed, unsorted tiers, no open last tier, split > 100 %, negative delay, unknown kind) ⇒ VALIDATION, nothing written · listRules returns the 1 rule
+  ✅ [C3.3-M8] ruling B4 (+ round 3): on a rule that already has commission rows, changing the basis (PAID → WON), the kind (PCT → FIXED), the rate (config 500 → 600 bp) or minDealSatang ⇒ VALIDATION (Thai) each time and the rule is byte-identical afterwards · a rename of the same rule succeeds with the money fields unchanged · a basis change on a rule WITHOUT rows succeeds (positive control)
+
+── S8 · report / UI ──
+  ✅ [C3.3-S8.1] report(periodKey 2026-09) = the SQL answer key over CrmCommission of this system: per user pending / approved / paid / reversed (negative) / net = approved + paid + reversed / count (REJECTED excluded) · ordered net desc then userId · totals.netSatang = Σ
+  ✅ [C3.3-S8.2] mockup 10 right: `/crm/settings/commissions` (rules + "คอมมิชชันรออนุมัติ" with "อนุมัติที่เลือก" and "ส่ง payroll") is guarded like every CRM v2 page (type "CRM" → requireCrmV2Page → crmCan(crm.settings.manage | crm.commission.approve) → notFound()) · nav entry (status ready · wo C3.3) · 12 testids · ≥ 8 inventory rows [static]
+  ✅ [C3.3-S8.3] "my commissions": `/crm/commissions` guarded (type "CRM" → requireCrmV2Page → notFound()) · loads through commissions.mine with the session actor · nav entry (ready · C3.3) · testids incl. the "รอผูกพนักงาน" badge · ≥ 3 inventory rows [static]
+  ✅ [C3.3-S8.4] the DTO tells the payroll state the UI shows: nok's commission was WAITING_EMPLOYEE ("รอผูกพนักงาน") before the link and is PAID after the run · thana's S7.2 commission (adjustment requested, HR still deciding) is REQUESTED · amounts are plain numbers · pook's "my commissions" does not contain thana's row
+  ✅ [C3.3-S8.5] the two personas the controller photographs get the right data: pending(owner) = SQL PENDING of the system · mine(thana) non-empty with his rows only · report(owner) answers (the pages load these three, nothing recomputed in a component)
+  ✅ [C3.3-S8.6] the commission DTOs (pending · mine · report) carry no customer name / phone / e-mail (ids, amounts, deal titles, user names only) · no `'use client'` file of this work order imports prisma or a non-shared CRM module · every `"use server"` commission file exports async functions only and gates on CRM v2 [static + runtime]
+
+── round 3 · R1 · S-a..S-e ──
+  [arith] M9 value 0 · 5 % · bill 1 10,700 gross (700 VAT ⇒ 10,000 net): T=10,000 ⇒ 500 · bill 2 107,000 gross (100,000 net): T=max(10,000, 110,000)=110,000 ⇒ F=⌊5,500·110,000/110,000⌋ − 500 = 5000 · Σ 5500
+  ✅ [C3.3-M9a] [positive control] 2 worker PROCESSES counted the two bills of each of 3 value-0 deals at the same moment (count + onPaid ×1 + ×2 in parallel) and every call returned
+  ✅ [C3.3-M9] ruling R1 (BLOCKER) — a deal with valueSatang 0: T = max(frozen, pre-VAT so far) GROWS and each new row carries the grown T · sequential: bill 10,700 ⇒ 500 (basis 10,000) then bill 107,000 ⇒ 5000 (basis 110,000), Σ 5500 · the same two bills counted in parallel by 2 processes (3 rounds) ⇒ Σ still 5500, every basisSatang ≤ 110,000 and the largest = 110,000
+  ✅ [C3.3-M11] no retroactive credit: a payment counted on 15 Sep earns NOTHING from a rule created on 16 Sep, while a rule created on 1 Sep (positive control) pays its 10,000 for the same payment
+  [arith] M12 T 10,000 · 10 % ⇒ full 1000 · payment 9,700 ⇒ 970 · settle 300 (key #c1789448460000) ⇒ F(10,000)−970 = 30 · settle re-counted as 100 (key #c1789455600000) ⇒ −30 reversal + F(9,800)−970 = 10 · net 980
+  ✅ [C3.3-M12] round-5 B1 incarnation key: payment 9,700 (970) + DOC_SETTLE 300 (30, refId <id>#c<t0>) · the settle row is re-counted in one statement as 100 with a new countedAt ⇒ afterPaymentCounted reverses the old key (−30) and credits the new key <id>#c<t1> (10) ⇒ net exactly 980 · afterPaymentCounted ×3 (2 in parallel) + afterPaymentsReversed ×2 ⇒ unchanged
+  [arith] M13 T 10,000 · 10 % ⇒ full 1000 · A 10,000 ⇒ 1000 · B 4,000 ⇒ F(14,000)−1000 = 0 (no row) · void A (10 days later) ⇒ −1000 and B re-credited F(4,000)−0 = 400 · net 400
+  ✅ [C3.3-M13] round-5 S1 zero-share revisit: A 10,000 earns 1000 · B 4,000 over-collects (share 0 ⇒ no row) · A is voided 10 days later (outside the minute-job's 3-day window) ⇒ −1000 AND B is re-credited 400 by afterPaymentsReversed itself ⇒ net 400
+  ✅ [C3.3-M10] ruling S-e: a payment counted on a deal with NO value and NO document earns nothing at first (T = 0) · 4 days later the value 100,000 is filled in and the minute-job queue runPayrollSync(now = +4 days, scoped to this tenant) still credits it (10000, period 2026-09) — no 3-day cut for a deal that has no row for the rule yet
+  ✅ [C3.3-S4.8] ruling S-d (+ round-5 S3): a chain decision by the row's OWN user (a MANAGER who is the chain step) does not approve it ⇒ stays PENDING (request kept · note · owner notified once), no HR adjustment · the same MANAGER approving someone else's row ⇒ APPROVED and the HR adjustment's requestedById = him · the OWNER deciding his own row ⇒ APPROVED, requestedById = owner · the auto path (approvalRequired false) ⇒ requestedById = the row's user — never null
+  ✅ [C3.3-S4.7] ruling S-c: the stranded-adjustment sweeper (runPayrollSync ×2, scoped) never touches an HR-APPROVED adjustment sitting in a period that has a run (byte-identical, same id, still APPROVED) · an HR-PENDING one in that period is moved IN PLACE: same id, periodKey 2026-09 → 2026-10 (next month without a run), still PENDING, the commission still points at it and there is still exactly one
+  ✅ [C3.3-S5.5a] [positive control] 6 rounds: the reversal (process 1, ×2) and HR's REJECT of the original's adjustment (process 2, ×2) fired at the same moment and every call returned (HR decided first in 6 calls — the rest arrived after the withdrawal)
+  ✅ [C3.3-S5.5] ruling S-b: a reversal NEVER deducts money HR never paid — (1) the original whose PENDING adjustment the sweeper had moved in place is reversed ⇒ that adjustment is withdrawn, no DEDUCTION · (2) 6 rounds of the reversal racing HR rejecting the original's adjustment on another connection ⇒ every round ends with ONE settled reversal row (note), ZERO DEDUCTION, and the original adjustment either withdrawn or REJECTED
+
+── round 6 · B-1 B-2 S-1 S-2 ──
+  [arith] M14 T 10,000 · 10 % ⇒ 1000 for owner A · team rule 5 % (owner not in the team) ⇒ 0 rows + flag crm.commission.nomatch:cmwfpakuy00zcd9kz…
+  ✅ [C3.3-M14] round-6 B-1: a payment credited to owner A (1000) — the owner then becomes B, runPayrollSync ×2 (scoped) + onPaid again ⇒ still exactly ONE row (A, 1000), none for B, Σ 1000; the second rule (team the owner is not in) has 0 rows and exactly ONE OpsAlertState flag `crm.commission.nomatch:<payId>#c<ms>:<ruleId>`
+  ✅ [C3.3-S0.6] updateRule field classes: on a rule WITH rows, name / active (off → on) / sortOrder edits are allowed · money (config) AND matching (pipeline · team · products) edits are refused with VALIDATION and leave every money/matching field byte-identical · a matching edit (team → none) on a rule WITHOUT rows succeeds and clears that rule's nomatch flags (1 → 0)
+  ✅ [C3.3-S2.5] round-6 B-2: WON rule 10 % · deal 100,000 moved to the first WON stage ⇒ one row 10000 · the MANAGER moves it WON → second WON stage and onWon runs again ⇒ the commission rows are byte-identical (id · createdAt · amount · status), no new crm.commission.* event, no crm.commission.remove audit
+  [arith] M15 T 1,000 · 10 % · counted 1,000 at t0 ⇒ PENDING 100 · rule LATE created t0+1d · woken as 500 at t0+2d ⇒ old PENDING deleted, R1 = F(500) = 50, LATE 0 (first counted t0 < LATE) · DOC_SETTLE born/counted t0, only rule created t0+1d, woken t0+2d ⇒ 0 rows
+  ✅ [C3.3-M15] round-6 S-2 (approvalRequired ON + chain): a payment counted at t0 gives a PENDING 100 for R1 with a request · a rule LATE is created at t0+1d · the payment is woken as 500 at t0+2d ⇒ the old PENDING row is deleted and its request CANCELLED, ONE new R1 row 50 PENDING with key <id>#c<t0+2d>, LATE earns NOTHING (first counted at t0 — no retro credit) · a DOC_SETTLE born and counted before its only rule existed, woken after it ⇒ 0 rows
+  ✅ [C3.3-S4.9] round-6: a commission REJECTED by a person (10000) — its payment is woken as a new incarnation after the shop turned approvals OFF ⇒ ONE new row 10000 PENDING whose note starts "เคยถูกปฏิเสธ", no approval request, and it stays PENDING after advanceById ×3 (1 + 2 in parallel) — never auto-approved · the REJECTED row is untouched
+  [arith] M16 T 10,000 · 10 % · settle 300 ⇒ 30 · woken as 100 ⇒ −30 + 10 ⇒ Σ 10 · then 3 rounds × (reverse({refId}) ×3 ∥ afterPaymentsReversed ×3) in 2 processes
+  ✅ [C3.3-M16] round-6 S-1: settle 300 (30) woken as 100 ⇒ −30 + 10 · then a late reverse({refId: <payId>}) and afterPaymentsReversed fired together (2 processes × 3 × 3 rounds) ⇒ every row byte-identical to before, the current incarnation <payId>#c<t1> has NO reversal, Σ = 10
+
+── X3 · concurrency (processes) ──
+  [arith] X3 T=3333333 · 5 % ⇒ full 166666 · payment 1111111 ∈ [55555, 55556] · payment 2222222 ∈ [111110, 111111] · Σ must be 166666 in any order
+  ✅ [C3.3-X3.1a] [positive control] 3 worker PROCESSES × 4 = 12 parallel recordDocPayment per round (6 per payment) over 3 rounds returned 36 results, exactly 6 counted and the rest DUPLICATE, and the 36 resulting events were then raced by 3 more processes (432 deliveries) — if this is red X3.1 proves nothing
+  ✅ [C3.3-X3.1] CRITICAL — two partial payments of one deal counted in parallel (12 callers, 3 processes) and their events raced ⇒ per round exactly 2 payments, exactly 2 commission rows, Σ = 166666 exactly and each row inside its proportional bounds · 3 rounds
+  ✅ [C3.3-X3.2a] [positive control] 3 rounds × 12 parallel onPaid (3 processes × 4 — both payments of the deal at once) all returned without an error
+  ✅ [C3.3-X3.2] CRITICAL — 12 parallel onPaid on SEPARATE connections for the two payment rows of one deal (no row existed before) ⇒ exactly ONE row per (deal, rule, user, refId), Σ = 166666 (the running total is taken under a lock, not read-then-write) · 3 rounds
+  ✅ [C3.3-X3.3a] [positive control] 3 rounds × 12 parallel commissions.reverse of one voided payment returned without an error (the originals existed: 3/3)
+  ✅ [C3.3-X3.3] CRITICAL — 12 parallel reversals of the same payment (APPROVED commission whose adjustment HR already APPROVED — ruling B3 · ORACLE-EDIT money-review) ⇒ exactly ONE negative row (−50000) and ONE DEDUCTION adjustment per round · 3 rounds
+  ✅ [C3.3-X3.4a] [positive control] 3 rounds × 12 parallel deliveries of the approval.request.approved event of a PENDING commission ran (the events existed: 3/3)
+  ✅ [C3.3-X3.4] CRITICAL — the approval-approved event of one commission consumed by 12 parallel callers (3 processes) ⇒ commission APPROVED and exactly ONE HR adjustment (the partial unique + a status-guarded claim) · 3 rounds
+  ✅ [C3.3-X4.1] X4 — EVERY event of both tenants (281: approval.request.approved · approval.request.rejected · approval.request.submitted · crm.commission.approved · crm.commission.created · crm.commission.removed · crm.commission.reversed · crm.deal.lost…) delivered to its consumer twice in a row and then twice in parallel ⇒ every CrmCommission and HrPayAdjustment row is byte-identical (no second commission, adjustment, reversal or status flip)
+
+── C3.3-H · money hunt 27 ก.ย. ──
+  [arith] H1 sale 1 net 1000000 ⇒ 100000 (T 1000000) · value typed 5,000,000 · sale 2 net 4,000,000 ⇒ T = max(1000000, 5,000,000) = 5000000 ⇒ Σ = F(5000000) = 500000
+  ✅ [C3.3-H1] ruling H1 — value-0 deal: POS deposit 10,700 (net 10,000) ⇒ 100000; the owner then types the deal value 50,000 (deal still OPEN) and a second POS sale 42,800 (net 40,000) is counted ⇒ Σ = 500000 (T = max(frozen first basis, current value) because the first row was born with value 0), no nomatch flag on this deal
+  [arith] H2 T 1,000,000 · full 100000 · A 600,000 ⇒ 60000 · B 600,000 ⇒ clipped 40000 · void A ⇒ counted 600,000 ⇒ net F = 60000 ⇒ top-up 20000 on B · void B ⇒ net 0
+  ✅ [C3.3-H2] ruling H2 — value 1,000,000 · 10 %: A 600,000 (60000) + B 600,000 (clipped 40000) · A cancelled ⇒ revisit restores the clipped share: net Σ = 60000 with exactly ONE top-up row 20000 keyed <B incarnation>#t<n> (replayed hook + minute job add nothing) · B cancelled afterwards ⇒ its top-up is reversed too ⇒ net 0
+  [arith] H3 net 10000000 + VAT 700000 − deposit 3210000 ⇒ grand 7490000 · half paid 3745000 ⇒ before VAT 3745000×10000000/10700000 = 3500000 ⇒ 350000 (the post-deposit denominator would give 500000)
+  ✅ [C3.3-H3] ruling H3 — invoice net 100,000 + VAT 7,000 with a 32,100 deposit deducted (grand 74,900): half paid (37,450) ⇒ before VAT = cash × net / (grandTotal + depositDeducted) = 3500000 ⇒ commission 350000 (not 500000)
+  [arith] H5 commission 100000 · adj period 2026-09 gets a run BEFORE HR approves it · then the payment is voided ⇒ never paid ⇒ nothing to deduct
+  ✅ [C3.3-H5] ruling H5 — commission 100000 · HR creates the run of its period (2026-09) while the adjustment is PENDING, then approves it (decide) ⇒ after the minute job the adjustment is NOT stranded (runId null and its period has no run — refused or moved) · the payment is then voided ⇒ NO DEDUCTION, the original adjustment is withdrawn, the commission has its REVERSED row and nets 0
+  [arith] H4 commission 100000 for a rep whose HR employee has no payroll profile ⇒ must wait (no adjustment) · run 2026-10 makes no item for that employee
+  ✅ [C3.3-H4] ruling H4 — rep linked to an ACTIVE employee WITHOUT a payroll profile · commission 100000 ⇒ APPROVED with NO HR adjustment (DTO payroll WAITING_EMPLOYEE) even after the minute job · HR then pays run 2026-10 ⇒ the commission is never PAID and a plain approved adjustment of that employee is NOT bound to the run (no item was produced) · the payment is voided ⇒ no DEDUCTION
+  ✅ [C3.3-H6] ruling H6 — syncPayroll keeps a per-system cursor in OpsAlertState (a `crm.commission.…cursor:<systemId>` key other than the q1a one, read at start and advanced/cleared per page) so rows beyond its 20×200 page budget are eventually handed off [static: syncPayroll body references that key]
+  ✅ [C3.3-X8.1] X8 — payloads are ids only: every hr.payroll.paid / crm.commission.* event carries only whitelisted id/amount/period keys (hr.payroll.paid = exactly runId + periodKey) · no customer name, phone or e-mail in any payload, HR adjustment note or OpsEvent of this oracle · all four event types were actually emitted
+  ✅ [C3.3-CLEAN] the oracle gives the QC database back exactly as found — every throwaway tenant and every row it owned (rules · commissions · deals · payments · HR employees/profiles/adjustments/runs · approval policies/requests · outbox · audit · notifications) and the throwaway users are gone
+
+🟢 C3.3: 90/90
+JSON_SUMMARY {"total":90,"passed":90,"findings":[]}

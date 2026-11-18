@@ -1,0 +1,62 @@
+  ✅ [S1] payroll-rules sha · payroll-run-rules byte-identical · untouched files = base
+  ✅ [S2] changed files ⊆ allow list · older oracle edits marked ORACLE-EDIT (HR VIS-5a · controller)
+fatal: path 'src/lib/modules/hr/pay-run-view.ts' exists on disk, but not in '09713f4305eb3b8c1a5f8545f909efec0e30b96e'
+fatal: path 'src/lib/modules/hr/period-label.ts' exists on disk, but not in '09713f4305eb3b8c1a5f8545f909efec0e30b96e'
+  ✅ [S3] every src hunk adds HR VIS-5a ◂ · new file marker in first 3 lines
+  ✅ [S4] action + loader/gate bodies hash = base · privacy lines kept verbatim
+fatal: path 'src/lib/modules/hr/pay-run-view.ts' exists on disk, but not in '09713f4305eb3b8c1a5f8545f909efec0e30b96e'
+fatal: path 'src/lib/modules/hr/period-label.ts' exists on disk, but not in '09713f4305eb3b8c1a5f8545f909efec0e30b96e'
+  ✅ [S5] no new *Satang arithmetic in tsx · no new "use client" file
+  ✅ [S6] fitness-hr F16.1 clean
+  ✅ [S7] page: payViewOf · we → view=hours · ytd link ?view=ytd · nav hr-pay-view-* · old imports kept
+[env] qc-hr-vis-5a · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-vis-5a] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+  ✅ [V1] payViewOf vectors (redirects · links · GET forms · default · unknown · explicit)
+  ✅ [V2] [meta] vector table covers every payroll param the frozen actions emit
+  ✅ [P1] periodLabel vectors th/en
+  ✅ [I1] hr.run2 th=en · every key the run screen uses exists in th and en
+  ✅ [I2] hr.payview.* 7 views th+en · hr.run2.title without engine wording · page desc via messages
+fatal: path 'src/lib/modules/hr/pay-run-view.ts' exists on disk, but not in '09713f4305eb3b8c1a5f8545f909efec0e30b96e'
+fatal: path 'src/lib/modules/hr/period-label.ts' exists on disk, but not in '09713f4305eb3b8c1a5f8545f909efec0e30b96e'
+  ✅ [I3] no Thai literal in added code lines (payroll-ui.tsx moved sections exempt)
+  ✅ [N2] walk matrix states for hours/adjust/profiles/docs/ytd/history
+  ✅ [K2] every base inventory id of /hr/payroll still in code
+  ✅ [K3] hr-run2-* written only in payroll-run-ui.tsx · base hr-run2 ids kept
+  ✅ [K4] new run-screen ids in payroll-run-ui.tsx (banner · drawer · excluded · doclink · totals · bar · jv)
+  ✅ [K5] run table: no min-w-[ · md:table-cell · one table
+(node:725740) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+fixture ok: {"DRAFT":"2026-11","PAID":"2026-10","APPROVED":"2026-09","REVERSED":"2026-08","V1":"2026-07","NONE":"2026-05"}
+  ✅ [W1] page per view: own sections only · no id in 2 views · every legacy id in a view · nav per viewer (r2) · no-access notice in run only · engine-1 history
+  ✅ [W2] [control] sections per viewer (owner · branch payroll · manager): union over nav views = base set
+  ✅ [K1] PayrollSection parts: disjoint · union = default
+  ✅ [R0] [control] period without run: create shown
+  ✅ [R1] live run in period: no create control
+  ✅ [R2] REVERSED: banner + read-only table + create · no run buttons
+  ✅ [R3] v1 run: banner + history link · no v2 controls
+  ✅ [R4] period label th/en · no ISO period · no engine wording
+  ✅ [R5] [privacy] limited viewer: in-scope rows/totals only + excluded note
+  ✅ [R6] hr-run2-excluded: limited viewer only
+  ✅ [R7] [privacy] no whole-run figure for limited · accounting callout without amounts
+  ✅ [R8] [privacy] manager: no ฿ in run screen
+  ✅ [R9] ?emp= drawer with that row's lines · unknown emp → none
+  ✅ [R10] [privacy] ?emp out of pay scope shows nothing of that person
+  ✅ [R11] OT + commission figures (tiles/col) = Σ stored lines
+  ✅ [R12] en run screen: no Thai from UI strings
+  ❌ [T1] run table add vs OT: ≥1280 add excl. OT + OT col · <1280 stored add + 'รวม OT' · each row/total sums to net · no-OT row equal · limited totals in-scope — expected  | actual owner QCV5 Anna af: ≥1280 sum≠net | owner QCV5 Anna af: no "รวม OT" hint | owner QCV5 Ben afc: ≥1280 sum≠net | owner QCV5 Ben afc: no "รวม OT" hint | owner รวม 3 คน: ≥1280 sum≠net | owner รวม 3 คน: no "รวม OT" hint
+  ✅ [N1] inventory rows for new ids · every id rendered on payroll has a payroll row (ids owned by another page: that page's row) · hr-run2-lines-* kind link
+  ✅ [B1] 13b screen: status translated · engine column hidden · net sticky right-0
+  ✅ [B2] [control] 13b data/CSV unchanged (engine + raw status kept)
+RESIDUE none (tenants=1 users=3)
+  ✅ [Z1] residue · outbound · intl shim used · no missing message at render
+BASE-EXPECTATION 21/39 as registered (RED-by-design 19 · GREEN controls 20) · off: S7(RED→pass) V1(RED→pass) P1(RED→pass) I2(RED→pass) N2(RED→pass) K4(RED→pass) K5(RED→pass) W1(RED→pass) K1(RED→pass) R1(RED→pass) R2(RED→pass) R3(RED→pass) R4(RED→pass) R6(RED→pass) R9(RED→pass) R11(RED→pass) N1(RED→pass) B1(RED→pass)
+
+===== qc-hr-vis-5a ===== passed 38/39 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-vis-5a","total":39,"passed":38,"failed":["T1"],"findings":[{"id":"T1","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":19,"baseGreen":20,"offBase":["S7(RED→pass)","V1(RED→pass)","P1(RED→pass)","I2(RED→pass)","N2(RED→pass)","K4(RED→pass)","K5(RED→pass)","W1(RED→pass)","K1(RED→pass)","R1(RED→pass)","R2(RED→pass)","R3(RED→pass)","R4(RED→pass)","R6(RED→pass)","R9(RED→pass)","R11(RED→pass)","N1(RED→pass)","B1(RED→pass)"]}

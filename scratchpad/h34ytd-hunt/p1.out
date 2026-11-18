@@ -1,0 +1,39 @@
+[env] hunt-h34y-p1 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-h34y-p1] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:1860527) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+a.draft: true
+a.save asOf 09-30 vs DRAFT: {"ok":false,"code":"OVERLAP","reason":"มีรอบจ่ายในระบบที่จ่ายภายในช่วงของยอดยกมานี้แล้ว — เลือกวันที่ยอดถึงก่อนวันจ่ายของรอบแรกในระบบ"}
+a.save asOf 08-31: {"ok":true,"rev":1,"warnings":[]}
+a.approve stale: {"ok":false,"note":"ข้อมูลเงินเดือนเปลี่ยนหลังสร้างร่าง — กด 'ดึงข้อมูลใหม่' แล้วตรวจอีกครั้ง","code":"INPUTS_CHANGED"}
+b.v1 draft: {"id":true}
+b.save 09-30 vs v1 DRAFT: {"ok":false,"code":"OVERLAP","reason":"มีรอบจ่ายในระบบที่จ่ายภายในช่วงของยอดยกมานี้แล้ว — เลือกวันที่ยอดถึงก่อนวันจ่ายของรอบแรกในระบบ"}
+b2.save eB2 09-30: {"ok":true,"rev":1,"warnings":[]}
+b2.v1 recompute (eB2 joins, opening covers payDay): {"ok":false,"reason":"มีพนักงานที่ยอดยกมาครอบคลุมวันจ่ายของรอบนี้แล้ว — แก้วันที่ยอดถึงของยอดยกมาก่อนสร้างรอบ"}
+b2.v1 items now: ["eB"]
+b2.v1 approve: {"ok":true,"note":"อนุมัติแล้ว — ยังไม่ได้เปิดระบบบัญชี จึงไม่ได้ลงบัญชี"}
+c.create: true
+c.approve: true
+c.save 08-31: {"ok":true,"rev":1,"warnings":[]}
+c.reverse: true
+c.edit asOf 09-30 (after reverse): {"ok":true,"rev":2,"warnings":[]}
+c.recreate Sep: {"ok":false,"code":"OPENING_OVERLAP","reason":"มีพนักงานที่ยอดยกมาครอบคลุมวันจ่ายของรอบนี้แล้ว — แก้วันที่ยอดถึงของยอดยกมาก่อนสร้างรอบ"}
+c.create Oct (prior = opening only): {"ok":true,"wht":22779,"prior":{"ssoSatang":700000,"whtSatang":136664,"incomeSatang":27000000},"m":{"id":"cmwfqfzyo001slbkzn2c01s7a","rev":2}}
+d.save 06-30 after Jan–Mar runs: {"ok":false,"code":"OVERLAP","reason":"มีรอบจ่ายในระบบที่จ่ายภายในช่วงของยอดยกมานี้แล้ว — เลือกวันที่ยอดถึงก่อนวันจ่ายของรอบแรกในระบบ"}
+d.save 01-10 (before first run): {"ok":true,"rev":1,"warnings":[]}
+e.create 16:59Z: true
+e.save asOf 08-31 vs BKK 08-31 run: {"ok":false,"code":"OVERLAP","reason":"มีรอบจ่ายในระบบที่จ่ายภายในช่วงของยอดยกมานี้แล้ว — เลือกวันที่ยอดถึงก่อนวันจ่ายของรอบแรกในระบบ"}
+e.create 17:00Z: true
+e.save asOf 08-31 vs BKK 09-01 run: {"ok":true,"rev":1,"warnings":[]}
+f.save: true
+f.create Aug payDay=asOf: {"ok":false,"code":"OPENING_OVERLAP","reason":"มีพนักงานที่ยอดยกมาครอบคลุมวันจ่ายของรอบนี้แล้ว — แก้วันที่ยอดถึงของยอดยกมาก่อนสร้างรอบ"}
+f.v2 runs left: 0
+f.live: 1
+RESIDUE none (tenants=2 users=9 activeLaw=0->0)

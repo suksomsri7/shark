@@ -1,0 +1,19 @@
+qc-ai-skills exit=0
+qc-nav-functions exit=1
+qc-pages exit=0
+qc-ai-tools exit=0
+qc-ai-tools2 exit=0
+qc-hr-h4.3 exit=1
+qc-hr-h4.2 exit=0
+qc-hr-h4.8 exit=0
+qc-hr-h1.3 exit=0
+qc-hr-h2.4 exit=0
+qc-hr-h0.6 exit=0
+qc-hr-priv-2 exit=1
+qc-hr-money-2 exit=0
+qc-hr-hf-sso exit=0
+fitness exit=0
+fitness-hr exit=0
+fitness-nodb exit=0
+fitness-hr-nodb exit=0
+DONE

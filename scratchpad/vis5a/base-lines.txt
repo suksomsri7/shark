@@ -1,0 +1,37 @@
+  ✅ [S1] payroll-rules sha · payroll-run-rules byte-identical · untouched files = base
+  ✅ [S2] changed files ⊆ allow list · older oracle edits marked ORACLE-EDIT (HR VIS-5a · controller)
+  ✅ [S3] every src hunk adds HR VIS-5a ◂ · new file marker in first 3 lines
+  ✅ [S4] action + loader/gate bodies hash = base · privacy lines kept verbatim
+  ✅ [S5] no new *Satang arithmetic in tsx · no new "use client" file
+  ✅ [S6] fitness-hr F16.1 clean
+  ❌ [S7] page: payViewOf · we → view=hours · ytd link ?view=ytd · nav hr-pay-view-* · old imports kept
+  ❌ [V1] payViewOf vectors (redirects · links · GET forms · default · unknown · explicit)
+  ✅ [V2] [meta] vector table covers every payroll param the frozen actions emit
+  ❌ [P1] periodLabel vectors th/en
+  ✅ [I1] hr.run2 th=en · every key the run screen uses exists in th and en
+  ❌ [I2] hr.payview.* 7 views th+en · hr.run2.title without engine wording · page desc via messages
+  ✅ [I3] no Thai literal in added code lines (payroll-ui.tsx moved sections exempt)
+  ❌ [N1] inventory rows for new ids · hr-run2-lines-* kind link
+  ❌ [N2] walk matrix states for hours/adjust/profiles/docs/ytd/history
+  ✅ [K2] every base inventory id of /hr/payroll still in code
+  ✅ [K3] hr-run2-* written only in payroll-run-ui.tsx · base hr-run2 ids kept
+  ❌ [K4] new run-screen ids in payroll-run-ui.tsx (banner · drawer · excluded · doclink · totals · bar · jv)
+  ❌ [K5] run table: no min-w-[ · md:table-cell · one table
+  ❌ [W1] page per view: own sections only · no id in 2 views · every legacy id in a view · nav (manager: run+hours)
+  ❌ [K1] PayrollSection parts: disjoint · union = default
+  ✅ [R0] [control] period without run: create shown
+  ❌ [R1] live run in period: no create control
+  ❌ [R2] REVERSED: banner + read-only table + create · no run buttons
+  ❌ [R3] v1 run: banner + history link · no v2 controls
+  ❌ [R4] period label th/en · no ISO period · no engine wording
+  ✅ [R5] [privacy] limited viewer: in-scope rows/totals only + excluded note
+  ❌ [R6] hr-run2-excluded: limited viewer only
+  ✅ [R7] [privacy] no whole-run figure for limited · accounting callout without amounts
+  ✅ [R8] [privacy] manager: no ฿ in run screen
+  ❌ [R9] ?emp= drawer with that row's lines · unknown emp → none
+  ✅ [R10] [privacy] ?emp out of pay scope shows nothing of that person
+  ❌ [R11] OT + commission figures (tiles/col) = Σ stored lines
+  ✅ [R12] en run screen: no Thai from UI strings
+  ❌ [B1] 13b screen: status translated · engine column hidden · net sticky right-0
+  ✅ [B2] [control] 13b data/CSV unchanged (engine + raw status kept)
+  ✅ [Z1] residue · outbound · intl shim used · no missing message at render

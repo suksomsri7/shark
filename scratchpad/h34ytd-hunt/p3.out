@@ -1,0 +1,9 @@
+[env] hunt-h34y-p3 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-h34y-p3] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+over-withheld (wht 2,000,000): {"got":{"sv":true,"run":true,"wht":0,"net":2912500,"gross":3000000,"ssoE":87500,"safe":true,"sso":87500},"want":0}
+december (11 months opening): {"got":{"sv":true,"run":true,"wht":17087,"net":2882913,"gross":3000000,"ssoE":100000,"safe":true,"sso":87500},"want":17087}
+SSO 5,000,000 above cap: {"got":{"sv":true,"run":true,"wht":17084,"net":2895416,"gross":3000000,"ssoE":87500,"safe":true,"sso":87500},"want":17084}
+huge (opening INT_MAX · salary 20M ฿/month): {"got":{"sv":true,"run":true,"wht":874301069,"net":1125611431,"gross":2000000000,"ssoE":87500,"safe":true,"sso":87500},"want":874301069,"tax":3497204276}
+INT ceiling: opening 21,474,836.48 ฿: {"ok":false,"code":"FIELDS","reason":"ข้อมูลยอดยกมาไม่ถูกต้อง — จำนวนเงินต้องเป็นจำนวนเต็มไม่ติดลบ และจำนวนเดือนต้องไม่เกินเดือนของวันที่ยอดถึง"}
+executive 3M ฿/month Jan–Aug: {"ok":false,"code":"FIELDS","reason":"ข้อมูลยอดยกมาไม่ถูกต้อง — จำนวนเงินต้องเป็นจำนวนเต็มไม่ติดลบ และจำนวนเดือนต้องไม่เกินเดือนของวันที่ยอดถึง"}
+RESIDUE none (tenants=2 users=9 activeLaw=0->0)

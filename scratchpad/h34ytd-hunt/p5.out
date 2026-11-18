@@ -1,0 +1,24 @@
+[env] hunt-h34y-p5 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-h34y-p5] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+┌─────────┬──────────────┬────────────┬──────┬───────────────┬────────────┬────────────┬───────────┬────────────┬───────────────┬──────────────┐
+│ (index) │ list         │ save       │ bulk │ clear         │ zero       │ ownRow     │ unknownId │ otherSysId │ otherTenantId │ roleClaim    │
+├─────────┼──────────────┼────────────┼──────┼───────────────┼────────────┼────────────┼───────────┼────────────┼───────────────┼──────────────┤
+│ other   │ 'NO'         │ 'NO'       │ 'NO' │ 'NO'          │ 'NO'       │ 'NO'       │ 'NO'      │ 'NO'       │ 'NO'          │ 'NO'         │
+│ self    │ 'NO'         │ 'NO'       │ 'NO' │ 'NO'          │ 'NO'       │ 'NO'       │ 'NO'      │ 'NO'       │ 'NO'          │ 'NO'         │
+│ mgr     │ 'NO'         │ 'NO'       │ 'NO' │ 'NO'          │ 'NO'       │ 'NO'       │ 'NO'      │ 'NO'       │ 'NO'          │ 'NO'         │
+│ readU   │ 'NO'         │ 'NO'       │ 'NO' │ 'NO'          │ 'NO'       │ 'NO'       │ 'NO'      │ 'NO'       │ 'NO'          │ 'NO'         │
+│ gateU   │ 'NO'         │ 'NO'       │ 'NO' │ 'NO'          │ 'NO'       │ 'NO'       │ 'NO'      │ 'NO'       │ 'NO'          │ 'NO'         │
+│ gateOwn │ 'OK(5 rows)' │ 'OK(rev2)' │ 'OK' │ 'OK'          │ 'OK(rev3)' │ 'OWN'      │ 'NO'      │ 'NO'       │ 'NO'          │ 'NO'         │
+│ gate    │ 'OK(5 rows)' │ 'OK(rev3)' │ 'OK' │ 'REV_CHANGED' │ 'OK(rev5)' │ 'OK(rev1)' │ 'NO'      │ 'NO'       │ 'NO'          │ 'NO'         │
+│ owner   │ 'OK(5 rows)' │ 'OK(rev4)' │ 'OK' │ 'REV_CHANGED' │ 'OK(rev7)' │ 'OK(rev2)' │ 'NO'      │ 'NO'       │ 'NO'          │ 'OK(5 rows)' │
+└─────────┴──────────────┴────────────┴──────┴───────────────┴────────────┴────────────┴───────────┴────────────┴───────────────┴──────────────┘
+distinct refusal bytes per code: {"NO":1,"OWN":1,"REV_CHANGED":1}
+NO bytes: ["{\"ok\":false,\"code\":\"NO\",\"reason\":\"ไม่มีสิทธิ์ใช้งานส่วนนี้\"}"]
+gateOwn bulk incl own: {"ok":false,"code":"OWN","reason":"บันทึกยอดยกมาของตัวเองไม่ได้ — ให้เจ้าของร้านหรือผู้ดูแลเงินเดือนคนอื่นบันทึกให้","employeeId":"cmwfqlc500013iakzpggz61dr"}
+slipHistory eU1 (u1): {"other":"NO","self":"NO","mgr":"NO","readU":"OK opening=24000007","gateU":"OK opening=24000007","gateOwn":"OK opening=24000007","gate":"OK opening=24000007","owner":"OK opening=24000007"}
+slipHistory eU2 (u2): {"other":"NO","self":"NO","mgr":"NO","readU":"NO","gateU":"NO","gateOwn":"OK opening=0","gate":"OK opening=0","owner":"OK opening=0"}
+tax-year report: {"other":"NO","self":"NO","mgr":"NO","readU":"A01:270000.07,A04:270000.00,A05:240000.00","gateU":"A01:270000.07,A04:270000.00,A05:240000.00","gateOwn":"A01:270000.07,A02:30000.00,A04:270000.00,A05:240000.00","gate":"A01:270000.07,A02:30000.00,A04:270000.00,A05:240000.00","owner":"A01:270000.07,A02:30000.00,A04:270000.00,A05:240000.00"}
+mySlips self: {"ok":true,"opening":{"asOfDay":"2031-08-31","months":8,"incomeSatang":24000000,"taxSatang":136664,"ssoSatang":700000}}
+audit keys: ["hr.payroll.opening.save:by+employeeId+rev+taxYear","hr.payroll.opening.clear:employeeId+rev+taxYear"]
+audit has amount: false
+RESIDUE none (tenants=2 users=9 activeLaw=0->0)

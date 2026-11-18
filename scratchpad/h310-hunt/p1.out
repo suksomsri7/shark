@@ -1,0 +1,86 @@
+[env] h310-p1 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h310-p1] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2208052) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+A0.setBookA {"ok":true}
+A0.setPayA {"ok":true}
+B0.opening {"ok":true,"rev":1,"warnings":[]}
+D2.saveProfileNoFlag {"ok":true}
+D2.stored [{"rdFormFlag":2}]
+D2.columnDefault [{"column_default":"2"}]
+B0.dailyCreate {"ok":false,"code":"VARIABLE_PAY","reason":"ร้านนี้มีพนักงานรายวัน/รายชั่วโมง หรือรับค่าคอมฯ อย่างเดียว — เครื่องรุ่นใหม่ยังไม่รองรับจนกว่านักบัญชียืนยันวิธีหักภาษี"}
+B1.create {"ok":true,"id":"cmwfvkn7f003vqskzgy5x1t1i","employees":3}
+B1.approve {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+B1.pay {"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"}
+B1.run {"id":"cmwfvkn7f003vqskzgy5x1t1i","status":"PAID","book":"cmwfvkl4p000jqskz4958d9g4","j":"cmwfvknvq0040qskzred3aqjb","g":6250000,"n":5995416,"w":17084,"se":237500,"sr":237500,"a":0,"d":0,"fin":"true"}
+B1.items [{"e":"cmwfvklph003aqskzzdypbnfn","g":3000000,"n":2895416,"w":17084,"sb":1750000,"se":87500,"sr":87500,"a":0,"d":0,"inc":3000000,"sw":3000000},{"e":"cmwfvklqf003cqskz1wotdaaq","g":2000000,"n":1912500,"w":0,"sb":1750000,"se":87500,"sr":87500,"a":0,"d":0,"inc":2000000,"sw":2000000},{"e":"cmwfvklra003eqskz2zq15wjk","g":1250000,"n":1187500,"w":0,"sb":1250000,"se":62500,"sr":62500,"a":0,"d":0,"inc":1250000,"sw":1250000}]
+B1.itemSums {"g":6250000,"n":5995416,"w":17084,"se":237500,"sr":237500,"sb":4750000,"inc":6250000,"a":0,"d":0}
+B1.runTotals=items {"g":true,"n":true,"w":true,"se":true,"sr":true,"a":true,"d":true}
+B2.bank {"ok":true,"items":3,"total":5995416,"eqNet":true,"ni":[]}
+B3.pnd1 {"ok":true,"lines":3,"total":6250000,"tax":17084,"eqInc":true,"eqTax":true,"ni":[],"w":[]}
+D2.pnd1Header ï»¿H|0000|0105555000013|000000|1|PND1|0105555000013|000000|à¸ªà¸³à¸à¸±à¸à¸à¸²à¸à¹à¸«à¸à¹|0|09|2574||00|3|62500.00|170.84|0.00|170.84|170.84|QCREF00000000000036|2
+B3.sso110 {"ok":true,"lines":3,"total":4750000,"tax":475000,"sb":4750000,"se":237500,"sr":237500,"ni":[]}
+B4.entries [{"id":"cmwfvknvq0040qskzred3aqjb","book":"cmwfvkl4p000jqskz4958d9g4","journal":"ADJUST","status":"POSTED","k":"hr-payroll#cmwfvkn7f003vqskzgy5x1t1i#accrual","rof":null,"dr":6487500,"cr":6487500},{"id":"cmwfvko3q0047qskzd1m2u7fd","book":"cmwfvkl4p000jqskz4958d9g4","journal":"PAYMENT","status":"POSTED","k":"hr-payroll#cmwfvkn7f003vqskzgy5x1t1i#pay","rof":null,"dr":5995416,"cr":5995416}]
+B4.lines.ADJUST [{"code":"2120","dr":0,"cr":5995416},{"code":"2130","dr":0,"cr":17084},{"code":"2150","dr":0,"cr":475000},{"code":"6000","dr":6250000,"cr":0},{"code":"6010","dr":237500,"cr":0}]
+B4.lines.PAYMENT [{"code":"1010","dr":0,"cr":5995416},{"code":"2120","dr":5995416,"cr":0}]
+B4.check {"accBal":true,"payBal":true,"cr2120":5995416,"eqNet":true,"payAmt":5995416,"payEqNet":true,"payBook":true,"accBook":true}
+B5.slips [{"ok":true,"state":"ISSUED","net":2895416,"earn":3000000,"ded":104584,"sso":1750000,"er":87500},{"ok":true,"state":"ISSUED","net":1912500,"earn":2000000,"ded":87500,"sso":1750000,"er":87500},{"ok":true,"state":"ISSUED","net":1187500,"earn":1250000,"ded":62500,"sso":1250000,"er":62500}]
+B5.slipNet=item [true,true,true]
+B5.historyE1 {"taxYear":2031,"count":1,"grossSatang":3000000,"incomeSatang":27000000,"taxSatang":153748,"ssoSatang":787500,"netSatang":2895416,"slips":[{"runId":"cmwfvkn7f003vqskzgy5x1t1i","periodKey":"2031-09","payDate":"2031-09-25","netSatang":2895416,"href":"/app/sys/cmwfvkl45000iqskzcn5x492k/payroll/cmwfvkn7f003vqskzgy5x1t1i/slip/cmwfvklph003aqskzzdypbnfn"}],"opening":{"asOfDay":"2031-08-31","months":8,"incomeSatang":24000000,"taxSatang":136664,"ssoSatang":700000}}
+B6.payrollMonth.totals {"gross":"62500.00","add":"0.00","deduct":"0.00","ssoEmployee":"2375.00","ssoEmployer":"2375.00","wht":"170.84","net":"59954.16"}
+B6.pm=items {"g":true,"n":true,"w":true,"se":true,"sr":true,"a":true,"d":true,"rows":3}
+B6.taxYear {"totals":{"months":"11","income":"302500.00","wht":"1537.48","ssoEmployee":"9375.00","ssoEmployer":"2375.00"},"rows":[{"code":"E01","name":"E01 afbpeboiokq","unit":"สาขาเหนือ afbpeboiokq","citizenId":"•••3454","months":"9","income":"270000.00","wht":"1537.48","ssoEmployee":"7875.00","ssoEmployer":"875.00"},{"code":"E02","name":"E02 afbpeboiokq","unit":"สาขาใต้ afbpeboiokq","citizenId":"•••9991","months":"1","income":"20000.00","wht":"0.00","ssoEmployee":"875.00","ssoEmployer":"875.00"},{"code":"E03","name":"E03 afbpeboiokq","unit":"สาขาเหนือ afbpeboiokq","citizenId":"•••3451","months":"1","income":"12500.00","wht":"0.00","ssoEmployee":"625.00","ssoEmployer":"625.00"}]}
+B6.ty=items+opening {"inc":30250000,"want":30250000,"wht":153748,"wantW":153748,"se":937500,"wantSe":937500}
+B7.reverse {"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}
+B7.run {"id":"cmwfvkn7f003vqskzgy5x1t1i","status":"REVERSED","book":"cmwfvkl4p000jqskz4958d9g4","j":"cmwfvknvq0040qskzred3aqjb","g":6250000,"n":5995416,"w":17084,"se":237500,"sr":237500,"a":0,"d":0,"fin":"true"}
+B7.entriesAfter [["ADJUST","REVERSED","hr-payroll#cmwfvkn7f003vqskzgy5x1t1i#accrual",6487500,6487500],["PAYMENT","REVERSED","hr-payroll#cmwfvkn7f003vqskzgy5x1t1i#pay",5995416,5995416],["REVERSAL","POSTED","hr-payroll#cmwfvkn7f003vqskzgy5x1t1i#REVERSAL:cmwfvko3q0047qskzd1m2u7fd",5995416,5995416],["REVERSAL","POSTED","hr-payroll#cmwfvkn7f003vqskzgy5x1t1i#REVERSAL:cmwfvknvq0040qskzred3aqjb",6487500,6487500]]
+B7.reversalsPerOriginal [["ADJUST",1],["PAYMENT",1]]
+B7.perLedgerNet []
+B7.slipsAfter ["WITHDRAWN","WITHDRAWN","WITHDRAWN"]
+B7.pdfAfter {"ok":false,"code":"WITHDRAWN"}
+B7.bankAfter {"ok":false,"code":"STATUS"}
+B7.pndAfter {"ok":false,"code":"CHANGED"}
+B7.ssoAfter {"ok":false,"code":"STATUS"}
+B7.newPndPreview {"ok":false,"code":"EMPTY"}
+B7.pmAfter {"totals":{"gross":"0.00","add":"0.00","deduct":"0.00","ssoEmployee":"0.00","ssoEmployer":"0.00","wht":"0.00","net":"0.00"},"rows":0,"status":[]}
+B7.openingUntouched true
+B7.workDaysUnbound [{"n":75}]
+B7.adjBound [{"n":0}]
+B8.recreate {"ok":true,"id":"cmwfvkq1r004sqskzykoidspr","employees":3}
+B8.approve {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+B8.sameItems true
+B8.oldPndNowDownloadable {"ok":true}
+B8.oldSsoNow {"ok":false,"code":"STATUS"}
+B8.oldBankNow {"ok":false,"code":"STATUS"}
+B8.pay {"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"}
+A1.setBookB {"ok":true}
+A1.payDefaultAfterSwitch null
+A1.stateForced {"bookId":true,"payDefault":true,"payAccountsShown":["finB"]}
+A1.createOct {"ok":true}
+A1.approveOct {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+A1.runOct {"book":"BB"}
+A1.payDefault(finA) {"ok":false,"note":"เลือกบัญชีเงินที่ใช้จ่ายเงินเดือน (บัญชีธนาคารหรือเงินสดของสมุดบัญชีที่ลงรอบนี้)","code":"PAY_ACCOUNT"}
+A1.payExplicitFinA {"ok":false,"note":"เลือกบัญชีเงินที่ใช้จ่ายเงินเดือน (บัญชีธนาคารหรือเงินสดของสมุดบัญชีที่ลงรอบนี้)","code":"PAY_ACCOUNT"}
+A1.afterRefusals {"status":"APPROVED","payEntries":0,"finALines":0}
+A1.payExplicitFinB {"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"}
+A1.payEntry [{"book":"BB","dr":4782916}]
+A2.reset {"ok":true}
+A2.race {"res":[{"ok":true},{"ok":true}],"blocked":[true,false],"holderErr":""}
+A2.final {"book":"BA","payDefault":"finB(of BB)"}
+A2.approveNov {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+A2.runNovBook BA
+A2.payDefault {"ok":false,"note":"เลือกบัญชีเงินที่ใช้จ่ายเงินเดือน (บัญชีธนาคารหรือเงินสดของสมุดบัญชีที่ลงรอบนี้)","code":"PAY_ACCOUNT"}
+A2.afterRefusal {"status":"APPROVED","entries":[["accrual","BA"]]}
+A2.twoBooks {"res":[{"ok":true},{"ok":true}],"blocked":[true,true],"book":"BA","link":"ONE","payDefault":null}
+D3.laneSsoRows [{"sourceKey":"v1:SSO","kind":"SSO","f":"1970-01-01","status":"DRAFT","max":"1500000","min":"165000","bp":"500"}]
+D3.v2.15000 {"baseSatang":1500000,"employeeSatang":75000,"employerSatang":75000}
+D3.v2.17500 {"baseSatang":1750000,"employeeSatang":87500,"employerSatang":87500}
+D3.v1.default {"baseSatang":1500000,"employeeSatang":75000,"employerSatang":75000}
+RESIDUE none (tenants=1 users=5 activeLaw=0->0)

@@ -1,0 +1,17 @@
+[env] hunt-h34y-p2 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-h34y-p2] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+a.wht: 17084
+a.clear: {"ok":true}
+a.approve after clear: {"ok":false,"note":"ข้อมูลเงินเดือนเปลี่ยนหลังสร้างร่าง — กด 'ดึงข้อมูลใหม่' แล้วตรวจอีกครั้ง","code":"INPUTS_CHANGED"}
+b.edit months/asOf: {"ok":true,"rev":2,"warnings":["SSO_HIGH"]}
+b.approve: {"ok":true,"marker":{"id":"cmwfqhb6l0019wrkzkl65yrsu","rev":1},"liveRev":2,"markerIsLive":false}
+c.marker: "MISSING"
+c.review before: ["YTD_OPENING"]
+c.zero: {"ok":true,"rev":1,"warnings":[]}
+c.review draft after zero: []
+c.approve: true
+c.review after approve: ["YTD_OPENING"]
+c.marker after approve: "MISSING"
+d.approveFirst: {"blocked":2,"ap":false,"apCode":"INPUTS_CHANGED","sv":true,"wht":17084,"markerRev":1,"usedSupersededBeforeApprove":false}
+d.saveFirst: {"blocked":2,"ap":false,"apCode":"INPUTS_CHANGED","sv":true,"wht":17084,"markerRev":1,"usedSupersededBeforeApprove":false}
+RESIDUE none (tenants=2 users=9 activeLaw=0->0)

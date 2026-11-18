@@ -1,0 +1,37 @@
+[env] hunt-hfsso-p2 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-hfsso-p2] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2651205) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ACTIVE law rows before = 0
+mixed items [code, sb, se, sr, w, n]: [["M01",165000,8300,8300,0,91700],["M02",165000,8300,8300,0,156700],["M03",1001000,50100,50100,0,950900],["M04",1500000,75000,75000,0,1425000],["M05",1750000,87500,87500,0,1662500],["M06",1750000,87500,87500,0,1912500],["M07",1750000,87500,87500,170417,4742083],["M08",0,0,0,20833,2979167],["M09",1750000,87500,87500,0,1912500],["M10",1750000,87500,87500,0,1662500]]
+mixed run: {"id":"cmwg3np92001golkz207ekbi1","pk":"2026-09","status":"DRAFT","ev":1,"j":null,"g":18266000,"n":17495550,"w":191250,"se":579200,"sr":579200,"marker":{"rateBp":500,"periodKey":"2026-09","maxBaseSatang":1750000}}
+approve: {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+pay: {"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"}
+SSO110: {"ok":true,"total":11581000,"tax":1158400,"lines":9,"ni":[["NOT_INSURED",null,null]]}
+PND1: {"ok":true,"total":18266000,"tax":191250,"lines":10}
+bank: {"ok":true,"total":17495550}
+JV: [{"st":"POSTED","lines":[{"code":"1010","dr":0,"cr":17495550},{"code":"2100","dr":0,"cr":1158400},{"code":"2130","dr":0,"cr":191250},{"code":"6000","dr":18845200,"cr":0}]}]
+(a) WHT stale only ⇒ RECOMPUTE: "RECOMPUTE"
+(b) SSO stale only ⇒ RECOMPUTE: "RECOMPUTE"
+(c) run with adjustments: {"run":{"id":"cmwg3nqox004kolkzq9mwxbuf","pk":"2026-05","status":"DRAFT","ev":1,"j":null,"g":6630000,"n":6312083,"w":170417,"se":147500,"sr":147500,"marker":{"rateBp":500,"periodKey":"2026-05","maxBaseSatang":1750000}},"items":[{"e":"cmwg3nq240046olkzx9x9m1mm","g":5430000,"n":5172083,"w":170417,"sb":1750000,"se":87500,"sr":87500,"a":500000,"d":70000},{"e":"cmwg3nq2z0048olkzqiavlh64","g":1200000,"n":1140000,"w":0,"sb":1200000,"se":60000,"sr":60000,"a":0,"d":0}]}
+(c) approve: {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+(d) wage changed after build ⇒ approve: {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+(d) rows: [{"e":"cmwg3nq240046olkzx9x9m1mm","g":5000000,"n":4742083,"w":170417,"sb":1750000,"se":87500,"sr":87500,"a":0,"d":0},{"e":"cmwg3nq2z0048olkzqiavlh64","g":1200000,"n":1140000,"w":0,"sb":1200000,"se":60000,"sr":60000,"a":0,"d":0}]
+(d2) stored pre-fix: [{"e":"cmwg3nq240046olkzx9x9m1mm","g":5000000,"n":4753333,"w":171667,"sb":1500000,"se":75000,"sr":75000,"a":0,"d":0},{"e":"cmwg3nq2z0048olkzqiavlh64","g":1200000,"n":1140000,"w":0,"sb":1200000,"se":60000,"sr":60000,"a":0,"d":0}]
+(d2) approve: "RECOMPUTE"
+(d2) recompute: true
+(d2) rows after: [{"e":"cmwg3nq240046olkzx9x9m1mm","g":6000000,"n":5621458,"w":291042,"sb":1750000,"se":87500,"sr":87500,"a":0,"d":0},{"e":"cmwg3nq2z0048olkzqiavlh64","g":1200000,"n":1140000,"w":0,"sb":1200000,"se":60000,"sr":60000,"a":0,"d":0}]
+(e) approve pre-fix + negative: "RECOMPUTE"
+(e) after recompute: "NEGATIVE_NET"
+(f1) approve∥recompute: {"blocked":[true,true],"res":["RECOMPUTE",true],"run":{"id":"cmwg3nsra009yolkzi3nu4f06","pk":"2026-09","status":"DRAFT","ev":1,"j":null,"g":5000000,"n":4742083,"w":170417,"se":87500,"sr":87500,"marker":{"rateBp":500,"periodKey":"2026-09","maxBaseSatang":1750000}}}
+(f2) recompute∥approve(old expect): {"blocked":[true,true],"res":[true,"STALE"],"run":{"id":"cmwg3nti100a3olkzyko40nvt","pk":"2026-10","status":"DRAFT","ev":1,"j":null,"g":5000000,"n":4742083,"w":170417,"se":87500,"sr":87500,"marker":{"rateBp":500,"periodKey":"2026-10","maxBaseSatang":1750000}}}
+(f3) approve∥approve: {"blocked":[true,true],"res":[true,"NOT_DRAFT"],"jv":1,"run":{"id":"cmwg3nti100a3olkzyko40nvt","pk":"2026-10","status":"APPROVED","ev":1,"j":"cmwg3num200cfolkz3e9yu4bd","g":5000000,"n":4742083,"w":170417,"se":87500,"sr":87500,"marker":{"rateBp":500,"periodKey":"2026-10","maxBaseSatang":1750000}}}
+(f4) approve∥approve pre-fix: {"blocked":[true,true],"res":["RECOMPUTE","RECOMPUTE"],"jv":0,"status":"DRAFT"}
+RESIDUE none (tenants=1 users=2 activeLaw=0->0)

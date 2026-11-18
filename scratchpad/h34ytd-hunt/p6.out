@@ -1,0 +1,11 @@
+[env] hunt-h34y-p6 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-h34y-p6] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+a.301: {"ok":false,"code":"FIELDS","reason":"ข้อมูลยอดยกมาไม่ถูกต้อง — จำนวนเงินต้องเป็นจำนวนเต็มไม่ติดลบ และจำนวนเดือนต้องไม่เกินเดือนของวันที่ยอดถึง"}
+a.dup: {"ok":false,"code":"FIELDS","reason":"ข้อมูลยอดยกมาไม่ถูกต้อง — จำนวนเงินต้องเป็นจำนวนเต็มไม่ติดลบ และจำนวนเดือนต้องไม่เกินเดือนของวันที่ยอดถึง"}
+b.299 invalid: {"ok":false,"code":"WHT_OVER","reason":"ภาษีหัก ณ ที่จ่ายมากกว่าเงินได้ — ตรวจตัวเลขอีกครั้ง","employeeId":"cmwfqmnby00964ikzkj0wfc5k"}
+b.rows/audits: [0,0]
+c.seed victim: true
+c.299 in-tx fail: {"res":{"ok":false,"code":"REV_CHANGED","reason":"ยอดยกมานี้ถูกแก้ไปแล้วโดยผู้อื่น — เปิดดูใหม่แล้วบันทึกอีกครั้ง","employeeId":"cmwfqmnby00964ikzkj0wfc5k"},"ms":19459,"rows":1,"audits":1}
+d.300 valid: {"ok":true,"saved":300,"reason":"","ms":21017,"rows":301}
+e.concurrent: {"blocked":1,"r1":false,"r2":true,"n2":40,"liveEmps":40,"maxPerEmp":1,"allRows":40}
+RESIDUE none (tenants=2 users=9 activeLaw=0->0)

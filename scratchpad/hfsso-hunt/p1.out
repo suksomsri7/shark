@@ -1,0 +1,55 @@
+[env] hunt-hfsso-p1 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[hunt-hfsso-p1] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2644605) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+ACTIVE law rows before = 0
+pay07: {"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"}
+stored 2026-07: {"id":"cmwg3kmw8000tl9kzd57wvd2o","pk":"2026-07","status":"PAID","ev":1,"j":"cmwg3knze003pl9kzwygvuk28","g":13200000,"n":12671666,"w":243334,"se":285000,"sr":285000,"marker":null}
+stored 2026-08: {"id":"cmwg3kn30000yl9kzmdg3tvd4","pk":"2026-08","status":"APPROVED","ev":1,"j":"cmwg3ko9b0062l9kzig3u21d8","g":13200000,"n":12671666,"w":243334,"se":285000,"sr":285000,"marker":null}
+stored 2026-10: {"id":"cmwg3kna30013l9kzvu52irxj","pk":"2026-10","status":"DRAFT","ev":1,"j":null,"g":13300000,"n":12771666,"w":243334,"se":285000,"sr":285000,"marker":null}
+stored 2026-11: {"id":"cmwg3kngi0018l9kz01rrvpkb","pk":"2026-11","status":"DRAFT","ev":1,"j":null,"g":13200000,"n":12671666,"w":243334,"se":285000,"sr":285000,"marker":null}
+stored 2025-11: {"id":"cmwg3knmi001dl9kzcdl1higv","pk":"2025-11","status":"DRAFT","ev":1,"j":null,"g":13200000,"n":12671666,"w":243334,"se":285000,"sr":285000,"marker":null}
+items07: [{"e":"cmwg3klqq000al9kztwwa27fy","g":2000000,"n":1925000,"w":0,"sb":1500000,"se":75000,"sr":75000,"a":0,"d":0},{"e":"cmwg3klts000cl9kzit5kzxye","g":5000000,"n":4753333,"w":171667,"sb":1500000,"se":75000,"sr":75000,"a":0,"d":0},{"e":"cmwg3kluo000el9kzk8xuqe9c","g":1200000,"n":1140000,"w":0,"sb":1200000,"se":60000,"sr":60000,"a":0,"d":0},{"e":"cmwg3klvl000gl9kz4lrq383v","g":5000000,"n":4853333,"w":71667,"sb":1500000,"…
+slip07 E2: {"ok":true,"runId":"cmwg3kmw8000tl9kzd57wvd2o","periodKey":"2026-07","payDate":"2026-07-31","taxYear":2026,"status":"PAID","state":"ISSUED","engineVersion":1,"employee":{"name":"E2 afbxebhidfq","position":null,"code":"E2"},"earnings":[{"code":"BASE","amountSatang":5000000,"count":1,"qty":null}],"deductions":[{"code":"SSO","amountSatang":75000,"count":1,"qty":null},{"code":"WHT","amountSatang":171667,"count":1,"qty":n…
+payslipData07 E1: {"id":"cmwg3kmwl000ul9kzj4mba4x4","tenantId":"cmwg3klk00000l9kztd99r6oo","systemId":"cmwg3klpp0008l9kzlsumptti","runId":"cmwg3kmw8000tl9kzd57wvd2o","employeeId":"cmwg3klqq000al9kztwwa27fy","grossSatang":2000000,"ssoBaseSatang":1500000,"ssoEmployeeSatang":75000,"ssoEmployerSatang":75000,"whtSatang":0,"netSatang":1925000,"addSatang":0,"deductSatang":0,"snapshotJson":{"addSatang":0,"computedAt":"2026-11-14T07:41:45.265Z…
+SSO110 07: {"ok":true,"total":5700000,"tax":570000,"lines":4,"rows":[[null,null],[null,null],[null,null],[null,null]],"ni":[],"w":[]}
+PND1 07: {"ok":true,"total":13200000,"tax":243334,"lines":4}
+bank07: {"ok":true,"total":12671666,"n":4}
+report payroll-month 07: {"ok":true,"totals":{"gross":"132000.00","add":"0.00","deduct":"0.00","ssoEmployee":"2850.00","ssoEmployer":"2850.00","wht":"2433.34","net":"126716.66"},"rows":[{"code":"E1","name":"E1 afbxebhidfq","unit":"สาขาเหนือ afbxebhidfq","status":"PAID","engine":"1","gross":"20000.00","add":"0.00","deduct":"0.00","ssoEmployee":"750.00","ssoEmployer":"750.00","wht":"0.00","net":"19250.00"},{"code":"E2","name":"E2 afbxebhidfq",…
+labor 07 (actual = Σ gross + employer SSO = 13,485,000): {"ok":true,"basis":"ACTUAL","cost":13485000}
+recompute APPROVED 08: {"ok":false,"reason":"คำนวณใหม่ได้เฉพาะรอบที่ยังเป็นร่าง"}
+08 after: {"id":"cmwg3kn30000yl9kzmdg3tvd4","pk":"2026-08","status":"APPROVED","ev":1,"j":"cmwg3ko9b0062l9kzig3u21d8","g":13200000,"n":12671666,"w":243334,"se":285000,"sr":285000,"marker":null}
+approve10 noexpect: {"ok":false,"note":"ต้องคำนวณรอบนี้ใหม่ก่อนอนุมัติ (อัตราประกันสังคมของงวดนี้เปลี่ยน)","code":"RECOMPUTE"}
+approve10 expect: {"ok":false,"note":"ต้องคำนวณรอบนี้ใหม่ก่อนอนุมัติ (อัตราประกันสังคมของงวดนี้เปลี่ยน)","code":"RECOMPUTE"}
+audit refused 10: 2
+cancelAdjustment (rebuild): {"ok":true}
+10 after cancel: {"id":"cmwg3kna30013l9kzvu52irxj","pk":"2026-10","status":"DRAFT","ev":1,"j":null,"g":13200000,"n":12636666,"w":240834,"se":322500,"sr":322500,"marker":{"rateBp":500,"periodKey":"2026-10","maxBaseSatang":1750000}}
+approve10 after rebuild: {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+10 JV: [{"id":"cmwg3kqvn008nl9kzm3bj0rc2","status":"POSTED","k":"AccountManualJV#cmwg3kna30013l9kzvu52irxj#HR_PAYROLL_V1:2026-10:2026-10-30:13200000:322500:322500:240834:12636666","rof":null,"dr":13522500,"lines":[{"code":"1010","dr":0,"cr":12636666},{"code":"2100","dr":0,"cr":645000},{"code":"2130","dr":0,"cr":240834},{"code":"6000","dr":13522500,"cr":0}]}]
+approve11 before: "RECOMPUTE"
+recompute11: {"ok":true,"note":"คำนวณใหม่ 2026-11-14 14:41 น."}
+11 after: {"id":"cmwg3kngi0018l9kz01rrvpkb","pk":"2026-11","status":"DRAFT","ev":1,"j":null,"g":13200000,"n":12636666,"w":240834,"se":322500,"sr":322500,"marker":{"rateBp":500,"periodKey":"2026-11","maxBaseSatang":1750000}}
+approve11: {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+approve 2025-11: {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+2025-11 after: {"id":"cmwg3knmi001dl9kzcdl1higv","pk":"2025-11","status":"APPROVED","ev":1,"j":"cmwg3ktdx00dhl9kz98ch9gdk","g":13200000,"n":12671666,"w":243334,"se":285000,"sr":285000,"marker":null}
+reverse08: {"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}
+recreate08: {"id":"cmwg3ktqe00dvl9kz18xts7i2"}
+new08: {"id":"cmwg3ktqe00dvl9kz18xts7i2","pk":"2026-08","status":"DRAFT","ev":1,"j":null,"g":13200000,"n":12636666,"w":240834,"se":322500,"sr":322500,"marker":{"rateBp":500,"periodKey":"2026-08","maxBaseSatang":1750000}}
+approve new08: {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+pay new08: {"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"}
+old08 entries: [{"id":"3u21d8","st":"REVERSED","rof":null,"lines":[{"code":"1010","dr":0,"cr":12671666},{"code":"2100","dr":0,"cr":570000},{"code":"2130","dr":0,"cr":243334},{"code":"6000","dr":13485000,"cr":0}]},{"id":"mwp5up","st":"POSTED","rof":"3u21d8","lines":[{"code":"1010","dr":12671666,"cr":0},{"code":"2100","dr":570000,"cr":0},{"code":"2130","dr":243334,"cr":0},{"code":"6000","dr":0,"cr":13485000}]}]
+new08 entries: [{"id":"2u41fv","st":"POSTED","rof":null,"lines":[{"code":"1010","dr":0,"cr":12636666},{"code":"2100","dr":0,"cr":645000},{"code":"2130","dr":0,"cr":240834},{"code":"6000","dr":13522500,"cr":0}]}]
+net08 by account (expect = new figures only): [{"code":"1010","net":-12636666},{"code":"2100","net":-645000},{"code":"2130","net":-240834},{"code":"6000","net":13522500}]
+j07 unchanged: [{"code":"1010","dr":0,"cr":12671666},{"code":"2100","dr":0,"cr":570000},{"code":"2130","dr":0,"cr":243334},{"code":"6000","dr":13485000,"cr":0}]
+j08 orig id: "3u21d8"
+reverse07(PAID): {"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}
+new07: {"id":"cmwg3kum000gll9kzb8dops64","pk":"2026-07","status":"DRAFT","ev":1,"j":null,"g":13200000,"n":12636666,"w":240834,"se":322500,"sr":322500,"marker":{"rateBp":500,"periodKey":"2026-07","maxBaseSatang":1750000}}
+PND1 07 after reverse (new run is DRAFT): {"ok":false,"code":"EMPTY"}
+RESIDUE none (tenants=1 users=2 activeLaw=0->0)
