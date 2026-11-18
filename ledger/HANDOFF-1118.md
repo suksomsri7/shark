@@ -12,7 +12,7 @@
 - **ไฟล์ env 61 ไฟล์** ใน `/root/projects/shark-*/.env*` (+ `apps/*/.env*`) — มีรหัสฐานข้อมูล/คีย์ · สำคัญสุด: `shark-in-th/.env` `.env.local` `.env.production.local` (มี `NEON_API_KEY`) · HR: `shark-hr*/.env.qc` `.env.qc4` `.env.qc-hr` (ฐานต่อเลน) · `shark-hr-hf/.env.qc-hf` (ฐาน `hf_tenant` บน host เลน 5)
 - `scripts/hr-expected.json` ในแต่ละทรี HR (gitignored · สร้างใหม่ได้ด้วย `seed-hr-qc`)
 - `/root/qc/` 617 MB — ภาพหลักฐาน (hr-h5.1 · hr-vis5a-r4 · hr-vis5c-r1/r2 · hr-vis5d-r1) · สร้างใหม่ได้ด้วยการเดินหน้าจอ
-- `/tmp/hr-ctl/` 121 MB — สคริปต์ผู้คุม (`walk/rewalk.sh` ฯลฯ) **อยู่ใต้ /tmp หายเมื่อรีบูต**
+- `/tmp/hr-ctl/` 121 MB — บันทึกการรันของผู้คุม (อยู่ใต้ /tmp หายเมื่อรีบูต) · **สคริปต์ 57 ไฟล์คัดเข้า `ledger/hr-ctl-scripts/` แล้ว (อยู่ในป้ายสำรอง)** เหลือแต่ log
 - `/root/.claude-b/` 3.6 GB — ความจำข้าม session + ประวัติ session ของบัญชี B (`projects/-root/memory/`)
 - `node_modules` ของแต่ละทรี — ไม่ต้องย้าย (`pnpm install` + `prisma generate` ใหม่ · ต้องเป็นโฟลเดอร์จริงชื่อ node_modules)
 - ฐานข้อมูลทดสอบทั้งหมดอยู่บน Neon (ไม่อยู่บนเครื่อง) — ต้องมีไฟล์ env ชี้ไปเท่านั้น
