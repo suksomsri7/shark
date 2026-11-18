@@ -841,3 +841,31 @@
   - คำตัดสิน VIS-5c: ปุ่มแก้ไขทั้งหมดเฉพาะผู้ถือ hr.employee.create · ผู้อ่านใบลาไม่มีลิงก์แก้ไข (?edit=1 = มุมมองอ่าน) · เบอร์โทรไม่ปิด · วันหมดอายุเอกสารไม่แสดง · ป้าย "ลาวันนี้" · **ผล: บทบาทเงินเดือนไม่เห็นเลขบัตร/ปกส./บัญชีเต็มจากหน้าโปรไฟล์อีก (เดิมเห็นผ่านฟอร์ม) → แจ้งเจ้าของแล้ว**
 - HF-TENANT: รอ GO เจ้าของ (2 ขั้น: SQL อ่านอย่างเดียวบน prod → push main) · head 5bd828aa2
 - ถัดไป: VIS-5c รอบแก้ → ภาพ → merge · VIS-5d · VIS-5e · ด่าน pm-full (EXTRA เพิ่ม qc-hr-vis-5a qc-hr-vis-5b qc-hr-vis-5c) · เดินหน้าจอทั้งระบบ
+
+## ⏸ พัก — 2026-11-18 (เจ้าของสั่ง: weekly ใกล้ limit · "กลับมาทำต่อเมื่อผมสั่ง") · 40/44 · ไม่ push · ไม่แตะ prod
+**ห้ามเปิดงานใหม่จนเจ้าของสั่ง** · เจ้าของจะย้าย dev ของ SHARK ทั้งหมดไปเครื่องใหม่ → งานแรกตอนกลับมา = **ขั้นปิด/ส่งมอบ** (ข้างล่าง) ก่อนงานพัฒนาใด ๆ
+
+### สถานะสาขา (ทุกอย่างอยู่ในเครื่องนี้เท่านั้น — ยังไม่มีสาขาไหนของรอบนี้ขึ้น origin)
+| ทรี | สาขา @ head | สถานะ |
+|---|---|---|
+| shark-hr-merge | `session/hr` c4f5b2b99+ (สมุดคุมงาน) | มี VIS-5a + VIS-5b แล้ว · ยังไม่ผ่านด่านรวม · ยังไม่รันยืนยันบน QC4 |
+| shark-hr (เลน 1) | `wip/hr-vis-5bc` a62a61c5d | **VIS-5c รอบ 2 สร้างเสร็จ** vis-5c 43/43 · walker ทุกกฎ 0 · กดจริงผ่าน · ภาพ /root/qc/hr-vis5c-r2/ · **ค้าง:** (1) priv-3 P5 re-gold (เพิ่ม testid `hr-people-sched-toggle-*` `hr-people-summary` · ชื่อไม่เปลี่ยน) = ORACLE-EDIT (2) ผู้ตรวจภาพอิสระรอบ 2 (3) qc-pos-p6.2 13/16 ยังไม่พิสูจน์ว่าแดงบนฐาน (4) walker FIT-CLIP มองไม่เห็นตารางล้นกรอบใต้แผง → แล้ว merge |
+| shark-hr-l3 (เลน 3) | `wip/hr-vis-5d` (ดู head ใน `ledger/wo-notes/hr-VIS-5d-build.md` ของสาขานั้น) | **VIS-5d ผู้สร้างถูกสั่งหยุดกลางทาง → WIP commit** · ข้อสอบ 28 ข้อ (ฐาน 18 แดง/10 เขียว) · เส้นฐาน 23 ชุดเขียวอยู่ใน `hr-VIS-5d-oracle.md` · ต่อจากบันทึกท้าย build notes |
+| shark-hr-hf | `hotfix/hr-hf-tenant` 5bd828aa2 | HF-TENANT 21/21 · ผู้ตรวจ 2 รอบ · **รอ GO เจ้าของ** (ขั้น 1 SQL อ่านอย่างเดียวบน prod · ขั้น 2 push main) |
+| shark-hr-c | `tmp/walk-vis5b` 594b109a4 | สาขาถ่ายภาพ ทิ้งได้ · serve :3226 หยุดแล้ว · ข้อมูลเดินหน้าจอถอนจาก QC4 แล้ว (residue 0) |
+| shark-hr-b / l4 / l5 | leave-3 / preprod-1 / priv-3 | merged แล้ว · เลนว่าง |
+
+### ขั้นปิด/ส่งมอบ (เจ้าของอนุมัติ 18 พ.ย.: "ไล่ให้ครบ · ทำให้ปลอดภัยที่สุด · push ได้ · ต้องบันทึกทั้งหมด") — ยังไม่ได้ทำ
+1. HR: commit ค้างทุกทรี → push สาขาสำรอง `wip/hr-*` (session/hr → `wip/hr-session-1118` · hotfix → `wip/hr-hf-tenant`) · **ไม่ทับ `session/hr` บน origin · ไม่ push main · ไม่ deploy**
+2. ทุกทรี SHARK (47 ทรี · ไล่รอบแรกแล้ว): สาขาที่ยังไม่อยู่บน origin 26 สาขา (นอก HR: shark-acc `session/account-fix` · shark-acc-l2 `wip/acc-t0` · shark-sec `session/secretary` · shark-sec-wp `wip/sec-s3b.2` + อื่น ๆ) → push เป็น `backup/1118/<สาขา>` · ทรีที่มีไฟล์แก้ค้าง (acc-l2 3 · crm 7 · pos 1 · sec 1 · sec-app 1 · svc-g1 4 · svc-l2 4) + ไฟล์ไม่ติดตาม → commit สำรองจาก index ชั่วคราว (ไม่แตะทรี/สาขาของ session อื่น) → `backup/1118/<ทรี>-wip` · กันไฟล์ความลับออก
+3. โฟลเดอร์อื่นใน /root/projects นอก repo นี้ (shark · crm · kanban · lekaa-brand · shark-acc-backup · *.patch ฯลฯ): ไล่ว่าเป็น git/มี remote/มีของยังไม่ขึ้นไหม → รายงานก่อนแตะ
+4. ตรวจหลัง push (sha บน origin = ในเครื่อง) + ตาราง "สาขา → sha → ชื่อสำรอง" ในไฟล์ส่งมอบ
+5. รายการคัดลอกเอง (ไม่อยู่ใน git): `.env*` ทุกทรี (รวม `.env.qc-hr` ต่อเลน · `.env.qc-hf` · `.env.qc4`) · /root/qc/ · /tmp/hr-ctl/ · /root/.claude-b/ (ความจำ) · scratchpad ของ session
+6. อัปเดตความจำ
+
+### งานพัฒนาที่เหลือ (หลังส่งมอบ)
+VIS-5c ปิด (ข้างบน) → VIS-5d ต่อ → VIS-5e (ใบสั่งมี 75 รายการ + แบ่งเลน C0→A∥B∥C→D · คำถามเจ้าของ 10 ข้อท้ายใบสั่ง) → รวม main เข้า session/hr + แก้ migration V2 ตาม HF-TENANT ข้อ 4 → ด่าน pm-full → push → 41/44 → เดินหน้าจอทั้งระบบ → 42/44 → H5.3
+
+### รอเจ้าของ
+GO HF-TENANT · รูปแบบเงินในตารางรอบจ่าย (ก รับ 5–7 คอลัมน์ / ข ตัวเลขย่อแบบ mockup) · บทบาทเงินเดือนไม่เห็นเลขเต็มบนโปรไฟล์หลัง VIS-5c · คำถาม VIS-5e 10 ข้อ · ปกส. 17,500 / HF-SSO · GO production ทีละ migration
+หนี้ส่งต่อ session อื่น: qc-nav-functions S5 แดงบนฐาน (เมนู HOTEL ขาด 14 route · BOOKING ขาด 2) · `pnpm drift` แดงบน main (DormUtilityRate) · qc-hf-hr-privacy L-5 (ชื่อ fixture มีเลข 13 หลักถูกตัวปิดบังของ AI ปิด)
