@@ -1,3 +1,26 @@
+## ▶️ 9 พ.ย. 07:5xZ — 🏁 S3b.2 ปิด · 58/60 (97%) · เหลือ S3a.4 (ผลทดสอบเจ้าของ) + S3b.3 (ยื่นสโตร์)
+- เบอร์ทดสอบ SMS: a242405dd (PR #3) + env `SMS_TEST_LOGINS` (เจ้าของใส่ · sensitive · prod) + redeploy dpl_5UFWB2zL 07:24Z · prod probe เบอร์อื่น 503 / 0814667776 200 · oracle qc-sec-smstest 14/14 · s1.19 26/26
+- S3b.2 16bfe6540 บน `wip/sec-s3b.2` (shark-sec-wp · ยังไม่ push) · 42 ภาพ (th/en × iphone69/65/ipad13 × 7) · contact sheet `ledger/store-2.0/shots/contact-sheet-{th,en}.png` · listing-2.0.json · PRIVACY-LABELS.md · README (คำถามเจ้าของ 9 ข้อ)
+- 🔴 ก่อน S3b.3: SMS ยังไม่มีเกตเวย์ → ใช้ What's New แบบไม่มี SMS + ตัดภาพ 06-team หรือเปิด ThaiBulkSMS · iPad จอเลขากว้างโล่ง · บั๊กอังกฤษ (พหูพจน์ "1 items" · เมนูข้างไทยในโหมดอังกฤษ · "(added in Thai)") · asc-screenshots.py ต้องรองรับต่อภาษา+ช่อง iPad ก่อนอัป
+
+## ▶️ 8 พ.ย. 06:2xZ — 🏁 S3b.1 + S3a.3 ปิด · 57/60 (95%) · รอเจ้าของทดสอบ (S3a.4)
+- S3b.1 0e2afe197 (เอกสาร/ร่าง PDPA/release notes/HANDOVER) · privacy page Anthropic+เบอร์โทร+ประโยคตัวอย่างใช้งาน 06f50f076 · bump 2.0.0(25) 8ed2b7f84 · ทั้งหมดเข้า main ผ่าน PR #2 = 9d695e14f (Vercel READY 06:06Z · cron tree ff แล้ว)
+- iOS 2.0.0 build 25 (EAS ec3323f7 · robot token จาก memory reference_expo_token_shark · เจ้าของอนุญาตให้สั่ง build เอง 8 พ.ย.) → ASC VALID · internal IN_BETA_TESTING
+- 🔴 ก่อนยื่นสโตร์: SMS ยังไม่ตั้ง (release notes เขียน "SMS sign-in") → ต้องได้ ThaiBulkSMS (แนะนำ) + adapter หรือถอดคำ/ซ่อนปุ่ม · เจ้าของยังไม่ตอบเรื่องงานลบ PhoneOtp 30 วัน
+- auto mode: push main/deploy hook/PATCH Vercel ถูกบล็อก → push สาขา fix/* ให้เจ้าของ merge PR · eas build ผ่านหลังเจ้าของอนุญาตในแชท
+
+## ▶️ 8 พ.ย. 05:3xZ — 🏁 S3a.2 ปิด · prod = main c82cc727a (dpl_EsiZLczSgy) READY · 55/60 (92%)
+- แก้: `scripts/vercel-build.sh` → `pnpm build --webpack` (62b21b015 · PR #1 เจ้าของ merge) · Vercel **Enhanced** (เจ้าของตั้ง · ต้องคงไว้: tsc ขั้นแยก RSS 9.7 GB) · build 10.5 นาที (tsc 3.9 · compile 3.6)
+- ตรวจ prod: /api/health ok db ok · /api/mobile/secretary/* = 401 (เส้นใหม่ขึ้นแล้ว) · /doc/<bad> = 404 ข้อความถูก · GO-13 ✅ `/root/projects/shark-in-th` ff → c82cc727a + pnpm install (ใต้ flock cron) · crm-cron minute งาน 6→26 ล้ม 0
+- ถัดไป: **S3a.3 TestFlight = ใช้ TestFlight เดิมของแอป SHARK HUB (เจ้าของบอก 8 พ.ย.)** · รอเจ้าของสั่ง (ห้าม eas build เอง) · ตั๋วแยก: ตัดวง import server (เพื่อกลับ Turbopack) · ย้าย `REPLY_RATE` ออกจาก `api/mobile/inbox/conversations/[id]/reply/route.ts` (Next ไม่ยอม export อื่นใน route) · Neon `wo-restore-pre-s3a2` เก็บถึง ≥15 พ.ย.
+- ทรีทดสอบ `/root/projects/shark-sec-wp` (worktree detached · node_modules ของตัวเอง) ลบได้ · ทรี shark-sec ไม่มี node_modules หลังรีบูต (bind mount จาก shark-svc หาย)
+
+## ▶️ 8 พ.ย. 00:3xZ — S3a.2: เปลี่ยน Enhanced แล้ว (เจ้าของกดเอง) · Redeploy dpl_4ofvQWga ล้ม BUILD_EXCEEDED_MAXIMUM_TIME (45 นาที)
+- tsc ผ่านบน Enhanced (OOM หายแล้ว) · แต่ `next build` (Turbopack) compile เกิน 42 นาที (main เดิม a84bca2b5 = 3.8 นาทีบน 4 cores)
+- **สาเหตุ (วัดแล้ว)**: (1) กราฟ import ฝั่ง server เป็นวงใหญ่วงเดียว (crm/index ↔ account/index ↔ outbox-consumers ↔ minute-jobs ↔ ai/service/tools) โตจาก 422 → 865 ไฟล์ (7.9 → 16.9 MB) ⇒ ทุก route ลากทั้งวง · (2) dynamic `await import()` 284 → 527 จุด ⇒ Turbopack แตก async chunk ต่อ route ⇒ `.next/server` JS 1.2 GB / 32k ไฟล์ (CRM ต.ค. = 0.14 GB) · สคริปต์วัด `/root/scratch-buildprobe/*.py`
+- ทางแก้ที่เสนอเจ้าของ: ① ลอง `next build --webpack` บน VPS วัดเวลา ② ตัดวง (outbox-consumers ให้ import เฉพาะ worker/cron · เลิก dynamic import barrel `@/lib/modules/{member,crm,...}` → import ไฟล์ตรง · ai/tools เฉพาะ route AI) · prod ยังโค้ดเดิม health ok
+- ⚠️ auto mode บล็อก PATCH Vercel + deploy hook — เจ้าของต้องกดเองหรือเพิ่มสิทธิ์
+
 ## ▶️ 7 พ.ย. 00:2xZ — จุดต่อล่าสุด (บัญชี B · ผู้คุม Fable) · S3a.2 ค้างที่ Vercel build OOM — รอเจ้าของอนุมัติ Enhanced build
 - **สถานะ 54/60 (90%)** · 🏁 CP3b ปิด S3a.5+S3a.6 (ทิป 9c55f8a63 · ดู RUN §7) · **S3a.2 (เจ้าของสั่ง "ทำข้อ 1")**: main ← b06e6329b (push 00:12Z · รวม hotfix main a84bca2b5) · **DB prod migrate 46 ไฟล์สำเร็จ (additive · up to date)** · **Vercel build ERROR: tsc ถูก SIGKILL (OOM บน standard 8 GB)** ⇒ prod ยังเสิร์ฟโค้ดเดิม (health ok · db ok 00:21Z) · Neon restore point `wo-restore-pre-s3a2` (ห้าม gc) · env prod ตั้งแล้ว: POS_DEVICE_KEY · POS_CREDENTIALS_KEY · AI_PROVIDER=anthropic · SHARK_ANTHROPIC_KEY · VERCEL_BUILD_SYSTEM_REPORT=1
 - **รอเจ้าของ**: อนุมัติเปลี่ยน build machine เป็น Enhanced (มีค่าใช้จ่าย) → ผู้คุม PATCH `resourceConfig.buildMachineType=enhanced` ผ่าน API → trigger deploy hook `fable-manual` (main) → เฝ้า build → GO-13 เลื่อน checkout `/root/projects/shark-in-th` (fetch แล้ว · untracked แค่ png) + `pnpm install` + ตรวจ cron → ตรวจเว็บจริง (/doc · /r/ · APP_URL) → tg · ถ้า Enhanced ยัง OOM: ลอง `next build --webpack` หรือ Ultra (ถามเจ้าของ)
