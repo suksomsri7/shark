@@ -1047,7 +1047,7 @@
    "kind": "display",
    "interactive": false,
    "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
-   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create)",
+   "conditional": "ไม่แสดงแล้ว — ถอดใน VIS-5d (Q4: หน้าตั้งค่าเต็มตามภาพ 08)",
    "roles": [
     "owner",
     "manager",
@@ -4204,7 +4204,7 @@
    "kind": "link",
    "interactive": true,
    "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
-   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8)",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า (Q8) — รายการเมนูซ้าย \"ตารางกฎหมาย\" (VIS-5d)",
    "roles": [
     "owner",
     "manager",
@@ -15497,6 +15497,372 @@
    "wo": "H4.8",
    "oracle": "qc-hr-h4.8",
    "note": "คู่มือ HR API"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-nav",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "เมนูซ้าย ตั้งค่าพนักงาน (ภาพ 08 .snav) · หัวเมนู + บรรทัดท้าย · จอ < 1024 = แถวเลื่อน data-scroll=x"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-nav-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า · * = shifts | leave | holidays | rules | pay | connect | life (canSeeLifecycle) | staff (OWNER เท่านั้น → /app/settings/staff)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/settings?tab=*"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "รายการเมนู ?tab= (≥ 44 px · aria-current = แท็บที่เปิด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-connections",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "การ์ดการเชื่อมต่อ (ย่อ) ขวามือ · ลิงก์ ทั้งหมด → /app/settings/connections"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-conn-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า · * = account | line",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/settings?tab=pay#hr-pay-accounting | ?tab=connect#hr-line-settings"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "แถวเชื่อมต่อ บัญชี (ลงบัญชีเงินเดือน) · แชท LINE พนักงาน · วงกลมติ๊ก = เชื่อมแล้ว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-set-nav",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "เมนูซ้าย ตั้งค่าพนักงาน (ภาพ 08 .snav) · หัวเมนู + บรรทัดท้าย · จอ < 1024 = แถวเลื่อน data-scroll=x"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-set-nav-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า · * = shifts | leave | holidays | rules | pay | connect | life (canSeeLifecycle) | staff (OWNER เท่านั้น → /app/settings/staff)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/settings?tab=*"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "รายการเมนู ?tab= (≥ 44 px · aria-current = แท็บที่เปิด)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-set-connections",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "การ์ดการเชื่อมต่อ (ย่อ) ขวามือ · ลิงก์ ทั้งหมด → /app/settings/connections"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-set-conn-*",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า · * = account | line",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/settings?tab=pay#hr-pay-accounting | ?tab=connect#hr-line-settings"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "แถวเชื่อมต่อ บัญชี (ลงบัญชีเงินเดือน) · แชท LINE พนักงาน · วงกลมติ๊ก = เชื่อมแล้ว"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings/law",
+   "testid": "hr-settings-law-link",
+   "kind": "link",
+   "interactive": true,
+   "file": "src/app/app/sys/[id]/hr/settings/law/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "navigate",
+    "target": "/app/sys/[id]/hr/settings/law"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "รายการเมนู ตารางกฎหมาย (หน้านี้ · aria-current)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-panel-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "ผู้ตั้งค่าได้ (OWNER · MANAGER · hr.employee.create) — เท่ากับหน้าตั้งค่า · * = แท็บที่เปิด (settingsTabOf)",
+   "roles": [
+    "owner",
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "แผงของแท็บ — ส่วนเดิมทุกส่วน ด่านเดิม"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-empty",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/app/app/sys/[id]/hr/settings/page.tsx",
+   "conditional": "?tab= ที่ผู้ดูไม่มีในเมนู (เช่น life สำหรับผู้จัดการที่ไม่มีคีย์)",
+   "roles": [
+    "manager",
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "เมนู + ข้อความว่าง (ไม่มีหน้าเปล่า)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-readonly-*",
+   "kind": "display",
+   "interactive": false,
+   "file": "src/lib/modules/hr/settings-ui.tsx",
+   "conditional": "* = line (ผู้ดูแลบางสาขา) | life (ผู้ถือคีย์ที่ดูแลบางสาขา) | filing (ผู้ผ่านด่านแบบยื่นที่ไม่ใช่เจ้าของร้าน)",
+   "roles": [
+    "manager-branch"
+   ],
+   "hiddenFor": [
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "display"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "บรรทัดเหตุผล + ค่าที่อ่านได้ แทนช่องที่บันทึกไม่ได้ (§7.3)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-tpl-*",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/TemplateRowsEditor.tsx",
+   "conditional": "แท็บวงจรพนักงาน · ผู้แก้ได้ (ทุกสาขา) · มี JS (ไม่มี JS = textarea เดิม)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "ตัวแก้แม่แบบรายการรับเข้า/ออกจากงาน: * = on|off - title|days|up|down|remove - n · add (เขียนลง textarea เดิม)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-life-save",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/lifecycle-ui.tsx",
+   "conditional": "แท็บวงจรพนักงาน · ผู้แก้ได้ (ทุกสาขา)",
+   "roles": [
+    "owner"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payroll",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "mutation",
+    "target": "action:saveLifecyclePolicyAction"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "บันทึกค่าตั้งวงจรพนักงาน → ?life= (มติผู้คุม 5: testid สำหรับ press probe)"
   }
  ]
 }

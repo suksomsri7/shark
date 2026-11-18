@@ -29,7 +29,9 @@ import { saveAttendancePolicyAction } from "@/lib/modules/hr/attendance-actions"
 import { getOtPolicy, OT_TEXT } from "@/lib/modules/hr/ot"; // HR H2.9 ▸ R14 นโยบาย OT ◂
 import { saveOtPolicyAction } from "@/lib/modules/hr/ot-actions"; // HR H2.9 ◂
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Section } from "@/components/ui/Section";
+import { canSeeLifecycle } from "@/lib/modules/hr/lifecycle"; // HR VIS-5d ▸ lifecycle menu item = the card's own gate (Q1) ◂
+import { SETTINGS_TABS, settingsTabOf, type SettingsTab } from "@/lib/modules/hr/settings-view"; // HR VIS-5d ◂
+import { ConnectionsMini, SetCard, SetNavIcon, SettingsFrame, SettingsNav, setNavCls } from "@/lib/modules/hr/settings-ui"; // HR VIS-5d ◂
 import { ModuleTabs } from "@/components/module-tabs";
 import { LifecycleMsg, LifecycleSettings } from "@/lib/modules/hr/lifecycle-ui"; // HR H4.4 ▸ ค่าตั้งวงจรพนักงาน (เตือน · บอร์ดงาน · แม่แบบรายการตรวจ) ◂
 import { WorkSettingsCard, WE_MSG } from "@/lib/modules/hr/work-entries-ui"; // HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน (เจ้าของร้าน) ◂
@@ -57,11 +59,18 @@ import { ApiKeysCard } from "./ApiKeysCard"; // HR H4.8 ▸ คีย์ API ข
 
 // HR H1.2 ▸ R9 หน้าตั้งค่าแบบย่อ (stub) — กะ · ประเภทการลา · วันหยุด · ไม่อ้างว่าตรงภาพ 08 (หน้าเต็ม = H2.2/H2.7/H2.8)
 //   เปิดได้ = OWNER หรือ hr.employee.create (Q2) · อื่น ๆ = 404 · ผลการกด = รหัสสั้น ?msg= → ข้อความคงที่ (R13.3) ◂
+// HR VIS-5d ▸ full page of mockup 08: left menu ?tab= (shifts · leave · holidays · rules · pay · connect · life) + law link · each panel holds the same sections as before (same gates) ◂
 const CATEGORIES = ["SICK", "PERSONAL", "VACATION", "OTHER"] as const;
 const KINDS = ["PUBLIC", "SHOP"] as const;
 const hm = (min: number) => `${String(Math.floor(min / 60)).padStart(2, "0")}:${String(min % 60).padStart(2, "0")}`;
 const btn = "btn btn-primary min-h-[44px] text-sm";
 const ghost = "btn btn-ghost min-h-[44px] text-sm";
+const muted = "text-[color:var(--color-muted)]"; // HR VIS-5d ◂
+const fld = "flex min-w-0 flex-col gap-1 text-xs"; // HR VIS-5d ▸ form field (stacked label) ◂
+const chk = "flex min-h-[44px] items-center gap-2 text-xs"; // HR VIS-5d ▸ checkbox row ≥ 44 px ◂
+const box = "h-5 w-5 shrink-0"; // HR VIS-5d ▸ checkbox 20 px (was 13 px) ◂
+const addArea = "flex flex-col gap-3 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-5 py-4"; // HR VIS-5d ▸ add-form strip at the foot of a card ◂
+const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[color:var(--color-line)] px-5 py-3 first:border-t-0"; // HR VIS-5d ▸ list row ◂
 // HR H1.2 R13 ▸ R13.3: ผลการกดส่งทาง URL เป็น "รหัสสั้น" เท่านั้น แล้วแปลงกลับจากรายการข้อความคงที่ (allowlist) —
 //   ไม่แสดงข้อความอิสระจาก ?msg= · รหัสที่ไม่รู้จัก = ไม่แสดงอะไร · ข้อความที่ไม่อยู่ในรายการ = "บันทึกไม่สำเร็จ" ◂
 const MSG_TEXTS: Record<string, string> = {
@@ -82,9 +91,10 @@ const MSG_CODE_OF = new Map(Object.entries(MSG_TEXTS).map(([k, v]) => [v, k]));
 /** กลับหน้าเดิมพร้อมรหัสผลการกด (redirect โยนเพื่อจบ action) */
 // HR H3.6 ▸ อ่านพารามิเตอร์สตริงของการ์ดแบบยื่น (ไม่ใช่สตริง = ไม่มี) ◂
 const str3 = (sp: unknown, k: string) => (typeof (sp as Record<string, unknown>)[k] === "string" ? String((sp as Record<string, unknown>)[k]) : undefined); // HR H3.6 ◂
-function back(path: string, year: number, r: { ok: true; id: string } | { ok: false; reason: string }): never {
+// HR VIS-5d ▸ + tab: the result lands on the panel that holds the form (literal tab from each wrapper · back stays module-level, takes strings/numbers only) ◂
+function back(path: string, year: number, r: { ok: true; id: string } | { ok: false; reason: string }, tab: SettingsTab): never {
   const code = r.ok ? "ok" : (MSG_CODE_OF.get(r.reason) ?? "s.failed");
-  redirect(`${path}?year=${year}&msg=${encodeURIComponent(code)}`);
+  redirect(`${path}?tab=${tab}&year=${year}&msg=${encodeURIComponent(code)}`); // HR VIS-5d ◂
 }
 
 export default async function HrSettingsPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ year?: string; msg?: string; life?: string }> }) {
@@ -103,6 +113,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const t = await getTranslations("hr.settings");
   const tLaw = await getTranslations("hr.law"); // HR H3.3 ▸ ป้ายลิงก์ตารางกฎหมาย ◂
   const tOt = await getTranslations("hr.ot"); // HR H2.9 ◂
+  const tv = await getTranslations("hr.setview"); // HR VIS-5d ◂
   const def = systemDef(sys.type);
   const ctx = { tenantId: auth.active.tenantId, systemId: id };
   const thisYear = Number(thaiDateKey(new Date()).slice(0, 4));
@@ -122,109 +133,113 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
   const code = typeof sp.msg === "string" ? sp.msg : "";
   const bankMsg = await bankMsgText(code); // HR H3.5 fix r1 ▸ F7: ผลของการ์ดไฟล์โอนตามภาษาผู้ดู ◂
   const msg = bankMsg ?? (code === "ok" ? t("saved") : code === "p.ok" ? t("holidays.presetDone") /* HR H2.8 ◂ */ : Object.prototype.hasOwnProperty.call(MSG_TEXTS, code) ? MSG_TEXTS[code]! : ""); // HR H1.2 R13 ▸ allowlist ◂ · HR H3.5 ◂
+  // HR VIS-5d ▸ panel of this URL + the viewer's menu (existing gates only: lifecycle = canSeeLifecycle · managers link = OWNER) ◂
+  const tab = settingsTabOf(sp as Record<string, unknown>); // HR VIS-5d ◂
+  const owner = auth.active.role === "OWNER"; // HR VIS-5d ◂
+  const tabs = SETTINGS_TABS.filter((k) => k !== "life" || canSeeLifecycle(viewer)); // HR VIS-5d ◂
 
   // ผลของ action → กลับหน้าเดิมพร้อมรหัสผล (R13.3) · closure จับเฉพาะค่าพื้นฐาน (สตริง/ตัวเลข)
   const onCreateShift = async (fd: FormData) => {
     "use server";
-    back(path, year, await createShiftAction(fd));
+    back(path, year, await createShiftAction(fd), "shifts"); // HR VIS-5d ◂
   };
   const onArchiveShift = async (fd: FormData) => {
     "use server";
-    back(path, year, await archiveShiftAction(fd));
+    back(path, year, await archiveShiftAction(fd), "shifts"); // HR VIS-5d ◂
   };
   const onCreatePolicy = async (fd: FormData) => {
     "use server";
-    back(path, year, await createLeavePolicyAction(fd));
+    back(path, year, await createLeavePolicyAction(fd), "leave"); // HR VIS-5d ◂
   };
   // HR H2.12 ▸ F1 เพิ่มประเภทลาตามกฎหมาย 1 รายการ (ด่านเดียวกับเพิ่มประเภทการลา) ◂
   const onAddLeavePreset = async (fd: FormData) => {
     "use server";
-    back(path, year, await addLeavePresetAction(fd));
+    back(path, year, await addLeavePresetAction(fd), "leave"); // HR VIS-5d ◂
   };
   const onArchivePolicy = async (fd: FormData) => {
     "use server";
-    back(path, year, await archiveLeavePolicyAction(fd));
+    back(path, year, await archiveLeavePolicyAction(fd), "leave"); // HR VIS-5d ◂
   };
   const onAddHoliday = async (fd: FormData) => {
     "use server";
-    back(path, year, await upsertHolidayAction(fd));
+    back(path, year, await upsertHolidayAction(fd), "holidays"); // HR VIS-5d ◂
   };
   const onDeleteHoliday = async (fd: FormData) => {
     "use server";
-    back(path, year, await deleteHolidayAction(fd));
+    back(path, year, await deleteHolidayAction(fd), "holidays"); // HR VIS-5d ◂
   };
   // HR H2.8 ▸ ใส่ชุดวันหยุดราชการ — ผลเป็นรหัสสั้น (p.ok · รหัสข้อความคงที่) ไม่ส่งตัวเลข/ข้อความอิสระทาง URL
   const onApplyPreset = async (fd: FormData) => {
     "use server";
     const r = await applyHolidayPresetAction(fd);
-    redirect(`${path}?year=${year}&msg=${encodeURIComponent(r.ok ? "p.ok" : (MSG_CODE_OF.get(r.reason) ?? "s.failed"))}`);
+    redirect(`${path}?tab=holidays&year=${year}&msg=${encodeURIComponent(r.ok ? "p.ok" : (MSG_CODE_OF.get(r.reason) ?? "s.failed"))}`); // HR VIS-5d ◂
   };
   // ◂ HR H2.8
   // HR H2.4 ▸ ◂
   const onSaveClockPolicy = async (fd: FormData) => {
     "use server";
-    back(path, year, await saveClockPolicyAction(fd));
+    back(path, year, await saveClockPolicyAction(fd), "rules"); // HR VIS-5d ◂
   };
   const onSaveClockSite = async (fd: FormData) => {
     "use server";
-    back(path, year, await saveClockSiteAction(fd));
+    back(path, year, await saveClockSiteAction(fd), "rules"); // HR VIS-5d ◂
   };
   // HR H2.5 ▸ R12 ◂
   const onSaveAttendancePolicy = async (fd: FormData) => {
     "use server";
-    back(path, year, await saveAttendancePolicyAction(fd));
+    back(path, year, await saveAttendancePolicyAction(fd), "rules"); // HR VIS-5d ◂
   };
   // HR H3.1 ▸ ◂
   const onSaveNormalMinutes = async (fd: FormData) => {
     "use server";
-    back(path, year, await saveNormalMinutesAction(fd));
+    back(path, year, await saveNormalMinutesAction(fd), "shifts"); // HR VIS-5d ◂
   };
   // HR H4.2 ▸ บันทึกค่าตั้งค่าแรงต่อยอดขาย → ?msg= รหัสจาก allowlist (lab.*) ◂
   const onSaveLabor = async (fd: FormData) => {
     "use server"; // HR H4.2 ◂
-    back(path, year, await saveLaborSettingsAction(fd)); // HR H4.2 ◂
+    back(path, year, await saveLaborSettingsAction(fd), "shifts"); // HR H4.2 ◂ · HR VIS-5d ◂
   }; // HR H4.2 ◂
   // HR H3.2 ▸ ◂
   const onSaveAttPay = async (fd: FormData) => {
     "use server"; // HR H3.2 ◂
-    back(path, year, await saveAttendancePayPolicyAction(fd)); // HR H3.2 ◂
+    back(path, year, await saveAttendancePayPolicyAction(fd), "rules"); // HR H3.2 ◂ · HR VIS-5d ◂
   }; // HR H3.2 ◂
   // HR H3.4 ▸ รุ่นเครื่องคิดเงินเดือน — ผลการกด ?run2= (รหัสคงที่ · ok/okw = บันทึกแล้ว/บันทึกพร้อมคำเตือน ม.76) ◂
   const onSaveEngine = async (fd: FormData) => {
     "use server"; // HR H3.4 ◂
     const r = await setPayrollEngineAction(fd); // HR H3.4 ◂
-    redirect(`${path}?year=${year}&run2=${r.ok ? (r.warnings?.length ? "okw" : "ok") : encodeURIComponent(run2MsgCode(r.reason))}#hr-run2-engine`); // HR H3.4 ◂
+    redirect(`${path}?tab=pay&year=${year}&run2=${r.ok ? (r.warnings?.length ? "okw" : "ok") : encodeURIComponent(run2MsgCode(r.reason))}#hr-run2-engine`); // HR H3.4 ◂ · HR VIS-5d ◂
   }; // HR H3.4 ◂
   // HR H3.7 ▸ ลงบัญชีเงินเดือน — ผลการกด ?pacct= (รหัสคงที่) ◂
   const onSavePayBook = async (fd: FormData) => {
     "use server"; // HR H3.7 ◂
-    redirect(`${path}?year=${year}&pacct=${payAcctMsgCode(await setPayrollBookAction(fd))}#hr-pay-accounting`); // HR H3.7 ◂
+    redirect(`${path}?tab=pay&year=${year}&pacct=${payAcctMsgCode(await setPayrollBookAction(fd))}#hr-pay-accounting`); // HR H3.7 ◂ · HR VIS-5d ◂
   }; // HR H3.7 ◂
   const onSavePosting = async (fd: FormData) => {
     "use server"; // HR H3.7 ▸ fix r1 F6 ◂
-    redirect(`${path}?year=${year}&pacct=${payAcctMsgCode(await setPayrollPostingAction(fd))}#hr-pay-accounting`); // HR H3.7 ◂
+    redirect(`${path}?tab=pay&year=${year}&pacct=${payAcctMsgCode(await setPayrollPostingAction(fd))}#hr-pay-accounting`); // HR H3.7 ◂ · HR VIS-5d ◂
   }; // HR H3.7 ◂
   const onSavePayAccount = async (fd: FormData) => {
     "use server"; // HR H3.7 ◂
-    redirect(`${path}?year=${year}&pacct=${payAcctMsgCode(await setPayrollPayAccountAction(fd))}#hr-pay-accounting`); // HR H3.7 ◂
+    redirect(`${path}?tab=pay&year=${year}&pacct=${payAcctMsgCode(await setPayrollPayAccountAction(fd))}#hr-pay-accounting`); // HR H3.7 ◂ · HR VIS-5d ◂
   }; // HR H3.7 ◂
   // HR H3.5 ▸ ไฟล์โอนเงินเดือน — บัญชีต้นทาง (เจ้าของร้าน) · ชุดคอลัมน์ (service ตรวจด่านซ้ำ) ◂
   const onSaveBankProfile = async (fd: FormData) => {
     "use server"; // HR H3.5 ◂
-    back(path, year, await saveBankProfileAction(fd)); // HR H3.5 ◂
+    back(path, year, await saveBankProfileAction(fd), "pay"); // HR H3.5 ◂ · HR VIS-5d ◂
   }; // HR H3.5 ◂
   const onSaveBankPreset = async (fd: FormData) => {
     "use server"; // HR H3.5 ◂
-    back(path, year, await saveBankPresetAction(fd)); // HR H3.5 ◂
+    back(path, year, await saveBankPresetAction(fd), "pay"); // HR H3.5 ◂ · HR VIS-5d ◂
   }; // HR H3.5 ◂
   const onDeleteBankPreset = async (fd: FormData) => {
     "use server"; // HR H3.5 ◂
-    back(path, year, await deleteBankPresetAction(fd)); // HR H3.5 ◂
+    back(path, year, await deleteBankPresetAction(fd), "pay"); // HR H3.5 ◂ · HR VIS-5d ◂
   }; // HR H3.5 ◂
   // HR H2.9 ▸ R14 ◂
   const onSaveOtPolicy = async (fd: FormData) => {
     "use server";
-    back(path, year, await saveOtPolicyAction(fd));
+    back(path, year, await saveOtPolicyAction(fd), "rules"); // HR VIS-5d ◂
   };
 
   const unitSelect = (testid: string) => (
@@ -238,36 +253,49 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
     </select>
   );
 
-  return (
-    <div className="flex max-w-2xl flex-col gap-5" data-testid="hr-settings-page">
-      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={t("desc")} />
-      {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
-      <ModuleTabs items={await hrTabsFor(id)} />
-      {/* HR H3.3 ▸ ทางเข้าหน้าตารางกฎหมาย (อ่านอย่างเดียว · ภาพ 08 แท็บ "ตารางกฎหมาย") ◂ */}
-      <Link href={`/app/sys/${id}/hr/settings/law`} className="card flex min-h-[44px] flex-col gap-1 p-3 hover:bg-[color:var(--color-surface-2)]" data-testid="hr-settings-law-link">
-        <span className="text-sm font-medium">{tLaw("settingsLink")}</span>
-        <span className="text-xs text-[color:var(--color-muted)]">{tLaw("settingsLinkDesc")}</span>
-      </Link>
-      <p role="note" className="text-xs text-[color:var(--color-muted)]" data-testid="hr-settings-stub-note">
-        {t("stubNote")}
-      </p>
-      {msg && (
-        <p role="alert" className="card p-3 text-sm" data-testid="hr-settings-message">
-          {msg}
-        </p>
-      )}
+  // HR VIS-5d ▸ result line at the top of the panel the action returned to (role=alert as before) ◂
+  const flash = msg ? (
+    <p role="alert" className="card p-3 text-sm" data-testid="hr-settings-message">
+      {msg}
+    </p>
+  ) : null; // HR VIS-5d ◂
+  // HR VIS-5d ▸ law item of the menu (testid kept in this file — h3.3 reads it here) ◂
+  const lawItem = (
+    <Link href={`/app/sys/${id}/hr/settings/law`} className={setNavCls(false)} data-testid="hr-settings-law-link">
+      <SetNavIcon k="law" />
+      {tLaw("settingsLink")}
+    </Link>
+  ); // HR VIS-5d ◂
 
-      <Section title={t("shifts.title")} card>
+  return (
+    <div className="flex w-full max-w-7xl flex-col gap-5" data-testid="hr-settings-page">{/* HR VIS-5d ▸ wide frame (was max-w-2xl single column) ◂ */}
+      <PageHeader title={`${def?.icon ?? ""} ${sys.name}`.trim()} desc={tv("desc")} />{/* HR VIS-5d ▸ Q4: description without "temporary page" · stub note removed ◂ */}
+      {/* HR H2.10 ▸ แท็บตามผู้ดู (hrNavFilter) ◂ */}
+      <ModuleTabs items={await hrTabsFor(id)} wrap />{/* HR VIS-5d ▸ wrap (VIS-5b prop) ◂ */}
+      <SettingsFrame nav={<SettingsNav systemId={id} current={tab} tabs={tabs} owner={owner} lawItem={lawItem} />} aside={<ConnectionsMini ctx={ctx} />}>{/* HR VIS-5d ◂ */}
+      {!tabs.includes(tab) && (
+        <p role="note" className={`card p-4 text-sm ${muted}`} data-testid="hr-set-empty">
+          {tv("empty")}
+        </p>
+      )}{/* HR VIS-5d ▸ r4 B2: a tab the viewer lacks = menu + note, never a blank page ◂ */}
+      {tabs.includes(tab) && (
+      <div className="flex min-w-0 flex-col gap-5" data-testid={`hr-set-panel-${tab}`}>{/* HR VIS-5d ▸ one panel per tab ◂ */}
+      {tab !== "life" && flash}{/* HR VIS-5d ◂ */}
+
+      {tab === "shifts" && (<>{/* HR VIS-5d ▸ shifts panel: shifts · normal hours · labour target (Q2) ◂ */}
+      <SetCard title={t("shifts.title")}>{/* HR VIS-5d ◂ */}
         {shifts.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">{t("shifts.empty")}</p>
+          <p className={`px-5 py-4 text-sm ${muted}`}>{t("shifts.empty")}{/* HR VIS-5d ◂ */}</p>
         ) : (
-          <ul className="flex flex-col gap-2" data-testid="hr-settings-shift-list">
+          <ul className="flex flex-col" data-testid="hr-settings-shift-list">{/* HR VIS-5d ◂ */}
             {shifts.map((s) => (
-              <li key={s.id} className="flex flex-wrap items-center justify-between gap-2" data-testid={`hr-settings-shift-${s.id}`}>
-                <span className="text-sm">
-                  {s.name} · {hm(s.startMin)}–{hm(s.endMin)}
-                  {s.crossesMidnight ? ` (${t("shifts.overnight")})` : ""} · {where(s.unitId)}
+              <li key={s.id} className={row} data-testid={`hr-settings-shift-${s.id}`}>
+                <b className="min-w-0 flex-1 text-sm">{s.name}</b>{/* HR VIS-5d ▸ name · time · branch as columns ◂ */}
+                <span className="text-sm tabular-nums sm:w-36">
+                  {hm(s.startMin)}–{hm(s.endMin)}
+                  {s.crossesMidnight ? ` (${t("shifts.overnight")})` : ""}
                 </span>
+                <span className={`text-sm sm:w-32 ${muted}`}>{where(s.unitId)}</span>{/* HR VIS-5d ◂ */}
                 {(all || s.unitId) && (
                   <form action={onArchiveShift}>
                     <input type="hidden" name="systemId" value={id} />
@@ -281,56 +309,66 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
             ))}
           </ul>
         )}
-        <form action={onCreateShift} className="flex flex-wrap items-end gap-2" data-testid="hr-settings-shift-form">
+        <form action={onCreateShift} className={addArea} data-testid="hr-settings-shift-form">{/* HR VIS-5d ◂ */}
           <input type="hidden" name="systemId" value={id} />
-          <label className="flex flex-col gap-1 text-xs">
+          <b className="text-sm">{tv("addShift")}</b>{/* HR VIS-5d ◂ */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_minmax(0,1.2fr)]">{/* HR VIS-5d ◂ */}
+          <label className={fld}>
             {t("shifts.name")}
             <input name="name" required maxLength={60} className="input min-h-[44px]" data-testid="hr-settings-shift-name" />
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("shifts.start")}
             <input name="start" type="time" required className="input min-h-[44px]" data-testid="hr-settings-shift-start" />
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("shifts.end")}
             <input name="end" type="time" required className="input min-h-[44px]" data-testid="hr-settings-shift-end" />
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("shifts.break")}
-            <input name="breakMin" type="number" min={0} max={720} defaultValue={0} className="input min-h-[44px] w-24" data-testid="hr-settings-shift-break" />
+            <input name="breakMin" type="number" min={0} max={720} defaultValue={0} className="input min-h-[44px]" data-testid="hr-settings-shift-break" />{/* HR VIS-5d ◂ */}
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("unit")}
             {unitSelect("hr-settings-shift-unit")}
           </label>
-          <label className="flex min-h-[44px] items-center gap-2 text-xs">
-            <input name="crossesMidnight" type="checkbox" data-testid="hr-settings-shift-overnight" />
+          </div>{/* HR VIS-5d ◂ */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">{/* HR VIS-5d ◂ */}
+          <label className={chk}>
+            <input name="crossesMidnight" type="checkbox" className={box} data-testid="hr-settings-shift-overnight" />
             {t("shifts.crossesMidnight")}
           </label>
-          <button type="submit" className={btn} data-testid="hr-settings-shift-add">
+          <button type="submit" className={`${btn} w-full sm:ml-auto sm:w-auto`} data-testid="hr-settings-shift-add">{/* HR VIS-5d ◂ */}
             {t("shifts.add")}
           </button>
+          </div>{/* HR VIS-5d ◂ */}
         </form>
-      </Section>
+      </SetCard>{/* HR VIS-5d ◂ */}
+      {/* HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน — ทุกผู้ตั้งค่าเห็น · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
+      <WorkSettingsCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveNormalMinutes : null} />
+      {/* HR H4.2 ▸ ค่าแรงต่อยอดขาย — ผู้ตั้งค่า HR ทุกสาขาแก้ได้ · ผู้อ่านอื่นเห็นค่า (service ตัดสิน) ◂ */}
+      <LaborSettingsCard systemId={id} onSave={isAllBranches(scope) ? onSaveLabor : null} />
+      </>)}{/* HR VIS-5d ◂ */}
 
-      <Section title={t("policies.title")} card>
+      {tab === "leave" && (<>{/* HR VIS-5d ▸ leave panel ◂ */}
+      <SetCard title={t("policies.title")}>{/* HR VIS-5d ◂ */}
         {policies.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">{t("policies.empty")}</p>
+          <p className={`px-5 py-4 text-sm ${muted}`}>{t("policies.empty")}{/* HR VIS-5d ◂ */}</p>
         ) : (
-          <ul className="flex flex-col gap-2" data-testid="hr-settings-policy-list">
+          <ul className="flex flex-col" data-testid="hr-settings-policy-list">{/* HR VIS-5d ◂ */}
             {policies.map((p) => (
-              <li key={p.id} className="flex flex-wrap items-center justify-between gap-2" data-testid={`hr-settings-policy-${p.id}`}>
-                <span className="text-sm">
-                  {p.name} · {t(`categories.${p.category}`)} · {p.quotaDays === null ? t("policies.noQuota") : `${p.quotaDays.toString()}`} ·{" "}
-                  {p.paid ? t("policies.paid") : t("policies.unpaid")} · {where(p.unitId)}
+              <li key={p.id} className={row} data-testid={`hr-settings-policy-${p.id}`}>
+                <span className="min-w-0 flex-1 text-sm">
+                  <b>{p.name}</b> · {t(`categories.${p.category}`)} · {p.quotaDays === null ? t("policies.noQuota") : `${p.quotaDays.toString()}`} ·{" "}
+                  {p.paid ? t("policies.paid") : t("policies.unpaid")} · <span className={muted}>{where(p.unitId)}</span>{/* HR VIS-5d ◂ */}
                   {/* HR H2.7 ▸ กติกาที่ตั้งไว้ ◂ */}
                   {p.minServiceDays > 0 ? ` · ${t("policies.minServiceDays")} ${p.minServiceDays}` : ""}
                   {Number(p.carryMaxDays) > 0 ? ` · ${t("policies.carryMaxDays")} ${p.carryMaxDays.toString()}${p.carryExpiresMonthDay ? ` (${p.carryExpiresMonthDay})` : ""}` : ""}
                   {p.attachmentAfterDays ? ` · ${t("policies.attachmentAfterDays")} ${p.attachmentAfterDays}` : ""}
                   {p.allowHalfDay ? "" : ` · ${t("policies.noHalfDay")}`}
                 </span>
-                {/* HR H2.12 ▸ F5 คำเตือน (ไม่บล็อก) ◂ */}
-                <LeavePolicyWarningLines policies={policies} id={p.id} />
+                {/* HR VIS-5d ▸ archive button before the warning lines (warnings wrap under the row) ◂ */}
                 {(all || p.unitId) && (
                   <form action={onArchivePolicy}>
                     <input type="hidden" name="systemId" value={id} />
@@ -340,17 +378,21 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
                     </button>
                   </form>
                 )}
+                {/* HR H2.12 ▸ F5 คำเตือน (ไม่บล็อก) ◂ */}
+                <LeavePolicyWarningLines policies={policies} id={p.id} />{/* HR VIS-5d ◂ */}
               </li>
             ))}
           </ul>
         )}
-        <form action={onCreatePolicy} className="flex flex-wrap items-end gap-2" data-testid="hr-settings-policy-form">
+        <form action={onCreatePolicy} className={addArea} data-testid="hr-settings-policy-form">{/* HR VIS-5d ◂ */}
           <input type="hidden" name="systemId" value={id} />
-          <label className="flex flex-col gap-1 text-xs">
+          <b className="text-sm">{tv("addPolicy")}</b>{/* HR VIS-5d ◂ */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{/* HR VIS-5d ◂ */}
+          <label className={fld}>
             {t("policies.name")}
             <input name="name" required maxLength={60} className="input min-h-[44px]" data-testid="hr-settings-policy-name" />
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("policies.category")}
             <select name="category" className="input min-h-[44px]" defaultValue="PERSONAL" data-testid="hr-settings-policy-category">
               {CATEGORIES.map((c) => (
@@ -360,15 +402,15 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("policies.quotaDays")}
-            <input name="quotaDays" type="number" min={0} max={365} step={0.5} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-quota" />
+            <input name="quotaDays" type="number" min={0} max={365} step={0.5} className="input min-h-[44px]" data-testid="hr-settings-policy-quota" />{/* HR VIS-5d ◂ */}
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("unit")}
             {unitSelect("hr-settings-policy-unit")}
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("policies.paid")}
             <select name="paid" className="input min-h-[44px]" defaultValue="true" data-testid="hr-settings-policy-paid">
               <option value="true">{t("policies.paid")}</option>
@@ -376,78 +418,94 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
             </select>
           </label>
           {/* HR H2.7 ▸ กติกาของประเภทการลา (ไม่มีสวิตช์ลาเป็นชั่วโมง — มติผู้คุม Q1/Q6 · D-H27-hourly) */}
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("policies.minServiceDays")}
-            <input name="minServiceDays" type="number" min={0} max={3650} defaultValue={0} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-min-service" />
+            <input name="minServiceDays" type="number" min={0} max={3650} defaultValue={0} className="input min-h-[44px]" data-testid="hr-settings-policy-min-service" />{/* HR VIS-5d ◂ */}
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("policies.carryMaxDays")}
-            <input name="carryMaxDays" type="number" min={0} max={365} step={0.5} defaultValue={0} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-carry-max" />
+            <input name="carryMaxDays" type="number" min={0} max={365} step={0.5} defaultValue={0} className="input min-h-[44px]" data-testid="hr-settings-policy-carry-max" />{/* HR VIS-5d ◂ */}
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("policies.carryExpires")}
-            <input name="carryExpiresMonthDay" placeholder="03-31" pattern="\d{2}-\d{2}" maxLength={5} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-carry-expires" />
+            <input name="carryExpiresMonthDay" placeholder="03-31" pattern="\d{2}-\d{2}" maxLength={5} className="input min-h-[44px]" data-testid="hr-settings-policy-carry-expires" />{/* HR VIS-5d ◂ */}
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("policies.attachmentAfterDays")}
-            <input name="attachmentAfterDays" type="number" min={1} max={365} className="input min-h-[44px] w-24" data-testid="hr-settings-policy-attach-after" />
+            <input name="attachmentAfterDays" type="number" min={1} max={365} className="input min-h-[44px]" data-testid="hr-settings-policy-attach-after" />{/* HR VIS-5d ◂ */}
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("policies.yearStartMonth")}
-            <input name="yearStartMonth" type="number" min={1} max={12} defaultValue={1} className="input min-h-[44px] w-20" data-testid="hr-settings-policy-year-start" />
+            <input name="yearStartMonth" type="number" min={1} max={12} defaultValue={1} className="input min-h-[44px]" data-testid="hr-settings-policy-year-start" />{/* HR VIS-5d ◂ */}
           </label>
-          <label className="flex min-h-[44px] items-center gap-2 text-xs">
-            <input name="allowHalfDay" type="checkbox" value="true" defaultChecked data-testid="hr-settings-policy-half-day" />
+          </div>{/* HR VIS-5d ◂ */}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2">{/* HR VIS-5d ◂ */}
+          <label className={chk}>
+            <input name="allowHalfDay" type="checkbox" value="true" defaultChecked className={box} data-testid="hr-settings-policy-half-day" />
             <input type="hidden" name="allowHalfDay" value="false" />
             {t("policies.allowHalfDay")}
           </label>
-          <label className="flex min-h-[44px] items-center gap-2 text-xs">
-            <input name="firstYearProrata" type="checkbox" data-testid="hr-settings-policy-prorata" />
+          <label className={chk}>{/* HR VIS-5d ◂ */}
+            <input name="firstYearProrata" type="checkbox" className={box} data-testid="hr-settings-policy-prorata" />
             {t("policies.firstYearProrata")}
           </label>
           {/* ◂ HR H2.7 */}
-          <button type="submit" className={btn} data-testid="hr-settings-policy-add">
+          <button type="submit" className={`${btn} w-full sm:ml-auto sm:w-auto`} data-testid="hr-settings-policy-add">{/* HR VIS-5d ◂ */}
             {t("policies.add")}
           </button>
+          </div>{/* HR VIS-5d ◂ */}
         </form>
         {/* HR H2.12 ▸ F1 ประเภทลาตามกฎหมาย (ประเภททั้งร้าน ⇒ เพิ่มได้เฉพาะผู้ดูแลทุกสาขา — เหมือนฟอร์มด้านบนเลือก "ทั้งร้าน") ◂ */}
+        <div className="border-t border-[color:var(--color-line)] p-4">{/* HR VIS-5d ◂ */}
         <LeavePresetSection systemId={id} policies={policies} onAdd={onAddLeavePreset} canAdd={all} />
-      </Section>
+        </div>{/* HR VIS-5d ◂ */}
+      </SetCard>{/* HR VIS-5d ◂ */}
+      </>)}{/* HR VIS-5d ◂ */}
 
-      <Section title={`${t("holidays.title")} ${year + 543}`} card>
-        <form method="get" className="flex items-end gap-2">
-          <label className="flex flex-col gap-1 text-xs">
-            {t("holidays.year")}
-            <input name="year" type="number" min={2000} max={2999} defaultValue={year} className="input min-h-[44px] w-28" data-testid="hr-settings-holiday-year" />
-          </label>
-          <button type="submit" className={ghost} data-testid="hr-settings-holiday-year-go">
-            {t("holidays.year")}
-          </button>
-        </form>
+      {tab === "holidays" && (<>{/* HR VIS-5d ▸ holidays panel ◂ */}
+      <SetCard
+        title={`${t("holidays.title")} ${year + 543}`}
+        extra={
+          <form method="get" className="ml-auto flex items-end gap-2">{/* HR VIS-5d ▸ year switch keeps the tab (GET) ◂ */}
+            <input type="hidden" name="tab" value="holidays" />{/* HR VIS-5d ◂ */}
+            <label className={fld}>
+              <span className="sr-only">{t("holidays.year")}</span>{/* HR VIS-5d ◂ */}
+              <input name="year" type="number" min={2000} max={2999} defaultValue={year} className="input min-h-[44px] w-28" data-testid="hr-settings-holiday-year" />
+            </label>
+            <button type="submit" className={ghost} data-testid="hr-settings-holiday-year-go">
+              {t("holidays.year")}
+            </button>
+          </form>
+        }
+      >{/* HR VIS-5d ◂ */}
         {/* HR H2.8 ▸ ชุดวันหยุดราชการ (ผู้ดูแลทุกสาขา · เฉพาะวันที่ตายตัว 15 วัน — Q14) + บรรทัดบอกว่าวันตามจันทรคติ/ชดเชยต้องเพิ่มเอง */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-[color:var(--color-line)] px-5 py-3">{/* HR VIS-5d ◂ */}
         {all && (
           <form action={onApplyPreset} className="flex flex-wrap items-end gap-2" data-testid="hr-holiday-preset-form">
             <input type="hidden" name="systemId" value={id} />
             <input type="hidden" name="year" value={year} />
-            <button type="submit" className={btn} data-testid="hr-holiday-preset">
+            <button type="submit" className={ghost} data-testid="hr-holiday-preset">{/* HR VIS-5d ▸ secondary button (the add button is the primary one) ◂ */}
               {t("holidays.presetApply", { year: year + 543 })}
             </button>
           </form>
         )}
-        <p role="note" className="text-xs text-[color:var(--color-muted)]" data-testid="hr-holiday-preset-note">
+        <p role="note" className={`min-w-0 flex-1 text-xs ${muted}`} data-testid="hr-holiday-preset-note">{/* HR VIS-5d ◂ */}
           {t("holidays.presetNote")}
         </p>
+        </div>{/* HR VIS-5d ◂ */}
         {/* ◂ HR H2.8 */}
         {holidays.length === 0 ? (
-          <p className="text-sm text-[color:var(--color-muted)]">{t("holidays.empty")}</p>
+          <p className={`px-5 py-4 text-sm ${muted}`}>{t("holidays.empty")}{/* HR VIS-5d ◂ */}</p>
         ) : (
-          <ul className="flex flex-col gap-2" data-testid="hr-settings-holiday-list">
+          <ul className="flex flex-col" data-testid="hr-settings-holiday-list">{/* HR VIS-5d ◂ */}
             {holidays.map((h) => (
-              <li key={h.id} className="flex flex-wrap items-center justify-between gap-2" data-testid={`hr-settings-holiday-${h.id}`}>
-                <span className="text-sm">
-                  {formatThaiDate(h.date)} · {h.name} · {t(`kinds.${h.kind}`)}
+              <li key={h.id} className={row} data-testid={`hr-settings-holiday-${h.id}`}>
+                <span className="text-sm tabular-nums sm:w-36">{formatThaiDate(h.date)}</span>{/* HR VIS-5d ▸ date · name · kind · branch as columns ◂ */}
+                <b className="min-w-0 flex-1 text-sm">{h.name}</b>
+                <span className={`text-sm ${muted}`}>
+                  {t(`kinds.${h.kind}`)}
                   {h.shopOpen ? ` · ${t("holidays.shopOpen")}` : ""} · {where(h.unitId)}
-                </span>
+                </span>{/* HR VIS-5d ◂ */}
                 {(all || h.unitId) && (
                   <form action={onDeleteHoliday}>
                     <input type="hidden" name="systemId" value={id} />
@@ -461,17 +519,19 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
             ))}
           </ul>
         )}
-        <form action={onAddHoliday} className="flex flex-wrap items-end gap-2" data-testid="hr-settings-holiday-form">
+        <form action={onAddHoliday} className={addArea} data-testid="hr-settings-holiday-form">{/* HR VIS-5d ◂ */}
           <input type="hidden" name="systemId" value={id} />
-          <label className="flex flex-col gap-1 text-xs">
+          <b className="text-sm">{tv("addHoliday")}</b>{/* HR VIS-5d ◂ */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{/* HR VIS-5d ◂ */}
+          <label className={fld}>
             {t("holidays.date")}
             <input name="date" type="date" required className="input min-h-[44px]" data-testid="hr-settings-holiday-date" />
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("holidays.name")}
             <input name="name" required maxLength={60} className="input min-h-[44px]" data-testid="hr-settings-holiday-name" />
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("holidays.kind")}
             <select name="kind" className="input min-h-[44px]" defaultValue="SHOP" data-testid="hr-settings-holiday-kind">
               {KINDS.map((k) => (
@@ -481,28 +541,32 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               ))}
             </select>
           </label>
-          <label className="flex flex-col gap-1 text-xs">
+          <label className={fld}>{/* HR VIS-5d ◂ */}
             {t("unit")}
             {unitSelect("hr-settings-holiday-unit")}
           </label>
-          <button type="submit" className={btn} data-testid="hr-settings-holiday-add">
+          </div>{/* HR VIS-5d ◂ */}
+          <button type="submit" className={`${btn} w-full sm:ml-auto sm:w-auto`} data-testid="hr-settings-holiday-add">
             {t("holidays.add")}
           </button>
         </form>
-      </Section>
+      </SetCard>{/* HR VIS-5d ◂ */}
+      </>)}{/* HR VIS-5d ◂ */}
 
+      {tab === "rules" && (<>{/* HR VIS-5d ▸ late/OT rules panel: clock settings (same gate) · OT request policy (all branches) · late/absence deduction ◂ */}
       {/* HR H2.4 ▸ R10 จุดลงเวลาด้วยมือถือต่อสาขา + มติ Q1 รอบลงเวลา (ค่าตั้งของร้าน) ◂ */}
       {clockOk && clockPolicy && (
-        <Section title={t("clock.title")} card>
-          <p className="text-xs text-[color:var(--color-muted)]">{t("clock.desc")}</p>
+        <SetCard title={t("clock.title")}>{/* HR VIS-5d ◂ */}
+          <div className="flex flex-col gap-3 px-5 py-4">{/* HR VIS-5d ◂ */}
+          <p className={`text-xs ${muted}`}>{t("clock.desc")}</p>
           {all && (
             <form action={onSaveClockPolicy} className="flex flex-wrap items-end gap-2" data-testid="hr-settings-clock-policy">
               <input type="hidden" name="systemId" value={id} />
-              <label className="flex flex-col gap-1 text-xs">
+              <label className={fld}>{/* HR VIS-5d ◂ */}
                 {t("clock.earlyInMin")}
                 <input name="earlyInMin" type="number" min={0} max={240} step={1} defaultValue={clockPolicy.earlyInMin} className="input min-h-[44px] w-28" data-testid="hr-settings-clock-early" />
               </label>
-              <label className="flex flex-col gap-1 text-xs">
+              <label className={fld}>{/* HR VIS-5d ◂ */}
                 {t("clock.closeGraceMin")}
                 <input name="closeGraceMin" type="number" min={30} max={720} step={1} defaultValue={clockPolicy.closeGraceMin} className="input min-h-[44px] w-28" data-testid="hr-settings-clock-grace" />
               </label>
@@ -511,26 +575,27 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               </button>
             </form>
           )}
+          </div>{/* HR VIS-5d ◂ */}
           {/* HR H2.5 ▸ R12 การตัดสินผล/การเตือน (ทั้งร้าน — ผู้ดูแลทุกสาขาเท่านั้น · เวลาผ่อนผันสายมาจากแต่ละกะ Q10) ◂ */}
           {all && attPolicy && (
-            <form action={onSaveAttendancePolicy} className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--color-line)" }} data-testid="hr-settings-attendance-policy">
+            <form action={onSaveAttendancePolicy} className="flex flex-col gap-2 border-t border-[color:var(--color-line)] px-5 py-4" data-testid="hr-settings-attendance-policy">{/* HR VIS-5d ◂ */}
               <input type="hidden" name="systemId" value={id} />
-              <h3 className="text-sm font-medium">{t("attendance.title")}</h3>
-              <p className="text-xs text-[color:var(--color-muted)]">{t("attendance.desc")}</p>
+              <h3 className="text-sm font-semibold">{t("attendance.title")}</h3>{/* HR VIS-5d ◂ */}
+              <p className={`text-xs ${muted}`}>{t("attendance.desc")}</p>
               <div className="flex flex-wrap items-end gap-2">
-                <label className="flex flex-col gap-1 text-xs">
+                <label className={fld}>{/* HR VIS-5d ◂ */}
                   {t("attendance.notInAlertMin")}
                   <input name="notInAlertMin" type="number" min={0} max={240} step={1} defaultValue={attPolicy.notInAlertMin} className="input min-h-[44px] w-28" />
                 </label>
-                <label className="flex flex-col gap-1 text-xs">
+                <label className={fld}>{/* HR VIS-5d ◂ */}
                   {t("attendance.absentAfterMin")}
                   <input name="absentAfterMin" type="number" min={30} max={720} step={1} defaultValue={attPolicy.absentAfterMin ?? ""} className="input min-h-[44px] w-28" />
                 </label>
-                <label className="flex flex-col gap-1 text-xs">
+                <label className={fld}>{/* HR VIS-5d ◂ */}
                   {t("attendance.earlyOutGraceMin")}
                   <input name="earlyOutGraceMin" type="number" min={0} max={60} step={1} defaultValue={attPolicy.earlyOutGraceMin} className="input min-h-[44px] w-28" />
                 </label>
-                <label className="flex flex-col gap-1 text-xs">
+                <label className={fld}>{/* HR VIS-5d ◂ */}
                   {t("attendance.otStepMin")}
                   <select name="otStepMin" defaultValue={String(attPolicy.otStepMin)} className="input min-h-[44px] w-28">
                     {[1, 5, 10, 15, 30].map((n) => (
@@ -541,10 +606,10 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
                   </select>
                 </label>
               </div>
-              <div className="flex flex-wrap items-center gap-4">
+              <div className="flex flex-wrap items-center gap-x-4">{/* HR VIS-5d ◂ */}
                 {(["flagEarlyOut", "alertsOn", "alertEmployee"] as const).map((k) => (
-                  <label key={k} className="flex min-h-[44px] items-center gap-2 text-xs">
-                    <input name={k} type="checkbox" defaultChecked={attPolicy[k]} />
+                  <label key={k} className={chk}>
+                    <input name={k} type="checkbox" defaultChecked={attPolicy[k]} className={box} />{/* HR VIS-5d ◂ */}
                     {t(`attendance.${k}`)}
                   </label>
                 ))}
@@ -554,13 +619,13 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               </button>
             </form>
           )}
-          <h3 className="text-sm font-medium">{t("clock.sitesTitle")}</h3>
-          <ul className="flex flex-col gap-3">
+          <h3 className="border-t border-[color:var(--color-line)] px-5 pt-4 text-sm font-semibold">{t("clock.sitesTitle")}</h3>{/* HR VIS-5d ◂ */}
+          <ul className="flex flex-col">{/* HR VIS-5d ◂ */}
             {[...(all ? [{ id: "all", name: t("shopWide") }] : []), ...units].map((u) => {
               const key = u.id;
               const cur = siteOf.get(key);
               return (
-                <li key={key} className="flex flex-col gap-2 border-t pt-3" style={{ borderColor: "var(--color-line)" }} data-testid={`hr-clock-site-${key}`}>
+                <li key={key} className="flex flex-col gap-2 border-t border-[color:var(--color-line)] px-5 py-3 first:border-t-0" data-testid={`hr-clock-site-${key}`}>{/* HR VIS-5d ◂ */}
                   <span className="text-sm font-medium">
                     {u.name} · {cur?.mobileEnabled ? t("clock.on") : t("clock.off")}
                     {cur?.noticeAcceptedAt ? ` · ${t("clock.noticeAccepted")}` : ""}
@@ -568,33 +633,33 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
                   <form action={onSaveClockSite} className="flex flex-wrap items-end gap-2">
                     <input type="hidden" name="systemId" value={id} />
                     <input type="hidden" name="unitId" value={key === "all" ? "" : key} />
-                    <label className="flex min-h-[44px] items-center gap-2 text-xs">
-                      <input name="mobileEnabled" type="checkbox" defaultChecked={cur?.mobileEnabled ?? false} data-testid={`hr-clock-site-${key}-enabled`} />
+                    <label className={chk}>
+                      <input name="mobileEnabled" type="checkbox" defaultChecked={cur?.mobileEnabled ?? false} className={box} data-testid={`hr-clock-site-${key}-enabled`} />{/* HR VIS-5d ◂ */}
                       {t("clock.mobileEnabled")}
                     </label>
-                    <label className="flex min-h-[44px] items-center gap-2 text-xs">
-                      <input name="gpsRequired" type="checkbox" defaultChecked={cur?.gpsRequired ?? true} data-testid={`hr-clock-site-${key}-gps`} />
+                    <label className={chk}>
+                      <input name="gpsRequired" type="checkbox" defaultChecked={cur?.gpsRequired ?? true} className={box} data-testid={`hr-clock-site-${key}-gps`} />{/* HR VIS-5d ◂ */}
                       {t("clock.gpsRequired")}
                     </label>
-                    <label className="flex flex-col gap-1 text-xs">
+                    <label className={fld}>{/* HR VIS-5d ◂ */}
                       {t("clock.centerLat")}
                       <input name="centerLat" inputMode="decimal" defaultValue={cur?.centerLat ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-latitude`} />
                     </label>
-                    <label className="flex flex-col gap-1 text-xs">
+                    <label className={fld}>{/* HR VIS-5d ◂ */}
                       {t("clock.centerLng")}
                       <input name="centerLng" inputMode="decimal" defaultValue={cur?.centerLng ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-longitude`} />
                     </label>
-                    <label className="flex flex-col gap-1 text-xs">
+                    <label className={fld}>{/* HR VIS-5d ◂ */}
                       {t("clock.radiusM")}
                       <input name="radiusM" type="number" min={30} max={2000} defaultValue={cur?.radiusM ?? 150} className="input min-h-[44px] w-24" data-testid={`hr-clock-site-${key}-radius`} />
                     </label>
-                    <label className="flex flex-col gap-1 text-xs">
+                    <label className={fld}>{/* HR VIS-5d ◂ */}
                       {t("clock.minAccuracyM")}
                       <input name="minAccuracyM" type="number" min={10} max={500} defaultValue={cur?.minAccuracyM ?? 100} className="input min-h-[44px] w-24" data-testid={`hr-clock-site-${key}-accuracy`} />
                     </label>
                     {!cur?.noticeAcceptedAt && (
-                      <label className="flex min-h-[44px] items-center gap-2 text-xs">
-                        <input name="acceptPdpaNotice" type="checkbox" data-testid={`hr-clock-site-${key}-notice`} />
+                      <label className={chk}>
+                        <input name="acceptPdpaNotice" type="checkbox" className={box} data-testid={`hr-clock-site-${key}-notice`} />{/* HR VIS-5d ◂ */}
                         {t("clock.acceptPdpaNotice")}
                       </label>
                     )}
@@ -606,24 +671,24 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               );
             })}
           </ul>
-        </Section>
+        {/* HR VIS-5d ◂ */}</SetCard>
       )}
       {/* HR H2.9 ▸ R14 นโยบายคำขอ OT (ทั้งร้าน — ผู้ดูแลทุกสาขาเท่านั้น) · อัตราตามตารางกฎหมาย (หน้า law) ◂ */}
       {all && (
-        <Section title={tOt("policyTitle")} card>
-          <form action={onSaveOtPolicy} className="flex flex-col gap-2" data-testid="hr-settings-ot-policy">
+        <SetCard title={tOt("policyTitle")}>{/* HR VIS-5d ◂ */}
+          <form action={onSaveOtPolicy} className="flex flex-col gap-2 px-5 py-4" data-testid="hr-settings-ot-policy">{/* HR VIS-5d ◂ */}
             <input type="hidden" name="systemId" value={id} />
-            <p className="text-xs text-[color:var(--color-muted)]">{tOt("policyDesc")}</p>
+            <p className={`text-xs ${muted}`}>{tOt("policyDesc")}</p>{/* HR VIS-5d ◂ */}
             <div className="flex flex-wrap items-end gap-2">
-              <label className="flex flex-col gap-1 text-xs">
+              <label className={fld}>{/* HR VIS-5d ◂ */}
                 {tOt("afterHours")}
                 <input name="afterHours" type="number" min={0} max={72} step={1} defaultValue={otPolicy.afterHours} className="input min-h-[44px] w-28" />
               </label>
-              <label className="flex flex-col gap-1 text-xs">
+              <label className={fld}>{/* HR VIS-5d ◂ */}
                 {tOt("maxAheadDays")}
                 <input name="maxAheadDays" type="number" min={1} max={90} step={1} defaultValue={otPolicy.maxAheadDays} className="input min-h-[44px] w-28" />
               </label>
-              <label className="flex flex-col gap-1 text-xs">
+              <label className={fld}>{/* HR VIS-5d ◂ */}
                 {tOt("otRoundMin")}
                 <select name="otRoundMin" defaultValue={String(otPolicy.otRoundMin)} className="input min-h-[44px] w-28">
                   {[1, 15, 30].map((n) => (
@@ -638,19 +703,14 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               {tOt("policySave")}
             </button>
           </form>
-        </Section>
+        {/* HR VIS-5d ◂ */}</SetCard>
       )}
-      {/* HR H4.4 ▸ ค่าตั้งวงจรพนักงาน — ผู้ดูข้อมูลบันทึก (OWNER/คีย์ตรง) เท่านั้น · ผลการกด ?life= (allowlist) ◂ */}
-      <LifecycleMsg code={typeof sp.life === "string" ? sp.life : undefined} />
-      <LifecycleSettings systemId={id} />
-      {/* HR H4.5 ▸ แจ้งเตือนพนักงานทาง LINE — ทุกผู้ตั้งค่าเห็น · บันทึกได้เฉพาะผู้ดูแลทุกสาขา (service ตรวจซ้ำ) ◂ */}
-      <LineSettingsCard systemId={id} policy={linePolicy} sentThisMonth={lineSent} units={units} canSave={isAllBranches(scope)} saveAction={saveLinePolicyAction} /> {/* HR H4.5 ◂ */}
-      {/* HR H3.1 ▸ ชั่วโมงทำงานปกติต่อวัน — ทุกผู้ตั้งค่าเห็น · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
-      <WorkSettingsCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveNormalMinutes : null} />
-      {/* HR H4.2 ▸ ค่าแรงต่อยอดขาย — ผู้ตั้งค่า HR ทุกสาขาแก้ได้ · ผู้อ่านอื่นเห็นค่า (service ตัดสิน) ◂ */}
-      <LaborSettingsCard systemId={id} onSave={isAllBranches(scope) ? onSaveLabor : null} />
+      {/* HR VIS-5d ▸ lifecycle · LINE · normal hours · labour target moved to their tabs (life · connect · shifts) ◂ */}
       {/* HR H3.2 ▸ กฎหักสาย/ขาด — ทุกผู้ตั้งค่าเห็น (ข้อความ ม.76 เสมอ) · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <AttendancePayPolicyCard systemId={id} onSave={auth.active.role === "OWNER" ? onSaveAttPay : null} />
+      </>)}{/* HR VIS-5d ◂ */}
+
+      {tab === "pay" && (<>{/* HR VIS-5d ▸ pay-run panel: engine · accounting · bank file · filings ◂ */}
       {/* HR H3.4 ▸ รุ่นเครื่องคิดเงินเดือน + เพดานหัก ม.76 + ช่วงที่กฎหักสาย/ขาดมีผล — แก้ได้เฉพาะเจ้าของร้าน ◂ */}
       <PayrollEngineCard systemId={id} flash={run2Flash} flashOk={run2Ok} onSave={auth.active.role === "OWNER" ? onSaveEngine : null} />
       {/* HR H3.7 ▸ ลงบัญชีเงินเดือน — สมุดบัญชี 1 เล่ม + บัญชีจ่ายตั้งต้น + หมายเหตุเงินเบิกล่วงหน้า · แก้ได้เฉพาะเจ้าของร้าน ◂ */}
@@ -659,8 +719,24 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <BankSettingsCard systemId={id} onSaveProfile={auth.active.role === "OWNER" ? onSaveBankProfile : null} onSavePreset={onSaveBankPreset} onDeletePreset={onDeleteBankPreset} />
       {/* HR H3.6 ▸ แบบยื่นภาษี/ประกันสังคม — การ์ดแสดงเฉพาะผู้ผ่านด่าน · บันทึกได้เฉพาะเจ้าของร้าน · ผล ?fmsg= (allowlist ใน ui) ◂ */}
       <FilingSettingsCard systemId={id} msg={{ fmsg: str3(sp, "fmsg"), fflds: str3(sp, "fflds"), fdoc: str3(sp, "fdoc") }} /> {/* HR H3.6 ◂ */}
+      </>)}{/* HR VIS-5d ◂ */}
+
+      {tab === "connect" && (<>{/* HR VIS-5d ▸ connections panel: staff LINE · API keys (OWNER) ◂ */}
+      {/* HR H4.5 ▸ แจ้งเตือนพนักงานทาง LINE — ทุกผู้ตั้งค่าเห็น · บันทึกได้เฉพาะผู้ดูแลทุกสาขา (service ตรวจซ้ำ) ◂ */}
+      <LineSettingsCard systemId={id} policy={linePolicy} sentThisMonth={lineSent} units={units} canSave={isAllBranches(scope)} saveAction={saveLinePolicyAction} /> {/* HR H4.5 ◂ */}
       {/* HR H4.8 ▸ คีย์ API ของระบบงานบุคคล — เจ้าของร้านเท่านั้น (ออก/เพิกถอนตรวจซ้ำที่ hr/api/keys.ts) · ชุดเงินเดือนต้องติ๊กยินยอม (O1) ◂ */}
       {auth.active.role === "OWNER" && <ApiKeysCard systemId={id} />}
+      </>)}{/* HR VIS-5d ◂ */}
+
+      {tab === "life" && (<>{/* HR VIS-5d ▸ lifecycle panel (Q1 · menu item only for canSeeLifecycle) ◂ */}
+      {/* HR H4.4 ▸ ค่าตั้งวงจรพนักงาน — ผู้ดูข้อมูลบันทึก (OWNER/คีย์ตรง) เท่านั้น · ผลการกด ?life= (allowlist) ◂ */}
+      {flash}{/* HR VIS-5d ◂ */}
+      <LifecycleMsg code={typeof sp.life === "string" ? sp.life : undefined} />
+      <LifecycleSettings systemId={id} />
+      </>)}{/* HR VIS-5d ◂ */}
+      </div>
+      )}{/* HR VIS-5d ◂ */}
+      </SettingsFrame>{/* HR VIS-5d ◂ */}
     </div>
   );
 }

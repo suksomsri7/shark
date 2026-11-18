@@ -360,6 +360,63 @@
         "maternityPaidDays": "Maternity leave: the paid part adds up to {set} days — the law requires the employer to pay up to {law} days of the leave ({ref} Labour Protection Act) · saved, but please check again"
       }
     },
+    "setview": {
+      "desc": "Shifts · leave types · holidays · late/OT rules · pay run · connections — the shop's staff system settings",
+      "heading": "Staff settings",
+      "navLabel": "Staff settings menu",
+      "nav": {
+        "shifts": "Shifts & schedules",
+        "leave": "Leave types & quotas",
+        "holidays": "Holidays",
+        "rules": "Late/OT rules",
+        "pay": "Pay run",
+        "staff": "Manager permissions",
+        "connect": "System connections"
+      },
+      "footnote": "Law tables are shared by all branches · shifts/holidays/late rules can be set per branch",
+      "empty": "This menu has nothing you can set — pick another item on the left",
+      "conn": {
+        "title": "Connections (short)",
+        "all": "All",
+        "account": "Accounting",
+        "accountSub": "Payroll posting",
+        "line": "Staff LINE chat",
+        "lineSub": "Shift notices · approval results · payslips",
+        "on": "Connected",
+        "off": "Not connected"
+      },
+      "addShift": "Add shift",
+      "addPolicy": "Add leave type",
+      "addHoliday": "Add holiday",
+      "ro": {
+        "yes": "On",
+        "no": "Off",
+        "none": "—",
+        "line": "LINE notice settings apply to the whole shop — an all-branch admin changes them · you can only view them",
+        "life": "Lifecycle settings apply to the whole shop — an all-branch admin changes them · you can only view them",
+        "ownerOnly": "On · only the shop owner can turn this off",
+        "events": "Events notified"
+      },
+      "keys": {
+        "needName": "Enter a key name before issuing",
+        "needConsent": "Tick the payroll-data consent before issuing",
+        "busy": "Working, please wait"
+      },
+      "tpl": {
+        "title": "Item",
+        "days": "Due (days)",
+        "add": "Add item",
+        "remove": "Remove",
+        "up": "Move up",
+        "down": "Move down"
+      },
+      "law": {
+        "titleNote": "(with effective dates · view only for shops)",
+        "effective": "Effective {day}",
+        "status": "Status",
+        "otTitle": "OT and minimum wage"
+      }
+    },
     "kiosk": {
       "prompt": "Enter your 4–6 digit PIN, then tap Clock or Start break",
       "clear": "Clear",
