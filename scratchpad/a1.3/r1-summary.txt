@@ -1,0 +1,9 @@
+qc-trips-t0.5 exit=0
+qc-trips-t0.6 exit=1
+qc-trips-t0.4 exit=1
+qc-trips-a1.2 exit=1
+probe-trips-a1.3-hunt-1 exit=0
+probe-trips-a1.3-hunt-2 exit=0
+probe-trips-a1.3-hunt-3 exit=0
+probe-trips-a1.3-hunt-4 exit=0
+ALLDONE

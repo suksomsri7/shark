@@ -1,0 +1,141 @@
+=== qc-trips-t1.4 start 23:38:15
+[env] qc-trips-t1.4 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1024657) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed andaman-dive + หน่วย TRIPS อยู่
+  ✅ [PC-2] seed ราชา ส. 14 พ.ย.: การจองตรง 3 ใบ CONFIRMED รอบเดียวกัน · ที่นั่ง 6 (ผู้ใหญ่ 5 · เด็ก 1) · ยังไม่มี TripVehicleRun ของรอบ (ใบนี้ไม่เพิ่ม seed)
+  ✅ [PC-3] ฟิกซ์เจอร์ภาพ 12: รอบราชา 14 พ.ย. 6 การจอง 15 คน (13 ผู้ใหญ่ 2 เด็ก) · การจองตรง 3 ใบ = 6 คน · TRIPS_AS_OF = 12 พ.ย. 2569 18:00
+  ✅ [PC-4] ของที่ใบนี้ต่อยอดมีจริง: facade (getTripPassengers · revealPassengerData · loadDeparturePanelVM · tripsPageGate · outstandingOf · maskPhone · canSeeSensitive · maskDoc · HEALTH_CONSENT_V1 · bookTripsNow · quoteTrips) · passengers.ts ส่งออก loadCfg/openHealth/PENDING_OBJ_SQL · passengers-core มี parseAnswers/healthViewOf/waiverStatusOf/isPurgedAll
+  ✅ [PC-5] ตาราง TripVehicleRun ตรงสัญญา (id tenantId unitId departureId resourceId driverEmployeeId stops createdAt updatedAt) + ดัชนี departureId · ดัชนีที่ตัวโหลดใช้: TripBooking (departureId,status) · TripPassenger bookingId · TripDocument passengerId · TripBookingItem bookingId
+  ✅ [PC-6] สิทธิ์ที่ใบนี้ใช้อยู่ในทะเบียน (trips.departure.view · passenger.view · passenger.health · passenger.reveal · booking.view) และไม่มีคีย์ trips.manifest.* (ใบนี้ไม่เพิ่มสิทธิ์)
+  ✅ [PC-7] ตัวอ่าน CSV อ้างอิง + ตัวจับสูตรของข้อสอบทำงาน: อ่าน BOM/เครื่องหมายคำพูด/CRLF ถูก · จับเซลล์ขึ้นต้น = + - @ tab ได้ · ตัวสแกนตัวบ่งชี้จับได้
+  ✅ [PC-8] กล่องปิดผนึกใช้ได้ในสภาพแวดล้อมนี้ (ปิด→เปิดด้วย AAD เดิมได้ · AAD ผิดเปิดไม่ได้) — ไม่งั้นข้อ HV ปลูกข้อมูลสุขภาพไม่ได้
+  ── สรุป PC: ผ่าน 8/8
+
+── S: ไฟล์และกติกาโค้ด (static) ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: manifest-core.ts · manifest.ts · manifest-actions.ts · คอมโพเนนต์ src/components/trips/Manifest*.tsx · หน้า departures/[departureId]/manifest
+  ✅ [S-2] facade trips: บล็อก "// TRIPS T1.4 ▸" ส่งออก 17 ชื่อ · ไม่มี export *
+  ✅ [S-3] หน้า manifest: params เป็น Promise แล้ว await · requireUnit + tripsPageGate(page "departures") + loadManifestVM · ไม่ส่ง now · notFound() · TripsForbidden · ไม่มี layout/loading/error ใหม่ใต้ segment นี้
+  ✅ [S-4] ไม่มี prisma ในหน้า/คอมโพเนนต์ · ไฟล์โมดูลของใบไม่ import prisma ตรง
+  ✅ [S-5] ไม่มี any ในไฟล์ของใบ
+  ✅ [S-6] 'use client' ของ Manifest* ไม่ import ของที่ลากถึง prisma (facade trips · core/settings · core/db · manifest.ts) — เรียกเซิร์ฟเวอร์ผ่าน manifest-actions ("use server") เท่านั้น
+  ✅ [S-7] data-testid ครบในซอร์ส: ตายตัว 37 + แพตเทิร์น 5
+  ✅ [S-8] ทะเบียนปุ่ม: แถว wo T1.4 ครอบ testid ของใบ · page …/departures/[departureId]/manifest · roles ถูก · needs = คีย์สิทธิ์จริง · ไม่มีแถวผีทั้งไฟล์
+  ✅ [S-9] i18n: th/en คีย์ตรงกัน · คีย์ขั้นต่ำของใบครบ 113 · ค่าอังกฤษใต้ manifest ไม่มีอักษรไทย · ไม่มีรหัสใบงาน/POS ในค่าใต้ manifest
+  ✅ [S-10] ไม่แสดงรหัสดิบบนจอ: คอมโพเนนต์ Manifest* ไม่มี {x.status|state|kind|channel|health|waiver|formStatus|docType|contactRoute|paxTypeCode|purpose} เป็นข้อความ JSX (แอตทริบิวต์ได้)
+  ✅ [S-11] วันเวลา/ความบริสุทธิ์: ไฟล์ของใบไม่ใช้ getDay/getDate/getHours/… หรือ toLocaleDate/TimeString · คอมโพเนนต์ไม่อ่านนาฬิกา · manifest-core import ได้เฉพาะ `import type` ไม่มี Date.now/new Date()/process/await
+  ✅ [S-12] manifest-actions.ts: "use server" · ส่งออกเฉพาะ async function 3 ตัว (export/reveal/print) · ทุกตัว requireUnit · ไม่รับ/ไม่ส่ง now · unitId มาจากหน่วยของ slug
+  ❌ [S-13] ขอบเขต (เทียบ BASE 002d21e43 · ไม่นับไฟล์ที่ตรงกับ session/trips): ไม่แตะ prisma/core/platform/payment/api/โมดูลอื่น/ไฟล์บริการ trips เดิม/คอมโพเนนต์ trips เดิม/โครง route เดิม/ข้อสอบเดิม/seed · ไฟล์ที่แก้ได้จำกัดจำนวนบรรทัด — แตะไฟล์ต้องห้าม: src/lib/core/settings/defs/trips.ts, src/lib/modules/trips/booking.ts, src/lib/modules/trips/capacity-service.ts, src/lib/modules/trips/capacity.ts
+  ✅ [S-14] วินัยการเขียน: manifest-core/manifest ไม่เขียน/ลบตาราง Trip* (ไม่มี update/delete/upsert · ไม่มี INSERT/UPDATE/DELETE ตารางอื่นนอกจาก AuditLog · ไม่มี tripX.create) · ไม่ส่ง outbox/event · ไม่มี console.*
+  ✅ [S-15] ไม่แตะระบบอื่น/ทางลัดต้องห้าม: ไฟล์ของใบไม่ import modules/{pos,account,hotel,rooms,dorm,approval,agency,hr} หรือ modules/party/<ไฟล์ใน> · manifest.ts ไม่เรียก getTripPassengers/revealPassengerData/passengerDocumentUrl/privateFileUrl/signLink/getProfile/searchByName
+  ✅ [S-16] ตัวโหลดมีเพดาน + ไม่ N+1: มี take/LIMIT ผูกค่าคงที่เพดาน · ไม่มี await ในลูป · ไม่มี .map(async · listBriefsByIds ≤ 1 ที่ · loadCfg ≤ 3 ที่ (ครั้งเดียวต่อฟังก์ชัน) · openHealth เฉพาะในบริการสุขภาพ (≤ 1 ที่)
+  ✅ [S-17] คอมโพเนนต์ไม่คิดเงิน/ไม่จัดรูปเงินเอง: Manifest* ใช้ formatBaht ของ trips-shared · ไม่มี toFixed/toLocaleString/Intl.NumberFormat/parseFloat// 100 · ไม่ใช้ localStorage/sessionStorage/document.cookie (ข้อมูลสุขภาพห้ามค้าง)
+  ✅ [S-18] พิมพ์/ส่งออก/ผัง: มี data-print-root="trips-manifest" + กฎ @media print (หรือคลาส print:) + print:hidden · window.print ถูกเรียกหลัง recordManifestPrintAction · ส่งออกผ่าน exportManifestCsvAction + Blob (ไม่มี href ไป /api) · ไฟล์ที่มี <table ไม่มี sr-only · มีทางแสดงผลแบบการ์ดสำหรับจอแคบ (md:/hidden)
+  ✅ [S-19] ภาพคู่: visual-trips มีสเปก "t1.4" 4 ฉาก (manifest-pickup · manifest-booking · manifest-print · manifest-panel-link) mockup "12" · parity-trips.sh รับ 12 ⇒ 12-daily-manifest
+  ✅ [S-20] แผงรอบ (หนี้ T1.2): departure-screens ไม่ตรึง `manifest: false` แล้ว · DeparturePanel ปุ่ม trips-dep-manifest เป็นลิงก์ไป …/manifest ตาม actions.manifest (ไม่ disabled ตายตัว)
+  ── สรุป S: ผ่าน 19/20
+
+── P: ตัวช่วยบริสุทธิ์ (manifest-core) ──
+  ✅ [P-1] ค่าคงที่: MANIFEST_VIEWS · MANIFEST_BOOKING_STATUSES (= ชุดที่นับ sold) · MANIFEST_DOC_STATES · MANIFEST_HEALTH_PURPOSES (ไม่มี OTHER) · MANIFEST_CSV_COLUMNS 16 · RUN_STOPS_MAX 60 · เพดาน 100–300 / 300–1000
+  ✅ [P-2] parseRunStops: รูปถูกผ่าน (note ว่าง ⇒ null · ตัดคีย์แปลก) · ไม่ใช่อาร์เรย์ ⇒ [] · ไม่ throw
+  ✅ [P-3] parseRunStops: ทิ้งรายการผิดรูป (ไม่มี bookingId · เวลา 24:00/7:5/ว่าง · place ว่าง/ยาว 121/มีอักขระควบคุม · ไม่ใช่วัตถุ) · bookingId ซ้ำเก็บตัวแรก · เกิน 60 เก็บ 60 ตัวแรก
+  ✅ [P-4] manifestDocState: ตารางตัดสิน (PURGED → MISSING_NAMES → INCOMPLETE → COMPLETE)
+  ✅ [P-5] csvCell กันสูตร: ค่าที่ขึ้นต้น = + - @ ได้ ' นำหน้า · tab/CR/LF/NUL นำหน้าถูกแทนด้วยช่องว่างแล้ว trim ก่อนตัดสิน ("\t=1" ⇒ '=1) · ค่าปกติไม่ถูกแตะ
+  ✅ [P-6] csvCell: null/undefined ⇒ "" · จำนวนเต็ม ⇒ ตัวเลข · NaN/Infinity/ทศนิยม ⇒ "" · อักขระควบคุมกลางข้อความ ⇒ ช่องว่าง · มี " หรือ , ⇒ ครอบและซ้ำ " · ผลไม่มี CR/LF/tab เลย
+  ✅ [P-7] manifestCsv: ขึ้นต้น BOM · จบทุกบรรทัดด้วย CRLF · หัว+แถวผ่าน csvCell · แถวสั้น/ยาวถูกปรับเท่าหัว · อ่านกลับด้วยตัวอ่านอ้างอิงได้ค่าเดิม
+  ✅ [P-8] manifestCsv ทนข้อมูลร้าย (สุ่ม 300 เซลล์จากอักขระ = + - @ " , tab CR LF ' ไทย): จำนวนแถว/คอลัมน์คงเดิม · ไม่มีเซลล์ใดขึ้นต้นด้วย = + - @ tab
+  ✅ [P-9] manifestFileName: manifest-<วันที่>-<6 ตัวท้าย [A-Za-z0-9] ของ id>.csv · วันที่ไม่จริง ⇒ manifest.csv · ผลตรง /^[A-Za-z0-9.-]{1,60}$/ เสมอ (ไม่มีข้อความผู้ใช้/เส้นทาง)
+  ── สรุป P: ผ่าน 9/9
+
+── LV: ใบรายชื่อบนร้าน seed (now = TRIPS_AS_OF) ──
+  ✅ [LV-1] รอบราชา ส. 14 พ.ย.: หัวใบรายชื่อ (ชื่อสินค้าไทย/อังกฤษ · วันที่ 2026-11-14 · 08:00–16:30) · รูป VM ครบคีย์ · view ปริยาย pickup · unit.today = 2026-11-12 · ธงเจ้าของร้าน
+  ✅ [LV-2] แถว 3 การจอง (ภาพ :26 :34 :35): ภัทรา "2 ผู้ใหญ่ 1 เด็ก" + เช่ากล้อง · Chen Yu 2 ผู้ใหญ่ · วิทยา 1 ผู้ใหญ่ · รูปแถวครบคีย์ · เรียงตามเลขจอง
+  ✅ [LV-3] การ์ดสรุป (ภาพ :13–:18 เท่าที่ seed มี): 3 การจอง · 6 คน (ผู้ใหญ่ 5 · เด็ก 1) · ค้างชำระ ฿23,750.00 · ต้องเตรียม กล้อง 1 · อาหาร 6 · ยังไม่จัดรถ 6 คน รถ 0 คัน
+  ✅ [LV-4] มุมมองตามรถบน seed (ไม่มีการจัดรถ): กลุ่มเดียว UNASSIGNED 6 คน 3 แถว · รายชื่อครบ = ตามฐานจริง · แถวที่ยังไม่มีชื่อ = MISSING_NAMES พร้อมจำนวนที่ขาด (ภาพ :24 "ขาดรายชื่อ n")
+  ✅ [LV-5] ตัวโหลดไม่เขียนฐาน seed: นับ TripBooking/TripPassenger/AuditLog/OutboxEvent/TripVehicleRun/TripDocView ก่อน-หลังเรียก 2 มุมมอง × 2 รอบ เท่าเดิม
+  ✅ [LV-6] อินพุตเสีย: view นอกชุด/คีย์เกิน/ไม่มี departureId ⇒ INVALID_INPUT · รอบที่ไม่มี ⇒ NOT_FOUND · ผู้ใช้ที่ไม่ใช่สมาชิกร้าน ⇒ NOT_FOUND|FORBIDDEN · ไม่ throw
+  ── สรุป LV: ผ่าน 6/6
+
+── FX: ตัวควบคุมฟิกซ์เจอร์ (ผ่านบริการ T0.8 เดิม) ──
+  ✅ [FX-1] ร้านชั่วคราวพร้อม: T0.8 อ่านผู้เดินทางที่ปลูกได้ตามตั้งใจ — b1 สุขภาพ [PROVIDED, DECLINED, MISSING] · เลขปิดบัง ••••<4 ตัวท้าย> · ไฟล์ 3 (ลบแล้ว 2 · รอลบ 1) · ผู้ถูกลบ purged · สินค้าบังคับลงนาม ⇒ MISSING + NOT_COLLECTED
+  ✅ [FX-2] กล่องสุขภาพที่ปลูกเปิดได้ด้วยบริการ T0.8 (revealPassengerData) และได้เนื้อหาที่ปลูก — ข้อ HV จึงล้มได้ด้วยเหตุของใบนี้เท่านั้น · สถานะการจองที่ปลูก: HOLD 1 · CANCELLED 1 · ในใบ 5
+  ── สรุป FX: ผ่าน 2/2
+
+── BT: ร้านชั่วคราว (สิทธิ์ · แยกหน่วย/ร้าน · จัดกลุ่ม · เอกสาร · ถูกลบ · PII · เพดาน · เขตเวลา) ──
+  ✅ [BT-1] สิทธิ์เห็นใบรายชื่อ ⇔ departure.view ∧ passenger.view: none/dv (ขาด passenger.view)/pv (ขาด departure.view) ⇒ FORBIDDEN · v/vb/vh/mg/เจ้าของ ⇒ ได้
+  ✅ [BT-2] แยกหน่วย/ร้าน: ผู้ใช้หน่วยอื่น (a2) เปิดหน่วย uA ⇒ NOT_FOUND · รอบของหน่วยอื่นด้วย unitId ของตน ⇒ NOT_FOUND · เจ้าของร้านอื่น ⇒ NOT_FOUND · รอบร้านอื่น ⇒ NOT_FOUND
+  ✅ [BT-3] ธงตามสิทธิ์: v (ไม่มีเงิน/สุขภาพ) · vb (เงิน) · vh (สุขภาพ) · vw (มี trips.* + reveal แต่ไม่มีคีย์สุขภาพตรงตัว ⇒ ไม่เห็นสุขภาพ) · mg (MANAGER ⇒ ไม่เห็นสุขภาพ) · เจ้าของ (ทั้งคู่) · canEditRuns/canSend = false เสมอ
+  ✅ [BT-4] ชุดการจองของใบ = CONFIRMED/PART_PAID/PAID/TRAVELLED/NO_SHOW เท่านั้น: HOLD และ CANCELLED ไม่อยู่ในแถว/ยอดรวม · pendingBookings นับ HOLD+PENDING = 1 · เรียงตามเลขจอง (มุมมอง booking)
+  ✅ [BT-5] ยอดรวมตรงกับ SQL อิสระ: people = Σ qty SEAT · slots · named (ชื่อไม่ว่าง ∧ ไม่ถูกลบ) · formComplete (SUBMITTED|VERIFIED) · purged
+  ✅ [BT-6] มุมมองตามรถ: กลุ่ม RUN เรียงตามเวลาจุดรับแรก (รถ ก 06:45 ก่อนรถ ข 07:35 แม้สร้างทีหลัง) แล้ว UNASSIGNED · แถวในรถเรียงตาม stops · เวลา/จุดรับ/หมายเหตุจาก stop · ชื่อรถ/ที่นั่ง/เส้นทาง · driverName null
+  ✅ [BT-7] จุดรับค้าง/ซ้ำ/ข้ามหน่วย: stop ของการจองที่ยกเลิก + ของหน่วยอื่น + การจองที่อยู่รถแรกแล้ว ⇒ ทิ้งและนับ staleStops = 3 · stop ผิดรูปถูกทิ้งเงียบ · รถของหน่วยอื่น/ร้านอื่นที่ชี้รอบเดียวกันไม่ถูกอ่าน (ชื่อหก ยังไม่จัดรถ) · รถที่ไม่มีแถวไม่เป็นกลุ่ม
+  ✅ [BT-8] สถานะเอกสารต่อการจอง = manifestDocState ของค่าจริง: b1 (3 ที่ · ชื่อ 2) MISSING_NAMES ขาด 1 · b2 (ชื่อ 1 + ถูกลบ 1) MISSING_NAMES · b3/b4 COMPLETE · การจองที่ผู้เดินทางถูกลบหมด PURGED · needsFix ของ b2 = 1
+  ✅ [BT-9] รายคน: ลำดับ no 1.. ตาม (createdAt,id) · ชื่อ/สัญชาติ/ชนิดเอกสาร/เลขปิดบัง ••••<4 ตัวท้าย> · ประเภทคน · ขนาดตีนกบ · สถานะแบบฟอร์ม · รูปครบคีย์ · คนที่ยังไม่กรอกชื่อ fullName null
+  ✅ [BT-10] สุขภาพ = สถานะเท่านั้น: PROVIDED / DECLINED / MISSING (สินค้าเก็บสุขภาพ) / WITHDRAWN · สินค้าไม่เก็บ ⇒ NOT_COLLECTED · ยอดรวม healthProvided 2 · healthMissing = คนที่ MISSING · ตรง healthViewOf ของ T0.8
+  ✅ [BT-11] ลงนาม: สินค้าบังคับลงนาม (ALL) ยังไม่มีใครเซ็น ⇒ รายคน MISSING · waiverRequired 2 · waiverSigned 0 · สินค้าไม่บังคับ ⇒ NOT_REQUIRED · waiverRequired 0
+  ✅ [BT-12] ผู้เดินทางที่ถูกลบ (ลบทั้งแถว): fullName null · purged true · ช่องบุคคล null · ไม่นับ named · การจองที่ piiPurgedAt ⇒ bookerName null + bookerPurged true · ชื่อเดิมไม่โผล่ที่ใดใน VM
+  ✅ [BT-13] ไฟล์เอกสาร (หนี้ T0.8): นับ live 1 · pendingDeletion 1 (ลบแล้วแต่วัตถุยังไม่ยืนยันว่าหาย) · ไฟล์ที่ลบและยืนยันแล้วไม่นับ · VM ไม่มี fileId/URL/path
+  ✅ [BT-14] ข้อมูลส่วนบุคคลใน VM (ทุกบทบาท รวมเจ้าของ · ค่าตั้ง maskOnScreen = false): ไม่มีคีย์ต้องห้าม (docNumber · box · allergies · conditions · dob · phone · token · fileId · guardian …) · ไม่มีเลขเอกสารเต็ม/เนื้อหาสุขภาพ/เบอร์เต็ม · เบอร์ = maskPhone เท่านั้น
+  ✅ [BT-15] เงิน: ไม่มี trips.booking.view ⇒ outstandingSatang ของแถว/ยอดรวม = null ทั้งหมด (และไม่มีตัวเลขยอดจองใน VM) · มี ⇒ = outstandingOf ของแต่ละการจอง และยอดรวม = ผลบวก (TRAVELLED/PAID ที่ไม่ค้าง = 0)
+  ✅ [BT-16] ของที่ต้องเตรียม + เรือ/ไกด์: รายการเสริม กล้อง 2 (ทั้งชุด) · ขนาดตีนกบ 38×1 · 42×2 · ยังไม่ระบุ = คนที่ไม่ถูกลบและไม่มีขนาด · อาหาร = คน 9 + ไกด์ 1 · boats/guides จาก TripResourceUse active เท่านั้น (รถที่ use ไม่ active ไม่โผล่)
+  ✅ [BT-17] ตัวโหลดไม่เขียนฐาน: แฮชข้อมูล (ผู้เดินทาง/การจอง/รถ/ไฟล์/TripDocView/Outbox) และจำนวน AuditLog ก่อน-หลังเรียก 5 บทบาท × 2 มุมมอง เท่าเดิม (รวมเจ้าของในหน่วยที่ maskOnScreen = false — ไม่มี list_unmasked)
+  ✅ [BT-18] เขตเวลา + รอบว่าง: หน่วยโตเกียว รอบ 2027-04-09T23:30Z ⇒ timeText 08:30–16:30 · unit.tz Asia/Tokyo · ไม่มีการจอง ⇒ groups [] · ยอดรวม 0 · ไม่ truncated
+  ✅ [BT-19] เพดาน: รอบที่มีการจองเกินเพดาน (CAP+3) ⇒ แสดง CAP แถว · bookingsTotal/ยอดรวมคน จากคิวรีรวมทั้งชุด (ไม่ใช่จากแถวที่ถูกตัด) · truncated · ผู้เดินทางเกิน PAX_CAP ⇒ paxShown ≤ เพดาน + paxTruncated · ตัวเลขลงนาม/สุขภาพ = null
+  ✅ [BT-20] อินพุต strict: คีย์เกิน · unitId ว่าง · departureId ยาว 129 · มีอักขระควบคุม ⇒ INVALID_INPUT (ไม่ throw · ไม่ 500) · ctx พัง ⇒ NOT_FOUND
+  ✅ [BT-21] แผงรอบ (หนี้ T1.2): loadDeparturePanelVM.actions.manifest = true สำหรับผู้มี trips.passenger.view (เจ้าของ) และ false สำหรับผู้ไม่มี (dv)
+  ✅ [BT-22] เท่ากับ T0.8 ทุกคน (ห้ามเขียนสูตรซ้ำ): สำหรับทุกการจองในใบ ผู้เดินทางที่ไม่ถูกลบมี health · waiver · formStatus · missing · docMasked · isMinor · finSize ตรงกับ getTripPassengers ของการจองนั้น และจำนวนไฟล์ live/pendingDeletion ตรงกับรายการไฟล์
+  ── สรุป BT: ผ่าน 22/22
+
+── EX: ส่งออก CSV (สิทธิ์ · เนื้อหา · กันสูตร · เพดาน · audit) ──
+  ✅ [EX-1] สิทธิ์ + ไม่บันทึกเมื่อปฏิเสธ: none/dv/pv ⇒ FORBIDDEN · หน่วยอื่น/ร้านอื่น/รอบไม่มี ⇒ NOT_FOUND · locale นอกชุด/คีย์เกิน ⇒ INVALID_INPUT — ทุกกรณีไม่มีแถว audit เพิ่ม และผลไม่มี csv
+  ✅ [EX-2] เนื้อหา: หัว 16 คอลัมน์ตาม MANIFEST_CSV_COLUMNS (ข้อความไทยจาก messages) · 1 แถวต่อผู้เดินทางที่ยังไม่ถูกลบ (7) + 1 แถวของการจองที่ผู้เดินทางถูกลบหมด = 8 · ผู้ถูกลบ 2 คนไม่อยู่ในไฟล์ (purgedSkipped 2) · เรียงตามมุมมองรถ → ลำดับแถว → ลำดับคน
+  ✅ [EX-3] ค่าที่ถูกต้อง: ชื่อผู้เดินทาง · เลขเอกสารปิดบัง ••••<4 ตัวท้าย> · สัญชาติ · ขนาดตีนกบ · ชื่อผู้จอง · จุดรับ · เซลล์สถานะเป็นข้อความตามภาษา (ไม่ใช่รหัสดิบ) · คนที่ยังไม่กรอกชื่อ = ช่องว่าง
+  ✅ [EX-4] กันสูตร (ชื่อ/จุดรับที่ปลูก = + - @ tab+= และมี " , ขึ้นบรรทัด): ไม่มีเซลล์ใดในไฟล์ขึ้นต้นด้วย = + - @ tab · ค่าหลังเอา ' ออกตรงกับที่ปลูก (อักขระควบคุมเป็นช่องว่าง) · จำนวนบรรทัดไม่เพี้ยน
+  ✅ [EX-5] ไฟล์ไม่มีข้อมูลเกินจำเป็น (ทุกบทบาท รวมเจ้าของ + ผู้มีสิทธิ์สุขภาพ/เปิดเลข): ไม่มีเลขเอกสารเต็ม · เนื้อหาสุขภาพ · เบอร์ (แม้ปิดบัง) · id ภายใน · การจอง HOLD/CANCELLED · ผู้ถูกลบ · ของหน่วย/ร้านอื่น · ยอดเงิน
+  ✅ [EX-6] audit: ส่งออก 1 ครั้ง = 1 แถว trips.manifest.exported (USER · actorId ผู้เรียก · unitId · targetType TripDeparture · targetId รอบ · after = { departureId, format CSV, purpose MANIFEST, rows, truncated, purgedSkipped } เท่านั้น) · ชื่อไฟล์ = manifestFileName
+  ✅ [EX-7] ภาษาอังกฤษ: หัวคอลัมน์จาก en ไม่มีอักษรไทย · เซลล์สถานะ/ช่องทาง/ประเภทคนไม่มีอักษรไทย (ชื่อคน/จุดรับคงเดิม) · ข้อมูลแถวเท่ากับไฟล์ไทย
+  ✅ [EX-8] ซ้ำ/พร้อมกัน: ส่งออก 5 ครั้งพร้อมกัน ⇒ สำเร็จทั้งหมด ไฟล์เหมือนกันทุกไบต์ · audit เพิ่ม 5 แถว (แต่ละครั้งคือเหตุการณ์) · ไม่มีแถวอื่นถูกแก้ (แฮชข้อมูลเท่าเดิม) · ไม่มี outbox เพิ่ม
+  ✅ [EX-9] เพดาน: รอบที่เกินเพดาน ⇒ truncated true · แถวข้อมูล ≤ TRIPS_MANIFEST_PAX_CAP · audit จด truncated true + rows จริง · ขนาดไฟล์มีขอบเขต
+  ✅ [EX-10] ร้านอื่น: เจ้าของร้าน B ส่งออกรอบของตน ⇒ มีแต่ของร้าน B · audit อยู่ใต้ร้าน B · ไม่มีชื่อของร้าน A
+  ── สรุป EX: ผ่าน 10/10
+
+── HV: เปิดดูข้อมูลสุขภาพของรอบ (สิทธิ์แคบ · audit รายคน) ──
+  ✅ [HV-1] สิทธิ์แคบ: v/vb (ไม่มีคีย์สุขภาพ) · vw (trips.* + reveal + edit) · mg (MANAGER) ⇒ FORBIDDEN · pv (มีสุขภาพแต่ขาด departure.view) ⇒ FORBIDDEN · a2 (สุขภาพแต่หน่วยอื่น) ⇒ NOT_FOUND — ไม่มี audit · ผลไม่มีเนื้อหา
+  ✅ [HV-2] เนื้อหา (vh): เฉพาะผู้เดินทางของการจองในใบที่สุขภาพ PROVIDED และยังไม่ถูกลบ = 2 คน (แพ้/โรคตรงที่ปลูก) · ไม่มี DECLINED/WITHDRAWN/MISSING/ถูกลบ · ไม่มีของการจอง HOLD/CANCELLED/หน่วยอื่น/ร้านอื่น
+  ✅ [HV-3] audit รายคน commit แล้วเมื่อคืนค่า: 1 แถว trips.passenger.revealed ต่อคนใน items · USER/actorId · targetType TripPassenger · after = { passengerId, what HEALTH, purpose, via MANIFEST, departureId } เท่านั้น (ไม่มีเนื้อหา)
+  ✅ [HV-4] วัตถุประสงค์: MANIFEST/SAFETY/CHECKIN ได้ · OTHER/ว่าง/ตัวเล็ก/ไม่ส่ง ⇒ INVALID_INPUT และไม่มี audit · เจ้าของร้านเปิดได้ (OWNER)
+  ✅ [HV-5] ไม่มีข้อมูลให้เปิด: รอบที่ไม่มีใครให้ข้อมูลสุขภาพ (depW) และรอบว่าง ⇒ ok · items [] · count 0 · ไม่มี audit
+  ✅ [HV-6] กุญแจหาย (ไม่มี INTEGRATIONS_CREDENTIALS_KEY): ทั้งคำขอ BUSY · ไม่คืนบางส่วน · ไม่มี audit · คืนกุญแจแล้วใช้ได้ตามเดิม
+  ✅ [HV-7] กล่องเสีย 1 ใบ (AAD ไม่ตรง — ย้ายกล่องจากคนอื่น): ทั้งคำขอ BUSY ไม่คืนของคนอื่น ไม่มี audit (ทั้งหมดหรือไม่มีเลย)
+  ✅ [HV-8] พร้อมกัน 5 คำขอ: สำเร็จทั้งหมด ได้ 2 รายการทุกคำขอ · audit เพิ่ม 10 แถว (ไม่รวบ ไม่หาย ไม่ deadlock) · ข้อมูลผู้เดินทางไม่ถูกแก้
+  ✅ [HV-9] การเปิดสุขภาพไม่เปลี่ยนสิ่งที่ตัวโหลด/ไฟล์ส่งออกให้: หลังเปิดแล้ว VM ของ vh และ CSV ของ vh ยังไม่มีเนื้อหาสุขภาพ (ไม่มีแคช/ธงค้าง)
+  ── สรุป HV: ผ่าน 9/9
+
+── PR: บันทึกการพิมพ์ ──
+  ✅ [PR-1] สิทธิ์เท่าการส่งออก: none/dv/pv ⇒ FORBIDDEN · หน่วยอื่น ⇒ NOT_FOUND · คีย์เกิน ⇒ INVALID_INPUT — ไม่มี audit
+  ✅ [PR-2] พิมพ์ 1 ครั้ง = 1 แถว trips.manifest.printed (USER · actorId · unitId · TripDeparture · after = { departureId, purpose MANIFEST, passengers = ผู้เดินทางที่ยังไม่ถูกลบในใบ 7 }) · คืน { passengers: 7 } · ไม่มีข้อมูลบุคคลใน audit
+  ── สรุป PR: ผ่าน 2/2
+
+── AU: ไม่มีข้อมูลส่วนบุคคลใน audit / outbox / ops / ข้อความผิดพลาด ──
+  ✅ [AU-1] AuditLog ที่ใบนี้เขียน (trips.manifest.* และ trips.passenger.revealed via MANIFEST) ของร้านทดสอบ: ไม่มีชื่อ/เบอร์/เลขเอกสาร/เนื้อหาสุขภาพ/ชื่อโรงแรม · ค่าใน after เป็น id/enum/จำนวน/บูลีนเท่านั้น · มีแถวจริง (ไม่ใช่ผ่านเพราะว่าง)
+  ✅ [AU-2] ไม่มี event ใหม่: จำนวน OutboxEvent ของร้านทดสอบหลังรันทุกข้อ = ตอนปลูกฟิกซ์เจอร์เสร็จ (+ ที่เกิดจาก bookTripsNow ของข้อ BT-19/HV-7) และไม่มี type trips.manifest.* · payload ไม่มีตัวบ่งชี้อ่อนไหว
+  ✅ [AU-3] OpsEvent ตั้งแต่เริ่มรัน: ไม่มีตัวบ่งชี้บุคคล/อ่อนไหว (ชื่อ · เบอร์ · เลขเอกสาร · สุขภาพ) — รวมกรณีล้ม (กุญแจหาย · กล่องเสีย) ที่ข้อ HV ทำให้เกิด
+  ✅ [AU-4] ข้อความผิดพลาดของบริการทั้ง 4 ตัวไม่สะท้อนอินพุต/ข้อมูลบุคคล: ส่ง departureId ที่มีตัวบ่งชี้ ⇒ ผลปฏิเสธไม่มีตัวบ่งชี้นั้น และ message เป็นข้อความสั้น (≤ 200 ตัว)
+  ── สรุป AU: ผ่าน 4/4
+
+เหลือให้ด่านภาพ + การกดจริง (ผู้คุม · scripts/visual-trips.mts t1.4 + parity-trips.sh 12): การ์ดสรุป 6 ใบ · ตาราง 7 คอลัมน์เต็มกว้าง 1440 ไม่เลื่อน · ป้าย 4 รูปทรง · 390 เป็นการ์ดไม่ล้น · ผังพิมพ์ (emulateMedia print) ไม่มีเปลือกแอป/ปุ่ม · ดาวน์โหลด CSV เปิดใน Excel ไม่คิดสูตร · กล่องสุขภาพปิดแล้วไม่ค้าง · action 3 ตัวผ่าน Next
+
+===== QC TRIPS T1.4a · ใบรายชื่อรายวัน · สถานะเอกสาร · พิมพ์ · ส่งออก · ข้อมูลสุขภาพ =====
+ผ่าน 91/92 · ไม่ผ่าน 1 · ข้าม 0
+ต่อกลุ่ม: PC 8/8 · S 19/20 · P 9/9 · LV 6/6 · FX 2/2 · BT 22/22 · EX 10/10 · HV 9/9 · PR 2/2 · AU 4/4
+JSON_SUMMARY {"suite":"qc-trips-t1.4","total":92,"passed":91,"failed":["S-13"],"skipped":[],"groups":{"PC":"8/8","S":"19/20","P":"9/9","LV":"6/6","FX":"2/2","BT":"22/22","EX":"10/10","HV":"9/9","PR":"2/2","AU":"4/4"}}
+=== qc-trips-t1.4 exit 1 23:38:44

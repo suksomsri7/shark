@@ -1,0 +1,5 @@
+1 option-generic vs product-child: {"ADULT":300000,"CHILD":200000} a
+2 card-priority generic vs low-card child: {"ADULT":150000,"CHILD":200000} g
+3 PCT row THB, booking USD: {"level":null,"trace":null,"warnings":[]}
+3b built warnings: {"ok":false,"reason":"SETTINGS_INVALID"} 
+4 pax-only minSell: {"ok":false,"reason":"SETTINGS_INVALID"}

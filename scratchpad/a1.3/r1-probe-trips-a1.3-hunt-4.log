@@ -1,0 +1,27 @@
+[env] probe-a1.3-hunt-4 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:3914186) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+INFO A7 minResalePrice = null
+INFO money fuzz 1500 cases in 242 s · wht terms {"applies":true,"payerType":"JURISTIC","payeeType":"TH_JURISTIC","mode":"RATE","rateBp":300,"eWht":false,"whtSatang":22424,"grossUp":true,"remitter":"SHOP","minPerContractSatang":100000,"continuous":"EVERY_PAYMENT"}
+FOUND [M fuzz 1500 cases (PCT/FIXED/NET/MARKUP × pax × actual) = own integer-satang reference, every field] expected 0 mismatches | got 5 mismatches · #410 COMMISSION_FIXED a8 c3 actual undefined rates [{"productKind":"TRIP","productId":"a13h_pP_mwgm8oa08a008f","mode":"COMMISSION_FIXED","valueMinor":369816}] → want ok got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"COMMISSION_EXCEEDS_PAYABLE"} || #486 COMMISSION_FIXED a12 c1 actual undefined rates [{"productKind":"TRIP","productId":"a13h_pP_mwgm8oa08a008f","mode":"COMMISSION_FIXED","valueMinor":377140}] → want ok got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"COMMISSION_EXCEEDS_PAYABLE"} || #784 COMMISSION_FIXED a11 c4 actual undefined rates [{"productKind":"TRIP","productId":"a13h_pP_mwgm8oa08a008f","mode":"COMMISSION_FIXED","valueMinor":375190}] → want ok got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"
+HELD [M invariants: commission ≥ 0 · remit ≥ 0 · commission ≤ payable · PCT commission ≤ base · item amounts integer ≥ 0] expected 0 | got 0
+HELD [M tryAgentPrice ×N wrote nothing (audit/outbox/cards/rates/accounts/updatedAt/departures)] expected {"audit":"9","cards":"","rates":"","acc":"7369c5b20fff9e395679a482b0a702d8","deps":"f1e2727bde7fd3145d252076ac40a1ff"} | got {"audit":"9","cards":"","rates":"","acc":"7369c5b20fff9e395679a482b0a702d8","deps":"f1e2727bde7fd3145d252076ac40a1ff"}
+HELD [TP try(no draft, ACTIVE) ≡ quoteTripLine bytes (minus cancelMinimumLadder) and try(draft) ≡ try after saving (12 random cards)] expected 0 diffs | got 0 · 
+HELD [TP account limited to unit u2, priced in unit u: try must not show a price the real path refuses (real = FORBIDDEN AGENCY_NOT_ENABLED)] expected try fails too (NOT_FOUND / VALIDATION) — or real succeeds | got try {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"ACCOUNT_NOT_IN_UNIT"} · real {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}}
+HELD [SN snapshot recompute unchanged after rate edit + tier change + X26 change] expected same | got snap ok · edits true/true · before {"ok":true,"value":{"totals":{"grossSatang":1505000,"discountSatang":0,"agentDiscountSatang":0,"passThroughSatang":21000 · after {"ok":true,"value":{"totals":{"grossSatang":1505000,"discountSatang":0,"agentDiscountSatang":0,"passThroughSatang":21000
+HELD [SN snapshot carries the agency policy block it was priced with (24 keys) and old refId] expected has policy + refId@v | got policy true · refId true
+HELD [SN control: new quote DOES move after the edits (proves the edits landed)] expected different | got before {"currency":"THB","fx":null,"items":[{"itemRef":"seat:ADULT","kind":"SEAT","labe after {"currency":"THB","fx":null,"items":[{"itemRef":"seat:ADULT","kind":"SEAT","labe
+HELD [F port.load with a hand-made ctx for a SUSPENDED agency → null] expected null | got null
+HELD [F 20 draft tries interleaved with 20 real quotes → real quotes never priced with the draft] expected 0 leaks · 20 try:9999 | got 0 leaks · {"try:9999":20,"real:same":20}
+HELD [F try SUSPENDED agency prices (§9 allows) while real path stays closed] expected ok | got {"ok":true,"priced":{"currency":"THB","fx":null,"items":[{"itemRef":"seat:ADULT","kind":"SEAT","label":"ผู้ใหญ่","paxTypeId":"a13h_ptADULT_mwgm8obge2e1fa","paxTypeCode":"ADULT","extraId":null,"qty":1,
+INFO try draft ownerKind TIER for agency without tier → {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"TIER_NOT_FOUND"}
+
+== SUMMARY hunt-4: HELD 10 · FOUND 1 → M fuzz 1500 cases (PCT/FIXED/NET/MARKUP × pax × actual) = own integer-satang reference, every field
+CLEANUP ok — 0 rows left with prefix trips-a13h- (Tenant · User · AgentAccount · AgentRateCard · AgentRate · AgentTier · AgentIdentity · AgentUser · AgentLogin)

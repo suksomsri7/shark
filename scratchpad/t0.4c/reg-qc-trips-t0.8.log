@@ -1,0 +1,235 @@
+=== qc-trips-t0.8 start 23:34:56
+[env] qc-trips-t0.8 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1016760) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุมบวก ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed andaman-dive อยู่ · สร้างตารางควบคุมได้ · ตาราง TripPassenger/TripDocument/TripDocView/TripPdpaRequest มีครบ
+  ✅ [PC-2] กล่องปิดผนึก (secret-box) เปิดได้ด้วย AAD เดิมเท่านั้น · AAD อื่น ⇒ null
+  ✅ [PC-3] signLink/verifyLink: ถูก ⇒ {tenantId, subjectId} · แก้ payload/ลายเซ็น/จุดประสงค์ ⇒ null
+  ✅ [PC-4] ลิงก์ไฟล์ส่วนตัว: สูตรลายเซ็นของข้อสอบ = signPrivateFile (STAFF/CUSTOMER/PORTAL) · ผู้ดูอื่นตรวจไม่ผ่าน · TTL ≤ 900
+  ✅ [PC-5] checkRateLimitDb: limit 3 ⇒ ครั้งที่ 4 ไม่ผ่าน (ถังของข้อสอบ)
+  ✅ [PC-6] ที่เก็บปลอม: uploadFile private ⇒ path t/<ร้าน>/private/<40hex> + cdnUrl private:// · deleteFileAsset ลบแถว+วัตถุ (ไม่มีทางยิงของจริง)
+  ✅ [PC-7] ตัวควบคุมการแข่ง: 10 คำสั่ง UPDATE … WHERE rev = 0 พร้อมกัน ⇒ สำเร็จ 1
+  ✅ [PC-8] ตัวสแกนการรั่วจับได้: ปลูกตัวบ่งชี้ใน OutboxEvent ของร้านทดสอบ ⇒ เจอ
+  ✅ [PC-9] เขตเวลา: 2027-03-10T17:30Z = 11 มี.ค. เวลาไทย · ต้นวันถัดจาก 2027-04-10 = 2027-04-10T17:00Z
+  ── สรุป PC: ผ่าน 9/9
+
+── S: ไฟล์ · facade · ขอบเขต ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: passengers-core · passengers · pdpa · passenger-actions
+  ✅ [S-2] facade ส่งออก 36 ฟังก์ชัน + PAX_FIELD_KEYS + HEALTH_CONSENT_V1 · บล็อก "// TRIPS T0.8 ▸" · ไม่มี export *
+  ✅ [S-3] passengers-core บริสุทธิ์: import ได้แค่ zod · node:crypto · import type · ไม่มี prisma/tenantDb/Date.now/new Date()
+  ✅ [S-4] passenger-actions: "use server" · ส่งออกเฉพาะ async function · requireUnit + assertCan ทุกตัว · ใช้คีย์ trips.passenger.* / trips.pdpa.manage · ไม่ส่ง now · ไม่ปลอมผู้กระทำ
+  ✅ [S-5] ไฟล์ของใบ: ไม่มี any · console.* · Math.random · DELETE/.delete(/.deleteMany( (ไม่ลบแถว Trip*)
+  ✅ [S-6] import ของ passengers/pdpa/actions: @/lib/core/* · @/lib/storage/service · @/lib/storage/sniff · ./ · zod · @prisma/client · node:crypto (actions: + next/ @/lib/) · ไม่มี prisma ดิบ · ไม่มีเส้นข้ามโมดูลใหม่
+  ✅ [S-7] OQ18: ไม่ส่ง object ผู้เรียกเข้า Prisma data · มี zod strict · settings/storage/rate-limit ไม่อยู่ใน 40 บรรทัดหลัง $transaction(
+  ❌ [S-8] ขอบเขตเทียบ BASE 4026db504: ไม่แตะ prisma · core/settings · core/sellable · storage (ยกเว้น private-links ลบ ≤ 2) · api/files (ยกเว้น [id]/route.ts ลบ 0) · pos/hotel/rooms/booking/dorm/queue/ticket/party/member/crm · ไฟล์ T0.1–T0.6 (ยกเว้น index/jobs) · ข้อสอบเดิม — แตะ: src/lib/core/settings/defs/trips.ts, src/lib/modules/trips/booking.ts, src/lib/modules/trips/capacity-service.ts, src/lib/modules/trips/capacity.ts
+  ✅ [S-9] jobs.ts ต่อท้ายอย่างเดียว (ลบ 0) + runPdpaPurge ในบล็อก // ── T0.8 pdpa ── · minute-jobs ลงทะเบียน trips.pdpaPurge everyMinutes 1440 cadence daily
+  ✅ [S-10] สิทธิ์ 5 คีย์ลงทะเบียน (ป้ายไทย · โมดูล trips)
+  ✅ [S-11] event 2 ตัวลง 3 ทะเบียน (outbox-consumers · automation/labels · webhooks/labels)
+  ✅ [S-12] ปิดผนึกด้วย sealIntegrationSecret + AAD trips.pax.health.v1 / trips.pax.doc.v1 · signLink จุดประสงค์ trips.pax-form · privateFileUrl ใช้ TTL 300
+  ── สรุป S: ผ่าน 11/12
+
+── FS: แกนบริสุทธิ์ ──
+  ✅ [FS-1] PAX_FIELD_KEYS ตรงลำดับ · HEALTH_CONSENT_V1 = ข้อความ/รุ่น/แฮชตามใบสั่ง (แช่แข็ง)
+  ✅ [FS-2] resolveFormSpec ร้านดำน้ำ (DS · deepDive · T62 จริง · SCUBA_ONLY) ⇒ ช่องตรง · สุขภาพครบ · ต้องเซ็น + แฮชแม่แบบ
+  ✅ [FS-3] resolveFormSpec: REQUIRED_CROSS_BORDER ⇒ REQUIRED/OFF ตาม crossBorder · fullName OFF ⇒ OPTIONAL · สุขภาพจาก allergies อย่างเดียว · NONE/SCUBA_ONLY ไม่ดำลึก ⇒ ไม่ต้องเซ็น
+  ✅ [FS-4] resolveFormSpec ค่าผิดรูป ⇒ {ok:false, reason SETTINGS_INVALID, key} ไม่ throw
+  ✅ [FS-5] waiverTemplateHash = sha256(JSON ["trips.waiver.v1", th, en ?? null]) · เปลี่ยน en ⇒ แฮชเปลี่ยน
+  ✅ [FS-6] ageAt: วันเกิดตรงวันเดินทาง = ครบปี · ก่อนหนึ่งวัน = ยังไม่ครบ · 29 ก.พ. ครบปีปกติวันที่ 1 มี.ค. · อนาคต/วันที่ผิด ⇒ null
+  ✅ [FS-7] minorStatus (T63 ≤10 แทน · <20 ร่วม): 10 ⇒ guardianOnly · 11 ⇒ ร่วม · 19 ผู้เยาว์ · 20 ผู้ใหญ่ · ไม่มี dob ใช้ declaredMinor · ไม่มีทั้งคู่ known=false
+  ✅ [FS-8] normalizeDocNumber / docLast4Of / maskDoc / maskDob
+  ✅ [FS-9] retentionDueYmd + purgeInstant (เขตเวลาหน่วย): 2027-03-11 + 30 = 2027-04-10 ⇒ 2027-04-10T17:00Z · null ⇒ null · ข้ามปี
+  ✅ [FS-10] canSeeSensitive แคบ: OWNER ได้ · MANAGER ไม่ได้ · STAFF ระบุตรงได้ · trips.* ไม่ได้ · ไม่มีหน่วยไม่ได้
+  ── สรุป FS: ผ่าน 10/10
+
+── LK: ลิงก์กรอกเอง ──
+  ✅ [LK-1] ออกลิงก์ (เจ้าของ): token = signLink 2 ส่วน · expiresAt = จบทริป · audit link_issued เก็บ sha256(token) · ไม่มี token ดิบในฐาน
+  ✅ [LK-2] เปิดแบบฟอร์ม: เห็นเฉพาะคนนี้ (คนที่ i จาก 2) · spec · ไม่มีเลขเต็ม/สุขภาพ/ชื่อคนอื่น/URL
+  ✅ [LK-3] token ผิด (แก้ลายเซ็น · จุดประสงค์อื่น · สุ่ม) ⇒ NOT_FOUND รูปเดียวกันทุกกรณี ไม่มี details
+  ✅ [LK-4] หมดอายุ: pctx.now > expiresAt ⇒ NOT_FOUND · ก่อนหมด 1 วินาที ⇒ ใช้ได้
+  ✅ [LK-5] เพิกถอน ⇒ NOT_FOUND · ออกใหม่ ⇒ ใบเก่า NOT_FOUND ใบใหม่ใช้ได้
+  ✅ [LK-6] token ที่ลายเซ็นถูกแต่ไม่ได้ออกโดยบริการ (ไม่มีแฮชในบันทึก) ⇒ NOT_FOUND
+  ✅ [LK-7] การจอง CANCELLED / EXPIRED ⇒ ลิงก์ใช้ไม่ได้ (NOT_FOUND)
+  ✅ [LK-8] อินพุตสาธารณะ strict: มี passengerId / bookingId / tenantId ⇒ VALIDATION
+  ✅ [LK-9] เดา: token ลายเซ็นถูก 25 ใบที่ชี้ id ผู้เดินทางสุ่ม/ร้านอื่น ⇒ NOT_FOUND ทุกใบ ผลเหมือนกัน
+  ✅ [LK-10] อัตรา: หน่วยตั้ง tokenPerHourPerDevice = 3 ⇒ เครื่องเดิมครั้งที่ 4 RATE_LIMITED · เครื่องอื่นยังได้
+  ✅ [LK-11] เดารัว: token ผิด 60 ครั้งจากเครื่องเดียว ⇒ ครั้งต่อไปแม้ token ถูก = RATE_LIMITED
+  ✅ [LK-12] ไม่มี SESSION_SECRET ⇒ ออกลิงก์ BUSY SERVER_KEY_MISSING (ไม่มีทางถอย) · คืนค่าแล้วใช้ได้
+  ✅ [LK-13] issueBookingFormLinks: ลิงก์ละคน token ไม่ซ้ำ · แต่ละใบเปิดได้เฉพาะคนของตัวเอง
+  ✅ [LK-14] ensurePassengerSlots: 3 ที่นั่ง 1 ชื่อ ⇒ สร้าง 2 รวม 3 · ซ้ำ = 0 · ยิงพร้อมกัน 10 ⇒ ยังรวม 3
+  ── สรุป LK: ผ่าน 14/14
+
+── SB: ส่งแบบฟอร์ม ──
+  ✅ [SB-1] ส่งช่อง REQUIRED ครบ ⇒ SUBMITTED rev 1 · event form_completed ครั้งเดียว payload {bookingId, passengerId, kind FORM}
+  ✅ [SB-2] ส่งไม่ครบ ⇒ PENDING + missing ตาม spec
+  ✅ [SB-3] ช่อง OFF ⇒ VALIDATION FIELD_OFF · allergies ใน fields ⇒ FIELD_OFF
+  ✅ [SB-4] ข้อความ: ตัวกลับทิศ/C0 ⇒ VALIDATION · ZWSP ถูกตัด + NFC
+  ✅ [SB-5] เลขเอกสารปิดผนึก: docNumberEnc เปิดด้วย AAD trips.pax.doc.v1:<ร้าน>:<คน> = {v:1, n} · คอลัมน์ไม่มีเลขดิบ · docLast4 · AAD คนอื่นเปิดไม่ได้
+  ✅ [SB-6] ปิดรับข้อมูลเอกสาร (T30 ข้ามแดน 21 วัน): ลูกค้าแก้ docNumber หลังวันปิด ⇒ PASSPORT_CUTOFF_PASSED · ชื่อแก้ได้ · พนักงานแก้ได้
+  ✅ [SB-7] กันซ้ำ: คีย์+เนื้อเดิม ⇒ ผลเดิม replayed ไม่มี event ที่สอง · คีย์เดิมเนื้อต่าง ⇒ IDEMPOTENCY_CONFLICT
+  ✅ [SB-8] rev เก่า ⇒ STATE_CONFLICT + details.rev ปัจจุบัน · ไม่เขียน
+  ✅ [SB-9] รูปข้อมูล: diveCount เกิน int4 · nationality ตัวเล็ก · dob อนาคต · ช่องไม่รู้จัก ⇒ VALIDATION
+  ✅ [SB-10] ร้านขอแก้ (NEEDS_FIX + fixReason) → ลูกค้าส่งใหม่ครบ ⇒ SUBMITTED + event ครั้งที่สอง (คีย์ต่าง rev)
+  ✅ [SB-11] PENDING ⇒ VERIFIED ไม่ได้ (STATE_CONFLICT FORM_INCOMPLETE) · SUBMITTED ⇒ VERIFIED ได้
+  ── สรุป SB: ผ่าน 11/11
+
+── HL: สุขภาพ/ความยินยอม/ผู้เยาว์ ──
+  ✅ [HL-1] สินค้าไม่ใช้ข้อมูลสุขภาพแต่เปิดช่อง allergies (PT): conditions ⇒ HEALTH_NOT_COLLECTED · allergies + ยินยอม ⇒ PROVIDED
+  ✅ [HL-2] สินค้าที่ไม่เก็บสุขภาพและปิด allergies (PX) ⇒ HEALTH_NOT_COLLECTED
+  ✅ [HL-3] ไม่มีความยินยอม ⇒ HEALTH_CONSENT_REQUIRED · แฮชข้อความไม่ตรง ⇒ CONSENT_TEXT_CHANGED + details.textHash ปัจจุบัน
+  ✅ [HL-4] บันทึกความยินยอม: answers.health.consent {version textHash via LINK signerRole SELF} · audit consent_given ไม่มีเนื้อหา · กล่องผูก AAD ของคน (ย้ายกล่องไปคนอื่นเปิดไม่ได้)
+  ✅ [HL-5] ผู้เยาว์ ≤ 10 ปี: ไม่มีผู้ปกครอง ⇒ GUARDIAN_REQUIRED · มี ⇒ signerRole GUARDIAN · guardianConsent scopes HEALTH · isMinor
+  ✅ [HL-6] ผู้เยาว์ 15 ปี (ช่วงร่วม) ⇒ signerRole SELF_AND_GUARDIAN
+  ✅ [HL-7] อายุไม่รู้ (ไม่มี dob ไม่มี isMinorDeclared) ⇒ AGE_UNKNOWN · ประกาศว่าไม่ใช่ผู้เยาว์ ⇒ ผ่าน
+  ✅ [HL-8] ปฏิเสธให้ข้อมูลสุขภาพ ⇒ health DECLINED · ไม่บล็อกการส่ง (SUBMITTED)
+  ✅ [HL-9] ถอนความยินยอม: PREVIEW ไม่เปลี่ยน · EXECUTE ลบกล่อง (WITHDRAWN) + ไฟล์ MEDICAL (ที่เก็บ+deletedAt) + audit + event HEALTH_ANSWERS/MEDICAL · ซ้ำ = ผลเดิม
+  ✅ [HL-10] ไม่มีกุญแจกล่อง ⇒ BUSY SECRET_KEY_MISSING · ไม่เขียนอะไร (rev เดิม)
+  ── สรุป HL: ผ่าน 10/10
+
+── WV: เอกสารรับทราบความเสี่ยง ──
+  ✅ [WV-1] สินค้าไม่ต้องเซ็น (PT · NONE) ⇒ WAIVER_NOT_REQUIRED
+  ✅ [WV-2] แฮชแม่แบบไม่ตรง ⇒ TEMPLATE_CHANGED + details.templateHash = แม่แบบปัจจุบันของสินค้า
+  ✅ [WV-3] เซ็นผ่านลิงก์: waiverEvidence = ข้อความแม่แบบตรงตัว + textHash + templateHash + method LINK + identityProof {required T68, used LINK_POSSESSION, verified false} + signedAt · audit ไม่มีชื่อ
+  ✅ [WV-4] ผู้เยาว์ ⇒ ต้องผู้ปกครองลงนาม (SELF ⇒ GUARDIAN_REQUIRED · GUARDIAN + guardian ⇒ ผ่าน)
+  ✅ [WV-5] ซ้ำ: คีย์เดิม = ผลเดิม · คีย์ใหม่ขณะเซ็นแล้ว ⇒ STATE_CONFLICT WAIVER_ALREADY_SIGNED
+  ✅ [WV-6] พนักงานเซ็นต่อหน้า + รูปลายเซ็น PNG ⇒ TripDocument WAIVER ส่วนตัว · method STAFF_WITNESSED · verified true · staffUserId
+  ✅ [WV-7] แม่แบบเปลี่ยนก่อนเริ่มทริป ⇒ NEEDS_RESIGN · ข้อความที่เก็บไม่เปลี่ยน · เซ็นใหม่ด้วยแฮชใหม่ได้ · audit 2 แถว
+  ✅ [WV-8] แม่แบบเปลี่ยนหลังเริ่มทริปแล้ว ⇒ คง SIGNED
+  ── สรุป WV: ผ่าน 8/8
+
+── DC: ไฟล์ส่วนตัว ──
+  ✅ [DC-1] อัปโหลด PASSPORT ผ่านลิงก์ ⇒ TripDocument + FileAsset t/<ร้าน>/private/<40hex>.jpg · cdnUrl private:// · ไม่มีชื่อไฟล์ลูกค้าใน path · retainUntil = ต้นวันถัดจาก E+30
+  ✅ [DC-2] ชนิดเอกสาร: MEDICAL บน PT ⇒ DOC_KIND_NOT_ALLOWED · MEDICAL บน PD ก่อนยินยอม ⇒ HEALTH_CONSENT_REQUIRED · INSURANCE ทางลิงก์ ⇒ VALIDATION
+  ✅ [DC-3] ชนิดไฟล์: ประกาศ jpeg แต่ไบต์ png · svg · html ⇒ FILE_TYPE
+  ✅ [DC-4] ใหญ่เกิน 5 MB ⇒ FILE_TOO_LARGE · ไม่มีวัตถุใหม่ในที่เก็บ
+  ✅ [DC-5] ไฟล์ชนิดเดียวกันต่อคน ≤ 3 ⇒ ใบที่ 4 DOC_LIMIT
+  ✅ [DC-6] ส่งซ้ำพร้อมกัน 6 ครั้งคีย์เดียว ⇒ TripDocument 1 แถว · FileAsset ของคนที่แพ้ถูกลบ (เหลือ 1) · ทุกผลได้ documentId เดียวกัน
+  ✅ [DC-7] พนักงานขอลิงก์ไฟล์ PASSPORT (view): url /api/files/<id>?exp&sig TTL 300 · ลายเซ็นผูก STAFF ผู้ขอ · แถว TripDocView STAFF + purpose
+  ✅ [DC-8] ไฟล์ MEDICAL: sv/MANAGER ⇒ FORBIDDEN SENSITIVE_PERMISSION · sh (health) ⇒ ได้
+  ── สรุป DC: ผ่าน 8/8
+
+── CR: route ไฟล์กลาง (ผู้ดูเดิมไม่เปลี่ยน + LINK_CUSTOMER) ──
+  ✅ [CR-1] ถดถอย: ไม่มี cookie ไม่มี lv ⇒ 403 + cache-control private, no-store (เหมือนเดิม)
+  ✅ [CR-2] ถดถอย: ไม่มีผู้ดู + id รูปที่อยู่ไฟล์ ⇒ 403 (ด่านผู้ดูมาก่อน) · ลายเซ็น STAFF ถูกแต่ไม่มี session ⇒ 403 · lv ผิดรูปไม่ทำให้เกิดผู้ดู ⇒ 403
+  ✅ [CR-3] ถดถอย: privateFileViewerKey ของ STAFF/CUSTOMER/PORTAL = ค่าเดิม · ชนิดไม่รู้จัก throw ข้อความเดิม
+  ✅ [CR-4] ผู้ถือลิงก์ขอ URL ไฟล์ของตัวเอง ⇒ /api/files/<id>?exp&sig&lv (ไม่มี token) · TripDocView LINK_CUSTOMER · GET ⇒ 200 ไบต์ตรง · หัว private,no-store · nosniff · no-referrer · inline (jpeg)
+  ✅ [CR-5] ลิงก์ของคน A เปิดไฟล์คน B ไม่ได้: customerDocumentUrl(documentId ของ B) ⇒ NOT_FOUND · สลับ id ใน URL ⇒ 403 · ลายเซ็น LINK ถูกแต่ไฟล์ของคนอื่น/ร้านอื่น ⇒ 404
+  ✅ [CR-6] เพิกถอน/ออกลิงก์ใหม่หลังออก URL ไฟล์ ⇒ URL เดิมใช้ไม่ได้ทันที (404)
+  ✅ [CR-7] หมดอายุ: ลายเซ็น exp ผ่านไปแล้ว ⇒ 403 · linkCustomerMayOpenFile หลังจบทริป ⇒ false · ก่อนจบ ⇒ true
+  ✅ [CR-8] ไฟล์ MEDICAL: customerDocumentUrl ⇒ FORBIDDEN OTP_REQUIRED · ลายเซ็น LINK ที่ข้อสอบทำเองสำหรับไฟล์ MEDICAL ⇒ 404 · มุมมองบอก viewable false
+  ✅ [CR-9] อัตราต่อผู้ดูลิงก์ (60/นาที ของ route เดิม): ครั้งที่ 61 ⇒ 429
+  ── สรุป CR: ผ่าน 9/9
+
+── MK: ปิดบัง/เปิดดู ──
+  ✅ [MK-1] DTO ฝั่งร้าน (X21 จริง): docMasked ••••+4 · dob ปิดบัง · ไม่มีเลขเต็ม/กล่อง/สุขภาพ/token/URL ในผลทั้งก้อน
+  ✅ [MK-2] เปิดเลขเต็ม: sr (reveal) ได้ค่าเต็ม · MANAGER/sv ⇒ FORBIDDEN SENSITIVE_PERMISSION · audit revealed {what purpose} ไม่มีค่า
+  ✅ [MK-3] เปิดข้อมูลสุขภาพ: sh ได้ · sr ⇒ FORBIDDEN · audit
+  ✅ [MK-4] purpose ต้องเป็น enum (ข้อความอิสระ ⇒ VALIDATION)
+  ✅ [MK-5] X21 เท็จ (หน่วย uA2): dob เต็มทุกคน · docNumber เต็มเฉพาะผู้มีสิทธิ์ reveal (เจ้าของ) + audit list_unmasked · su2 เห็นแค่ docMasked
+  ── สรุป MK: ผ่าน 5/5
+
+── SE: สิทธิ์ฝั่งร้าน ──
+  ✅ [SE-1] แก้ข้อมูลสุขภาพฝั่งร้าน: se (edit · มี trips.*) ⇒ FORBIDDEN SENSITIVE_PERMISSION · sh ⇒ ได้ via STAFF_RECORDED
+  ✅ [SE-2] บริการตรวจสิทธิ์เอง: sv แก้ ⇒ FORBIDDEN · pm (ไม่มี view) อ่าน ⇒ FORBIDDEN · sv ออกลิงก์ ⇒ FORBIDDEN
+  ✅ [SE-3] ผู้กระทำ PUBLIC บนบริการฝั่งร้าน ⇒ FORBIDDEN PUBLIC_NOT_ALLOWED · AGENT ⇒ FORBIDDEN AGENCY_NOT_ENABLED
+  ── สรุป SE: ผ่าน 3/3
+
+── X: แยกร้าน/หน่วย ──
+  ✅ [X-1] ร้าน B อ่าน/แก้/ออกลิงก์ของร้าน A ไม่ได้ (NOT_FOUND ข้อความเดียว) ทั้ง ctx ของ B และ ctx ของ A ด้วยผู้ใช้ B
+  ✅ [X-2] พนักงานที่เข้าได้แค่หน่วย uA2 เข้าการจองของ uA ไม่ได้ (NOT_FOUND)
+  ✅ [X-3] documentId ของร้าน A ผ่านร้าน B ⇒ NOT_FOUND · ctx หน่วย uA2 กับการจองของ uA ⇒ NOT_FOUND
+  ── สรุป X: ผ่าน 3/3
+
+── PQ: คำขอเจ้าของข้อมูล ──
+  ✅ [PQ-1] บันทึกคำขอ: ERASE dueAt = ต้นวันถัดจาก รับ+90 · ACCESS = +30 · คีย์ซ้ำ = ผลเดิม
+  ✅ [PQ-2] รายการคำขอ: dueSoon (≤ 7 วัน) / overdue ตามนาฬิกา
+  ✅ [PQ-3] ERASE → DONE ⇒ ลบทั้งคน (ชื่อว่าง · คอลัมน์ null · ไฟล์ลบ · answers.purged) + audit · ปิดซ้ำด้วยสถานะเก่า ⇒ STATE_CONFLICT
+  ✅ [PQ-4] REJECTED ต้องมี reasonCode · LEGAL_CLAIM ⇒ ข้อมูลอยู่ครบ · คำขอที่มีแค่ partyId + DONE ⇒ PARTY_ERASE_NOT_SUPPORTED
+  ✅ [PQ-5] สิทธิ์คิวคำขอ = trips.pdpa.manage (evaluate): sv (view อย่างเดียว) บันทึก/อ่านคำขอ ⇒ FORBIDDEN
+  ✅ [PQ-6] ส่งออกข้อมูลผู้เดินทาง: ต้อง reveal + health (sh ⇒ FORBIDDEN · เจ้าของได้ครบรวมเลขเต็ม) + audit exported
+  ✅ [PQ-7] รวมคำขอ ERASE ที่ยังเปิด (X5d): วันรับเร็วกว่า ⇒ dueAt = ค่าน้อยสุด · วันรับช้ากว่า ⇒ dueAt เดิม · คีย์เดิมเนื้อเดิม ⇒ merged+replayed ผลเดิม · คีย์เดิมเนื้อต่าง ⇒ IDEMPOTENCY_CONFLICT · แถวเปิด 1 · ACCESS ไม่ถูกรวม
+  ── สรุป PQ: ผ่าน 7/7
+
+── RC: ยิงพร้อมกัน ──
+  ✅ [RC-1] ส่งซ้ำพร้อมกัน 10 ครั้งคีย์เดียว ⇒ rev เพิ่ม 1 · ทุกผล ok (ผู้แพ้ replayed) · event 1
+  ✅ [RC-2] ลูกค้า ∥ พนักงาน rev เดียวกัน (5 รอบ) ⇒ สำเร็จ 1 ต่อรอบ อีกฝั่ง STATE_CONFLICT · ค่าสุดท้าย = ผู้ชนะ (ไม่มีการเขียนหาย)
+  ✅ [RC-3] เซ็น ∥ เปลี่ยนแม่แบบ (6 คนพร้อมกัน): หลักฐานทุกใบ textHash = sha256(text) · templateHash ∈ {เก่า, ใหม่} · สถานะ = SIGNED ถ้าตรงปัจจุบันไม่งั้น NEEDS_RESIGN
+  ✅ [RC-4] ลบตามคำขอ ∥ ลูกค้าส่งข้อมูล (มีตัวบ่งชี้) ⇒ จบแล้วแถวไม่มีตัวบ่งชี้ไม่ว่าลำดับใด · การส่งที่มาหลังได้ NOT_FOUND/STATE_CONFLICT
+  ✅ [RC-5] ลบตามอายุ ∥ พนักงานแก้ (ชั้นสุขภาพครบกำหนด): สุดท้ายสุขภาพ PURGED · การแก้สำเร็จหรือ STATE_CONFLICT (ไม่หายเงียบ)
+  ✅ [RC-6] งานลบ 3 ตัวพร้อมกัน ⇒ ไฟล์ครบกำหนดลบครั้งเดียว: deletedAt 1 · event 1 · audit 1 ต่อไฟล์
+  ── สรุป RC: ผ่าน 6/6
+
+── RT: ลบตามอายุ (เขตเวลาหน่วย · E = 11 มี.ค. 2570 จาก endsAt 17:30Z) ──
+  ✅ [RT-1] ขอบ: PASSPORT (30 วัน) ไม่ลบที่ 2027-04-10T16:59:59Z · ลบที่ 17:00:00Z (FileAsset+วัตถุหาย · deletedAt)
+  ✅ [RT-2] ชั้นสุขภาพ (365): กล่อง ⇒ {status PURGED} · ไฟล์ MEDICAL ลบ · เลขเอกสารยังอยู่ (ชั้น 500) · retainUntil เลื่อนไปชั้นถัดไป
+  ✅ [RT-3] ชั้นเลขเอกสาร (manifest 500): docNumberEnc ⇒ null · docLast4 คงอยู่
+  ✅ [RT-4] ชั้นเอกสารรับทราบความเสี่ยง (1,095): waiverEvidence ⇒ {v, purged, templateHash, textHash, signedAt, method} ไม่มีชื่อ/ข้อความ · ไฟล์ WAIVER ลบ · waiverSignedAt คง
+  ✅ [RT-5] ชั้นบันทึกความยินยอม (1,100): guardianConsent ⇒ null · ไม่เหลืออะไรรอ (retainUntil null) · ไม่มีตัวบ่งชี้ในแถว
+  ✅ [RT-6] ไม่ลบ (T61 = null ในหน่วย uA2): ไฟล์ PASSPORT ไม่ถูกลบแม้ปี 2040
+  ✅ [RT-7] ขยายอายุหลังอัปโหลด (30 ⇒ 60): ถึงวันเดิม ไม่ลบ + retainUntil เลื่อนเป็นวันใหม่ · ถึงวันใหม่ ลบ
+  ✅ [RT-8] เป็นชุดจำกัด: ไฟล์ครบกำหนด 5 ใบ limitPerUnit 2 ⇒ 2 · more true · 2 · 1 · 0
+  ✅ [RT-9] ลบซ้ำได้: รอบสองบนข้อมูลเดิม = 0 · ไม่มี event ใหม่
+  ✅ [RT-10] ที่เก็บลบไม่สำเร็จ (503) ⇒ ไม่ตั้ง deletedAt + failed STORAGE_DELETE_FAILED · รอบหน้าสำเร็จ
+  ✅ [RT-11] event trips.document.purged payload = {bookingId, kind, passengerId} ตรงชุด · audit purged ไม่มีตัวบ่งชี้
+  ✅ [RT-12] ผู้จองของการจอง EXPIRED ไม่มีเงิน (X22 = 30 จากหมดเวลา 2 มี.ค. ไทย): ไม่ลบที่ 2027-04-01T16:59:59Z · ลบที่ 17:00Z ⇒ bookerPartyId null · piiPurgedAt · version+1 · ผู้เดินทางลบทั้งคน · ไฟล์ลบ · event BOOKER (passengerId null)
+  ✅ [RT-13] ไม่ลบผู้จอง: EXPIRED ที่ paidSatang > 0 · EXPIRED ที่มีแถว TripMoneyEvent · CANCELLED
+  ✅ [RT-14] ต่อร้าน: tenantIds = [A] ไม่แตะไฟล์ครบกำหนดของร้าน B · purgeTripPersonalDataForUnit ของ uA ไม่แตะ uA2
+  ── สรุป RT: ผ่าน 14/14
+
+── ER: ปิดงานลบทั้งคน · วัตถุค้าง (r4) ──
+  ✅ [ER-1] F1: การจอง EXPIRED ไม่มีเงิน ไม่มีผู้เดินทางสักคน ⇒ ครบ X22 แล้วได้ event BOOKER {passengerId null} ครั้งเดียว (คีย์ booking:<id>) · ก่อนกำหนดไม่มี · รอบสองไม่เพิ่ม
+  ✅ [ER-2] X2/F1: ผู้จองหมดเวลา + ผู้เดินทาง 1 คนที่ไฟล์ MEDICAL ลบไม่ได้ (503) ⇒ รอบแรก: ข้อมูลถูกล้าง+ไฟล์ทำเครื่องหมาย แต่ไม่มี event BOOKER/PASSENGER_ALL/ไฟล์ · รอบที่ลบได้ ⇒ อย่างละ 1 · รอบสามไม่เพิ่ม
+  ✅ [ER-3] F1/F5 ค้นพบใหม่ (ขั้น 5): หน่วยที่เหลือแค่ "งานปิดที่ยังไม่จบ" — การจองลบผู้จองแล้ว+ผู้เดินทางลบทั้งคนแล้วแต่ยังไม่มี event + คำขอ ERASE ค้าง IN_PROGRESS · การจองลบผู้จองแล้วไม่มีผู้เดินทาง ⇒ รอบถัดไปออก PASSENGER_ALL/BOOKER อย่างละ 1 + คำขอ DONE (audit SYSTEM) · รอบสองไม่เพิ่ม
+  ✅ [ER-4] X2: ERASE → DONE ขณะที่เก็บลบไม่ได้ ⇒ คืน {IN_PROGRESS, pendingObjects 2} · คำขอ IN_PROGRESS · ข้อมูลในแถวหายแล้ว · ไม่มี event ไฟล์/PASSENGER_ALL · พนักงาน/ผู้ถือลิงก์/route เปิดไฟล์ไม่ได้ทันที · F12: จอร้าน+ส่งออกบอก pendingDeletion
+  ✅ [ER-5] X2 การเดินสถานะ: REJECT หลังเริ่มลบ ⇒ STATE_CONFLICT PURGED (ยัง IN_PROGRESS) · เข้าซ้ำ IN_PROGRESS→DONE ขณะยังค้าง ⇒ ผลเดิม ไม่ลบซ้ำ/ไม่มี audit ALL ที่สอง/ไม่มี event · REJECT จาก IN_PROGRESS ก่อนลบ ⇒ ได้ ข้อมูลอยู่ · เข้าซ้ำเมื่อที่เก็บกลับมา ⇒ DONE + event ครั้งเดียว
+  ✅ [ER-6] X2: งานลบรอบที่ที่เก็บกลับมา ⇒ ปิดคำขอที่ค้างเอง: DONE + doneAt · audit request_resolved IN_PROGRESS→DONE ผู้กระทำ SYSTEM · event ไฟล์ละ 1 + PASSENGER_ALL 1 (ไม่มี BOOKER) · วัตถุ/FileAsset หาย · รอบสองไม่มีอะไรใหม่
+  ✅ [ER-7] F12 + X2 ถอนความยินยอมขณะที่เก็บลบไม่ได้: ผล pendingObjects 1 · DTO ร้าน {deleted, pendingDeletion} = MEDICAL [true,true] / PASSPORT [false,false] · ส่งออกบอก pendingDeletion · มุมมองสาธารณะไม่มีคีย์นี้ · งานลบสำเร็จ ⇒ pendingDeletion false
+  ✅ [ER-8] F8: ปฏิเสธให้ข้อมูลสุขภาพ / กลายเป็นผู้เยาว์ ขณะมีไฟล์ MEDICAL ⇒ ผลมี healthErased + pendingObjects (1 เมื่อที่เก็บลบไม่ได้ · 0 เมื่อลบได้) · ไม่มีไฟล์ให้ลบ ⇒ ไม่มีคีย์ pendingObjects
+  ✅ [ER-9] X2 การแข่ง (กำหนดลำดับด้วย put): ERASE commit ระหว่างที่อัปโหลดเขียนวัตถุเสร็จแต่ยังไม่เข้า tx ⇒ อัปโหลด NOT_FOUND PURGED · พนักงานเซ็นต่อหน้าพร้อมรูปลายเซ็นก็ถูกปฏิเสธ · วัตถุ+FileAsset ของคำขอถูกลบ · ผู้เดินทางที่ถูกลบทั้งคนไม่มี TripDocument ที่ยังเปิดได้
+  ✅ [ER-10] F11: อัปโหลดที่ธุรกรรมถูกยกเลิก (ครบเพดานระหว่าง PUT) ⇒ ลบวัตถุของตัวเอง · ลบไม่ได้ ⇒ มีแถวติดตาม purgeStage ABORTED (deletedAt · objDel false · ไม่นับเป็นไฟล์ที่ใช้ได้) แล้วงานลบเก็บกวาดให้ · ลบได้ ⇒ ไม่มีแถวติดตาม ไม่มีวัตถุค้าง
+  ✅ [ER-11] F13: consent ของไฟล์ที่ทำเครื่องหมายแล้วเป็น JSON รูปแปลก (objDel = ข้อความ/ตัวเลข/วัตถุ · consent เป็นข้อความ/อาร์เรย์/null) ⇒ จอร้านไม่ล้ม (pendingDeletion true) · งานลบไม่ล้ม ถือว่ายังค้าง แล้วลบ+ยืนยัน (objDel true · event 1)
+  ── สรุป ER: ผ่าน 11/11
+
+── MN: ผู้เยาว์/ผู้ลงนาม (r4) ──
+  ✅ [MN-1] X1 + F7 ทางลิงก์ (signPassengerWaiver): ผู้เยาว์ที่เก็บ + SELF ⇒ GUARDIAN_REQUIRED · + GUARDIAN ประกาศผู้ใหญ่ ⇒ AGE_CONFLICT · ไม่รู้อายุ + ประกาศผู้เยาว์ + SELF ⇒ GUARDIAN_REQUIRED · ผู้ใหญ่ที่เก็บ + ประกาศผู้เยาว์ ⇒ AGE_CONFLICT · ปฏิเสธ = ไม่เขียนอะไร · ลงนามสำเร็จไม่เปลี่ยน isMinor/isMinorDeclared และ ageBasis ตรงที่มา
+  ✅ [MN-2] X1 + F7 ทางพนักงาน (recordWitnessedWaiver): ตารางเดียวกับ MN-1
+  ✅ [MN-3] X5 + F9: แก้วันเกิดผู้เยาว์→ผู้ใหญ่ ไม่ลบผู้ปกครองของขอบเขต HEALTH · ผู้ใหญ่ให้ความยินยอมสุขภาพเอง ⇒ ปลดผู้ปกครอง HEALTH (WAIVER + หลักฐานลงนามไม่ถูกแตะ) · audit consent_given มี retiredGuardianRef = ตัวอ้างอิงแบบมีกุญแจของผู้ปกครองเดิม (ไม่มีชื่อ)
+  ✅ [MN-4] X5b: ลงนามเอง (ผู้ใหญ่ตามวันเกิด) แล้วแก้วันเกิดเป็นผู้เยาว์ ⇒ ธงเซ็นใหม่ + audit resign_required + สถานะ NEEDS_RESIGN · แก้กลับเป็นผู้ใหญ่ ⇒ ธงหาย กลับเป็น SIGNED (หลักฐาน SELF+DOB)
+  ✅ [MN-5] X5a: ส่ง guardian โดยไม่มีความยินยอมสุขภาพในคำขอเดียวกัน (ผู้เยาว์) หรือผู้เดินทางเป็นผู้ใหญ่ ⇒ VALIDATION GUARDIAN_WITHOUT_CONSENT · ไม่เขียน · ผู้ปกครองที่ให้ความยินยอมไว้เดิมไม่ถูกแทน
+  ── สรุป MN: ผ่าน 5/5
+
+── PJ: งานลบ — ค้นพบ/แจ้งเตือน/ค่าตั้ง/เขตเวลา (r4) ──
+  ✅ [PJ-1] X3 ค้นพบหน่วย: หน่วยที่งานอย่างเดียวคือวัตถุค้าง 1 ชิ้น ⇒ ถูกเยี่ยม (ลบ+ยืนยัน · event 1) · หน่วยที่งานอย่างเดียวคือคำขอ ERASE ค้าง IN_PROGRESS ของคนที่ถูกลบแล้ว ⇒ ถูกเยี่ยม (DONE + PASSENGER_ALL 1)
+  ✅ [PJ-2] X2 แจ้งเตือน + F10: วัตถุค้างเกิน 24 ชม. หรือคำขอ ERASE เลยกำหนด ⇒ OpsEvent ERROR source trips.pdpa · detail = {unitId, pendingObjects, overdueEraseRequests} เท่านั้น (ไม่มีรหัสคน/ไฟล์/path) · รันซ้ำทันที = ยังแถวเดียวต่อหน่วย · ค้าง 23 ชม. + คำขอยังไม่เลยกำหนด ⇒ ไม่แจ้ง
+  ✅ [PJ-3] F4: ค่าตั้งอายุเก็บของหน่วยเสีย ⇒ failed SETTINGS_INVALID_RETENTION · ข้ามเฉพาะขั้น 2–3 (ไฟล์/เลขเอกสารที่ครบกำหนดยังอยู่) · ขั้น 1 (ผู้จองหมดเวลา) 4 (วัตถุค้าง) 5 (ปิดคำขอ ERASE) ยังทำ
+  ✅ [PJ-4] F6/X3 เขตเวลาที่ Postgres ไม่รู้จัก ("america/new_york" ตัวเล็ก): งานไม่ล้ม · หน่วยนั้นใช้ Asia/Bangkok ทั้ง SQL และ JS (ไม่ลบที่ 16:59:59Z · ลบที่ 17:00Z ของ E+30 เวลาไทย) + failed TIMEZONE_UNKNOWN_TO_DB · หน่วยอื่น (เขตเวลาขยะ · ปกติ) ยังถูกทำตามปกติ
+  ✅ [PJ-5] X3 รอบเลื่อนเร็วขึ้น 20 วัน (หน่วยไม่มีอย่างอื่นครบกำหนด): งานถัดไปใช้กำหนดใหม่ E′+N — ไฟล์: ไม่ลบก่อน 1 วินาที · ลบตรงกำหนดใหม่ (ก่อน retainUntil ที่เก็บไว้เดิม) · เลขเอกสารในแถว: ลบที่ E′+365
+  ✅ [PJ-6] X4 deadline: deadline ที่ผ่านไปแล้ว ⇒ ไม่ทำชิ้นใด + more true (ทั้งต่อหน่วยและทั้งงาน) · ไม่มี deadline ⇒ ทำจนหมด more false
+  ✅ [PJ-7] X2 ค่าคงที่ท้ายรัน: ผู้เดินทางที่ถูกลบทั้งคนของร้านทดสอบไม่มี TripDocument ที่ยังไม่ถูกทำเครื่องหมายลบ · event BOOKER/PASSENGER_ALL ไม่ซ้ำคีย์ และ PASSENGER_ALL ทุกใบเป็นของผู้เดินทางที่ไม่มีวัตถุค้าง
+  ✅ [PJ-8] มติผู้คุม: หน่วยที่ปัญหาอย่างเดียวคือคำขอ ERASE สถานะ RECEIVED เลย dueAt (ไม่มีวัตถุค้าง ไม่มีคำขอ IN_PROGRESS) ⇒ งานลบเยี่ยมหน่วย + OpsEvent ERROR trips.pdpa 1 แถว detail = {unitId, pendingObjects 0, overdueEraseRequests 1} · รันซ้ำทันทีไม่เพิ่ม · RECEIVED ที่ยังไม่เลยกำหนด ⇒ ไม่แจ้ง · คำขอยัง RECEIVED (งานไม่ทำแทนคน)
+  ── สรุป PJ: ผ่าน 8/8
+
+── LE: สแกนการรั่ว (ตัวบ่งชี้ที่ปลูก · token) ──
+  ✅ [LE-1] OutboxEvent ของร้านทดสอบ: ไม่มีชื่อ/เลขเอกสาร/สุขภาพ/token
+  ✅ [LE-2] AuditLog ของร้านทดสอบ: ไม่มีตัวบ่งชี้/token (แฮช token อยู่ได้เฉพาะ link_issued)
+  ✅ [LE-3] OpsEvent ตั้งแต่เริ่มรัน: ไม่มีตัวบ่งชี้/token
+  ✅ [LE-4] ผลปฏิเสธทุกตัวที่บริการคืนตลอดการรัน: ไม่มีตัวบ่งชี้/token ใน messageTh/details
+  ✅ [LE-5] path ไฟล์/cdnUrl/คีย์ในที่เก็บ: ไม่มีชื่อไฟล์ลูกค้า/ตัวบ่งชี้ · ทุกไฟล์ของใบอยู่ใต้ private/
+  ✅ [LE-6] แถวผู้เดินทาง: answers ดิบไม่มีข้อความสุขภาพ · docNumberEnc ไม่มีเลขดิบ · waiverEvidence ไม่มี token
+  ── สรุป LE: ผ่าน 6/6
+
+── EV: event ──
+  ✅ [EV-1] trips.passenger.form_completed: payload ตรงชุด {bookingId, kind, passengerId} ทุกแถว · คีย์ trips.passenger.form_completed:<passengerId>:<rev>
+  ── สรุป EV: ผ่าน 1/1
+
+qc-trips-t0.8: ผ่าน 159/160 · ล้ม 1 · ข้าม 0
+JSON_SUMMARY {"suite":"qc-trips-t0.8","total":160,"passed":159,"failed":["S-8"],"skipped":[],"groups":{"PC":"9/9","S":"11/12","FS":"10/10","LK":"14/14","SB":"11/11","HL":"10/10","WV":"8/8","DC":"8/8","CR":"9/9","MK":"5/5","SE":"3/3","X":"3/3","PQ":"7/7","RC":"6/6","RT":"14/14","ER":"11/11","MN":"5/5","PJ":"8/8","LE":"6/6","EV":"1/1"}}
+=== qc-trips-t0.8 exit 1 23:37:15

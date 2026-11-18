@@ -1,0 +1,181 @@
+=== qc-trips-t0.3 start 23:49:05
+[env] qc-trips-t0.3 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1085215) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed P0.1 (andaman-dive) อยู่
+  ✅ [PC-2] ฟิกซ์เจอร์ (README จอ 11): ราชา 7 รอบ ความจุ 24 ขั้นต่ำ 8 · พีพี 7/30/10 · ดำน้ำลึก 6/12/4 · ศ. 13 ยกเลิก 3 รอบ 44 คน
+  ✅ [PC-3] ทะเบียนค่าตั้งเดิมโหลดได้ (resolveSetting · setSettings)
+  ✅ [PC-4] Intl ของเครื่องรู้ DST: 2027-03-28T07:00Z ที่ Europe/Berlin = 09:00 · 2027-03-27T08:00Z = 09:00 (ตัวควบคุมของ TZ-2)
+  ── สรุป PC: ผ่าน 4/4
+
+── S: ไฟล์และกติกาโค้ด ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: departures-core.ts · departures.ts · resources.ts · departure-actions.ts · jobs.ts
+  ✅ [S-2] facade ส่งออก 37 ฟังก์ชัน + 3 ค่าคงที่ · บล็อก "// TRIPS T0.3 ▸" · ไม่มี export * · รหัสพลาดครบ · สถานะ 5 ค่า
+  ✅ [S-3] departure-actions.ts: บรรทัดแรก "use server" · ส่งออกเฉพาะ export async function · requireUnit + assertCan · ≥ 15 action · ไม่รับ now
+  ✅ [S-4] ไม่มี any (ชนิด/แคสต์) ในไฟล์ของใบ
+  ✅ [S-5] import: แค่ @/lib/core/* zod @prisma/client ./ next/cache (ไม่ import hotel/โมดูลอื่น) · prisma ดิบเฉพาะ jobs.ts · departures-core บริสุทธิ์
+  ✅ [S-6] ไม่มีตัวอ่านเวลาตามเครื่อง (getDay/getDate/getHours/getMinutes/getMonth/getFullYear/setHours/toLocale*String ไม่มี timeZone)
+  ✅ [S-7] ไม่มีตัวเลขธุรกิจตายตัว (ปิดรับ/ขั้นต่ำ/ระยะล่วงหน้า/ความจุ) — มาจาก T6 T7 T8 หรือ input
+  ✅ [S-8] ไม่มีการลบแถว Trip*: ไม่มี .delete( / .deleteMany( / DELETE FROM · facade ไม่ส่งออก delete*
+  ✅ [S-9] ความจุ = คำสั่งเดียว: departures.ts มี UPDATE "TripDeparture" … "sold" + "held" + "reserved" <= … RETURNING (CC §D.1 ข้อ 8)
+  ✅ [S-10] สิทธิ์ 4 คีย์ใน MODULE_DEFS โมดูล trips (ป้ายไทย)
+  ✅ [S-11] event 4 ตัวลง 3 ทะเบียน (consumer · automation labels · webhook events) ป้ายไทย
+  ✅ [S-12] minute-jobs.ts ลงทะเบียน trips.generateDepartures (daily) + trips.minPaxCheck (15 นาที) · โหลด facade trips ตอนรัน
+  ❌ [S-13] ไม่แตะไฟล์ต้องห้ามเทียบ session/trips: prisma/ · core/settings/ · โมดูลเดิม · ข้อสอบ p0.1/t0.1/t0.2/t0.3 — แตะ: src/lib/core/settings/defs/trips.ts
+  ✅ [S-14] zod strict ใน departures.ts + resources.ts · resources.ts จับ 23P01 ใต้ SAVEPOINT (EXCLUDE = ด่านสุดท้าย)
+  ── สรุป S: ผ่าน 13/14
+
+── C: ฟังก์ชันบริสุทธิ์ (TZ เครื่อง = Pacific/Chatham) ──
+  ✅ [C-1] ผังสถานะรอบ: ทางที่ได้ (STAFF/SYSTEM) · ทางที่ไม่ได้ · CANCELLED จบ
+  ✅ [C-2] weekdayOfYmd / addDaysYmd ไม่ขึ้นกับ TZ เครื่อง: 2027-03-01=จันทร์(1) · 2026-11-14=เสาร์(6) · 2024-02-29=พฤ.(4) · +1 ข้ามเดือน/อธิกสุรทิน
+  ✅ [C-3] localToUtc/utcToLocal Bangkok: 2027-03-02 00:10 = 2027-03-01T17:10Z (วันไทยไม่เลื่อน) · 2026-11-14 08:00 = 01:00Z · กลับทางได้ · tz เพี้ยน ⇒ Bangkok
+  ✅ [C-4] localToUtc Europe/Berlin (DST): 27 มี.ค. 09:00=08:00Z · 28 มี.ค. 09:00=07:00Z · 02:30 ไม่มีจริง ⇒ 03:30 CEST=01:30Z · 31 ต.ค. 02:30 ซ้ำ ⇒ ตัวแรก 00:30Z
+  ✅ [C-5] expandSchedule WEEKLY จ/พ/ศ 1–14 มี.ค. 2570: SKIP 3 · OVERRIDE 5 (10:00 · ความจุ 7 · ขั้นต่ำ null) ⇒ 1 5 8 10 12
+  ✅ [C-6] expandSchedule ตัดด้วยหน้าต่าง/dateFrom/dateTo · DAILY · DATES นอกช่วงทิ้ง · ขั้นต่ำกฎ null ⇒ undefined (ใช้ค่าตั้ง)
+  ✅ [C-7] cutoffFor/cutoffAtColumn: 1 วันก่อน 18:00 ไทย · หน้าร้าน 0 วัน 07:00 · ไม่เกินเวลาออก · คอลัมน์ = ช่องทางที่ปิดช้าสุด
+  ✅ [C-8] decisionAtFor + needsDecision: ต่ำกว่าขั้นต่ำหลังเวลาตัดสิน = true · ก่อนเวลา/GUARANTEED/ขั้นต่ำ null/ถึงขั้นต่ำ/เริ่มแล้ว = false
+  ✅ [C-9] stopSellBlocks + saleBlockReason: [] = ทุกช่องทาง · เฉพาะ WEB · until หมดแล้ว = ไม่หยุด · จำกัดเอเจนซี่ · ลำดับเหตุ STATUS > STARTED > CUTOFF > STOP_SELL
+  ── สรุป C: ผ่าน 9/9
+
+── SC: กฎซ้ำ → รอบ ──
+  ✅ [SC-1] createSchedule WEEKLY จ/พ/ศ + ข้อยกเว้น ⇒ {id} · ยังไม่สร้างรอบเอง · listSchedules เห็น paused=false
+  ✅ [SC-2] materializeSchedule (now = 1 มี.ค. 2570 00:00 ไทย) ⇒ 5 รอบ 1 5 8 10 12 · OVERRIDE 5 = 10:00 ความจุ 7 ขั้นต่ำ null · อื่น 08:00 ความจุ 20 ขั้นต่ำ 6 · ตัวนับ 0 · OPEN
+  ✅ [SC-3] รันซ้ำ ⇒ created [] · แถวยังเท่าเดิม (idempotent)
+  ✅ [SC-4] X5 materialize กฎเดียวกันพร้อมกัน 4 ทาง ⇒ แถวชุดเดียว (3 วัน · ไม่มีวันซ้ำ) · ไม่มีทาง throw
+  ✅ [SC-5] ระยะล่วงหน้าจากค่าตั้ง T8 ชั้น PRODUCT = 3 ⇒ 3 วัน (รวมวันนี้) · ตัวควบคุมบวก: ตั้ง 5 ⇒ รันซ้ำได้เพิ่ม 2
+  ✅ [SC-6] T8 = null (สร้างทีละทริป) ⇒ HORIZON_OFF ไม่สร้างอะไร
+  ✅ [SC-7] พักกฎ ⇒ SCHEDULE_PAUSED · งานรายวันไม่สร้าง · รอบเดิม (มีคนจอง sold=3) ไม่ถูกแตะ · พักซ้ำ BAD_STATE · เปิดต่อ ⇒ สร้างวันที่ 6–7
+  ✅ [SC-8] updateSchedule เปลี่ยนเป็นจันทร์อย่างเดียว ⇒ mismatched = รอบ 5 10 12 · รอบที่มีอยู่ไม่ถูกแก้
+  ✅ [SC-9] ตรวจ input: dateFrom > dateTo · weekday 7 · ช่องแปลก ⇒ INVALID_INPUT · ตัวเลือกไม่มีระยะเวลา ⇒ NO_DURATION · สินค้าเก็บแล้ว ⇒ PRODUCT_ARCHIVED · ตัวเลือกของสินค้าอื่น ⇒ NOT_FOUND
+  ✅ [SC-10] งาน runGenerateDepartures (tenantIds=[ร้าน A]) สร้างรอบให้กฎที่ยังไม่สร้าง · สองงานซ้อนกัน ⇒ ไม่ซ้ำ
+  ✅ [SC-11] กฎที่มีทรัพยากรชนกับรอบอื่นวันหนึ่ง ⇒ ไม่สร้างวันนั้น + conflicts บอกวัน/ทรัพยากร/รอบที่ชน · วันอื่นสร้างตามปกติ
+  ── สรุป SC: ผ่าน 11/11
+
+── TZ: เที่ยงคืนไทย · ร้านเขตเวลาอื่น ──
+  ✅ [TZ-1] เที่ยงคืนไทย: กฎ 00:10 วันที่ 1–2 ก.ค. (now 30 มิ.ย. 23:50 ไทย) ⇒ localDate 07-01 เริ่ม 06-30T17:10Z · 07-02 เริ่ม 07-01T17:10Z (วันไทยไม่เลื่อนตาม UTC)
+  ✅ [TZ-2] ร้าน Europe/Berlin: กฎ 09:00 วันที่ 27–29 มี.ค. 2570 ⇒ 08:00Z · 07:00Z · 07:00Z (DST) · localDate ตามเวลาร้าน
+  ✅ [TZ-3] ปิดรับในเขตเวลาร้าน: Berlin รอบ 28 มี.ค. ⇒ WEB = 27 มี.ค. 18:00 CET = 17:00Z (cutoffAt คอลัมน์เท่ากัน) · Bangkok รอบ 10 มี.ค. 08:00 ⇒ 9 มี.ค. 11:00Z
+  ✅ [TZ-4] แก้เวลาเป็น 23:59 และ 00:00 ⇒ localDate ไม่เปลี่ยน · startsAt ตามวันเดิมของร้าน
+  ✅ [TZ-5] "วันนี้" ของร้าน: now = 1 ส.ค. 08:30 ไทย กฎ 08:00 ⇒ ข้ามวันที่ 1 (เลยเวลาแล้ว) เริ่ม 2 ส.ค.
+  ── สรุป TZ: ผ่าน 5/5
+
+── D: รอบเดี่ยว ──
+  ✅ [D-1] createDeparture ⇒ OPEN · ตัวนับ 0 · scheduleId null · endsAt จากตัวเลือก · ขั้นต่ำจากค่าตั้ง (fallback DIVE_SHOP = null) · version 0
+  ✅ [D-2] รอบซ้ำ (สินค้า/ตัวเลือก/เวลาเดียวกัน) ⇒ DUPLICATE_DEPARTURE ไม่ throw · วันเดียวกันต่างเวลา ⇒ ได้
+  ✅ [D-3] รอบในอดีต ⇒ PAST_DEPARTURE (เวลาจริง และ opts.now)
+  ✅ [D-4] getDeparture DTO ครบ (cutoffs ทุก 12 ช่องทาง · resources · decisionAt · needsDecision) · listDepartures เรียงเวลา · ช่วง > 62 วัน ⇒ INVALID_INPUT
+  ✅ [D-5] updateDeparture ขั้นต่ำ/ระยะเวลา ⇒ บันทึก + endsAt ใหม่ · ช่องแปลก ⇒ INVALID_INPUT
+  ✅ [D-6] ตัวเลือกค้างคืน (nights 2) ⇒ endsAt = เริ่ม + 2,880 นาที · ตัวเลือกไม่มีระยะเวลา: ไม่ส่ง durationMin ⇒ NO_DURATION · ส่ง ⇒ ได้
+  ✅ [D-7] แก้เวลารอบที่มีคน (sold>0) ไม่ส่ง confirm ⇒ CONFIRM_REQUIRED ไม่เปลี่ยน · confirm:true ⇒ เปลี่ยน · CANCELLED ⇒ BAD_STATE
+  ── สรุป D: ผ่าน 7/7
+
+── ST: ผังสถานะรอบ ──
+  ✅ [ST-1] OPEN → GUARANTEED (STAFF) ⇒ version +1 · event status_changed 1 ตัว
+  ✅ [ST-2] GUARANTEED → OPEN · OPEN → CLOSED · CLOSED → OPEN (STAFF) ได้ทั้งหมด
+  ✅ [ST-3] CLOSED → GUARANTEED ⇒ FORBIDDEN_TRANSITION (ต้องเปิดก่อน) · สถานะไม่เปลี่ยน
+  ✅ [ST-4] STAFF ขอ FULL หรือ CANCELLED ผ่าน setDepartureStatus ⇒ FORBIDDEN_TRANSITION (FULL = ระบบ · ยกเลิก = cancelDeparture)
+  ✅ [ST-5] สถานะเดิม ⇒ BAD_STATE · สถานะแปลก ⇒ INVALID_INPUT
+  ✅ [ST-6] FULL (ระบบตั้ง) → CLOSED ได้ · FULL → OPEN โดย STAFF ⇒ FORBIDDEN_TRANSITION
+  ✅ [ST-7] CANCELLED จบ: → OPEN ⇒ FORBIDDEN_TRANSITION · ยกเลิกซ้ำ ⇒ FORBIDDEN_TRANSITION
+  ✅ [ST-8] รอบที่เริ่มแล้ว: CLOSED → OPEN / OPEN → GUARANTEED ⇒ PAST_DEPARTURE · ปิดรับรอบที่เริ่มแล้วได้
+  ✅ [ST-9] X3 CAS: ยืนยันออกพร้อมกัน 6 ทาง ⇒ สำเร็จ 1 · ที่เหลือ BAD_STATE · version +1 ครั้งเดียว · event 1 ตัว
+  ── สรุป ST: ผ่าน 9/9
+
+── CAP: ความจุ ──
+  ✅ [CAP-1] ใช้แล้ว 8 (sold 5 held 2 reserved 1): ลดเป็น 7 ⇒ CAPACITY_BELOW_USED used 8 ไม่เปลี่ยน · ลดเป็น 8 ⇒ ได้ · ตัวนับไม่ถูกแตะ
+  ✅ [CAP-2] เพิ่มความจุได้ · รอบ CANCELLED ⇒ BAD_STATE · ค่าติดลบ ⇒ INVALID_INPUT
+  ✅ [CAP-3] FULL แล้วเพิ่มความจุ ⇒ OPEN (ขั้นต่ำ null) / GUARANTEED (sold ≥ ขั้นต่ำ) ในคำสั่งเดียว
+  ✅ [CAP-4] X3: ลดความจุ 20 ทาง (5..24) พร้อมกับตัดที่ด้วย SQL ดิบ 10 ทาง ⇒ ไม่มี throw · ผลมีแต่ ok/CAPACITY_BELOW_USED · ท้ายสุด capacity ≥ sold+held+reserved
+  ✅ [CAP-5] X3 ซ้ำ 5 รอบ (ลดเป็นค่าเท่ายอดใช้ + ตัดที่พร้อมกัน) ⇒ ไม่เคยเกิน capacity
+  ── สรุป CAP: ผ่าน 5/5
+
+── RS: ทรัพยากรกันชนข้ามสินค้า ──
+  ✅ [RS-1] createResource / updateResource / listResources · ชนิดแปลก ⇒ INVALID_INPUT
+  ✅ [RS-2] มอบเรือให้รอบสินค้า ก (09:00–17:00) ⇒ ได้ · มอบซ้ำ ⇒ useId เดิม · แถว active 1 · ช่วงเวลา = ของรอบ
+  ✅ [RS-3] เรือลำเดียวกันกับรอบสินค้า ข ที่ทับเวลา (12:00–14:00) ⇒ RESOURCE_CLASH · conflict ชี้รอบ ก · ข้อความไทยมีชื่อสินค้า ก · ไม่มีแถวใหม่
+  ✅ [RS-4] ต่อกันพอดี (สินค้า ข 17:00–19:00) ⇒ ได้ ([) ไม่ซ้อน)
+  ✅ [RS-5] ด่านสุดท้ายในฐาน: INSERT ดิบ TripResourceUse ทับเวลา active ⇒ 23P01 (EXCLUDE ของ T0.1)
+  ✅ [RS-6] X3: มอบเรือลำใหม่ให้ 10 รอบที่ทับกัน (2 สินค้า) พร้อมกัน ⇒ สำเร็จ 1 · RESOURCE_CLASH 9 · ไม่มี throw · แถว active 1
+  ✅ [RS-7] แก้เวลารอบให้ไปทับรอบอื่นที่ใช้เรือ ⇒ RESOURCE_CLASH และไม่มีอะไรเปลี่ยน · แก้ไปช่วงว่าง ⇒ แถวใช้เรือย้ายตาม
+  ✅ [RS-8] ยกเลิกรอบ ก ⇒ แถวใช้เรือ active=false (ไม่ลบ) · รอบ ข ที่เคยชนมอบได้แล้ว
+  ✅ [RS-9] ถอนเรือ ⇒ active=false แถวยังอยู่ · ปิดใช้เรือที่ยังมีรอบอนาคต ⇒ RESOURCE_IN_USE (+departureIds) · เรือปิดแล้วมอบ ⇒ RESOURCE_INACTIVE
+  ── สรุป RS: ผ่าน 9/9
+
+── MP: ขั้นต่ำออกเดินทาง ──
+  ✅ [MP-1] ก่อนเวลาตัดสิน ⇒ ไม่มี event · needsDecision false · decisionAt = 9 เม.ย. 11:00Z
+  ✅ [MP-2] หลังเวลาตัดสิน sold 4 < 8 ⇒ belowMin มีรอบนี้ · event below_min 1 ตัว · needsDecision true · สถานะยัง OPEN
+  ✅ [MP-3] ประเมินซ้ำ (เวลาเดียวกัน/ช้ากว่า) ⇒ ไม่มี event ที่สอง
+  ✅ [MP-4] X5 งาน runMinPaxCheck สองตัวซ้อนกันบนรอบต่ำกว่าขั้นต่ำใหม่ ⇒ event below_min 1 ตัวพอดี
+  ✅ [MP-5] ถึงขั้นต่ำทีหลัง (sold 8) ⇒ ประเมิน ⇒ GUARANTEED โดยระบบ · status_changed 1 · needsDecision false · below_min ยัง 1
+  ✅ [MP-6] X5 ถึงขั้นต่ำ ณ เวลาตัดสิน + ประเมินพร้อมกัน 3 ทาง ⇒ GUARANTEED ครั้งเดียว (version +1 · event 1)
+  ✅ [MP-7] ขั้นต่ำ null ⇒ ไม่ทำอะไร · GUARANTEED แล้วยอดลด ⇒ ไม่ย้อน
+  ✅ [MP-8] ขั้นต่ำจากค่าตั้ง T7 ชั้น PRODUCT {6, 2 วัน, 10:00} ⇒ รอบใหม่ minPax 6 · decisionAt = 2 วันก่อน 10:00 ไทย · ตัวควบคุมบวก: เปลี่ยน T7 ⇒ รอบเดิม minPax คงเดิม · decisionAt เปลี่ยน · รอบใหม่ได้ค่าใหม่
+  ✅ [MP-9] ขั้นต่ำจาก OVERRIDE ของกฎ ชนะค่าตั้ง · กฎ minPax ชนะค่าตั้ง (ลำดับ ข้อยกเว้น > กฎ > ค่าตั้ง)
+  ── สรุป MP: ผ่าน 9/9
+
+── CO: ปิดรับต่อช่องทาง · หยุดขาย ──
+  ✅ [CO-1] ค่าเริ่ม (fallback DIVE_SHOP 1 วันก่อน 18:00): รอบ 10 มี.ค. 08:00 ⇒ ทุกช่องทาง 9 มี.ค. 11:00Z · cutoffAt เท่ากัน
+  ✅ [CO-2] T6 ชั้น PRODUCT perChannel COUNTER {0 วัน 07:00} (แบบจอ 17) ⇒ COUNTER = 10 มี.ค. 00:00Z · WEB เดิม · refreshDeparturePolicy ⇒ cutoffAt = ช่องทางที่ปิดช้าสุด
+  ✅ [CO-3] ตัวควบคุมบวก: T6 PRODUCT 2 วันก่อน 18:00 ⇒ WEB 8 มี.ค. 11:00Z (เลื่อนตามค่าตั้ง)
+  ✅ [CO-4] ไม่เกินเวลาออก: รอบ 06:00 ไทย หน้าร้าน 0 วัน 07:00 ⇒ COUNTER = startsAt
+  ✅ [CO-5] refreshDeparturePolicy ไม่แตะรอบ CANCELLED
+  ✅ [CO-6] setDepartureStopSell: ช่องทางเว็บ บันทึก/อ่านกลับ · มี agentAccountIds ⇒ AGENT_STOP_SELL_NOT_SUPPORTED · ช่องทางแปลก ⇒ INVALID_INPUT · null = ล้าง
+  ── สรุป CO: ผ่าน 6/6
+
+── PM: สิทธิ์ ──
+  ✅ [PM-1] ดูอย่างเดียว: get/list ได้ · สร้างรอบ/เปลี่ยนสถานะ/ยกเลิก/สร้างทรัพยากร ⇒ FORBIDDEN และไม่มีแถวใหม่
+  ✅ [PM-2] edit (ไม่มี status/resource): สร้างรอบได้ · เปลี่ยนสถานะ/ยกเลิก ⇒ FORBIDDEN · สร้างทรัพยากร ⇒ FORBIDDEN
+  ✅ [PM-3] status (ไม่มี edit): เปลี่ยนสถานะได้ · แก้ความจุ ⇒ FORBIDDEN
+  ✅ [PM-4] ไม่มีสิทธิ์ trips.departure.* ⇒ อ่านก็ FORBIDDEN
+  ── สรุป PM: ผ่าน 4/4
+
+── X1: แยกร้าน/แยกหน่วย ──
+  ✅ [X1-1] ร้าน B อ่าน/แก้รอบของร้าน A (ด้วยหน่วย A หรือหน่วยของตัวเอง) ⇒ NOT_FOUND · แถวไม่เปลี่ยน
+  ✅ [X1-2] พนักงานหน่วย A2: list หน่วย A ⇒ NOT_FOUND · สร้างกฎในหน่วย A2 ด้วยสินค้าของหน่วย A ⇒ NOT_FOUND
+  ✅ [X1-3] ทรัพยากรหน่วย A2 มอบให้รอบหน่วย A ⇒ NOT_FOUND · กฎหน่วย A อ้างทรัพยากร A2 ⇒ NOT_FOUND
+  ✅ [X1-4] หน่วย BOOKING ของร้าน ⇒ UNIT_NOT_TRIPS
+  ✅ [X1-5] materialize กฎของร้าน A ด้วยร้าน B ⇒ NOT_FOUND ไม่มีแถว · งาน tenantIds=[B] ไม่สร้างรอบของร้าน A
+  ✅ [X1-6] listDepartures หน่วย A คืนเฉพาะหน่วย A (มีรอบหน่วย A2 วันเดียวกัน)
+  ✅ [X1-7] evaluateMinPax ของหน่วย M ไม่แตะรอบหน่วยอื่น (รอบหน่วย A ต่ำกว่าขั้นต่ำไม่มี event)
+  ── สรุป X1: ผ่าน 7/7
+
+── X9: ยกเลิกรอบที่มีคนจอง/ถือที่ = ปฏิเสธ (T1.6) ──
+  ✅ [X9-1] sold > 0 ⇒ HAS_BOOKINGS (+used) · สถานะ/แถวใช้ทรัพยากรไม่เปลี่ยน · ไม่มี event cancelled
+  ✅ [X9-2] มีแถว TripHold ACTIVE (ตัวนับ 0) ⇒ HAS_BOOKINGS
+  ✅ [X9-3] มี TripBooking CONFIRMED (ตัวนับ 0) ⇒ HAS_BOOKINGS · การจอง EXPIRED อย่างเดียว ⇒ ยกเลิกได้
+  ✅ [X9-4] รอบว่าง ⇒ CANCELLED · event cancelled 1 · audit มีเหตุผล · เหตุผลสั้นเกิน ⇒ INVALID_INPUT
+  ── สรุป X9: ผ่าน 4/4
+
+── EV: event + audit ──
+  ✅ [EV-1] trips.departure.created: payload ตรง 6 คีย์ {departureId productId unitId status paxSold minPax} · paxSold 0 · unitId ของแถว outbox ตรง
+  ✅ [EV-2] status_changed · cancelled · below_min: payload ตรง 6 คีย์ทุกตัว · key ไม่ซ้ำ
+  ✅ [EV-3] ไม่มีข้อมูลบุคคลใน payload: ค่าเป็น id/สถานะ/ตัวเลข/null เท่านั้น (ไม่มีอักษรไทย · @ · ช่องว่าง)
+  ✅ [EV-4] audit: trips.departure.create / status / capacity · trips.schedule.create · trips.resource.assign มี actorId = ผู้กระทำ
+  ── สรุป EV: ผ่าน 4/4
+
+── R: seed สัปดาห์ 11–17 พ.ย. 2569 (จอ 11) ──
+  ✅ [R-1] จำนวนรอบต่อวันตรงจอ 11: ราชา 11–17 (7) · พีพี 11–17 (7) · ดำน้ำลึก 11–16 (6 · 17 ไม่มีรอบ เรือเข้าซ่อม) · วันละ 1 รอบ
+  ✅ [R-2] ความจุ 24/30/12 · ขั้นต่ำ 8/10/4 · ตัวนับ 0 ทุกรอบ (ยอดขาย = T0.4/T0.6 seed)
+  ✅ [R-3] สถานะตามจอ 11: 11–12 CLOSED · ศ. 13 CANCELLED 3 รอบ (สินค้าละ 1) · ส. 14 ราชา+พีพี GUARANTEED · ที่เหลือ OPEN
+  ✅ [R-4] ส. 14 ราชา: 08:00–16:30 ไทย (01:00Z–09:30Z) · มาจากกฎซ้ำ · เรือราชา 1 ถูกมอบ (active)
+  ✅ [R-5] ปิดรับ ส. 14 ราชา (ภาพ 17): WEB = ศ. 13 18:00 ไทย (11:00Z) · COUNTER = ส. 14 07:00 ไทย (00:00Z) · cutoffAt = 00:00Z
+  ✅ [R-6] ค่าตั้ง seed: T7 ชั้น PRODUCT ราชา/พีพี/ดำน้ำลึก = 8/10/4 ตัดสิน 1 วัน 18:00 · T6 หน่วย COUNTER {0, 420}
+  ✅ [R-7] สิมิลัน: รอบเดี่ยว 14 ก.พ. 2570 18:00 ไทย (11:00Z) · ความจุ 20 · ไม่มีกฎซ้ำ
+  ✅ [R-8] กฎดำน้ำลึกมีข้อยกเว้น SKIP 2026-11-17 · ทรัพยากร seed มีเรือ 5 ลำ รถตู้ 3 ไกด์ 2 (มิ้นท์ · โจ)
+  ✅ [R-9] seed สร้างผ่าน facade (createSchedule · materializeSchedule · cancelDeparture · setDepartureStatus · createResource) ไม่เขียน TripDeparture ตรง · ฟิกซ์เจอร์มี TRIPS_SEED_RESOURCES/TRIPS_SEED_SCHEDULES
+  ── สรุป R: ผ่าน 9/9
+
+===== QC TRIPS T0.3 · รอบ · กฎซ้ำ · สถานะ · ทรัพยากร · ขั้นต่ำ · ปิดรับ =====
+ผ่าน 115/116 · ไม่ผ่าน 1 · ข้าม 0
+ต่อกลุ่ม: PC 4/4 · S 13/14 · C 9/9 · SC 11/11 · TZ 5/5 · D 7/7 · ST 9/9 · CAP 5/5 · RS 9/9 · MP 9/9 · CO 6/6 · PM 4/4 · X1 7/7 · X9 4/4 · EV 4/4 · R 9/9
+JSON_SUMMARY {"suite":"qc-trips-t0.3","total":116,"passed":115,"failed":["S-13"],"skipped":[],"groups":{"PC":"4/4","S":"13/14","C":"9/9","SC":"11/11","TZ":"5/5","D":"7/7","ST":"9/9","CAP":"5/5","RS":"9/9","MP":"9/9","CO":"6/6","PM":"4/4","X1":"7/7","X9":"4/4","EV":"4/4","R":"9/9"}}
+=== qc-trips-t0.3 exit 1 23:49:45

@@ -1,0 +1,19 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-trips-l2
+> tsc --noEmit
+
+scratchpad/a1.3-review2/hand.mts(1,20): error TS5097: An import path can only end with a '.ts' extension when 'allowImportingTsExtensions' is enabled.
+scripts/probe-trips-a1.3-hunt-1.mts(3,42): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+scripts/probe-trips-a1.3-hunt-2.mts(4,42): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+scripts/probe-trips-a1.3-hunt-2.mts(164,54): error TS2345: Argument of type '{ readonly status: "SUSPENDED"; } | { readonly status: "PENDING"; } | { readonly status: "CLOSED"; } | { readonly unitIds: readonly [string]; }' is not assignable to parameter of type '{ status?: string | undefined; vatRegistered?: boolean | undefined; payeeType?: string | undefined; unitIds?: string[] | undefined; tierId?: string | null | undefined; } | undefined'.
+  Type '{ readonly unitIds: readonly [string]; }' is not assignable to type '{ status?: string | undefined; vatRegistered?: boolean | undefined; payeeType?: string | undefined; unitIds?: string[] | undefined; tierId?: string | null | undefined; }'.
+    Types of property 'unitIds' are incompatible.
+      The type 'readonly [string]' is 'readonly' and cannot be assigned to the mutable type 'string[]'.
+scripts/probe-trips-a1.3-hunt-3.mts(3,42): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+scripts/probe-trips-a1.3-hunt-4.mts(3,80): error TS5097: An import path can only end with a '.mts' extension when 'allowImportingTsExtensions' is enabled.
+scripts/probe-trips-a1.3-hunt-4.mts(8,47): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+scripts/probe-trips-a1.3-hunt-4.mts(8,66): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+scripts/probe-trips-a1.3-hunt-4.mts(9,85): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+scripts/probe-trips-a1.3-hunt-4.mts(61,115): error TS2737: BigInt literals are not available when targeting lower than ES2020.
+ ELIFECYCLE  Command failed with exit code 1.
+typecheck exit=1

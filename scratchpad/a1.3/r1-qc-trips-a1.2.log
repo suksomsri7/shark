@@ -1,0 +1,220 @@
+[env] qc-trips-a1.2 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:3892440) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม (ต้องเขียวตั้งแต่ก่อนมีงาน) ──
+  ✅ [PC-1] ฐาน QC ต่อได้ + migration 20270201000200_agency ลงแล้ว + ตาราง global 5 ตัวมี
+  ✅ [PC-2] ฟังก์ชัน A1.1 บน facade ทำงาน: createAgentIdentity → findAgentIdentityByCode (positive control ของตัวตน)
+  ✅ [PC-3] ร้านชั่วคราว 4 ร้าน + ผู้ใช้ 8 คน · ตั้ง A36 requireApproval = false ที่หน่วยเดียวของร้าน B (ชั้น UNIT) ผ่าน setSettings · resolve: A=true B=false
+  ✅ [PC-4] positive control ตัวสแกน: แถว AuditLog ของร้าน A ที่ฝังเครื่องหมายร้าน B ⇒ ตัวสแกนเจอ (แล้วลบ)
+  ✅ [PC-5] สูตรแฮชของข้อสอบ: label ต่างกัน ⇒ ค่าต่างกัน · รูป v1:<64hex> · SESSION_SECRET ≥ 32
+  ✅ [PC-6] checkRateLimitDb ทำงาน (positive control: เพดาน 2 ⇒ ครั้งที่ 3 ไม่ผ่าน)
+
+── K: accounts-core (บริสุทธิ์) ──
+  ✅ [K-1] ค่าคงที่: สถานะ 5 · การกระทำ 15 · รหัสผิดพลาด 17 · เหตุปิด 5 · STICKY = REJECTED+CLOSED_BY_SHOP · รุ่นถ้อยคำ agency-apply-v1 (ตรงตัว)
+  ✅ [K-2] ผังสถานะ agentAccountTransition: 20 คู่ที่อนุญาต (รวม INVITED+ACCEPT_INVITE_UNVERIFIED⇒PENDING · PENDING+SUSPEND) ตรงตาราง §3.1 · อีก 70 คู่ = null
+  ✅ [K-3] cleanAgencyText: ตัด ZWSP/BOM · NFC · trim · ปฏิเสธ ตัวกลับทิศ/C0/TAB/U+2028/surrogate เดี่ยว/เกินยาว/ว่าง/ไม่ใช่สตริง
+  ✅ [K-4] licenceWarnings: หมดอายุ ⇒ LICENCE_EXPIRED · เกิน 2 ปี ⇒ LICENCE_EXPIRY_TOO_FAR · ปกติ/ว่าง/วันนี้ ⇒ [] (WARN เท่านั้น)
+  ✅ [K-5] คีย์ DTO รายละเอียด/รายการตรงตัว · NEVER_SHOW_TO_SHOP_KEYS = 15 คีย์ของใบสั่ง (ตรงตัว · ลำดับเดิม) + คีย์แท็กผู้สมัครของมติ §11 ข้อ 3 (ขึ้นต้น applicant) เท่านั้น · ไม่ซ้อนกับคีย์ DTO
+  ✅ [K-6] maskEmail ไม่มีส่วน local/โดเมนเต็ม
+  ✅ [K-7] accounts-core.ts บริสุทธิ์: import ได้เฉพาะ zod + import type · ไม่มี process.env/Date.now/new Date() ไม่มีอาร์กิวเมนต์
+  ✅ [K-8] AGENT_AUTH_LIMITS = ตาราง §5.0 ตรงตัว (มติ R2) · งบเดาต่ออีเมลต่อวัน codePerTargetDay × codeMaxAttempts ≤ 50
+  ✅ [K-9] agentLoginCodeMail(code): มีรหัส · ไม่มีลิงก์ (http/://) · ไม่รับที่อยู่ (1 อาร์กิวเมนต์) · ผลเหมือนกันทุกครั้ง · AGENT_CLIENT_KEY_RE / AGENT_SESSION_TOKEN_RE ตามใบสั่ง
+
+── S: โครง · ขอบเขต · F17 · สิทธิ์ · event ──
+  ✅ [S-1] ไฟล์ใหม่ 5 ไฟล์มี (accounts-core · accounts · tokens · agent-side · platform/agent-auth) + ชื่อส่งออกของ facade (ร้าน+core) · agent-auth · agent-side ครบ
+  ✅ [S-2] accounts.ts / tokens.ts / accounts-core.ts ไม่ import prisma ดิบ (F5 คง 52) · ไม่มี $queryRawUnsafe/$executeRawUnsafe
+  ✅ [S-3] F17 static: ไม่มีไฟล์ใดนอก agency/entry.ts + platform/agent-auth.ts อ้างโมเดล global (regex เดียวกับ fitness F17.1)
+  ✅ [S-4] permissions.ts: 6 คีย์ agency.account.{view,invite,approve,suspend,edit,money} ป้ายไทย ในบล็อก module agency
+  ✅ [S-5] event 3 ตัว (applied · approved · suspended) อยู่ใน outbox-consumers.ts + automation/labels.ts (ป้ายไทย) · webhooks spread AUTOMATION_EVENTS
+  ❌ [S-6] ขอบเขต (เทียบ b11dbd849 · ไม่นับ ledger/ · ไฟล์ข้อสอบนี้ · ไฟล์ที่ตรง session/trips): แตะได้เฉพาะไฟล์ใบสั่ง §2 — ไฟล์นอกขอบเขต: ได้ ["scripts/fitness.mts","scripts/parity-trips.sh","scripts/probe-trips-a1.3-hunt-1.mts","scripts/probe-trips-a1.3-hunt-2.mts","scripts/probe-trips-a1.3-hunt-3.mts","scripts/probe-trips-a1.3-hunt-4.mts","scripts/probe-trip ต้องเป็น []
+  ❌ [S-7] ไม่แตะไฟล์ต้องห้าม: trips/ticket/pos/hotel/rooms/dorm/booking/queue/account/party/crm/member · core/settings · core/{db,scope,signed-link,rate-limit-db,email,audit,outbox} · prisma/ · app · components · scripts — ไฟล์ต้องห้ามที่เปลี่ยน: ได้ ["scripts/fitness.mts","scripts/parity-trips.sh","scripts/probe-trips-a1.3-hunt-1.mts","scripts/probe-trips-a1.3-hunt-2.mts","scripts/probe-trips-a1.3-hunt-3.mts","scripts/probe-trips-a1.3-hunt-4.mts","scripts/probe-trip ต้องเป็น []
+  ❌ [S-8] ผู้กระทำ AGENT ยังปิดในเส้นทางขาย/จอง: trips/state.ts คง AGENCY_NOT_ENABLED และไม่มีไฟล์ trips เปลี่ยน — ไฟล์ trips: ได้ ["src/lib/modules/trips/index.ts","src/lib/modules/trips/pricing-core.ts","src/lib/modules/trips/pricing.ts"] ต้องเป็น []
+  ✅ [S-9] party/crm เรียกผ่าน facade แบบ lazy (`await import("@/lib/modules/party"|crm)`) · ไม่มี import ค่าแบบบนสุด · ไม่มี path ลึก
+  ✅ [S-10] audit/outbox อยู่ใน tx: accounts.ts ไม่มี writeAudit( / emitOutboxOutsideTx( · tokens.ts/agent-auth.ts ไม่มีกุญแจสำรอง (ไม่มี sha256 ของ token ตรง ๆ ที่ใช้แทน HMAC)
+  ✅ [S-11] คุกกี้ (มติ R1 ข้อ 4): agentCookieOptions() = { name (__Host-shark_agent เมื่อ secure · shark_agent ใน dev) · path / · httpOnly · secure ตาม APP_ENV · sameSite lax } · ไม่มี domain/path /agent ในซอร์ส
+  ✅ [S-12] ฟังก์ชันฝั่งเอเจนซี่ไม่อยู่บน facade (applyToShop · acceptShopInvite · withdrawApplication · setAgentUserRole · disableAgentUser · eraseAgentUser · closeAgentIdentity · setAgentAccountMember · listAgentTeam) · agency/agent-side import ได้เฉพาะจาก platform/agent-auth.ts
+  ✅ [S-13] สัญญา CC §J.3.1 แก้ตาม §5.8: คุกกี้ __Host-shark_agent Path=/ เฉพาะโดเมนแพลตฟอร์ม · ขอบเขตตัดสินต่อร้านจาก URL (activeAgentAccountId = คำใบ้ UI) · ไม่มี 'path `/agent`' เหลือ
+  ✅ [S-14] จดหมาย (มติ R1 ข้อ 3): agent-auth/accounts/entry/tokens ไม่มี sendEmail( · agent-auth ใช้ sendEmailRich · ไม่มี publicOrigin/x-forwarded-host/headers() · ไม่มี console.*
+  ✅ [S-15] งานกวาด agency.authSweep ลงทะเบียนใน minute-jobs.ts แบบ lazy import ของ platform/agent-auth
+
+── A: ล็อกอินอีเมล · รหัสครั้งเดียว · session ──
+  ✅ [A-1] ขอรหัสอีเมลใหม่: {ok codeId expiresAt maskedTo} · จดหมาย LOGIN_CODE 6 หลักถึงอีเมลนั้น · maskedTo ไม่มีอีเมลเต็ม
+  ✅ [A-2] แถว AgentLoginCode: target = แฮช login-target (ไม่ใช่อีเมล) · codeHash = แฮช login-code ของ `${codeId}:${code}` · ไม่มีรหัสดิบ
+  ✅ [A-3] ยืนยันพร้อม signup (อีเมลใหม่) ⇒ ตัวตน X + OWNER · token ขึ้นต้น ag_ (AGENT_SESSION_TOKEN_RE) · ผลยืนยันไม่มี agentUserId · AgentSession.tokenHash = แฮช session (ไม่ใช่ token/sha256) · lastLoginAt ตั้งแล้ว
+  ✅ [A-4] ไม่มี oracle บัญชี: ซอร์สของ requestAgentLoginCode ไม่อ้าง agentUser/agentLogin/agentIdentity/agentUserByLogin/findAgentIdentityByCode · อีเมลที่มีบัญชี (X) กับอีเมลใหม่ ⇒ คีย์ผลเดียวกัน + จดหมาย LOGIN_CODE ถึงทั้งคู่ผ่านตัวส่งที่ฉีด
+  ✅ [A-5] รหัสผิด ⇒ INVALID_CODE + attempts 1 · รหัสถูกแต่อีเมลอื่น ⇒ INVALID_CODE · รหัสถูก ⇒ ok · ใช้ซ้ำ ⇒ INVALID_CODE
+  ✅ [A-6] รหัสหมดอายุ (ขอ ณ now−20 นาที ยืนยัน ณ ตอนนี้) ⇒ INVALID_CODE · ผิดครบ codeMaxAttempts แล้วรหัสถูกก็ ⇒ INVALID_CODE
+  ✅ [A-7] ขอรหัสใหม่ (เครื่องอื่น) ⇒ รหัสแรกที่ค้างยังใช้ได้ (ไม่มี DoS) · เข้าระบบสำเร็จด้วยรหัสแรก ⇒ รหัสที่สองของอีเมลเดียวกันใช้ไม่ได้
+  ✅ [A-8] รหัสถูกของอีเมลที่ไม่มีบัญชี + ไม่มี signup ⇒ LOGIN_UNAVAILABLE · ไม่สร้างตัวตน/ผู้ใช้
+  ✅ [A-9] rate limit ต่ออีเมล: ขอครบเพดาน codePerTarget แล้วครั้งถัดไป ⇒ RATE_LIMITED + retryAfterSec > 0 (คนละ clientKey)
+  ✅ [A-10] resolveAgentSession: token ถูก ⇒ มุมมองของเอเจนซี่ (agentUserId · role OWNER · identity.publicCode) · token มั่ว ⇒ null · logout ⇒ null
+  ✅ [A-11] หมดอายุ: resolve ณ now > idleExpiresAt ⇒ null · ณ now > expiresAt ⇒ null
+  ✅ [A-12] ไม่มีกุญแจเซิร์ฟเวอร์ (SESSION_SECRET ว่าง) ⇒ BUSY reason SERVER_KEY_MISSING · ไม่สร้างแถวรหัส · ไม่มีกุญแจสำรอง
+  ✅ [A-13] ขอรหัสพร้อมกัน 8 คำขอ (อีเมลเดียว คนละเครื่อง) ⇒ ok = codePerTarget พอดี · ที่เหลือ RATE_LIMITED · แถวรหัส = codePerTarget
+  ✅ [A-14] ถังรายวัน: ขอเต็มเพดาน 15 นาทีในหลายหน้าต่างของวันเดียวกัน (now + k·16 นาที) ⇒ ok รวม = codePerTargetDay พอดี
+  ✅ [A-15] ตัวจำกัดล้ม (ผลไม่มี count · deps.rateLimit จำลอง) ⇒ ขอรหัส RATE_LIMITED ไม่สร้างแถว · ยืนยันรหัส RATE_LIMITED (ถังต่ออีเมล/ต่อรหัส fail closed)
+  ✅ [A-16] clientKey ผิดรูป ('unknown' · มีช่องว่าง · ยาว 200) ⇒ VALIDATION · ไม่มี ip ⇒ RATE_LIMITED reason NO_CLIENT · ไม่สร้างแถว
+  ✅ [A-17] ถังต่อ IP: ขอรหัส codePerIp ครั้งจาก IP เดียว (อีเมล/เครื่องต่างกันทุกครั้ง) แล้วครั้งถัดไป ⇒ RATE_LIMITED
+
+── AP: สมัครเอง ──
+  ✅ [AP-1] X สมัครร้าน A (A36 = true) ⇒ PENDING · สมาชิก OWNER ของ X · contact.consentVersion/consentAt · Party ชื่ออย่างเดียวในร้าน A
+  ✅ [AP-2] event agency.account.applied ในร้าน A: payload = { agentAccountId } เท่านั้น · 1 แถว
+  ✅ [AP-3] audit ของการสมัคร: actorType SYSTEM · actorId = AgentAccountMember.id (ไม่ใช่ agentUserId) · after ⊂ {from to reason actorKind fields idem body} · after.actorKind AGENT
+  ✅ [AP-4] X สมัครร้าน B (A36 = false) พร้อมเครื่องหมาย ⇒ ACTIVE ทันที · approvedAt · AgentBalance 0/0 · event applied + approved
+  ✅ [AP-5] ร้านไม่มีจริง กับ ร้านที่ไม่มีหน่วย TRIPS/TICKET (C) ⇒ NOT_FOUND รหัส+ข้อความเดียวกัน · ไม่มีแถว
+  ✅ [AP-6] ข้อความผิดกติกา (ตัวกลับทิศในชื่อ · อีเมลติดต่อผิดรูป) ⇒ VALIDATION · ไม่มีแถว
+  ✅ [AP-7] รุ่นถ้อยคำความยินยอมไม่ตรง (agency-apply-v0 / ไม่ส่ง) ⇒ VALIDATION · ไม่มีแถว
+  ✅ [AP-8] เลขภาษีนิติบุคคล: taxIdEnc เข้ารหัส (ไม่มีเลข 13 หลัก) · taxIdLast4 = 4 ตัวท้าย · AgentIdentity.taxIdHash ของ X ยัง null (ไม่แตะตัวตน)
+  ✅ [AP-9] สมัครซ้ำขณะ PENDING ⇒ ok replayed · id เดิม · ไม่มีแถว/event ใหม่
+  ✅ [AP-10] Z สมัคร A (ใบอนุญาตหมดอายุ) → ถอน ⇒ CLOSED WITHDRAWN → สมัครใหม่ ⇒ PENDING แถวเดิม · event applied 2 ครั้ง
+  ✅ [AP-11] บุคคลธรรมดา (TH_PERSON) เลขบัตร 13 หลักไม่ขึ้นต้น 0: รับที่ร้าน (เข้ารหัส) · ตัวตนไม่ถูกแตะ · Party ชนิด PERSON
+  ✅ [AP-12] ปิดโดยร้านที่ร้าน B (ไม่ต้องอนุมัติ): สมัครซ้ำทันที ⇒ BAD_STATE · หลังช่วงรอ ⇒ PENDING (ไม่ใช่ ACTIVE · approvedAt ล้าง) · ร้านบล็อก PENDING ⇒ SUSPENDED · สมัครซ้ำ ⇒ BAD_STATE · คืนสิทธิ์แถวที่ไม่เคยอนุมัติ ⇒ BAD_STATE · ปิดได้
+  ✅ [AP-13] ADMIN สมัคร ⇒ สมาชิก = ผู้สมัคร (ADMIN) + OWNER ทุกคนของตัวตน · OWNER เห็นบัญชีใน myAgentAccounts · ลดบทบาท OWNER คนหนึ่งเป็น SALES ⇒ แถวสมาชิกไหลลงเป็น SALES
+
+── SH: ฝั่งร้าน · ผังสถานะ · สิทธิ์ · DTO ──
+  ✅ [SH-1] listAgentAccounts (เจ้าของ A): มีบัญชี X · ทุกแถวคีย์ = SHOP_AGENT_LIST_KEYS · publicCode = ของ X · ไม่มีคีย์ต้องห้ามทุกชั้น
+  ✅ [SH-2] getAgentAccount: คีย์ = SHOP_AGENT_ACCOUNT_KEYS · identity = {publicCode displayName status} · members = {memberId displayName role active} 1 แถว · contact ครบ 7 คีย์
+  ✅ [SH-3] สิทธิ์: STAFF ไม่มีสิทธิ์ ⇒ FORBIDDEN (รายการ) · STAFF view ⇒ ดูได้แต่อนุมัติ FORBIDDEN · MANAGER จำกัดสาขา ⇒ อนุมัติ FORBIDDEN · สถานะยัง PENDING
+  ✅ [SH-4] ร้าน B อ่าน/อนุมัติบัญชีของร้าน A ⇒ NOT_FOUND เหมือน id สุ่มทุกไบต์ · ไม่เปลี่ยนอะไร
+  ✅ [SH-5] อนุมัติ X ที่ A ด้วย code PTD ⇒ ACTIVE · approvedById = เจ้าของ A · approvedAt · code PTD · AgentBalance · event approved 1
+  ✅ [SH-6] อนุมัติซ้ำ ⇒ ok replayed · event/audit อนุมัติยัง 1 · ปฏิเสธบัญชี ACTIVE ⇒ BAD_STATE ไม่เปลี่ยน
+  ✅ [SH-7] ระงับ ⇒ SUSPENDED + suspendedAt + event suspended · ประตู agentScope(X, A) = null · X สมัครซ้ำ ⇒ BAD_STATE · คืนสิทธิ์ ⇒ ACTIVE · ประตูคืน
+  ✅ [SH-8] แก้โปรไฟล์: expectedUpdatedAt เก่า ⇒ STALE · ใหม่ + ใบอนุญาตหมดอายุ ⇒ ok · licence.warnings มี LICENCE_EXPIRED · สถานะไม่เปลี่ยน · audit เก็บแค่ชื่อช่อง
+  ✅ [SH-9] STAFF มี edit ไม่มี money: แก้ taxId ⇒ FORBIDDEN (ไม่แก้ทั้ง patch) · แก้ legalName ⇒ ok
+  ✅ [SH-10] อนุมัติ Z ที่ใบอนุญาตหมดอายุ ⇒ ACTIVE (ไม่บล็อก · warnings) · ตั้ง code PTD ซ้ำ ⇒ CODE_TAKEN · ปิด ⇒ CLOSED CLOSED_BY_SHOP · ประตู Z = null
+  ✅ [SH-11] ปฏิเสธ R ⇒ CLOSED REJECTED · ไม่มี event approved · สมัครซ้ำทันที ⇒ BAD_STATE (รอ reapplyCooldownDays) · หลัง 7 วัน + 1 ⇒ PENDING แถวเดิม · Party เดิม
+  ✅ [SH-12] lookupAgentIdentityByCode: รหัสของ X ⇒ identity 3 ช่อง {publicCode displayName status} · ผิดรูป/ไม่มีจริง ⇒ identity null · STAFF view (ไม่มี invite) ⇒ FORBIDDEN
+  ✅ [SH-13] rate limit ค้นรหัส: เจ้าของร้าน D คนที่สองค้นครบเพดาน lookupByCodePerActor แล้วครั้งถัดไป ⇒ RATE_LIMITED
+
+── IN: เชิญด้วยอีเมล / รหัสสาธารณะ ──
+  ✅ [IN-1] เชิญด้วยอีเมล ⇒ INVITED · identityId null · inviteToken ≥ 40 ตัว · inviteTokenHash = แฮช invite · contact.email + source SHOP · จดหมาย SHOP_INVITE มี token + url จาก origin แพลตฟอร์มคงที่ (APP_URL)
+  ✅ [IN-2] เชิญด้วยอีเมลที่เป็นล็อกอินของเอเจนซี่อยู่แล้ว (X) ⇒ ผลชุดคีย์เดียวกับอีเมลใหม่ · INVITED · identityId null (ไม่มี 'อีเมลถูกใช้แล้ว')
+  ✅ [IN-3] ส่งคำเชิญซ้ำด้วยคีย์เดิม + เนื้อเดิม ⇒ id เดิม token เดิม replayed · แถวเดียว · คีย์เดิมเนื้อต่าง ⇒ IDEMPOTENCY_CONFLICT
+  ✅ [IN-4] W (ตัวตนใหม่) รับคำเชิญด้วย token ⇒ ACTIVE · identityId = W · inviteTokenHash null · สมาชิก OWNER · event approved
+  ✅ [IN-5] ใช้ token เดิมซ้ำ (คนอื่น) ⇒ INVITE_INVALID
+  ✅ [IN-6] token หมดอายุ (now + shopInviteTtlDays + 1 วัน) ⇒ INVITE_INVALID · token ร้าน A ที่ส่งผ่าน slug ร้าน B ⇒ INVITE_INVALID · token แก้ 1 ตัวอักษร ⇒ INVITE_INVALID · แถวยัง INVITED
+  ✅ [IN-7] ออกคำเชิญใหม่ ⇒ token ใหม่ · token เก่า INVITE_INVALID · ถอน ⇒ CLOSED INVITE_REVOKED · token ใหม่ INVITE_INVALID
+  ✅ [IN-8] เชิญด้วยรหัส: X ที่ร้าน A (มีแถวแล้ว) ⇒ ALREADY_REGISTERED · W ที่ร้าน B ⇒ INVITED identityId=W inviteToken null · W เห็นใน myAgentAccounts แล้วรับโดยไม่มี token ⇒ ACTIVE
+  ✅ [IN-9] X ถือ token ของร้านที่ X มีบัญชีแล้ว ⇒ ALREADY_LINKED (token ไม่ถูกใช้) · V (อีเมลล็อกอินไม่ตรงอีเมลที่เชิญ) รับ ⇒ PENDING ไม่ใช่ ACTIVE + event applied · ร้านอนุมัติ ⇒ ACTIVE
+
+── M: ผู้ใช้ · บทบาท · เจ้าของคนสุดท้าย · ลบตาม PDPA ──
+  ✅ [M-1] X เชิญเพื่อน Y (SALES) ⇒ token + จดหมาย TEAMMATE_INVITE · Y ยืนยันรหัสพร้อม token ⇒ created TEAMMATE · AgentUser ของ Y อยู่ตัวตน X role SALES
+  ✅ [M-2] token เพื่อนแก้ 1 ตัว ⇒ INVITE_INVALID · หมดอายุ (ยืนยัน ณ +teammateInviteTtlMin+60 นาที) ⇒ INVITE_INVALID · ไม่สร้างผู้ใช้
+  ✅ [M-3] เชิญเพื่อนด้วยอีเมลที่มีเจ้าของแล้ว (W) ⇒ ผู้เชิญได้ผลปกติ (ไม่รู้) · W ยืนยันพร้อม token ⇒ LOGIN_UNAVAILABLE · W ยังอยู่ตัวตนเดิม
+  ✅ [M-4] Y (SALES) สมัครร้าน ⇒ FORBIDDEN · เชิญเพื่อน ⇒ FORBIDDEN
+  ✅ [M-5] X เพิ่ม Y เป็นสมาชิกบัญชีร้าน B (SALES) ⇒ แถวสมาชิกในร้าน B · myAgentAccounts(Y) = ร้าน B เท่านั้น
+  ✅ [M-6] Z2 (ADMIN) ให้ OWNER ไม่ได้: สมาชิก OWNER ⇒ FORBIDDEN · เลื่อน Y เป็น OWNER ⇒ FORBIDDEN · เชิญเพื่อน OWNER ⇒ FORBIDDEN
+  ✅ [M-7] เจ้าของคนสุดท้ายของตัวตน: X ลดตัวเองเป็น ADMIN ⇒ LAST_OWNER · role ยัง OWNER
+  ✅ [M-8] เจ้าของคนสุดท้ายของบัญชี: ถอด X ออกจากบัญชีร้าน A ⇒ LAST_OWNER · สมาชิกยัง active
+  ✅ [M-9] ปิดผู้ใช้ T2 ⇒ DISABLED · ทุก session revokedAt · resolve = null · ประตูร้าน B = null
+  ✅ [M-10] ถอดสมาชิก T1 จากบัญชีร้าน B ⇒ active false · activeAgentAccountId ของ session ถูกล้าง · ประตูร้าน B = null
+  ✅ [M-11] ลบ Z2 ตาม PDPA ⇒ ERASED · ชื่อแทน (ไม่ขึ้นต้น QCA12) · ไม่มี AgentLogin/AgentSession/AgentLoginCode ของอีเมลนั้น · สมาชิก inactive · แถวสมุดของร้าน B ไม่ถูกแตะ + ค่าคงที่สมุดไม่เพี้ยน
+  ✅ [M-13] token เพื่อนของผู้เชิญที่ถูกปิด (Z3 DISABLED) หรือถูกลดเป็น SALES (Z4) ⇒ INVITE_INVALID · ไม่สร้างผู้ใช้
+
+── P: ร้าน A ไม่รู้เรื่องร้าน B ──
+  ✅ [P-1] รายการ + รายละเอียดของร้าน A ไม่มีเครื่องหมาย/ค่าใดของร้าน B (ชื่อ · อีเมลติดต่อ · ใบอนุญาต · tenantId · id บัญชี · อีเมลล็อกอิน X/Y · slug)
+  ✅ [P-2] คีย์ต้องห้าม (NEVER_SHOW_TO_SHOP_KEYS) ไม่มีในผลทุกตัวที่ร้าน A ได้รับตลอดการรัน
+  ✅ [P-3] สมาชิกในรายละเอียดของร้าน A = สมาชิกของบัญชีร้าน A เท่านั้น (Y/T1/T2/Z2 อยู่แค่ร้าน B ไม่โผล่) · memberCount = 1
+  ✅ [P-4] AuditLog ของร้าน A: ไม่มีเครื่องหมายร้าน B · ไม่มี token ใด ๆ · ไม่มีอีเมลล็อกอิน · after ⊂ คีย์ที่อนุญาต
+  ✅ [P-5] OutboxEvent agency.* ของร้าน A: payload = {agentAccountId} ทุกแถว · ไม่มีเครื่องหมายร้าน B · idempotencyKey ไม่มีอีเมล/token
+  ✅ [P-6] OpsEvent ตั้งแต่เริ่มรัน: ไม่มีอีเมลล็อกอิน · token · ชื่อ/เครื่องหมาย
+  ✅ [P-7] ผล error ทุกตัวที่ร้าน A ได้รับไม่มีค่าของร้าน B
+  ✅ [P-8] Y (สมาชิกเฉพาะร้าน B): ประตูร้าน A = null เหมือนร้านที่ไม่มีจริง · selectAgentAccount ร้าน A = NOT_FOUND รหัส+ข้อความเดียวกับร้านที่ไม่มีจริง
+  ✅ [P-9] เชิญด้วยรหัสที่ร้าน D: X (มีบัญชีที่ A/B) กับตัวตนใหม่ ⇒ ผลชุดคีย์เดียวกัน · INVITED ทั้งคู่ · inviteToken null
+  ✅ [P-10] myAgentAccounts(X) เห็นทั้งร้านของตัวเอง (A · B · D-INVITED) · ผลของเอเจนซี่เองไม่มีคีย์ภายใน (tokenHash/codeHash/providerId)
+  ✅ [P-11] ประตูต่อร้าน agentScope(X, A) คืน {agentAccountId memberId role tenantId} ตรงตัว · memberId = แถวสมาชิกของร้าน A · ไม่มี agentUserId/identityId ทั้งคีย์และค่า
+
+── PY: Party · CRM ──
+  ✅ [PY-1] Party ของบัญชี X ที่ร้าน A: อยู่ร้าน A · ชื่อ = ชื่อในใบสมัคร · ไม่มีอีเมล/เบอร์/เลขภาษี (ไม่จับคู่ลูกค้าเดิม) · ชนิด COMPANY
+  ✅ [PY-2] Party ของบัญชีร้าน B คนละแถว อยู่ร้าน B (ไม่ข้ามร้าน)
+  ✅ [PY-3] ผูกบริษัท CRM ในร้านที่ไม่มีระบบ CRM ⇒ CRM_NOT_AVAILABLE · crmCompanyId ยัง null · ผู้ไม่มีสิทธิ์ edit ⇒ FORBIDDEN
+  ✅ [PY-4] เลิกผูกเมื่อไม่ได้ผูก ⇒ ok replayed · DTO crm = null
+
+── C: พร้อมกัน ──
+  ✅ [C-1] สมัครซ้อน 8 คำขอ (ตัวตนเดียว ร้าน D) ⇒ 1 แถว · ok ทุกตัว (สร้าง 1 + replayed 7) · event applied 1 · ไม่มี throw
+  ✅ [C-2] สมัคร ∥ เชิญด้วยรหัส (5 ตัวตน · ร้าน D) ⇒ ตัวตนละ 1 แถวพอดี · ไม่มี throw/BUSY · อย่างน้อยหนึ่งฝั่ง ok ต่อคู่
+  ✅ [C-3] อนุมัติ ∥ ปฏิเสธ (5 บัญชี PENDING) ⇒ ok ฝั่งเดียวต่อบัญชี (อีกฝั่ง BAD_STATE) · สถานะตรงกับฝั่งที่ชนะ · event approved = จำนวนที่อนุมัติชนะ
+  ✅ [C-4] รับคำเชิญ ∥ ถอนคำเชิญ (5 คำเชิญอีเมล · อีเมลตรงล็อกอินผู้รับ) ⇒ ok ฝั่งเดียว · สถานะ ACTIVE ⇔ รับชนะ · CLOSED INVITE_REVOKED ⇔ ถอนชนะ
+  ✅ [C-5] OWNER สองคนลดบทบาทกันพร้อมกัน (×3 รอบ) ⇒ เหลือ OWNER ≥ 1 ทุกรอบ · ok ไม่เกิน 1 ต่อรอบ
+  ✅ [C-6] เดารหัสผิดพร้อมกัน 20 ครั้ง ⇒ attempts ≤ codeMaxAttempts · ทุกตัว INVALID_CODE · แล้วรหัสถูก ⇒ INVALID_CODE
+  ✅ [C-7] ยืนยันรหัสถูกพร้อมกัน 10 ครั้ง ⇒ ok 1 ตัว · session ใหม่ 1 แถว
+  ✅ [C-8] รับคำเชิญเพื่อนพร้อมกัน (ยืนยันรหัสเดียวกัน 6 ครั้ง + token เพื่อน) ⇒ ผู้ใช้ใหม่ 1 คน · AgentLogin 1 แถว
+
+── CAP: เพดาน ──
+  ✅ [CAP-1] applyPerIdentity: ตัวตนเดียวสมัคร (ร้าน B) ครบเพดาน (ผล ok/ALREADY_REGISTERED) แล้วครั้งถัดไป ⇒ RATE_LIMITED
+  ✅ [CAP-2] applyPerShop: ตัวจำกัดจำลองปฏิเสธคีย์ agent:apply:s: ⇒ RATE_LIMITED · ไม่มีแถว
+  ✅ [CAP-3] openPendingPerShop: ร้านที่มี PENDING ค้างครบเพดาน ⇒ ผู้สมัครใหม่ RATE_LIMITED · ไม่มีแถว
+  ✅ [CAP-4] openCodeInvitesPerIdentity: ตัวตนที่มีคำเชิญค้างครบเพดาน (ต่างร้าน) ⇒ ร้าน D เชิญด้วยรหัส ⇒ RATE_LIMITED · ไม่มีแถว
+
+── H: ag_ · ออกทุกเครื่อง · 20 session · งานกวาด ──
+  ✅ [H-1] token session ขึ้นต้น ag_ · token เดิมที่ตัดคำนำหน้า/เปลี่ยนเป็น cs_ ⇒ resolve null
+  ✅ [H-2] ออกจากระบบทุกเครื่อง: 2 session ของผู้ใช้ ⇒ logoutAllAgentSessions ⇒ revoked ≥ 2 · ทั้งสอง token resolve null
+  ✅ [H-3] เพดาน session: ผู้ใช้มี session ใช้ได้ maxSessionsPerUser ใบ (แทรกตรง) ⇒ เข้าระบบใหม่ ⇒ ใช้ได้ยังไม่เกินเพดาน · ใบเก่าสุดถูก revoke · ใบใหม่ใช้ได้
+  ✅ [H-4] งานกวาด sweepAgentAuth: batch 1 ⇒ ลบต่อชนิด ≤ 1 · วนจนหมด ⇒ รหัสหมดอายุ > 1 วัน + session หมดอายุ/revoke > 30 วัน ถูกลบ · ของสดคงอยู่ · ตาราง tenant ไม่เปลี่ยน
+  ✅ [M-12] ปิดตัวตน W (OWNER) ⇒ ตัวตน CLOSED + ชื่อแทน + taxIdHash null · ผู้ใช้ ERASED · บัญชีที่ร้าน A และ B ⇒ CLOSED IDENTITY_CLOSED · session ใช้ไม่ได้ · audit ในทั้งสองร้าน
+
+── RU: มติ §10/§11 · หัวข้อที่ผู้ตรวจขอเพิ่ม ──
+  ✅ [RU-1] มติ §10 ข้อ 1 (RV-F1 · H-F2 · T-1): ร้านอนุมัติอัตโนมัติปิดบัญชี (CLOSED_BY_SHOP) → สมัครซ้ำหลังช่วงรอ ⇒ PENDING → ถอน ⇒ กลับ CLOSED เหตุเดิม CLOSED_BY_SHOP (ไม่ใช่ WITHDRAWN · ยังติดช่วงรอ) → สมัครอีก ⇒ PENDING ไม่ ACTIVE (×2 รอบ) · ประตู null ตลอด · ร้านอนุมัติเอง ⇒ ACTIVE + เหตุถูกล้าง
+  ✅ [RU-2] มติ §10 ข้อ 1 (REJECTED): ร้านปฏิเสธ แล้วภายหลังร้านเปลี่ยนเป็นอนุมัติอัตโนมัติ (ตัวควบคุม: ผู้สมัครใหม่ ⇒ ACTIVE) → ผู้ถูกปฏิเสธสมัครซ้ำ ⇒ PENDING → ถอน ⇒ CLOSED เหตุเดิม REJECTED → สมัครอีก ⇒ PENDING · ประตู null · approvedAt ว่าง
+  ✅ [RU-3] มติ §10 ข้อ 2 (RV-F2 · H-F1 · T-2): token เพื่อนใช้ครั้งเดียว — รับแล้วมีแถว jti (target = แฮช tm-jti · usedAt · หมดอายุ = อายุ token) · ลบผู้ถูกเชิญแล้วใช้ token เดิม ⇒ INVITE_INVALID ไม่สร้างผู้ใช้ · token ใหม่ของอีเมลเดิมใช้ได้หนึ่งครั้ง (ครั้งที่สองไม่ได้) · ปิดผู้ถูกเชิญ / ลด-คืนบทบาทผู้เชิญ ก็ไม่ทำให้ token เดิมกลับมา
+  ✅ [RU-4] มติ §10 ข้อ 3 (RV-F3 · T-3) เชิญเพื่อน: ตัวจำกัดจริง — ผู้เชิญหนึ่งคนเชิญได้ teammateInvitePerInviter ฉบับ/ชม. ฉบับถัดไป RATE_LIMITED ไม่มีจดหมาย · ADMIN อีกคนของตัวตนเดียวกันยังเชิญได้ (ถังต่อผู้เชิญ) · ถังต่อตัวตน/วัน: ปล่อยถังต่อผู้เชิญแล้วเชิญได้ teammateInvitePerIdentity ฉบับพอดี ตัวตนอื่นไม่กระทบ
+  ✅ [RU-5] มติ §10 ข้อ 3 (RV-F3 · T-3) ร้านเชิญอีเมล: ตัวจำกัดจริง — เชิญ + ออกใหม่ ถึงอีเมลเดียวรวม shopInviteMailPerTarget ฉบับ/วัน ฉบับถัดไป (ออกใหม่/เชิญใหม่) RATE_LIMITED ไม่มีแถว/จดหมาย/token ใหม่ · อีเมลอื่นและร้านอื่นไม่กระทบ · ถังต่อร้าน/วัน (shopInviteMailPerShop) ถูกถามด้วยคีย์เดียวกันทั้งร้าน คนละคีย์ต่อร้าน · ถังร้านปฏิเสธ ⇒ RATE_LIMITED ไม่มีแถว
+  ✅ [RU-6] มติ §10 ข้อ 3 fail closed: ตัวจำกัดตอบโดยไม่มีตัวนับ ⇒ เชิญเพื่อน / ร้านเชิญอีเมล / ออกคำเชิญใหม่ = RATE_LIMITED · ตัวจำกัดโยน error ⇒ ทั้งสามไม่สำเร็จและไม่ throw ถึงผู้เรียก · ทุกกรณีไม่มีจดหมาย ไม่มีแถวใหม่ token คำเชิญเดิมไม่เปลี่ยน
+  ✅ [RU-7] มติ §10 ข้อ 4 (RV-F4 · T-4): หัวเรื่องจดหมายรหัสคงที่ ไม่มีรหัส (รหัสอยู่ในเนื้อหา) · ไม่มีผู้ให้บริการส่งเมล + ไม่ฉีดตัวส่ง ⇒ ขอรหัส/เชิญเพื่อน/ร้านเชิญ ตอบรูปเดิม · console ไม่มีรหัส/อีเมล/หัวเรื่อง/'[email:dev]' (ตัวส่งไม่ถูกเรียก) · มี ops WARN ที่ไม่มีรหัส/อีเมล · ไม่มี ops ERROR
+  ✅ [RU-8] มติ §10 ข้อ 5 + §11 ข้อ 1 (RV-F5 · T-5): อนุมัติ/ปฏิเสธไม่ส่ง expectedUpdatedAt หรือส่งค่าที่ไม่ใช่เวลา ⇒ VALIDATION · ค่าเก่า ⇒ STALE reason STATE_CONFLICT ไม่เขียนอะไร (สถานะ/updatedAt/audit/event/ยอด) · เอเจนซี่ถอนแล้วสมัครใหม่ด้วยชื่ออื่นระหว่างที่ร้านเปิดดู ⇒ ตราเดิมอนุมัติ/ปฏิเสธไม่ได้ · ตราปัจจุบัน ⇒ ACTIVE
+  ✅ [RU-9] มติ §10 ข้อ 6 (RV-F6 · T-6): ผู้ใช้ถูกปิดระหว่างเข้าระบบ — ข้อสอบถือล็อกตัวตน + ปิดผู้ใช้ + เพิกถอน session ใน tx ที่ยังไม่ commit แล้วยิงยืนยันรหัสที่ถูก · ต้องเห็นบริการติดรอล็อก advisory ที่ tx ของข้อสอบถือ (เฉพาะ backend ที่ถูก tx นี้บล็อก) แล้วจึง commit ⇒ ยืนยันไม่สำเร็จ · ไม่มี session ที่ยังไม่ถูกเพิกถอนของผู้ใช้ DISABLED
+  ✅ [RU-10] มติ §10 ข้อ 7 (RV-F7 · T-7): ตัวห่อที่ส่งออกทุกตัวตัดสิน session ด้วยนาฬิกาจริง — session ปกติ + now อนาคต 400 วัน ⇒ ยังใช้ได้และ idle ไม่ถูกเลื่อนเกิน 72 ชม.จริง · session หมด idle/หมดอายุสัมบูรณ์ (เลื่อนแถวด้วย SQL) + now อดีต ⇒ ผลเหมือน token ที่ไม่มีจริงทุกตัว (15 ฟังก์ชัน) ไม่มีผลข้างเคียง · คืนแถวแล้วใช้ได้
+  ✅ [RU-11] T-7: เลื่อน idle = min(นาฬิกาจริง + 72 ชม., expiresAt) · ไม่เกิน 1 ครั้ง/5 นาที (เพิ่งใช้ไป 1 นาที ⇒ ไม่เลื่อน) · ออกจากระบบทุกเครื่องไม่แตะ session ของผู้ใช้อื่นในตัวตนเดียวกัน
+  ✅ [RU-12] มติ §10 ข้อ 10 (RV-F10 · H-F10 · T-15): ร้านมี PENDING ค้าง = เพดาน − 3 แล้วตัวตนใหม่ 8 รายสมัครพร้อมกัน ⇒ ผ่าน 3 พอดี · RATE_LIMITED 5 · PENDING ของร้าน = openPendingPerShop พอดี · ไม่มี throw
+  ✅ [RU-13] มติ §10 ข้อ 10 (RV-F10 · T-15): ตัวตนมีคำเชิญด้วยรหัสค้าง = เพดาน − 2 (ต่างร้าน) แล้ว 4 ร้านเชิญด้วยรหัสพร้อมกัน ⇒ ผ่าน 2 พอดี · RATE_LIMITED 2 · คำเชิญค้างของตัวตน = openCodeInvitesPerIdentity พอดี
+  ✅ [RU-14] มติ §10 ข้อ 11 (RV-F11 · T-14): สมัครซ้ำ (หลังร้านปิด ⇒ PENDING) ล้าง tierId + unitIds ของยุคก่อน · คง code · ลิงก์ CRM · ข้อมูลธนาคาร · Party · สมัครซ้ำที่ ACTIVE ทันที (คำเชิญด้วยรหัสที่ร้านถอน · ร้านอนุมัติอัตโนมัติ) ⇒ tierId = ค่าเริ่มต้นของร้าน (ไม่ใช่ของเก่า) + unitIds ว่าง + code เดิม
+  ✅ [RU-15] มติ §10 ข้อ 12 + §11 ข้อ 2 (RV-F12): ผู้ใช้ถูกปิด ⇒ รายละเอียดฝั่งร้าน members[].active = false (คีย์ 4 ตัวเดิม) · memberCount ไม่นับ · removeAgentAccountMember: ไม่มีสิทธิ์ edit ⇒ FORBIDDEN · สมาชิกที่ยังใช้ได้ ⇒ BAD_STATE · ร้านอื่น/สมาชิกที่ไม่มี ⇒ NOT_FOUND · สมาชิกที่ใช้ไม่ได้ ⇒ ถอดได้ (audit agency.member.remove ผู้ทำ USER) · ซ้ำ ⇒ replayed · ฝั่งเอเจนซี่: ให้บทบาทผู้ใช้ที่ถูกปิดไม่ได้ แต่ถอดได้
+  ✅ [RU-16] T-11 setAgentAccountMember: บทบาทสมาชิกสูงกว่าบทบาทผู้ใช้ ⇒ VALIDATION reason ROLE_ABOVE_USER · บัญชีหรือผู้ใช้ของตัวตนอื่น ⇒ NOT_FOUND · ADMIN ถอดสมาชิก OWNER/ADMIN ⇒ FORBIDDEN (แถวไม่เปลี่ยน) · ADMIN ถอด SALES ได้
+  ✅ [RU-17] มติ §10 ข้อ 13 (RV-F13 ก–ง · T-13 · T-19): เชิญด้วยรหัสสาธารณะตัวเล็ก/มีช่องว่าง ⇒ เหมือนการค้น (INVITED) · เปลี่ยน payeeType ขณะมีเลขภาษี: ไม่ส่งเลข ⇒ VALIDATION reason TAX_ID_REQUIRED / เลขไม่ตรงชนิดใหม่ ⇒ VALIDATION / เลขใหม่ถูกชนิด หรือ null ⇒ ok · ร้านแก้ผู้ติดต่อ ⇒ ตราความยินยอมของเอเจนซี่ถูกล้าง + source SHOP · หน่วยที่ปิด/หน่วยของร้านอื่น ไม่รับ (เชิญ · อนุมัติ · แก้) · แก้บัญชี CLOSED ⇒ BAD_STATE
+  ✅ [RU-18] มติ §10 ข้อ 13 (RV-F13 จ): unique ของวิธีล็อกอินชนระหว่างสมัคร (ข้อสอบแทรกแถว AgentLogin ของอีเมลเดียวกันใน tx ที่ยังไม่ commit · ต้องเห็นการยืนยันรหัสติดรอ tx ของข้อสอบจริง แล้วจึง commit) ⇒ LOGIN_UNAVAILABLE ไม่ใช่ BUSY · ไม่มี ops ERROR · ไม่มีตัวตนใหม่ · ล็อกอินของอีเมลนั้นมีแถวเดียว
+  ✅ [RU-19] มติ §12 ข้อ 1 (R2-F1 · N8 · กลับข้อจาก §10.14): ร้านอนุมัติอัตโนมัติพักบัญชีที่มีอีเมลผู้ติดต่อ C → ตัวตนอื่น (อีเมลล็อกอินอื่น) สมัครด้วยอีเมลผู้ติดต่อ C (รวมตัวสะกดตัวใหญ่) ⇒ ACTIVE เหมือนอีเมลผู้ติดต่ออื่นทุกประการ (ลองอีเมลผู้ติดต่อไม่บอกอะไร) · หลังร้านปิดบัญชีนั้นก็ยัง ACTIVE · คนแปลกหน้ารับคำเชิญอีเมลแล้วถูกปฏิเสธ ⇒ ผู้ถูกเชิญตัวจริงสมัครด้วยอีเมลตัวเองยัง ACTIVE · แต่กติกาแท็กยังอยู่: เจ้าของบัญชีที่ถูกปิดปิดตัวตน สมัครใหม่ด้วยอีเมลล็อกอินเดิม + อีเมลผู้ติดต่ออื่น ⇒ PENDING
+  ✅ [RU-20] มติ §11 ข้อ 3 (H-F3 T3 · ปิดให้ครบ): บัญชีถูกพัก (ไม่กรอกอีเมลผู้ติดต่อ) → ร้านแก้ผู้ติดต่อ → เอเจนซี่ปิดตัวตน → สมัครตัวตนใหม่ด้วยอีเมลล็อกอินเดิม → สมัครร้านอนุมัติอัตโนมัติเดิม ⇒ PENDING (ผลรูปปกติ · ประตู null) · อีเมลล็อกอินอื่นที่ร้านเดิม ⇒ ACTIVE · อีเมลเดิมที่ร้านอื่น ⇒ ACTIVE · แถวบัญชีเก็บแท็ก agentAuthHash('applicant-tag', tenantId:อีเมล) ผูกร้าน (ต่างร้านต่างค่า · อยู่รอดหลังปิดตัวตน) ไม่เก็บอีเมลดิบ · แท็กอยู่ใน NEVER_SHOW และไม่ออก DTO/รายการ/audit/outbox/ops
+  ✅ [RU-21] มติ §11 ข้อ 3 (ทางรับคำเชิญ + ปิดโดยร้าน): เชิญด้วยรหัส → รับ ⇒ ACTIVE (แถวเก็บแท็กของอีเมลล็อกอินผู้รับ) → ร้านปิดบัญชี → เอเจนซี่ปิดตัวตน → ตัวตนใหม่อีเมลล็อกอินเดิมสมัครร้านอนุมัติอัตโนมัติเดิม ⇒ PENDING ประตู null
+  ✅ [RU-22] มติ §10 ข้อ 15 (H-F4): listAgentAccounts ด้วย cursor = id บัญชีของร้านอื่น ⇒ ผลเท่ากับ cursor ที่ไม่มีจริงทุกไบต์ · cursor ของร้านเอง ⇒ แถวที่เก่ากว่าเท่านั้น · เดินทีละหน้า (limit 1) ได้ครบทุกแถว ไม่ซ้ำ ไม่ข้าม
+  ✅ [RU-23] มติ §10 ข้อ 16 (H-F5 · N1): ถังต่อ IP ใช้รูปมาตรฐาน — IPv6 ตัวสะกดต่างกัน/ที่อยู่อื่นใน /64 เดียวกัน = คีย์ถังเดียว · /64 อื่น = คนละคีย์ · IPv4 กับ ::ffff:IPv4 = คีย์เดียว · IP ผิดรูป ⇒ RATE_LIMITED NO_CLIENT ไม่ถามตัวจำกัด ไม่มีแถวรหัส · ipHash ของ session ใช้ที่อยู่รูปมาตรฐาน
+  ✅ [RU-24] มติ §10 ข้อ 17 (H-F6 · H-F7): อีเมลที่มีอักขระควบคุม/zero-width/bidi/BOM/soft hyphen/NUL/surrogate เดี่ยว ⇒ VALIDATION ทั้งขอรหัส (ก่อนถามตัวจำกัด · ไม่มีแถว/จดหมาย) · ยืนยัน · เชิญเพื่อน · ร้านเชิญ · อีเมลผู้ติดต่อในใบสมัคร (ด่านเดียวกัน) · ตัวใหญ่/ช่องว่างหัวท้าย = target เดียวกับรูปปกติ · codeId ผิดรูป ⇒ INVALID_CODE/VALIDATION โดยไม่ไปถึงถังต่อรหัส attempts ไม่ขยับ รหัสจริงยังใช้ได้ · อินพุตขยะของทางที่ไม่ล็อกอิน ⇒ ไม่มี ops ERROR แม้แต่แถวเดียว
+  ✅ [RU-25] มติ §10 ข้อ 18 (H-F8): ผู้ใช้เดียวยืนยันรหัสที่ถูกสองใบพร้อมกัน (4 รอบ) ⇒ ทุกรอบ ok 1 พอดี + session ใหม่ 1 แถวพอดี · อีกใบ INVALID_CODE (หรือ BUSY reason LOCK) ไม่มี BUSY UNEXPECTED/throw · ไม่มี ops ERROR
+  ✅ [RU-26] มติ §10 ข้อ 19 (H-F9): ลำดับถังของการสมัครผ่านตัวห่อ = เครื่อง → ตัวตน → ร้าน · ถังตัวตนปฏิเสธ ⇒ ถังร้านไม่ถูกถาม ไม่มีแถว · เล่นซ้ำใบสมัครเดิม (replayed) ×3 ⇒ ไม่ถามถังร้านเลย (นับถังตัวตนทุกครั้ง) · ถังร้านเต็มก็ยังเล่นซ้ำได้
+  ✅ [RU-27] T-9 ถังทุกตัวใช้เพดานของตัวเองใน AGENT_AUTH_LIMITS (ขอรหัส 4 ถัง · ยืนยัน 2 · สมัคร 3 · รับคำเชิญ 1 · ค้นรหัส 1) คีย์เป็นแฮช · ถังต่อเครื่องปฏิเสธ ⇒ RATE_LIMITED ไม่แตะแถว (ขอรหัส · ยืนยัน · รับคำเชิญ · สมัคร — ถังตัวตนไม่ถูกถาม) · ถังต่อรหัสปฏิเสธ ⇒ ไม่สำเร็จ attempts ไม่ขยับ รหัสยังใช้ได้ภายหลัง
+  ✅ [RU-28] T-8 agentScope = null เดียวกันทุกกรณี: บัญชี PENDING · บัญชี INVITED · ผู้ใช้ของตัวตนที่ไม่ได้เป็นสมาชิก · แถวสมาชิก inactive · ร้านไม่ ACTIVE · หน่วย TRIPS เดียวของร้านถูกปิด · บัญชีถูกพัก/ปิด — และ activeAgentAccountId ที่ชี้ร้านอื่นไม่มีผล (ร้านจาก URL ตัดสิน) · selectAgentAccount ของบัญชีที่ถูกพัก/ปิด ⇒ NOT_FOUND ข้อความเดียวกับร้านที่ไม่มีจริง
+  ✅ [RU-29] T-10: เจ้าของคนเดียวปิดตัวเอง/ลบตัวเอง ⇒ LAST_OWNER (ยัง ACTIVE · session ยังใช้ได้) · ADMIN ลบผู้ใช้อื่น ⇒ FORBIDDEN · SALES ลบตัวเอง ⇒ ok (ERASED) · ADMIN ปิดตัวตน ⇒ FORBIDDEN · ไม่ยืนยัน (confirm ไม่ใช่ true) ⇒ VALIDATION ตัวตนยัง ACTIVE · OWNER ปิดตัวตน ⇒ แถวคำเชิญด้วยรหัส (INVITED) ก็ถูกปิดเป็น IDENTITY_CLOSED
+  ✅ [RU-30] T-12: พนักงานจำกัดสาขา (มีสิทธิ์ดู) เห็นบัญชีที่ unitIds ว่างหรือซ้อนสาขาของตน · บัญชีของสาขาอื่น ⇒ ไม่อยู่ในรายการ และ get = NOT_FOUND ทุกไบต์เท่า id ที่ไม่มีจริง · เจ้าของเห็นครบ
+  ✅ [RU-31] T-17: SESSION_SECRET ว่าง ⇒ สมัคร · รับคำเชิญ · ร้านเชิญ (อีเมล) · ออกคำเชิญใหม่ · เชิญเพื่อน · ยืนยันรหัส · ค้นรหัส = BUSY reason SERVER_KEY_MISSING ไม่เขียนอะไร (ไม่มีกุญแจสำรอง) · INTEGRATIONS_CREDENTIALS_KEY ว่าง + ใบสมัครมีเลขภาษี ⇒ BUSY reason KEY_NOT_CONFIGURED ไม่มีแถว · คืนกุญแจแล้วทำได้ปกติ
+  ✅ [RU-32] T-18: sweepAgentAuth ที่ signal ถูกยกเลิกแล้ว ⇒ ไม่ลบ session (sessions = 0 · แถวหมดอายุยังอยู่) · เรียกปกติ ⇒ ลบ
+  ✅ [RU-33] มติ §12 ข้อ 7 (R2-F5): รับคำเชิญเพื่อนที่ล้ม ไม่เผา token — อีเมลที่ถูกเชิญมีล็อกอินของตัวตนอื่นอยู่ ⇒ LOGIN_UNAVAILABLE และไม่มีแถว jti · รหัสผิด ⇒ INVALID_CODE ไม่มีแถว jti · เจ้าของอีเมลปิดตัวตนเดิมแล้วใช้ token เดิม ⇒ เข้าทีมได้ (TEAMMATE · ตัวตนของผู้เชิญ) + แถว jti 1 แถว · ใช้อีกครั้ง ⇒ INVITE_INVALID
+  ✅ [RU-34] มติ §12 ข้อ 7 (R2-F5 · §10 ข้อ 1): ใบสมัครซ้ำที่ยัง PENDING ของบัญชีที่ร้านเคยปิด/ปฏิเสธ แล้วเอเจนซี่ปิดตัวตน ⇒ แถวกลับ CLOSED เหตุเดิม (CLOSED_BY_SHOP / REJECTED ไม่ใช่ IDENTITY_CLOSED · DTO closeReason เดิม) · สมัครตัวตนใหม่ด้วยอีเมลล็อกอินเดิมแล้วสมัครร้านอนุมัติอัตโนมัติเดิม ⇒ PENDING (ผู้สมัครใหม่จริง ⇒ ACTIVE) · ร้านบล็อกใบสมัครซ้ำ (PENDING → SUSPENDED) แล้วคืนสิทธิ์ ⇒ BAD_STATE · ปิด ⇒ CLOSED_BY_SHOP · สมัครอีก ⇒ PENDING
+  ✅ [RU-35] มติ §12 ข้อ 7 (R2-F5 · §11 ข้อ 3): แท็กหลังสมัครซ้ำบนแถวเดิม — ผู้สมัครคนแรก (อีเมล E1) ถอน แล้วถูกลบออกจากตัวตน · เจ้าของอีกคน (E2) สมัครซ้ำบนแถวเดิม ⇒ แท็กหลัก = E2 และแท็กของ E1 ยังอยู่ในแถว · ร้านปฏิเสธ แล้วเปลี่ยนเป็นอนุมัติอัตโนมัติ ⇒ E1 สมัครตัวตนใหม่แล้วสมัคร ⇒ PENDING (ตรงผ่านแท็กร่วมเท่านั้น) · ผู้สมัครใหม่จริง ⇒ ACTIVE · เจ้าของร่วม ณ ตอนสมัคร (ไม่ใช่ผู้กดสมัคร) ของบัญชีที่ถูกพัก ออกไปตั้งตัวตนใหม่ ⇒ PENDING เช่นกัน · แท็กไม่ออก DTO
+  ✅ [RU-36] มติ §12 ข้อ 3 (R2-F6): ลำดับแท็กร่วมเมื่อเกินเพดาน 10 — ผู้สมัครคนแรก (E0) ถอนแล้วถูกลบ · ตัวตนมีเจ้าของ 11 คน · เจ้าของ M1 สมัครซ้ำบนแถวเดิม ⇒ แท็กของ E0 (ผู้ที่เคยยื่นจริง) ยังอยู่ในแถว ไม่ถูกแท็กของเจ้าของร่วมปัจจุบันเบียดตก · แท็กทั้งแถว ≤ 1 + 10 · M1 ถอน M2 สมัครซ้ำ ⇒ แท็กของ E0 และ M1 ยังอยู่ · ร้านปฏิเสธ แล้วอนุมัติอัตโนมัติ ⇒ E0 ตัวตนใหม่สมัคร ⇒ PENDING (ผู้สมัครใหม่จริง ⇒ ACTIVE)
+  ✅ [RU-37] มติ §12 ข้อ 2 (R2-F2) ฝั่งเอเจนซี่: คำเชิญด้วยรหัสที่ยังไม่หมด ⇒ สมัครเอง BAD_STATE (คงเดิม) · หมดอายุแล้ว ⇒ รับคำเชิญ INVITE_INVALID (ไม่เขียนอะไร) แต่สมัครเองได้: แถวเดิมกลายเป็นใบสมัครตามกติกาปกติ (ร้านต้องอนุมัติ ⇒ PENDING + สมาชิก OWNER + event applied + แท็กผู้สมัคร · ร้านอนุมัติอัตโนมัติ ⇒ ACTIVE + ยอด) · หลังสมัครแล้วรับคำเชิญเดิมยังไม่ได้ · กติกาแท็ก/sticky ยังใช้: ตัวตนใหม่ของอีเมลที่ร้านพักไว้ + คำเชิญหมดอายุ ⇒ PENDING · ร้านปฏิเสธ ⇒ ติดช่วงรอ · หลังช่วงรอ ⇒ PENDING
+  ✅ [RU-38] มติ §12 ข้อ 2 (R2-F2) ฝั่งร้าน: คำเชิญด้วยรหัสยังไม่หมด ⇒ เชิญซ้ำ ALREADY_REGISTERED และเอเจนซี่รับได้ ACTIVE (คงเดิม) · หมดอายุแล้ว ⇒ ร้านเชิญใหม่ด้วยรหัสได้ (INVITED · วันหมดอายุใหม่ในอนาคต · ตัวตนมีแถวเดียวที่ร้าน) แล้วเอเจนซี่รับ ⇒ ACTIVE · ร้านเพิกถอนคำเชิญ ⇒ เอเจนซี่รับไม่ได้ · ร้านเชิญใหม่ด้วยรหัสได้ แล้วรับ ⇒ ACTIVE · บัญชีที่ ACTIVE แล้วเชิญอีก ⇒ ALREADY_REGISTERED
+  ✅ [RU-39] มติ §12 ข้อ 4 (R2-F7): อีเมลที่มีอักขระมองไม่เห็น (default-ignorable: U+034F · ตัวเติมฮันกึล U+115F/U+1160/U+3164/U+FFA0 · variation selectors U+FE00–FE0F/U+E0100–E01EF · tag characters U+E0000–E007F · ที่เหลือของชุด) ⇒ VALIDATION ทุกทางเข้า: ขอรหัส (ก่อนถามตัวจำกัด · ไม่มีแถว/จดหมาย) · ยืนยัน · เชิญเพื่อน · ร้านเชิญอีเมล · อีเมลผู้ติดต่อในใบสมัคร · ร้านแก้อีเมลผู้ติดต่อ — ทั้งในส่วนชื่อและส่วนโดเมน · อีเมลที่ไม่ใช่ ASCII แบบปกติ (ละติน/ไทย/จีน/ฮันกึล/ซีริลลิก/กรีก) ยังใช้ได้ทุกทางเข้า
+  ✅ [RU-40] มติ §12 ข้อ 5 (N2): ตรวจ STALE ก่อนตอบ replayed — ร้านเปิดดูใบสมัคร GOOD · เอเจนซี่ถอนแล้วสมัครใหม่เป็น OTHER · เพื่อนร่วมงานอนุมัติ OTHER ด้วยตราปัจจุบัน ⇒ ACTIVE · คนแรกกดอนุมัติด้วยตราของ GOOD ⇒ STALE reason STATE_CONFLICT (ไม่ใช่ ok/replayed) ไม่เขียนอะไร · อนุมัติซ้ำด้วยตราปัจจุบัน ⇒ ok replayed · ทางปฏิเสธเหมือนกัน
+  ✅ [RU-41] มติ §12 ข้อ 5 (N7): ถอนใบสมัครซ้ำของบัญชีที่ร้านเคยปิด/ปฏิเสธ สองครั้ง ⇒ ครั้งที่สอง ok replayed (ไม่ใช่ BAD_STATE) · ไม่เขียนอะไร (updatedAt/เหตุ/audit เดิม ⇒ ช่วงรอไม่ถูกเลื่อน) · ยังติด sticky: สมัครทันที ⇒ BAD_STATE · หลังช่วงรอ ⇒ PENDING ไม่ ACTIVE
+
+── I: ค่าคงที่ ──
+  ✅ [I-1] สมุดเอเจนซี่ของร้านทดสอบ: agencyBalanceDrift ว่าง (trips-agency-invariants)
+  ✅ [I-2] ทุกบัญชี PENDING/ACTIVE/SUSPENDED ที่มีตัวตน มีสมาชิก active role OWNER ≥ 1
+  ✅ [I-3] สมาชิกทุกแถว: tenantId = ของบัญชี · ผู้ใช้อยู่ตัวตนเดียวกับบัญชี
+  ✅ [I-4] ไม่มีค่าดิบในตาราง: AgentSession.tokenHash / AgentAccount.inviteTokenHash / AgentLoginCode ไม่มี token หรืออีเมลที่ใช้ในรัน · AgentLoginCode.target ไม่มี '@'
+
+── G: regression ──
+  ✅ [G-1] fitness: F17.1 ✅ · ไม่มี ❌ ใดเลย (เส้น agency→party/crm ผู้คุมเพิ่มแล้ว · F5.1 คง 52)
+  ✅ [G-2] qc-trips-a1.1 --no-regression: ที่ไม่ผ่านต้องเป็นข้อขอบเขตที่เห็น entry.ts/index.ts เปลี่ยน (S-* · X1-4) เท่านั้น (ORACLE-EDIT ผู้คุม)
+
+===== QC TRIPS A1.2a · ทะเบียนเอเจนซี่ · สมัคร/อนุมัติ · เชิญ · ผู้ใช้ · ล็อกอิน =====
+ผ่าน 170/173 · ไม่ผ่าน 3 · ข้าม 0
+ต่อกลุ่ม: PC 6/6 · K 9/9 · S 12/15 · A 17/17 · AP 13/13 · SH 13/13 · IN 9/9 · M 13/13 · P 11/11 · PY 4/4 · C 8/8 · CAP 4/4 · H 4/4 · RU 41/41 · I 4/4 · G 2/2
+JSON_SUMMARY {"suite":"qc-trips-a1.2","total":173,"passed":170,"failed":["S-6","S-7","S-8"],"skipped":[]}

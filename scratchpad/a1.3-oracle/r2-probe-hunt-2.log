@@ -1,0 +1,64 @@
+[env] probe-a1.3-hunt-2 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:314025) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+HELD [D-travel 2026-12-15 open-start special (travelTo only) beats base] expected rateBp 800 refId …@7 | got rateBp 800 refId cmwgt8di0000uaxkzqm48dubq@7
+HELD [D-travel 2027-01-31 open-start special last day] expected rateBp 800 refId …@7 | got rateBp 800 refId cmwgt8di0000uaxkzqm48dubq@7
+HELD [D-travel 2027-02-01 day after open-start → base] expected rateBp 1000 refId …@7 | got rateBp 1000 refId cmwgt8c05000maxkzj30207w2@7
+HELD [D-travel 2027-03-09 day before special → base] expected rateBp 1000 refId …@7 | got rateBp 1000 refId cmwgt8c05000maxkzj30207w2@7
+HELD [D-travel 2027-03-10 special first day] expected rateBp 1500 refId …@7 | got rateBp 1500 refId cmwgt8chm000oaxkzyzry3hdg@7
+HELD [D-travel 2027-03-20 special last day] expected rateBp 1500 refId …@7 | got rateBp 1500 refId cmwgt8chm000oaxkzyzry3hdg@7
+HELD [D-travel 2027-03-21 day after special → base] expected rateBp 1000 refId …@7 | got rateBp 1000 refId cmwgt8c05000maxkzj30207w2@7
+HELD [D-travel 2027-03-31 day before 1-day special] expected rateBp 1000 refId …@7 | got rateBp 1000 refId cmwgt8c05000maxkzj30207w2@7
+HELD [D-travel 2027-04-01 1-day special] expected rateBp 1700 refId …@7 | got rateBp 1700 refId cmwgt8d01000qaxkzatwmqdw0@7
+HELD [D-travel 2027-04-02 day after 1-day special] expected rateBp 1000 refId …@7 | got rateBp 1000 refId cmwgt8c05000maxkzj30207w2@7
+HELD [D-travel 2027-05-31 day before open-ended] expected rateBp 1000 refId …@7 | got rateBp 1000 refId cmwgt8c05000maxkzj30207w2@7
+HELD [D-travel 2027-06-01 open-ended first day] expected rateBp 1900 refId …@7 | got rateBp 1900 refId cmwgt8de7000saxkzbl13zvwu@7
+HELD [D-travel 2099-12-31 open-ended far future] expected rateBp 1900 refId …@7 | got rateBp 1900 refId cmwgt8de7000saxkzbl13zvwu@7
+HELD [D-travel localDate 2027-03-10 starting 00:30 BKK (= 03-09 UTC) → special first day] expected 1500 | got rateBp 1500
+HELD [D-travel localDate 2027-03-20 starting 23:30 BKK → special last day] expected 1500 | got rateBp 1500
+HELD [D-book P BKK 23:59:59 on 12th] expected rateBp 1000 | got rateBp 1000 ref cmwgt8god0012axkzpd8yipty@6
+HELD [D-book P BKK 00:00 on 13th] expected rateBp 2500 | got rateBp 2500 ref cmwgt8grv0014axkzcgiuwrl3@6
+HELD [D-book P BKK 23:59 on 13th] expected rateBp 2500 | got rateBp 2500 ref cmwgt8grv0014axkzcgiuwrl3@6
+HELD [D-book P BKK 00:00 on 14th] expected rateBp 1000 | got rateBp 1000 ref cmwgt8god0012axkzpd8yipty@6
+HELD [D-book PZ UTC 17:00 on 12th (BKK already 13th)] expected rateBp 1000 | got rateBp 1000 ref cmwgt8gv20016axkzdbuo55ao@6
+HELD [D-book PZ UTC 00:00 on 13th] expected rateBp 2500 | got rateBp 2500 ref cmwgt8gyv0018axkzr6bwsdr8@6
+HELD [D-book PZ UTC 23:59 on 13th (BKK already 14th)] expected rateBp 2500 | got rateBp 2500 ref cmwgt8gyv0018axkzr6bwsdr8@6
+HELD [D-book PZ UTC 00:00 on 14th] expected rateBp 1000 | got rateBp 1000 ref cmwgt8gv20016axkzdbuo55ao@6
+HELD [D-card BKK unit at 16:59Z 12th (BKK 23:59 12th) → old card] expected rateBp 3000 | got rateBp 3000
+HELD [D-card BKK unit at 17:00Z 12th (BKK 13th) → new card] expected rateBp 3100 | got rateBp 3100
+HELD [D-card UTC unit at 17:00Z 12th → old card] expected rateBp 3000 | got rateBp 3000
+HELD [D-card UTC unit at 00:00Z 13th → new card] expected rateBp 3100 | got rateBp 3100
+HELD [D-guard adjacent (to=D, from=D+1) accepted] expected ok | got {"ok":true,"card":{"id":"cmwgt8jgs001vaxkz2k1a1lp8","version":3},"rate":{"id":"cmwgt8jnm001zaxkz0p1i7tvk","productKind":"TRIP","productId":"a13h_pP_mwgt8b6b44c5ce","optionId":null,"paxTypeId":null,"mode":"COMMISSION_PCT","valueBp":110,"valueMinor":null,"currency":"THB","minSellMinor":null,"markupCap
+HELD [D-guard touching (to=D, from=D) → RATE_OVERLAP] expected VALIDATION RATE_OVERLAP | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"RATE_OVERLAP"}
+HELD [D-guard travel overlaps but book window bounded (book open on the other row) → still overlap (both dims overlap)] expected RATE_OVERLAP | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"RATE_OVERLAP"}
+HELD [D-guard same window different priority → accepted] expected ok | got {"ok":true,"card":{"id":"cmwgt8jgs001vaxkz2k1a1lp8","version":4},"rate":{"id":"cmwgt8jvh0021axkzrlgzdqe4","productKind":"TRIP","productId":"a13h_pP_mwgt8b6b44c5ce","optionId":null,"paxTypeId":null,"mode":"COMMISSION_PCT","valueBp":140,"valueMinor":null,"currency":"THB","minSellMinor":null,"markupCap
+HELD [D-guard same window but optionId-specific (different dims) → accepted] expected ok | got {"ok":true,"card":{"id":"cmwgt8jgs001vaxkz2k1a1lp8","version":5},"rate":{"id":"cmwgt8jys0023axkze3wp0gvv","productKind":"TRIP","productId":"a13h_pP_mwgt8b6b44c5ce","optionId":"a13h_oP_mwgt8b6b9bfb30","paxTypeId":null,"mode":"COMMISSION_PCT","valueBp":150,"valueMinor":null,"currency":"THB","minSellMi
+HELD [D-guard adding 'until 2027-02-28' special next to a permanent base row → explicit RATE_OVERLAP · base row untouched (never silently converted)] expected RATE_OVERLAP · 1 row · base 1000 travelTo null | got rows 1 · base row now {"bp":1000,"t":null} · upsert result {"ok":false,"reason":"RATE_OVERLAP","sameIdAsBase":false}
+HELD [D-date '2027-02-29' rejected BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [D-date '2028-02-29' accepted] expected ok | got {"ok":true,"card":{"id":"cmwgt8jgs001vaxkz2k1a1lp8","version":7},"rate":{"id":"cmwgt8k8q0027axkz9g3912ls","productKind":"TRIP","productId":"a13h_pP_mwgt8b6b44c5ce","optionId":null,"paxTypeId":null,"mode":"COMMISSION_PCT","valueBp":5,"valueMinor":null,"currency":"THB","minSellMinor":null,"markupCapBp
+HELD [D-date '2027-3-01' rejected BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [D-date '2027-03-01T00:00' rejected BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [D-date '0000-01-01' rejected BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [D-order priority 1 base beats priority 0 special] expected 4000 | got 4000
+HELD [D-order equal priority, both special: option-specific beats null option] expected 4200 | got 4200
+HELD [D-order departure of other option ignores option-specific row] expected 4100 | got 4100
+HELD [D-tier special of tier B applies to tier-B agency without contract] expected 6000 TIER | got 6000 TIER
+HELD [D-tier contract replaces tier special entirely (R3)] expected 1234 CONTRACT | got 1234 CONTRACT
+HELD [D-tier outside tier special → tier default A1 B 15%] expected 1500 tier:…:A1 | got 1500 tier:cmwgt8bgw0007axkzk7ovzm2h:A1
+HELD [D-null port SUSPENDED → FORBIDDEN AGENCY_NOT_ENABLED, identical to unknown id] expected {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}} | got {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}}
+HELD [D-null port PENDING → FORBIDDEN AGENCY_NOT_ENABLED, identical to unknown id] expected {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}} | got {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}}
+HELD [D-null port CLOSED → FORBIDDEN AGENCY_NOT_ENABLED, identical to unknown id] expected {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}} | got {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}}
+HELD [D-null port OTHER_UNIT → FORBIDDEN AGENCY_NOT_ENABLED, identical to unknown id] expected {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}} | got {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}}
+HELD [D-null port OTHER_SHOP → FORBIDDEN AGENCY_NOT_ENABLED, identical to unknown id] expected {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}} | got {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}}
+HELD [D-null port UNKNOWN → FORBIDDEN AGENCY_NOT_ENABLED, identical to unknown id] expected {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}} | got {"ok":false,"code":"FORBIDDEN","messageTh":"ยังไม่ได้เปิดขายผ่านเอเจนซี่สำหรับร้านนี้","retryable":false,"details":{"reason":"AGENCY_NOT_ENABLED"}}
+HELD [D-null product of other unit under unit ctx → not priced (NOT_FOUND/FORBIDDEN)] expected ok:false | got {"ok":false,"code":"NOT_FOUND","messageTh":"ไม่พบรายการนี้ในหน่วยที่เลือก","retryable":false}
+
+== SUMMARY hunt-2: HELD 51 · FOUND 0
+CLEANUP ok — 0 rows left with prefix trips-a13h- (Tenant · User · AgentAccount · AgentRateCard · AgentRate · AgentTier · AgentIdentity · AgentUser · AgentLogin)

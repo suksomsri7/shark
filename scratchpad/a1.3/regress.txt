@@ -1,0 +1,4 @@
+qc-trips-a1.1 exit=1
+qc-trips-a1.2 exit=1
+qc-trips-t0.5 exit=0
+fitness exit=0

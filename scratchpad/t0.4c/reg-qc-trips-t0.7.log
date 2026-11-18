@@ -1,0 +1,224 @@
+=== qc-trips-t0.7 start 23:30:43
+[env] qc-trips-t0.7 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1003799) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุมบวก ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed andaman-dive อยู่ · ตารางเงิน T0.1 ครบ (TripPaymentDue · TripMoneyEvent · TripRefundRequest · TripPassThroughEvidence) · สร้างตารางควบคุมได้
+  ✅ [PC-2] ฟิกซ์เจอร์: 0142 = 11,450 (อุทยาน 1,500 · VATable 9,950) · VAT ต่อเอกสาร 650.93 · ภาพ 15 คืน 6,475 / เก็บ 4,975 · VAT ส่วนคืน 325.47 + ส่วนเก็บ 325.46 = 650.93
+  ✅ [PC-3] ตัวคิดของข้อสอบตรงตัวอย่างในคำสั่งกรมสรรพากร (ป.86/2542 ข้อ 4(6)): 7/107 × 100 บาท = 6.54 · 7/107 × 180 บาท = 11.78 · ปันยอดรวมตรงพอดี
+  ✅ [PC-4] ตัวควบคุม: QR พร้อมเพย์ของแพลตฟอร์ม — CRC16 เวกเตอร์มาตรฐาน '123456789' ⇒ 29B1 · payload ยอดล็อก 11,450.00 มีแท็ก 54 '5408' + '11450.00'
+  ✅ [PC-5] ตัวควบคุม: อ่านยอดแล้วเขียน (ไม่มีเงื่อนไขใน UPDATE) 20 คำขอพร้อมกัน ⇒ ยอดรวมเกินเพดาน (ตัวตรวจจ่ายเกินเห็นได้จริง · ≤ 3 ครั้ง)
+  ✅ [PC-6] ตัวควบคุม: UPDATE คำสั่งเดียวมีเงื่อนไข (paid + 1 <= cap) 40 คำขอพร้อมกัน ⇒ paid = cap พอดี (แบบที่ใบสั่ง §2.1 บังคับ)
+  ✅ [PC-7] ตัวควบคุม: ล็อกสลับลำดับ (A: r1→r2 · B: r2→r1) ⇒ Postgres ตอบ 40P01 (ตัวจับ deadlock ของกลุ่ม RC ใช้ได้)
+  ✅ [PC-8] ตัวควบคุม: ผู้ถือ tx ขอ connection ที่สองจาก pool เดียวกัน (max 3) ⇒ ค้างจนตัวจับเวลาจับได้ (ตัวตรวจ NC เห็นอาการ pool ค้างจริง)
+  ── สรุป PC: ผ่าน 8/8
+
+── S: ไฟล์และกติกาโค้ด ──
+  ✅ [S-1] ไฟล์ใหม่ครบ: money-core · money · refund · money-actions
+  ✅ [S-2] facade ส่งออก 23 ฟังก์ชัน + 6 ค่า · บล็อก "// TRIPS T0.7 ▸" · ไม่มี export *
+  ✅ [S-3] money-core.ts บริสุทธิ์: import ได้แค่ zod · ./money-math · ./snapshot · ./state · ./booking-core · import type · ไม่มี prisma/tenantDb/นาฬิกา
+  ✅ [S-4] money-actions.ts: "use server" · ส่งออกเฉพาะ async function · requireUnit + assertCan ของสิทธิ์ 4 คีย์ใหม่ · ไม่รับ now
+  ✅ [S-5] ไฟล์ของใบ: ไม่มี any · console.* · DELETE/.delete( · Math.round/toFixed/parseFloat (เงินผ่าน money-math เท่านั้น)
+  ✅ [S-6] import ของ money/refund: @/lib/core/* zod @prisma/client ./ node:crypto · @/lib/modules/approval · @/lib/payment/receiver เท่านั้น · ไม่มี prisma ดิบ (F5 +0) · ไม่แตะ pos/account/hotel/rooms/dorm/booking/queue/ticket/slip
+  ✅ [S-7] CAS: ทุก UPDATE "TripRefundRequest"/"TripPaymentDue" ที่ตั้ง status มี WHERE "status" + RETURNING · ไม่มี ORM tripRefundRequest/tripPaymentDue/tripMoneyEvent .update(Many) (ตัวควบคุม regex จับโค้ดผิดได้)
+  ✅ [S-8] OQ18: ไม่ส่ง object ของผู้เรียกเข้า Prisma data · zod strict ในบริการเงิน
+  ✅ [S-9] บริการเงินไม่เรียก QR/ค่าตั้ง/approval ในธุรกรรม: ฟังก์ชัน *InTx ไม่มี promptpayQrFor/resolveSettings/requestBindings/tenantDb(/$transaction(
+  ✅ [S-10] booking.ts: ไม่มีทาง STATE_CONFLICT REFUND_REQUIRED / NOT_SUPPORTED แบบเหมารวมของ PART_PAID|PAID อีก · ยกเลิกหลังขายเรียกคำขอคืนเงิน · ยืนยันการจองสร้างงวด (ensureTripDuesInTx)
+  ❌ [S-11] ตัวกวาด T0.4: payload trips.booking.expired ใช้ยอด payable จาก snapshot ไม่ใช่ grossSatang (capacity.ts แก้ ≤ 8 บรรทัดเทียบ BASE) — capacity.ts แก้ 41+/5−
+  ✅ [S-12] สิทธิ์ 4 คีย์ใหม่ในโมดูล trips (ป้ายไทย)
+  ✅ [S-13] event ใหม่ 8 ตัวลง 3 ทะเบียน (outbox-consumers · automation/labels ป้ายไทย · webhooks ผ่าน spread)
+  ✅ [S-14] งาน trips.paymentDue ลงทะเบียนใน minute-jobs (lazy import facade · ส่ง signal) · runPaymentDue อยู่ใน jobs.ts
+  ❌ [S-15] ไม่แตะไฟล์ต้องห้ามเทียบ BASE 4026db504 (ไม่นับไฟล์ที่ตรงกับ session/trips): prisma · core/settings · core/sellable · platform/sellables · payment · api/files · pos/account/hotel/rooms/booking/dorm/queue/ticket · snapshot/pricing/promo/money-math/state/numbering ฯลฯ · ข้อสอบเดิม — แตะ: src/lib/core/settings/defs/trips.ts, src/lib/modules/trips/capacity-service.ts
+  ✅ [S-16] ไม่มีค่าธุรกิจตายตัวในไฟล์ของใบ (อัตรา VAT 700 · 7% · ขั้นบันได 30/15/50 · เพดาน 200000) — อ่านจาก snapshot/ค่าตั้ง
+  ── สรุป S: ผ่าน 14/16
+
+── MC: money-core (บริสุทธิ์) ──
+  ✅ [MC-1] ค่าคงที่: TRIP_TENDERS = CASH PROMPTPAY TRANSFER CARD · tenderGroupOf (CASH · BANK · BANK · CARD) · สถานะคำขอคืนเงิน 8 ค่า · สถานะเปิด 5 ค่า · TRIP_REFUND_ENTITY = trips.refund
+  ✅ [MC-2] canTransitionRefund = ตาราง CC :709 ตรงตัว (8 แถว) · คู่อื่นทุกคู่ = false · สถานะเดิม→เดิม = false
+  ✅ [MC-3] dueDraftsFromSnapshot: DS ค่าเริ่ม (T13 = 100) ⇒ 1 งวด BALANCE 1,145,000 / vatable 995,000 / pt 150,000 · snapshot ยอดไม่ลงตัว ⇒ SNAPSHOT_INVALID
+  ✅ [MC-4] receiptVatSatang ต่อเอกสาร: 995,000 ⇒ 65,093 (13ค) · 298,500 ⇒ 19,528 · 696,500 ⇒ 45,565 · 990,655 ⇒ 64,810 · 4,345 ⇒ 284 · ไม่จด VAT ⇒ 0
+  ✅ [MC-5] receiptVatSatang: บรรทัดไม่ใช่เก็บแทนที่ยกเว้น VAT ไม่มี VAT — VAT7 ครึ่งหนึ่งของ 200,000 ⇒ VAT ของ 100,000 = 6,542 (7/107 × 1,000 บาท)
+  ✅ [MC-6] allocatePayment งวดเดียว (ภาพ 07ค): รับ 1,140,000 ⇒ pt 149,345 · vatable 990,655 · ไม่ครบ · รับอีก 5,000 ⇒ pt 655 · ครบงวด (สูตรสะสมเดียวกับ snapshot.ts :314)
+  ✅ [MC-7] allocatePayment มัดจำ + ส่วนที่เหลือ: จ่าย 400,000 ⇒ มัดจำ 298,500 (pt 0 · ครบ) + งวด 2 101,500 (pt = round(150,000×101,500/846,500)) · จ่ายเต็ม 1,145,000 ⇒ 2 ชิ้นครบทั้งคู่ · งวด CANCELLED ข้าม
+  ✅ [MC-8] allocatePayment ปฏิเสธ: เกินยอดค้าง ⇒ OVERPAYMENT · ไม่มีงวดค้าง ⇒ NOTHING_DUE · 0 / 1.5 / −1 / int4+1 ⇒ INVALID_AMOUNT · อินพุตแช่แข็งไม่ถูกแก้
+  ✅ [MC-9] bookingStatusAfterPayment: 0 ⇒ null · 1/2 ⇒ PART_PAID · 2/2 ⇒ PAID
+  ✅ [MC-10] refundQuoteFromSnapshot ภาพ 15: 23 วันก่อนเดินทาง ขั้น 50 % ⇒ คืน 647,500 · เก็บ 497,500 · non-pt 497,500 · pt 150,000 · VAT คืน 32,547 / เก็บ 32,546
+  ✅ [MC-11] ขอบขั้นบันไดตามเวลาร้าน (Asia/Bangkok): D−30 23:59 ⇒ 100 % · D−29 00:00 (= 17:00Z วันก่อน) ⇒ 50 % · D−15 23:59 ⇒ 50 % · D−14 00:00 ⇒ 0 % · D+1 ⇒ 0 %
+  ✅ [MC-12] เหตุร้านยกเลิก (EXTERNAL · MIN_NOT_MET · SHOP_FAULT) ⇒ คืน 100 % แม้เหลือ 3 วัน (T21 ค่าเริ่ม · ม.28 วรรคสอง)
+  ✅ [MC-13] หักค่าใช้จ่ายจริงจากส่วนไม่ใช่เก็บแทนเท่านั้น: 100 % หัก 600,000 ⇒ คืน 545,000 · หัก 2,000,000 ⇒ คืน 150,000 (อุทยานเต็ม · ไม่ติดลบ)
+  ✅ [MC-14] เงินเก็บแทนจ่ายออกแล้ว ⇒ pt คืน 0 · ภาพ 15 คืน 497,500 · ร้านเก็บ 647,500 · warnings มี PASS_THROUGH_PAID_OUT
+  ✅ [MC-15] planRefundSlices ใบรับเดียว (CC :783): REFUNDED 647,500 / vatable 497,500 / pt 150,000 / VAT 32,547 ‖ RETAINED 497,500 / VAT 32,546 / pt 0 · ขอเกิน ⇒ OVER_REFUND
+  ✅ [MC-16] planRefundSlices สองใบรับ (07ค: 1,140,000 + 5,000) คืนภาพ 15: ปันตามใบ (pt ตาม pt · non-pt ตาม vatable) · ต่อใบ คืน ≤ รับทุกช่อง · Σ = ยอดคืนพอดี · tender ตามใบ
+  ✅ [MC-17] tripRefundEntityId = 'trf1_' + sha256(JSON ["trips.refund.v1", unitId, requestId, amount]) · moneyDocumentOf (13ค): 995,000 · 929,907 · 65,093 · 150,000 · 1,145,000
+  ── สรุป MC: ผ่าน 17/17
+
+── DU: งวดจ่าย ──
+  ✅ [DU-1] ยืนยันแบบ PAY_LATER (CONFIRMED) ⇒ งวดเกิดในธุรกรรมยืนยัน: 1 แถว seq 1 BALANCE 1,145,000 / 995,000 / 150,000 · OPEN · paid 0 · ไม่มีแถวเงิน
+  ✅ [DU-2] ยืนยันแบบ PAY_NOW (HOLD) ⇒ งวดเกิดเหมือนกัน (สถานะ HOLD · ที่นั่งยัง held)
+  ✅ [DU-3] หน่วยมัดจำ 30 % + ส่วนที่เหลือ 20 วันก่อนเดินทาง ⇒ DEPOSIT 298,500 (pt 0) + BALANCE 846,500 (vatable 696,500 · pt 150,000 · dueAt 21 มี.ค. 23:59 น. เวลาร้าน)
+  ✅ [DU-4] การจองก่อน T0.7 (ไม่มีแถวงวด): listTripDues คืนงวดร่าง (id null) ไม่เขียน · ensureTripDuesInTx สร้างครั้งเดียว (เรียกซ้ำ = ไม่เพิ่ม)
+  ✅ [DU-5] listTripDues DTO: outstandingSatang · paidPassThroughSatang ครบ · ไม่มีข้อมูลผู้จอง · PUBLIC ⇒ FORBIDDEN
+  ── สรุป DU: ผ่าน 5/5
+
+── PY: รับเงิน ──
+  ✅ [PY-1] HOLD + รับเต็ม 1,145,000 (PROMPTPAY) ⇒ PAID · hold CONVERTED · ที่นั่ง held→sold · แถว RECEIVED 1 แถว (amount 1,145,000 · VAT 65,093 · pt 150,000 · dueId · UNPOSTED · attempts 0)
+  ✅ [PY-2] CONFIRMED (PAY_LATER) รับ 1,140,000 ⇒ PART_PAID (pt 149,345 · VAT 64,810) · รับ 5,000 ⇒ PAID (pt 655 · VAT 284) · version เพิ่มทุกครั้ง
+  ✅ [PY-3] HOLD + รับบางส่วน 1,140,000 ⇒ PART_PAID และที่นั่งแปลงเป็นขาย (hold CONVERTED) — ใบสั่ง §17 ข้อ 2
+  ✅ [PY-4] มัดจำ+ส่วนที่เหลือ: จ่าย 298,500 ⇒ PART_PAID (VAT 19,528) · จ่าย 846,500 ⇒ PAID (VAT 45,565 · pt 150,000) · จ่ายครั้งเดียว 400,000 ข้ามงวด ⇒ 2 แถว (ต่องวด)
+  ✅ [PY-5] จ่ายเกินยอดค้าง ⇒ VALIDATION OVERPAYMENT · ไม่เขียนอะไร (การจองเดิม · งวดเดิม · ไม่มีแถวเงิน)
+  ✅ [PY-6] ยอดผิดรูป ⇒ VALIDATION: 0 · −100 · 10.5 · '100' · int4+1 · ไม่มี tender / tender AGENCY / ช่องเกิน (receivedAt · whtByCustomerSatang)
+  ✅ [PY-7] สถานะที่รับเงินไม่ได้: PENDING ⇒ STATE_CONFLICT PENDING_APPROVAL · PAID ⇒ NOTHING_DUE · CANCELLED ⇒ NOT_PAYABLE · EXPIRED ⇒ BOOKING_EXPIRED
+  ✅ [PY-8] HOLD ที่ hold หมดเวลาแล้ว (รับเงิน 20 นาทีหลังจอง · T5 15 นาที) ⇒ HOLD_EXPIRED · ไม่บันทึกเงิน · ที่นั่งไม่ขยับ · งวดไม่ขยับ
+  ✅ [PY-9] กันซ้ำ: คีย์เดิม + คำขอเดิม ⇒ ok replayed: true ไม่มีแถวที่สอง · คีย์เดิม + ยอด/tender ต่าง ⇒ IDEMPOTENCY_CONFLICT
+  ✅ [PY-10] SYSTEM + สลิป APPROVED (domain TRIPS · refType TRIP_DUE · refId = งวด · ยอดตรง) ⇒ PAID · แถวเงินจด slipId · SYSTEM ไม่มีสลิป ⇒ FORBIDDEN SLIP_REQUIRED
+  ✅ [PY-11] สลิปผิด: ยังไม่อนุมัติ ⇒ SLIP_NOT_APPROVED · ยอดไม่ตรง/งวดของการจองอื่น ⇒ VALIDATION SLIP_MISMATCH · tender CASH ⇒ TENDER_NOT_ALLOWED · สลิปร้านอื่น ⇒ NOT_FOUND
+  ✅ [PY-12] สลิปเดียวใช้ครั้งเดียว: ซ้ำด้วยคำขอเดิม (คีย์ต่าง) ⇒ ผลเดิม replayed · ใช้กับการจองอื่น/ยอดอื่น ⇒ IDEMPOTENCY_CONFLICT SLIP_ALREADY_USED
+  ✅ [PY-13] มีคำขอคืนเงินเปิด ⇒ รับเงินไม่ได้ (STATE_CONFLICT REFUND_IN_PROGRESS) · หลังถอนคำขอ ⇒ รับได้
+  ── สรุป PY: ผ่าน 13/13
+
+── QR: พร้อมเพย์ยอดล็อก ──
+  ✅ [QR-1] STAFF: ยอดล็อก = ยอดค้างของงวดแรก (1,145,000) · payload = promptpayPayload(ผู้รับของหน่วย, ยอด) ทุกไบต์ · ไม่เขียนฐาน
+  ✅ [QR-2] มัดจำ: ยอดล็อกงวด 1 = 298,500 · จ่ายแล้ว ⇒ งวด 2 = 846,500 · จ่ายบางส่วน ⇒ ยอดค้างของงวดนั้น
+  ✅ [QR-3] PUBLIC ด้วย token ลิงก์การจอง ⇒ QR เดียวกัน · token ผิด/ของร้านอื่น ⇒ NOT_FOUND · PUBLIC ส่ง bookingId ⇒ FORBIDDEN/VALIDATION
+  ✅ [QR-4] หน่วยไม่มีผู้รับพร้อมเพย์ ⇒ STATE_CONFLICT NO_PROMPTPAY_RECEIVER · การจอง PAID ⇒ NOTHING_DUE
+  ── สรุป QR: ผ่าน 4/4
+
+── RF: คำขอคืนเงิน (G.3 · ภาพ 15) ──
+  ✅ [RF-1] ภาพ 15: PAID 1,145,000 · ยื่น 23 วันก่อนเดินทาง ⇒ QUOTED · amount 647,500 · computed (refundBp 5,000 · kept 497,500 · paid 1,145,000 · bookingVersion) · ที่นั่งยังไม่ปล่อย · การจองยัง PAID
+  ✅ [RF-2] ขั้นบันไดผ่านบริการ (เวลาร้าน): D−30 23:59 ⇒ 1,145,000 · D−29 00:00 ⇒ 647,500 · D−14 00:00 ⇒ 150,000 (อุทยานเต็ม) · หลังวันเดินทาง ⇒ 150,000
+  ✅ [RF-3] เหตุร้านยกเลิก EXTERNAL / MIN_NOT_MET / SHOP_FAULT 3 วันก่อนเดินทาง ⇒ คืน 1,145,000 ทุกเหตุ
+  ✅ [RF-4] PART_PAID (จ่าย 298,500 ของมัดจำ) ยื่น 40 วันก่อน ⇒ คืน 298,500 (100 %) · paid ใน computed = 298,500
+  ✅ [RF-5] ตารางร้านเข้มกว่าประกาศ (ไม่คืน < 60 วัน) ⇒ ยื่นได้ ยอดคืน = อุทยาน 150,000 · warnings มี REFUND_BELOW_STATUTORY_MINIMUM (WARN ไม่บล็อก)
+  ✅ [RF-6] หลักฐานเงินเก็บแทนจ่ายออกแล้ว (TripPassThroughEvidence ของการจอง · หรือของรอบที่ bookingId ว่าง) ⇒ คืนไม่รวมอุทยาน 497,500 + warning PASS_THROUGH_PAID_OUT
+  ✅ [RF-7] หักค่าใช้จ่ายจริง: หมวด VISA 100,000 มีไฟล์หลักฐาน ⇒ ยอดลด 100,000 · ไม่มีหลักฐาน ⇒ EVIDENCE_REQUIRED · หมวดนอกค่าตั้ง ⇒ VALIDATION · ไฟล์ร้านอื่น ⇒ VALIDATION/NOT_FOUND
+  ✅ [RF-8] choice CREDIT ⇒ VALIDATION CREDIT_NOT_ENABLED · MOVE_DATE ⇒ VALIDATION MOVE_DATE_VIA_CHANGE · ไม่เขียนคำขอ
+  ✅ [RF-9] คำขอเปิดได้ 1 ต่อการจอง: ยื่นซ้ำ (คีย์อื่น) ⇒ STATE_CONFLICT REFUND_IN_PROGRESS · HOLD ⇒ NOT_REFUNDABLE_STATUS · version เก่า ⇒ STATE_CONFLICT
+  ✅ [RF-10] กันซ้ำของคำขอ: คีย์เดิม + คำขอเดิม ⇒ requestId เดิม replayed · คีย์เดิม + เหตุต่าง ⇒ IDEMPOTENCY_CONFLICT · แถวเดียว
+  ✅ [RF-11] อนุมัติ ⇒ APPROVED (decidedById = ผู้อนุมัติ) · ปฏิเสธ (ต้องมีเหตุผล) ⇒ REJECTED · ถอน QUOTED ⇒ WITHDRAWN · ถอน APPROVED ⇒ STATE_CONFLICT · ที่นั่งไม่ขยับทุกกรณี
+  ✅ [RF-12] ใบเสนอเก่า: การจองเปลี่ยนหลังยื่น (version) ⇒ อนุมัติ = STATE_CONFLICT STALE_QUOTE
+  ✅ [RF-13] แก้ยอดมือ ≤ ฿2,000 (X13): +150,000 มีเหตุผล ⇒ APPROVED ยอด 797,500 · ไม่มีเหตุผล ⇒ MANUAL_REASON_REQUIRED · −100,000 ⇒ ผ่าน + warning MANUAL_BELOW_POLICY
+  ✅ [RF-14] แก้ยอดมือเกิน ฿2,000 ⇒ REQUIRES_APPROVAL (details entityType trips.refund · entityId = tripRefundEntityId(ยอดสุดท้าย)) · คำอนุมัติ APPROVED ⇒ ผ่าน · ใช้ซ้ำกับคำขออื่น ⇒ FORBIDDEN APPROVAL_USED/NOT_APPROVED
+  ✅ [RF-15] คืนเกินเงินที่รับ: แก้มือจนส่วนไม่ใช่เก็บแทน > ที่รับ ⇒ VALIDATION OVER_REFUND · ติดลบ ⇒ OVER_REFUND · คำขอยัง QUOTED
+  ✅ [RF-16] autoApproveUpTo (X12 · ค่าปัจจุบัน) > ยอด ⇒ คำขอ APPROVED ทันที (decidedById null) · ค่าเริ่ม 0 ⇒ QUOTED
+  ── สรุป RF: ผ่าน 16/16
+
+── DN: บันทึกโอนคืน (DONE) ──
+  ✅ [DN-1] ภาพ 15 ครบวงจร: DONE ⇒ การจอง CANCELLED (refundedSatang 647,500 · cancelledAt) · REFUNDED 647,500 (VAT 32,547 · pt 150,000 · tender PROMPTPAY) · RETAINED 497,500 (VAT 32,546) · งวด CANCELLED · ที่นั่งคืน 3
+  ✅ [DN-2] คีย์แถวคืน = trips-ref:<requestId>:<receivedEventId> · trips-ret:<requestId>:<receivedEventId> (อ้างใบรับเดิม)
+  ✅ [DN-3] สองใบรับต่างกลุ่ม tender (TRANSFER 1,140,000 + CASH 5,000) ⇒ แถวคืนต่อใบรับ tender ตามใบ · ต่อใบ คืน+เก็บ = รับ ทุกช่อง (amount · pt · VAT)
+  ✅ [DN-4] bankTender: ใบรับ PROMPTPAY คืนด้วย TRANSFER ได้ · ใบรับ CASH ส่ง bankTender ไม่เปลี่ยน tender ของแถวคืนเงินสด
+  ✅ [DN-5] ยอดคืน 0 (ยกเลิก < 15 วัน · อุทยานจ่ายออกแล้ว) ⇒ DONE · ไม่มี REFUNDED · RETAINED = 1,145,000 · การจอง CANCELLED · ที่นั่งคืน
+  ✅ [DN-6] โค้ดส่วนลดคืนสิทธิ์หลังคืนที่นั่ง (redemption RELEASED · usedCount ลด) · ยอดการจองที่มีส่วนลด = payable จาก snapshot (ไม่ใช่ gross)
+  ✅ [DN-7] execute ก่อนอนุมัติ (QUOTED) ⇒ STATE_CONFLICT · กันซ้ำ: คีย์เดิมหลัง DONE ⇒ ผลเดิม ไม่มีแถวเพิ่ม · คีย์อื่นหลัง DONE ⇒ STATE_CONFLICT
+  ── สรุป DN: ผ่าน 7/7
+
+── CN: tripSellable.cancel บนการจองที่ขายแล้ว ──
+  ✅ [CN-1] cancel QUOTE บน PAID (23 วัน) ⇒ computed {refundSatang 647,500 · feeSatang 497,500 · ladderStep {15, 5000} · SNAPSHOT} · ไม่เขียน
+  ✅ [CN-2] cancel EXECUTE บน PAID ⇒ ยื่นคำขอคืนเงิน (requestId · status QUOTED · คีย์ cancel:<bookingId>:…) แทน REFUND_REQUIRED · ซ้ำคีย์เดิม = requestId เดิม
+  ✅ [CN-3] cancel choice CREDIT ⇒ VALIDATION CREDIT_NOT_ENABLED · moveToSlotId ⇒ VALIDATION MOVE_DATE_VIA_CHANGE (รับ field แล้ว ไม่ใช่ strict-reject)
+  ✅ [CN-4] ConfirmRequest.pay.tender รับเป็นคำใบ้ (ไม่ VALIDATION) · ไม่บันทึกเงินในธุรกรรมยืนยัน
+  ── สรุป CN: ผ่าน 4/4
+
+── MV: แก้การจองที่มีงวด/จ่ายแล้ว ──
+  ✅ [MV-1] CONFIRMED (ยังไม่จ่าย) เพิ่มผู้ใหญ่ 1 ⇒ งวดเดิม CANCELLED · งวดใหม่ seq 2 ยอด payable ใหม่ OPEN
+  ✅ [MV-2] PAID เลื่อนวันราคาเท่าเดิม ⇒ ผ่าน (ปลด NOT_SUPPORTED) · paid ไม่เปลี่ยน · สถานะ PAID · รอบใหม่ · ไม่มีแถวเงินใหม่
+  ✅ [MV-3] PART_PAID แก้แล้วยอดเปลี่ยน (เพิ่มคน) ⇒ STATE_CONFLICT PRICE_CHANGED_AFTER_PAYMENT · ไม่เขียน
+  ✅ [MV-4] มีคำขอคืนเงินเปิด ⇒ แก้การจอง = STATE_CONFLICT REFUND_IN_PROGRESS
+  ── สรุป MV: ผ่าน 4/4
+
+── CD: ข้อมูลกระทบยอดเงินสดหน้าร้าน ──
+  ✅ [CD-1] tripCashDay (วันทำการตามเวลาร้าน): เงินสดรับ − คืนเงินสด = expected · แยก tender · ไม่รวม RETAINED · ร้าน/หน่วยอื่นไม่ปน
+  ✅ [CD-2] วันทำการตัดที่เที่ยงคืนเวลาร้าน: เงินสด 23:30 น. อยู่วันนั้น · 00:30 น. อยู่วันถัดไป (ไม่ใช่วันตาม UTC)
+  ── สรุป CD: ผ่าน 2/2
+
+── RC: ยิงพร้อมกัน ──
+  ✅ [RC-1] จ่ายซ้ำคีย์เดิม 10 คำขอพร้อมกัน ⇒ ทุกตัว ok · RECEIVED 1 แถว · paid = ยอดเดียว · ไม่มี THROW/BUSY/40P01
+  ✅ [RC-2] จ่ายเต็มคนละคีย์ 8 คำขอพร้อมกัน ⇒ สำเร็จ 1 · ที่เหลือ NOTHING_DUE/OVERPAYMENT · trips.booking.paid ครั้งเดียว
+  ✅ [RC-3] จ่ายย่อย 100,000 × 20 พร้อมกันบน 1,145,000 ⇒ สำเร็จ 11 (1,100,000) · ที่เหลือ OVERPAYMENT · part_paid ครั้งเดียว · paid ≤ payable ตลอด
+  ✅ [RC-4] รับเงิน HOLD ∥ ยกเลิกก่อนจ่าย (T0.6) 6 คู่ ⇒ แต่ละการจองจบ PAID (hold CONVERTED · มีเงิน) หรือ CANCELLED (hold RELEASED · ไม่มีเงิน) · ค่าคงที่ที่นั่ง
+  ✅ [RC-5] รับเงิน ∥ ยื่นคำขอคืนเงิน บน PART_PAID 6 คู่ ⇒ ถ้ามีคำขอ computed.paidSatang = paid ของการจองตอนนั้น (ไม่หลุดเงินที่เข้าทีหลัง) · ไม่มี 40P01
+  ✅ [RC-6] execute คำขอเดียวกัน 10 พร้อมกัน (คีย์เดียว) ⇒ DONE ครั้งเดียว · REFUNDED/RETAINED ชุดเดียว · ที่นั่งคืนครั้งเดียว · คนละคีย์ 5 ตัว ⇒ สำเร็จ 1
+  ✅ [RC-7] อนุมัติ ∥ ถอน บนคำขอเดียว 6 คู่ ⇒ จบ APPROVED หรือ WITHDRAWN อย่างใดอย่างหนึ่ง · ผู้แพ้ได้ STATE_CONFLICT · ไม่มี THROW
+  ✅ [RC-8] ยื่นคำขอคืนเงิน 8 คำขอพร้อมกัน (คนละคีย์) บนการจองเดียว ⇒ คำขอ 1 แถว · ที่เหลือ REFUND_IN_PROGRESS
+  ✅ [RC-9] ผสม 30 คำสั่งบนรอบเดียว (จ่าย HOLD · จ่าย CONFIRMED · execute · ยกเลิกก่อนจ่าย) ⇒ ไม่มี 40P01/THROW/BUSY · ค่าคงที่ที่นั่ง + เงินทุกการจอง
+  ── สรุป RC: ผ่าน 9/9
+
+── NC: ไม่มี connection ที่สองในธุรกรรม ──
+  ✅ [NC-1] 14 การรับเงิน HOLD + 14 การยื่นคำขอขนาน (pool แอป 10) ⇒ จบทั้งหมดภายในเวลา · ไม่มี THROW/BUSY
+  ── สรุป NC: ผ่าน 1/1
+
+── X: แยกร้าน/หน่วย ──
+  ✅ [X-1] ร้าน B ใช้ id การจองของร้าน A ⇒ NOT_FOUND ทุกบริการ (รับเงิน · QR · ยื่น · งวด · สรุป) · ไม่เขียน
+  ✅ [X-2] หน่วยอื่นของร้านเดียวกัน (uA2) ⇒ NOT_FOUND · คำขอคืนเงินของหน่วย A ตัดสิน/ถอน/execute จากร้าน B หรือหน่วย A2 ⇒ NOT_FOUND
+  ✅ [X-3] listTripRefunds / tripCashDay ของร้าน B ไม่เห็นข้อมูลร้าน A · getTripRefund id ร้าน A ⇒ NOT_FOUND
+  ── สรุป X: ผ่าน 3/3
+
+── PM: ผู้กระทำ ──
+  ✅ [PM-1] PUBLIC: รับเงิน ⇒ FORBIDDEN · ยื่น ⇒ FORBIDDEN OTP_REQUIRED · ตัดสิน/execute ⇒ FORBIDDEN
+  ✅ [PM-2] AGENT ⇒ FORBIDDEN AGENCY_NOT_ENABLED (รับเงิน · ยื่น) · การจอง collectMode AGENT ⇒ รับเงิน FORBIDDEN AGENCY_NOT_ENABLED
+  ✅ [PM-3] SYSTEM: ตัดสิน/ถอน/execute คำขอคืนเงิน ⇒ FORBIDDEN (งานตามเวลายื่นได้อย่างเดียว) · SYSTEM ยัง FORBIDDEN บน bookTripsNow (T0.6 คงเดิม)
+  ── สรุป PM: ผ่าน 3/3
+
+── EV: event · audit ──
+  ✅ [EV-1] trips.payment.received ต่อแถว RECEIVED · payload คีย์ตรงชุด (dueId bookingId amountSatang dueAt) · คีย์ outbox …:<moneyEventId> · ไม่มีชื่อ/เบอร์/เลขจอง
+  ✅ [EV-2] สถานะเงิน: HOLD→PAID ยิง confirmed + paid ครั้งเดียว · CONFIRMED→PART_PAID→PAID ยิง part_paid 1 + paid 1 · payload ชุด T0.6 (amountSatang = payable)
+  ✅ [EV-3] คำขอคืนเงิน: requested · approved · done ครั้งเดียวต่อคำขอ · payload (requestId bookingId amountSatang choice) · DONE ยิง trips.booking.cancelled
+  ✅ [EV-4] audit ในธุรกรรมเดียวกัน: trips.payment.record · trips.refund.request/.approve/.execute (targetId · after มีสตางค์/สถานะ/idemKeyHash) · ไม่มีชื่อ/เบอร์
+  ✅ [EV-5] tripMoneySummary: เอกสาร 13ค (995,000 · 929,907 · 65,093 · 150,000 · 1,145,000) · paid/outstanding · taxDocument.status NOT_ISSUED (ยังไม่ออกใบกำกับ · T0.7b)
+  ── สรุป EV: ผ่าน 5/5
+
+── JB: งาน trips.paymentDue ──
+  ✅ [JB-1] NOTIFY_SHOP (ค่าเริ่ม): CONFIRMED ค้างจ่าย · ก่อน dueAt + 24 ชม. (X11) ไม่ทำอะไร · หลัง ⇒ งวด OVERDUE + trips.payment.overdue ครั้งเดียว · ไม่มีคำขอคืนเงิน · รันซ้ำไม่ยิงซ้ำ
+  ✅ [JB-2] เตือนงวด (T16 [7,1] ของหน่วย): งวด BALANCE 21 มี.ค. 23:59 · 6 วันก่อน ⇒ due_soon d=7 ครั้งเดียว · 12 ชม.ก่อน ⇒ d=1 · รันซ้ำไม่ยิงซ้ำ · คีย์ <dueId>:<d>
+  ✅ [JB-3] AUTO_RELEASE (T17 จาก snapshot): จ่ายมัดจำแล้ว งวด 2 เลยกำหนด ⇒ OVERDUE + คำขอคืนเงิน SYSTEM (by SYSTEM · CUSTOMER · MONEY · QUOTED) ครั้งเดียว · ไม่ปล่อยที่ · การจองยัง PART_PAID
+  ✅ [JB-4] งานไม่แตะการจอง HOLD (ใช้เวลาของ hold) และการจองที่จ่ายครบ · ตัวกรอง tenantIds: ร้าน A ไม่ถูกแตะ
+  ✅ [JB-5] runPaymentDue เคารพ signal ที่ยกเลิกแล้ว (ไม่ทำงาน · ไม่ throw) · คืน {reminders, overdue, autoReleased, failed}
+  ── สรุป JB: ผ่าน 5/5
+
+── RL: มติผู้คุม (r1 V1–V8 · r2 W1–W9) ──
+  ✅ [RL-1] [W1] ยื่น D−20 (ขั้น 50 % · 647,500) → อนุมัติ → หลักฐานค่าอุทยานระดับรอบ → execute D−2 ⇒ STATE_CONFLICT QUOTE_REFRESHED ยอด 497,500 (ขั้น 50 % ของวันยื่น ไม่ใช่ 0 % ของ D−2) · QUOTED · quotedAt เดิม · requotedAt = D−2 · gen 1 · ล้างผู้อนุมัติ · การจอง/ที่นั่งไม่ขยับ
+  ✅ [RL-2] [W1] หลังคำนวณใหม่: อนุมัติอีกครั้ง (D−2) ⇒ APPROVED 497,500 · execute ⇒ DONE คืน 497,500 (REFUNDED pt 0) · การจอง CANCELLED · ค่าคงที่เงิน
+  ✅ [RL-3] [W2] event ข้ามการคำนวณใหม่: คีย์ requested:g0 · approved:g0 · requoted:g1 · approved:g1 · done:g1 อย่างละครั้งพอดี (ไม่มีคีย์อื่นของคำขอ) · payload ชุด (requestId bookingId amountSatang choice) ยอดตามรุ่น · ไม่มีชื่อ/เบอร์/อีเมล/เลขอ้างอิง/เลขจอง
+  ✅ [RL-4] [W3] facts กลับมาตรงก่อนถึงการคำนวณใหม่ (execute เห็นหลักฐานค่าอุทยาน → ล็อกคำขอถูกถือ → ลบหลักฐาน) ⇒ STATE_CONFLICT QUOTE_ALREADY_CURRENT · ไม่เขียนอะไร (APPROVED · ผู้อนุมัติ · computed เดิม · ไม่มี audit requote/event requoted) · execute ต่อ ⇒ DONE
+  ✅ [RL-5] [W3] execute 2 ตัวพร้อมกันบนคำขอที่ facts เปลี่ยน (และ 5 ตัวบนอีกคำขอ) ⇒ QUOTE_REFRESHED ครั้งเดียว · audit trips.refund.requote 1 แถว · event requoted 1 · gen 1 · ไม่มี THROW/40P01
+  ✅ [RL-6] [V4] อนุมัติแล้วเพิ่ม version การจองใน SQL (แบบงานลบข้อมูลของ T0.8) ⇒ execute = DONE (ไม่ใช่ STALE_QUOTE/QUOTE_REFRESHED) · ไม่มี audit requote
+  ✅ [RL-7] [V4] ถอน APPROVED: ไม่ส่ง opts ⇒ STATE_CONFLICT · canDecide false ⇒ STATE_CONFLICT (ยัง APPROVED) · canDecide true ⇒ WITHDRAWN · การจองยัง PAID · ที่นั่งไม่ขยับ · ยื่นใหม่ได้
+  ✅ [RL-8] [W4] อนุมัติแล้วแก้ข้อความ policySnapshot ใน SQL (เพิ่มช่องที่ไม่ใช่เงิน) ⇒ execute = QUOTE_REFRESHED (ไม่บันทึกบน facts เก่า) · audit changedFacts มี snapshot · ยอดเท่าเดิม 647,500 · อนุมัติใหม่ + execute ⇒ DONE
+  ✅ [RL-9] [V2] cancelTripBooking EXECUTE บน PAID · opts refund {canRequest false} ⇒ FORBIDDEN · ไม่เปลี่ยนอะไร (สถานะ · version · sold · ไม่มีคำขอ)
+  ✅ [RL-10] [V2] canRequest แต่ไม่มี canDecide + เหตุ EXTERNAL ⇒ FORBIDDEN REASON_REQUIRES_APPROVER (ไม่มีคำขอ) · เหตุ CUSTOMER ⇒ รับ · canDecide true + EXTERNAL ⇒ รับ (QUOTED คืน 1,145,000)
+  ✅ [RL-11] [V2] (static) cancelTripBookingAction ตรวจ trips.refund.request และ trips.refund.approve แล้วส่ง canRequest/canDecide ให้บริการ
+  ✅ [RL-12] [V3] มัดจำ+ส่วนที่เหลือ จ่ายมัดจำ 298,500 → คืน DONE ⇒ แถวงวด [PAID, CANCELLED] · listTripDues/tripMoneySummary.dues: ไม่มีงวด OPEN/ร่าง · ยอดค้างทุกงวด 0 · งวด PAID ยัง PAID 298,500 · summary outstanding 0
+  ✅ [RL-13] [W6] การจอง EXPIRED (ตัวกวาด tJ) และ HOLD ที่ยกเลิกก่อนจ่าย ⇒ มุมมองงวด CANCELLED ยอดค้าง 0 (summary 0) · งานงวดไม่เตือน/ไม่ทำ OVERDUE (แถวงวดไม่ขยับ · ไม่มี due_soon/overdue)
+  ✅ [RL-14] [V6] HOLD ที่ hold หมดเวลา (20 นาทีหลังจอง) ⇒ tripPaymentIntent HOLD_EXPIRED · รับเงิน HOLD_EXPIRED (โค้ดเดียวกัน) · HOLD ที่ยังสด (1 นาที) ⇒ QR ยอดล็อก 1,145,000
+  ✅ [RL-15] [V5] tourRefundFloorPctAt: 30 / 29 / 15 / 14 / 0 วัน ⇒ 100 / 50 / 50 / 0 / 0 · −1 / 1.5 ⇒ null (ตรงตาราง REFUND_FLOOR ของ th-tour-2569.ts: ≥30 = 100 · ≥15 = 50)
+  ✅ [RL-16] [V5] (static) ตารางขั้นต่ำมีที่เดียว: const REFUND_FLOOR ประกาศครั้งเดียว · tourRefundFloorPctAt และ W01 อ่าน REFUND_FLOOR · refund.ts ใช้ tourRefundFloorPctAt · โมดูล trips ไม่มีตาราง minPct ของตัวเอง
+  ✅ [RL-17] [V5] บันไดร้านต่ำกว่าขั้นต่ำ (uA2: ไม่คืน < 60 วัน · D−23) ⇒ คำขอยื่นได้ QUOTED + warning REFUND_BELOW_STATUTORY_MINIMUM (ไม่บล็อก · อนุมัติได้) · บันไดค่าเริ่ม (= ขั้นต่ำ) ที่ D−23 / D−40 ⇒ ไม่มี warning
+  ✅ [RL-18] [W9] งวดที่งานเห็นครั้งแรกเมื่อเหลือ < 24 ชม. (T16 [7,1]) ⇒ เตือน d=1 อย่างเดียว (ไม่มี d=7) · รันซ้ำไม่เพิ่ม
+  ✅ [RL-19] [V1] การจองที่มีคำขอคืนเงินเปิด (QUOTED) ⇒ งานไม่เตือน (12 ชม.ก่อน) และไม่ทำ OVERDUE (25 ชม.หลัง) · ไม่มี event · คำขอยัง 1
+  ✅ [RL-20] [V1/W5] งวดเลยกำหนด 120 + งวดใกล้ถึง 5 ในหน่วยเดียว (uJ · T16 [7,1]) · รอบแรกมี deadline สั้น (800 ms) ⇒ เตือนครบ 5 ในรอบแรก (คิวเตือนไม่ถูกกิน) · ตัวควบคุม: deadline ตัดคิวเลยกำหนดจริง (OVERDUE < 120 หลังรอบแรก) · รอบถัดไปครบ 120
+  ✅ [RL-26] [V1/W5] ค่าคืน more ของ runPaymentDue บอกความจริง: รอบที่ deadline ตัดคิวเลยกำหนดกลางหน้า (ยังเหลืองวด) ⇒ more.overdue = true
+  ✅ [RL-21] [W5] AUTO_RELEASE ยื่นไม่สำเร็จ (บันได cancelLadder ใน snapshot เสีย ⇒ ใบเสนอ SNAPSHOT_INVALID) ⇒ งวดยัง OVERDUE + trips.payment.overdue 1 ครั้ง (commit) · ไม่มีคำขอ · นับใน failed AUTO_RELEASE_* · รอบที่ 2 ลองซ้ำ 1 ครั้ง · แก้ snapshot แล้วรอบถัดไปยื่นได้ 1 คำขอ (คีย์ due_<id>) · รอบต่อไปไม่ยื่นซ้ำ
+  ✅ [RL-22] [W5] ยื่นซ้ำ "ในรอบถัดไป" เท่านั้น: รอบที่งวดเพิ่งเปลี่ยนเป็น OVERDUE มีความพยายามยื่น AUTO_RELEASE 1 ครั้ง (ไม่ลองซ้ำในรอบเดียวกัน) · ทุกรอบ ≤ 1
+  ✅ [RL-23] [V8] แก้ยอดมือเกิน X13: คำอนุมัติ unitId ว่าง (ทั้งร้าน) ⇒ FORBIDDEN · คำอนุมัติของหน่วยอื่น (uA2) ⇒ FORBIDDEN · ทั้งสองไม่ถูกใช้ (ไม่มี consumed) · คำอนุมัติหน่วยถูก ⇒ APPROVED และถูกใช้ครั้งเดียว · ใช้ซ้ำ ⇒ APPROVAL_USED
+  ✅ [RL-24] [purged] piiPurgedAt (PART_PAID 1,140,000): รับเงิน ⇒ STATE_CONFLICT BOOKER_PURGED · QR ⇒ BOOKER_PURGED · ไม่เขียนเงิน · ยื่นคืนเงินได้ (QUOTED) · tripMoneySummary อ่านได้ (paid 1,140,000)
+  ✅ [RL-25] [CN-2] ยกเลิกการจองที่ขายแล้ว (ยื่นคำขอ) ⇒ สถานะ PAID · version · sold ของรอบไม่ขยับ ระหว่าง QUOTED/APPROVED · DONE ⇒ version +1 · sold −3 ครั้งเดียว (execute ซ้ำคีย์เดิม/คีย์อื่นไม่คืนซ้ำ) · ค่าคงที่ D.3
+  ── สรุป RL: ผ่าน 26/26
+
+── LT: รับเงิน ∥ ตัวกวาด ──
+  ✅ [LT-1] รับเงิน (ก่อนหมด 30 วิ) ∥ runExpireHolds (หลังหมด 30 วิ · tenantIds [A]) บน 8 การจอง HOLD ⇒ PAID+CONVERTED+เงิน 1 แถว หรือ EXPIRED+ไม่มีเงิน · ไม่มี THROW/BUSY
+  ✅ [LT-2] การจอง HOLD ที่มีโค้ดส่วนลดหมดเวลา ⇒ trips.booking.expired.amountSatang = payable ของ snapshot (ไม่ใช่ grossSatang)
+  ── สรุป LT: ผ่าน 2/2
+
+===== QC TRIPS T0.7a · เงินฝั่ง trips · งวด · รับเงิน · QR · คืนเงินเป็นขั้นตอน =====
+ผ่าน 148/150 · ไม่ผ่าน 2 · ข้าม 0
+ต่อกลุ่ม: PC 8/8 · S 14/16 · MC 17/17 · DU 5/5 · PY 13/13 · QR 4/4 · RF 16/16 · DN 7/7 · CN 4/4 · MV 4/4 · CD 2/2 · RC 9/9 · NC 1/1 · X 3/3 · PM 3/3 · EV 5/5 · JB 5/5 · RL 26/26 · LT 2/2
+JSON_SUMMARY {"suite":"qc-trips-t0.7","total":150,"passed":148,"failed":["S-11","S-15"],"skipped":[],"groups":{"PC":"8/8","S":"14/16","MC":"17/17","DU":"5/5","PY":"13/13","QR":"4/4","RF":"16/16","DN":"7/7","CN":"4/4","MV":"4/4","CD":"2/2","RC":"9/9","NC":"1/1","X":"3/3","PM":"3/3","EV":"5/5","JB":"5/5","RL":"26/26","LT":"2/2"}}
+=== qc-trips-t0.7 exit 1 23:34:56

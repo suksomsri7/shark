@@ -1,0 +1,92 @@
+[env] qc-trips-t0.4c · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:845509) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ⚠️ ตั้งคีย์ใหม่ trips.public.unpaidHoldMaxPct ไม่ได้ (คาดก่อนมี T0.4c): setSettings: {"ok":false,"code":"VALIDATION","issues":[{"key":"trips.public.unpaidHoldMaxPct","code":"UNKNOWN_KEY","messageTh":"ไม่รู้จักค่าตั้งนี้ — ลองโหลดหน้
+
+── PC: ตัวควบคุมบวก (กลไกของข้อสอบ · สภาพวันนี้ = ℹ️) ──
+  ✅ [PC-1] ฐาน qc-trips + ร้าน seed andaman-dive อยู่ · ร้านชั่วคราว 6 หน่วย/7 สินค้า + ค่าตั้งพื้นฐานตั้งได้ · เส้นทางปกติ: PUBLIC ถือ 2 ที่ → ยืนยัน PAY_NOW ⇒ HOLD · Party ใหม่ 1 แถวผูก bookerPartyId
+     ℹ️ PC-2: confirmTrips PUBLIC บนรอบที่ปิดหลังถือ = ok HOLD (ยังไม่ตรวจในบริการ)
+  ✅ [PC-2] ปิดรอบด้วย SQL ของข้อสอบมีผลจริง: status CLOSED ⇒ getAvailability(WEB) saleBlock STATUS · holdTrips ใหม่ SLOT_CLOSED (ℹ️ ผล confirm ของ hold ที่ถือก่อนปิด = สภาพวันนี้)
+  ✅ [PC-3] เวลาปิดรับของข้อสอบมีผลจริง (หน่วย A: เว็บ 18:00 วันก่อน · หน้าร้าน 07:00 วันเดินทาง): 10:50Z ⇒ WEB null · 11:01Z ⇒ WEB CUTOFF · COUNTER null · 00:01Z วันเดินทาง ⇒ COUNTER CUTOFF
+     ℹ️ PC-4: ยืนยันหลัง hold หมดเวลา = HOLD_EXPIRED · Party ค้างของผู้จองนี้ 1 แถว
+  ✅ [PC-4] ตัวนับ Party ของข้อสอบเห็นการสร้างจริง: ยืนยันที่ล้มก่อนธุรกรรม (quoteId ผิด ⇒ PRICE_CHANGED) ⇒ +0 · ยืนยันสำเร็จ ⇒ +1 (ℹ️ HOLD_EXPIRED วันนี้ทิ้ง Party กี่แถว)
+  ✅ [PC-5] ตัวนับที่ถือ PUBLIC ของข้อสอบ (§3.1) = held ของรอบเมื่อมีแต่ hold PUBLIC: 3 ตะกร้า 1+2+1 ⇒ 4 · hold หน้าร้านไม่นับ · หลังหมดเวลา (now ฉีด) ⇒ 0
+  ── สรุป PC: ผ่าน 5/5
+
+── S: ขอบเขต/สถาปัตย์/ค่าตั้ง ──
+  ✅ [S-1] ไฟล์ src/ ที่แตะ ⊆ ไฟล์เจ้าของ 4 ไฟล์ (capacity.ts · capacity-service.ts · booking.ts · trips.ts) — เทียบ merge-base กับ session/trips · ไม่นับ scratchpad/ ledger/ scripts/
+  ✅ [S-2] ไม่มี migration/schema ใหม่ (prisma/ ไม่เปลี่ยนเทียบ merge-base) · core/sellable.ts ไม่เปลี่ยน (ไม่มีรหัสผลใหม่)
+  ❌ [S-3] คีย์ trips.public.unpaidHoldMaxPct: domain trips · type percent · chain มี UNIT (⊆ UNIT/PRODUCT/DEPARTURE) · ค่าเริ่ม 50 ทุกแม่แบบ + _fallback · schema รับ 1/50/100 ปฏิเสธ 0/101/1.5/"50" — ยังไม่ลงทะเบียน trips.public.unpaidHoldMaxPct
+  ❌ [S-4] ledger/TRIPS-DEFAULTS.md มีแถวของ trips.public.unpaidHoldMaxPct (รหัส X· · ค่าเริ่ม 50%) — ไม่มีแถวในทะเบียนค่าเริ่ม
+  ❌ [S-5] capacity.ts ยังอยู่ในด่านคงที่ (ไม่ import db/settings/ops/capacity-service · ไม่มี tenantDb(/resolveSettings(/prisma.) · ไม่มี now() ของฐานในเงื่อนไข expiresAt · ไม่มีค่า 50 ของเพดานเขียนตายในโมดูล trips — booking.ts: ?? 50
+  ❌ [S-6] booking.ts: ทุกการเรียก safeFindOrCreate( ส่ง client ของธุรกรรม (≥ 3 อาร์กิวเมนต์) · prepareCore ไม่สร้าง Party เอง (ไม่มี safeFindOrCreate( ในตัวฟังก์ชัน) — มีการเรียกแบบไม่ส่ง tx (จำนวนอาร์กิวเมนต์ 2)
+  ── สรุป S: ผ่าน 2/6
+
+── PH: เพดานที่ถือไม่จ่าย PUBLIC ต่อรอบ (ค่าเริ่ม 50% ของความจุ ปัดขึ้น) ──
+  ❌ [PH-1] ความจุ 10 ⇒ เพดาน 5: PUBLIC ถือ 3 + 2 ได้ · ถือ 1 ⇒ HOLD_LIMIT PUBLIC_UNPAID_SHARE + retryAfterSec + ข้อความของตัวเอง · held คงที่ 5 · getAvailability ยังบอกที่ว่างจริง 5 (ไม่ใช่ "เต็ม") — ถือครั้งที่ 3: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdIds":["th_1d450f5f1553422e954fb543fea40d06"],"basketId":"sb_e34efd10daa3b10b475dda00","expiresAt":"2027-03-01T04:00:00.000Z"}}
+  ❌ [PH-2] พนักงานไม่ติดเพดาน และ SOLD_OUT มาก่อน: หลัง PUBLIC ถือ 5/10 ⇒ STAFF holdTrips 3 + bookTripsNow 2 ได้ · PUBLIC ขอ 1 ⇒ SOLD_OUT (ไม่ใช่ HOLD_LIMIT) · D.3 — throw: duplicate key value violates unique constraint "TripDeparture_productId_optionId_startsAt_key"
+  ❌ [PH-3] [Q1] ตะกร้าแรกของรอบ (ไม่มี PUBLIC ถือไม่จ่ายอยู่) ถือได้แม้เกินเพดาน: ความจุ 10 ถือ 8 ได้ · ถัดไปขอ 1 ⇒ HOLD_LIMIT — หลังกลุ่มใหญ่: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdIds":["th_e97eaa553620489e9e5bca26a2ccf46c"],"basketId":"sb_c6edf1347b11162c82ede3b1","expiresAt":"2027-03-01T04:00:00.000Z"}}
+  ❌ [PH-4] [Q1] ปัดขึ้น: ความจุ 5 ⇒ เพดาน 3: 2 ได้ · 1 ได้ (=3) · 1 ⇒ HOLD_LIMIT — throw: duplicate key value violates unique constraint "TripDeparture_productId_optionId_startsAt_key"
+  ❌ [PH-5] นับเฉพาะ ACTIVE ที่ยังไม่หมดเวลา (now ของ ctx): ความจุ 60 (เพดาน 30) ถือ 10+10 ตอน NOW0 · ตอน +61 นาที (ยังไม่กวาด · held ยัง 20) ถือ 25 ได้ · ขอ 6 ⇒ HOLD_LIMIT (ที่ว่างยังพอ) — เกินเพดานหลังหมดเวลา: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdIds":["th_2cb4a95175854dc98c63b8b2a78cdc7c"],"basketId":"sb_29c25a27cd8b0abae7d1c58c","expiresAt":"2027-03-01T05:01:00.000Z"}}
+  ❌ [PH-6] ปล่อย/แปลงแล้วไม่นับ: ความจุ 12 (เพดาน 6) ถือ 5 → ปล่อย (releaseHold ด้วย capKey ตะกร้า) ⇒ ถือ 5 ได้ → แปลง (convertHoldInTx) ⇒ sold 5 · ถือ 5 ได้ · ขอ 2 ⇒ HOLD_LIMIT — หลังแปลง: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdIds":["th_8f0c3453e88f42ffbca8e6d1ca0b5d79"],"basketId":"sb_9f1d3d8c60c16c6a2af06369","expiresAt":"2027-03-01T04:00:00.000Z"}}
+  ❌ [PH-7] การจอง HOLD ของ PUBLIC (ยืนยันแล้ว ยังไม่จ่าย · hold KEEP) ยังนับ: ถือ 5 → ยืนยัน PAY_NOW ⇒ HOLD · ขอ 1 ⇒ HOLD_LIMIT — หลังยืนยันไม่จ่าย: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdIds":["th_0c939021f2e6480497ed3bfb8f314fed"],"basketId":"sb_90967481cb4dcf2b077fd364","expiresAt":"2027-03-01T04:00:00.000Z"}}
+  ❌ [PH-8] [Q3] การจอง PENDING ของ PUBLIC (สินค้า SHOP_CONFIRMS · hold purpose SHOP_CONFIRM) ยังนับ: ถือ 5 → ยืนยัน ⇒ PENDING · ขอ 1 ⇒ HOLD_LIMIT — หลัง PENDING: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdIds":["th_3370e3f5a6724dadb49776d42117ae90"],"basketId":"sb_4d9e573841283af4cd90701a","expiresAt":"2027-03-01T04:00:00.000Z"}}
+  ✅ [PH-9] แยกต่อรอบ: รอบ D1 ถือ 5/10 ⇒ รอบ D2 ของสินค้าเดียวกันถือ 5 ได้ · ที่หน้าร้านถือ 6/10 ไม่กินเพดาน: PUBLIC ถือ 4 ได้
+  ❌ [PH-10] ค่าตั้งมีผล: หน่วย H = 100 ⇒ PUBLIC ถือ 4+4+2 = ความจุ 10 ได้ · ขอ 1 ⇒ SOLD_OUT · หน่วย P = 30 ⇒ เพดาน 3: 2+1 ได้ · 1 ⇒ HOLD_LIMIT — ตั้งค่า trips.public.unpaidHoldMaxPct ไม่ได้ (คีย์ใหม่ยังไม่ลงทะเบียน?): setSettings: {"ok":false,"code":"VALIDATION","issues":[{"key":"trips.public.unpaidHoldMaxPct","code":"UNKNOWN_KEY","messageTh":"ไม่รู้จักค่าตั้งนี้ — ลองโหลดหน้
+  ❌ [PH-11] placeHold (ทางตรงของ T0.4 · PUBLIC) ใช้กติกาเดียวกัน: placeHold 5 ได้ · placeHold 1 ⇒ HOLD_LIMIT · holdTrips 1 ⇒ HOLD_LIMIT — placeHold เกินเพดาน: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdId":"th_bbef0c8a26534a4cab01d374556201b6","departureId":"t04cqc_d_mwgzeoz3f34105","qty":1,"purpose":"PAYMENT","status":"ACTIVE","expiresAt":"2027-03-01T04:00:00.000Z","publicLeft":4,"duplicated":false}}
+  ❌ [PH-12] ตะกร้าเดียวสองบรรทัดรอบเดียวกันนับรวมกัน: มี PUBLIC ถือ 2/10 อยู่ · ตะกร้า [2, 2] (รวม 6 > 5) ⇒ HOLD_LIMIT ไม่มีแถวใหม่ · ตะกร้า [1, 2] (= 5) ได้ — สองบรรทัดเกินเพดาน: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdIds":["th_756eb2410b56412280962cfbbbd87903","th_41b6d784a9464975ba4f47f8a38e72a5"],"basketId":"sb_d021cb09048e2dc0289ab28e","expiresAt":"2027-03-01T04:00:00.000Z"}}
+  ✅ [PH-13] เหตุใหม่แยกจากเพดานเดิมได้: HOLD_LIMIT ของจำนวนการถือต่อตะกร้า (X10 = 1 · ตะกร้า 2 บรรทัดคนละรอบ) ไม่มี reason PUBLIC_UNPAID_SHARE
+  ── สรุป PH: ผ่าน 2/13
+
+── CF: ยืนยันตรวจรอบขายได้ในธุรกรรมเดียวกับล็อกรอบ ──
+  ❌ [CF-1] PUBLIC: ถือ → ร้านปิดรอบ (CLOSED) → ยืนยัน ⇒ SLOT_CLOSED · ไม่เขียนอะไร — ยืนยันหลังปิด: ต้อง SLOT_CLOSED ได้ {"ok":true,"value":[{"productKind":"TRIP","bookingId":"tb5c925d3e11dfbc472e7100","code":"TR-7003-0006","status":"HOLD","publicToken":"7S4mWsW0nw-cYnhDgjr0up4LeCI-Css6VUl3eCy7uHw","dues":[{"seq":1,"kind":"BALANCE","amount":{"satang":820000,"currency":"THB"},"dueAt":"2027-03-01T03:00:00.000Z"}]}]}
+  ❌ [CF-2] PUBLIC: รอบ CANCELLED หลังถือ ⇒ SLOT_CLOSED · ไม่เขียน — ยืนยันหลังยกเลิกรอบ: ต้อง SLOT_CLOSED ได้ {"ok":true,"value":[{"productKind":"TRIP","bookingId":"tbdea6e5f9a4a7e005b10b00","code":"TR-7003-0007","status":"HOLD","publicToken":"sZk8SE2V5Wl3HP1-dY0Xk1nZBgmnhcvBbO7qgaynMdg","dues":[{"seq":1,"kind":"BALANCE","amount":{"satang":820000,"currency":"THB"},"dueAt":"2027-03-01T03:00:00.000Z"}]}]}
+  ❌ [CF-3] หยุดขายช่องทาง: stopSell {channels:[WEB]} หลังถือ ⇒ ยืนยัน WEB SLOT_CLOSED · stopSell {channels:[LIFF]} ⇒ ยืนยัน WEB ได้ — หยุดขาย WEB: ต้อง SLOT_CLOSED ได้ {"ok":true,"value":[{"productKind":"TRIP","bookingId":"tb99696f8c78f9e8c3c5ff00","code":"TR-7003-0008","status":"HOLD","publicToken":"zUmArfmd-jFNO2vLvU2NrW3GK_EmNaD09DNpRxyrPes","dues":[{"seq":1,"kind":"BALANCE","amount":{"satang":820000,"currency":"THB"},"dueAt":"2027-03-01T03:00:00.000Z"}]}]}
+  ❌ [CF-4] เลยเวลาปิดรับ WEB หลังถือ: ถือ 10:50Z (ก่อน 18:00 ไทยวันก่อน) → ยืนยัน 11:01Z ⇒ CUTOFF_PASSED ไม่เขียน · อีกตะกร้ายืนยัน 10:58Z ได้ — ยืนยันหลังปิดรับ: ต้อง CUTOFF_PASSED ได้ {"ok":true,"value":[{"productKind":"TRIP","bookingId":"tb43515eddad865b25934700","code":"TR-7003-0009","status":"HOLD","publicToken":"tQbjxPDIWzXcJ0ba-X5MLtCckUyT0qZ4fVxwU0q8t8g","dues":[{"seq":1,"kind":"BALANCE","amount":{"satang":820000,"currency":"THB"},"dueAt":"2027-03-19T11:01:00.000Z"}]}]}
+  ❌ [CF-5] รอบเริ่มแล้ว (หน่วย S ปิดรับ 23:59 วันเดินทาง): ถือ 07:50 ไทย → ยืนยัน 08:05 ไทย ⇒ CUTOFF_PASSED ไม่เขียน — ยืนยันหลังเริ่ม: ต้อง CUTOFF_PASSED ได้ {"ok":true,"value":[{"productKind":"TRIP","bookingId":"tb2d654203351d0babe5ac00","code":"TR-7003-0010","status":"HOLD","publicToken":"9fMQwksm0F8-iNYEi2FHJB0VfS0lleacsrbFNcay6x4","dues":[{"seq":1,"kind":"BALANCE","amount":{"satang":820000,"currency":"THB"},"dueAt":"2027-03-25T01:05:00.000Z"}]}]}
+  ❌ [CF-6] regression: FULL เพราะที่ถือของตัวเอง ⇒ ยืนยันได้ (หน่วย H 100%: ความจุ 3 ถือ 3 ⇒ FULL) · GUARANTEED ⇒ ยืนยันได้ — ตั้งค่า trips.public.unpaidHoldMaxPct ไม่ได้ (คีย์ใหม่ยังไม่ลงทะเบียน?): setSettings: {"ok":false,"code":"VALIDATION","issues":[{"key":"trips.public.unpaidHoldMaxPct","code":"UNKNOWN_KEY","messageTh":"ไม่รู้จักค่าตั้งนี้ — ลองโหลดหน้
+  ❌ [CF-7] [Q2] พนักงานตามช่องทางของตน: ถือ COUNTER → ปิดรอบ → ยืนยัน ⇒ SLOT_CLOSED · ถือ/ยืนยันหลังเว็บปิดแต่หน้าร้านยังเปิด ⇒ ได้ · ยืนยันหลังหน้าร้านปิด (07:00 ไทย) ⇒ CUTOFF_PASSED — พนักงานยืนยันหลังปิดรอบ: ต้อง SLOT_CLOSED ได้ {"ok":true,"value":[{"productKind":"TRIP","bookingId":"tbdab03b759220230ac3b500","code":"TR-7003-0011","status":"CONFIRMED","publicToken":"W0L1HTytSBHxD6CgOrquSG-2A510mUwF4DuVOeoz504","dues":[{"seq":1,"kind":"BALANCE","amount":{"satang":820000,"currency":"THB"},"dueAt":"2027-03-01T03:00:00.000Z"}]}]
+  ❌ [CF-8] ลำดับเหตุ (§4): รอบปิด + hold หมดเวลาพร้อมกัน — PUBLIC ⇒ HOLD_EXPIRED (rekey ชั้น 0 มาก่อนตามเดิม) · STAFF onExpired REHOLD ⇒ SLOT_CLOSED (ตรวจรอบหลัง 1a ก่อนผูก hold) ไม่มี hold ใหม่ · ไม่มี Party — Party: ได้ [1,1] ต้องเป็น [0,0]
+  ❌ [CF-9] เส้นทาง K1.1: prepareTripConfirm → ร้านปิดรอบ → finalizeTripsInTx ในธุรกรรมของผู้เรียก ⇒ SLOT_CLOSED · ไม่มีการจอง — finalizeTripsInTx หลังปิด: ต้อง SLOT_CLOSED ได้ {"ok":true,"value":{"bookings":[{"productKind":"TRIP","bookingId":"tb1e4a04a86780b2de401500","code":"TR-7003-0012","status":"HOLD","publicToken":"-cwmBltM2IvhlAawNMRkRmkWDWbNRhNcvhyFRtWcTVM","dues":[{"seq":1,"kind":"BALANCE","amount":{"satang":820000,"currency":"THB"},"dueAt":"2027-03-01T03:00:00.00
+  ✅ [CF-10] regression: ยืนยันบนรอบเปิด (WEB · LIFF) ได้ตามเดิม · ยืนยันซ้ำคีย์เดิมหลังร้านปิดรอบ ⇒ ผลเดิม (ตะกร้า CHECKED_OUT ไม่ตรวจรอบซ้ำ)
+  ── สรุป CF: ผ่าน 1/10
+
+── PT: ยืนยันล้มในธุรกรรมไม่ทิ้ง Party (OQ23 ค) ──
+  ✅ [PT-1] สำเร็จ ⇒ Party ใหม่ 1 แถว (ชื่อ/เบอร์ตามที่ส่ง) ผูก bookerPartyId · จองครั้งที่สองเบอร์เดิมชื่อเดิม ⇒ Party เดิม ไม่เพิ่มแถว
+  ❌ [PT-2] HOLD_EXPIRED ในธุรกรรม (ยืนยันหลังหมดเวลา · ผู้จองใหม่) ⇒ ไม่มี Party ของผู้จองนี้ — Party ค้าง: ได้ 1 ต้องเป็น 0
+  ❌ [PT-3] SLOT_CLOSED/CUTOFF_PASSED ในธุรกรรม ⇒ ไม่มี Party (ร่วมกับ CF-1 CF-4 · ตรวจซ้ำแยกข้อ) — ยืนยันบนรอบปิดต้องล้ม: {"ok":true,"value":[{"productKind":"TRIP","bookingId":"tbd62389fc5631d5dbe5a500","code":"TR-7004-0003","status":"HOLD","publicToken":"MVflxGyy5OJobjtAI1Yo1-t03RHYvH8rbBZrhSNg7Kc","dues":[{"seq":1,"kind":"BALANCE","amount":{"satang":820000,"currency":"THB"},"dueAt":"2027-03-01T03:00:00.000Z"}]}]}
+  ❌ [PT-4] HOLD_LIMIT ตอน rekey ผู้ติดต่อ (หน่วย L · X10 = 1 · ผู้ติดต่อ LINE เดียวกัน · ชื่อใหม่) ⇒ ไม่มี Party ของผู้จองที่ล้ม · เหตุไม่ใช่ PUBLIC_UNPAID_SHARE — Party ค้าง: ได้ 1 ต้องเป็น 0
+  ❌ [PT-5] พนักงาน bookTripsNow ล้มในธุรกรรม (SOLD_OUT: ความจุ 1 ขอ 2) ⇒ ไม่มี Party ของผู้จองนี้ — Party ค้าง: ได้ 1 ต้องเป็น 0
+  ✅ [PT-6] regression: พนักงานส่ง partyId ของร้าน ⇒ ใช้ Party นั้น ไม่สร้างแถวใหม่ · partyId ร้านอื่น ⇒ NOT_FOUND ไม่เขียน
+  ✅ [PT-7] ยืนยันซ้ำคีย์เดิม (ผลเดิม) ไม่สร้าง Party เพิ่ม · ยืนยันซ้ำคีย์ใหม่บนตะกร้าที่ CHECKED_OUT ⇒ STATE_CONFLICT ไม่สร้าง Party
+  ── สรุป PT: ผ่าน 3/7
+
+── X3: ยิงพร้อมกัน (≥ 20 ทาง · ฐานจริง) ──
+  ❌ [X3-1] 24 PUBLIC ถือ 2 ที่ ∥ 4 STAFF ถือ 2 ที่ บนรอบความจุ 40 (เพดาน 20) ⇒ PUBLIC สำเร็จ 10 พอดี (Σ 20) · ที่เหลือ HOLD_LIMIT PUBLIC_UNPAID_SHARE เท่านั้น · STAFF ครบ 4 · held 28 = Σ hold ACTIVE · ไม่เกินทุกจังหวะ · ไม่ค้าง/ไม่ BUSY — PUBLIC/STAFF/สำเร็จ/ผลนอกที่อนุญาต({"ok":false,"code":"SOLD_OUT","messageTh":"ที่นั่งไม่พอสำหรับจำนวนที่ขอ","retryable":false,"details":{"publicLeft":0},"isStaff":false})/STAFF สำเร็จ: ได้ [24,4,16,8,4] ต้องเป็น [24,4,10,0,4]
+  ❌ [X3-2] ร้านปิดรอบ ∥ 20 การยืนยัน PUBLIC (ข้อสอบถือล็อกแถวรอบด้วย UPDATE CLOSED ค้างไว้ 1.5 วิ แล้ว COMMIT) ⇒ ทั้ง 20 SLOT_CLOSED · ไม่มีการจอง · ไม่มี Party ค้าง · held คงที่ · ไม่ค้าง/ไม่ BUSY — ตั้งค่า trips.public.unpaidHoldMaxPct ไม่ได้ (คีย์ใหม่ยังไม่ลงทะเบียน?): setSettings: {"ok":false,"code":"VALIDATION","issues":[{"key":"trips.public.unpaidHoldMaxPct","code":"UNKNOWN_KEY","messageTh":"ไม่รู้จักค่าตั้งนี้ — ลองโหลดหน้
+  ❌ [X3-3] 20 การยืนยัน PUBLIC พร้อมกัน (ผู้จองใหม่ทุกราย · pool 10) ⇒ สำเร็จ 20 ภายใน 90 วิ · ไม่มี BUSY/P2028 (ไม่มี connection ที่สองใน tx) · Party ใหม่ 20 แถวผูกการจองครบ · D.3 — ตั้งค่า trips.public.unpaidHoldMaxPct ไม่ได้ (คีย์ใหม่ยังไม่ลงทะเบียน?): setSettings: {"ok":false,"code":"VALIDATION","issues":[{"key":"trips.public.unpaidHoldMaxPct","code":"UNKNOWN_KEY","messageTh":"ไม่รู้จักค่าตั้งนี้ — ลองโหลดหน้
+  ❌ [X3-4] 20 การยืนยันที่ล้มในธุรกรรมพร้อมกัน (hold หมดเวลา · ผู้จองใหม่) ⇒ HOLD_EXPIRED ทั้งหมด · ไม่มี Party ค้าง · ไม่มี BUSY — ตั้งค่า trips.public.unpaidHoldMaxPct ไม่ได้ (คีย์ใหม่ยังไม่ลงทะเบียน?): setSettings: {"ok":false,"code":"VALIDATION","issues":[{"key":"trips.public.unpaidHoldMaxPct","code":"UNKNOWN_KEY","messageTh":"ไม่รู้จักค่าตั้งนี้ — ลองโหลดหน้
+  ❌ [X3-5] ผสม 26 ทาง บนรอบความจุ 30 (เพดาน 15) ที่มี PUBLIC ถือ 10 อยู่ (5 ตะกร้า): ยืนยัน 5 ∥ PUBLIC ถือใหม่ 2 ที่ ×18 ∥ STAFF ถือ 2 ที่ ×3 ⇒ PUBLIC ถือใหม่ได้ 2 พอดี (ยืนยันแล้วยังนับ) · ยืนยันครบ 5 · STAFF ครบ · held 20 · ไม่ค้าง — ยืนยัน/PUBLIC ใหม่/ผลนอกที่อนุญาต/STAFF: ได้ [5,7,11,3] ต้องเป็น [5,2,0,3]
+  ── สรุป X3: ผ่าน 0/5
+
+── X1: ข้ามร้าน/หน่วย ──
+  ✅ [X1-1] ยืนยันตะกร้าร้าน A ด้วย ctx ร้าน B (token ถูก) ⇒ HOLD_NOT_FOUND/NOT_FOUND · ไม่มีการจอง · ไม่มี Party ทั้งสองร้าน
+  ✅ [X1-2] ยืนยันตะกร้าหน่วย A ด้วย ctx หน่วย H ร้านเดียวกัน ⇒ HOLD_NOT_FOUND · ไม่มี Party
+  ❌ [X1-3] เพดานของร้าน B ไม่ถูกกระทบจากร้าน A: ร้าน A รอบความจุ 10 ถือ PUBLIC 5 · ร้าน B รอบความจุ 10 ถือ PUBLIC 3+2 ได้ · ขอ 1 ⇒ HOLD_LIMIT ของร้าน B เอง — ร้าน B เกินเพดาน: ต้อง HOLD_LIMIT ได้ {"ok":true,"value":{"holdIds":["th_a7153918b8e54a7e8ea94607438f0514"],"basketId":"sb_d8e057d5a75b3186567c6ef9","expiresAt":"2027-03-01T04:00:00.000Z"}}
+  ── สรุป X1: ผ่าน 2/3
+
+── PT (ท้ายไฟล์) ──
+  ❌ [PT-8] ทั้งไฟล์: Party ของข้อสอบ (ชื่อ qc4c) ทุกแถวมีการจองอ้าง — ไม่มี Party ค้างจากการยืนยัน/จองที่ล้ม (รวม PC-2 PC-4 ที่บันทึกสภาพวันนี้) — Party ค้าง ร้าน A/B: ได้ [6,0] ต้องเป็น [0,0]
+
+===== QC TRIPS T0.4c · เพดานที่ถือ PUBLIC ต่อรอบ · ยืนยันตรวจรอบในธุรกรรม · Party ไม่ค้าง =====
+ผ่าน 15/50 · ไม่ผ่าน 35 · ข้าม 0
+ต่อกลุ่ม: PC 5/5 · S 2/6 · PH 2/13 · CF 1/10 · PT 3/8 · X3 0/5 · X1 2/3
+JSON_SUMMARY {"suite":"qc-trips-t0.4c","total":50,"passed":15,"failed":["S-3","S-4","S-5","S-6","PH-1","PH-2","PH-3","PH-4","PH-5","PH-6","PH-7","PH-8","PH-10","PH-11","PH-12","CF-1","CF-2","CF-3","CF-4","CF-5","CF-6","CF-7","CF-8","CF-9","PT-2","PT-3","PT-4","PT-5","X3-1","X3-2","X3-3","X3-4","X3-5","X1-3","PT-8"],"skipped":[],"groups":{"PC":"5/5","S":"2/6","PH":"2/13","CF":"1/10","PT":"3/8","X3":"0/5","X1":"2/3"}}
+exit=1

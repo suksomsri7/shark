@@ -1,0 +1,79 @@
+import * as K from "../../src/lib/modules/agency/rates-core.ts";
+const RULES = {
+  JURISTIC: { TH_JURISTIC: { mode: "FLAT", rateBp: 300 }, TH_FOUNDATION: { mode: "FLAT", rateBp: 1000 }, TH_PERSON: { mode: "M50_1", rateBp: 0 }, FOREIGN: { mode: "NONE", rateBp: 0 } },
+  INDIVIDUAL: { TH_JURISTIC: { mode: "NONE", rateBp: 0 }, TH_FOUNDATION: { mode: "NONE", rateBp: 0 }, TH_PERSON: { mode: "M50_1", rateBp: 0 }, FOREIGN: { mode: "NONE", rateBp: 0 } },
+};
+const values: Record<string, unknown> = {
+  "agency.tier.table": { A: { tourPct: 20, laPct: 18 }, B: { tourPct: 15, laPct: 15 }, C: { tourPct: 10, laPct: 10 } },
+  "agency.price.minResalePrice": null,
+  "agency.money.collector": "AGENT_COLLECTS", "agency.price.sellerOfRecord": "SHOP_PRINCIPAL", "agency.comm.earnedAt": "AFTER_TRAVEL",
+  "agency.comm.clawbackOnCancel": true, "agency.comm.discountFromCommission": { enabled: false, capPct: 5 }, "agency.comm.vatMode": "NONE",
+  "agency.wht.payerType": null, "agency.wht.ruleByPayee": RULES,
+  "agency.wht.minPerContract": { amountSatang: 100000, appliesTo: { TH_JURISTIC: true, TH_FOUNDATION: false }, continuousContract: "EVERY_PAYMENT" },
+  "agency.wht.eWht": { enabled: false, rateBp: 100, untilPaidOn: "2027-12-31" }, "agency.wht.grossUpOnNetRemit": true, "agency.wht.remitter": "SHOP",
+};
+const sources: Record<string, string> = Object.fromEntries(Object.keys(values).map((k) => [k, "TEMPLATE"]));
+const R = (o: Partial<K.RateRow> & { id: string; rateCardId: string }): K.RateRow => ({ productKind: "TRIP", productId: "p1", optionId: null, paxTypeId: null, cabinTypeId: null, mode: "COMMISSION_PCT", valueBp: null, valueMinor: null, currency: "THB", minSellMinor: null, markupCapBp: null, bookFrom: null, bookTo: null, travelFrom: null, travelTo: null, priority: 0, active: true, ...o });
+const C = (o: Partial<K.RateCardRow> & { id: string }): K.RateCardRow => ({ ownerKind: "TIER", tierId: "tB", agentAccountId: null, status: "ACTIVE", validFrom: null, validTo: null, version: 3, priority: 0, rates: [], ...o });
+const F = (o: Partial<K.RateFacts> = {}, acc: Partial<K.RateFacts["account"]> = {}, pv: Record<string, unknown> = {}, ps: Record<string, string> = {}): K.RateFacts => ({
+  account: { id: "acc1", tierId: "tB", tierCode: "B", payeeType: "TH_JURISTIC", vatRegistered: false, ...acc },
+  product: { id: "p1", productType: "TOUR", optionId: null, paxTypes: [{ id: "ptA", code: "ADULT" }, { id: "ptC", code: "CHILD" }] },
+  currency: "THB", bookYmd: "2026-12-15", travelYmd: "2026-12-31", cards: [], policy: { values: { ...values, ...pv }, sources: { ...sources, ...ps } }, vatRateBp: 700, ...o,
+});
+const show = (n: string, b: K.AgencyPricingBuilt) => console.log(n, JSON.stringify(b.ok ? { tier: b.input.tier, contract: b.input.contract, vat: b.input.terms.vatMode, wht: { a: b.input.terms.wht.applies, m: b.input.terms.wht.mode, r: b.input.terms.wht.rateBp, e: b.input.terms.wht.eWht, min: b.input.terms.wht.minPerContractSatang }, applied: b.trace.applied, w: b.warnings } : b));
+// E1 tier default B tour 15% / LA 15
+show("E1", K.buildAgencyPricingInput(F()));
+show("E1b-LA-A", K.buildAgencyPricingInput(F({ product: { id: "p1", productType: "LIVEABOARD", optionId: null, paxTypes: [] } }, { tierId: "tA", tierCode: "A" })));
+// E2 contract fixed 500.00/seat + tier card pct 1200
+show("E2", K.buildAgencyPricingInput(F({ cards: [C({ id: "cT", rates: [R({ id: "r1", rateCardId: "cT", valueBp: 1200 })] }), C({ id: "cA", ownerKind: "AGENT", tierId: null, agentAccountId: "acc1", rates: [R({ id: "r2", rateCardId: "cA", mode: "COMMISSION_FIXED", valueMinor: 50000 })] })] })));
+// E3 NET per pax: null-pax 3000.00 + ADULT 2800.00 (min sell 3200 on ADULT row only)
+show("E3", K.buildAgencyPricingInput(F({ cards: [C({ id: "cA", ownerKind: "AGENT", tierId: null, agentAccountId: "acc1", rates: [R({ id: "zz", rateCardId: "cA", mode: "NET", valueMinor: 300000 }), R({ id: "aa", rateCardId: "cA", mode: "NET", paxTypeId: "ptA", valueMinor: 280000, minSellMinor: 320000 })] })] })));
+show("E3-swapIds", K.buildAgencyPricingInput(F({ cards: [C({ id: "cA", ownerKind: "AGENT", tierId: null, agentAccountId: "acc1", rates: [R({ id: "aa", rateCardId: "cA", mode: "NET", valueMinor: 300000 }), R({ id: "zz", rateCardId: "cA", mode: "NET", paxTypeId: "ptA", valueMinor: 280000, minSellMinor: 320000 })] })] })));
+// E4 MARKUP + A7
+show("E4", K.buildAgencyPricingInput(F({ cards: [C({ id: "cA", ownerKind: "AGENT", tierId: null, agentAccountId: "acc1", rates: [R({ id: "r", rateCardId: "cA", mode: "MARKUP", valueMinor: 300000, markupCapBp: 2000 })] })] }, {}, { "agency.price.minResalePrice": 330000 })));
+// E5 VAT
+show("E5a-unreg-set-INCL", K.buildAgencyPricingInput(F({}, {}, { "agency.comm.vatMode": "INCLUSIVE" }, { "agency.comm.vatMode": "TENANT" })));
+show("E5b-reg-template", K.buildAgencyPricingInput(F({}, { vatRegistered: true })));
+show("E5c-reg-set-NONE", K.buildAgencyPricingInput(F({}, { vatRegistered: true }, {}, { "agency.comm.vatMode": "AGENT" })));
+show("E5d-unreg-template-EXCL", K.buildAgencyPricingInput(F({}, {}, { "agency.comm.vatMode": "EXCLUSIVE" })));
+// E6 special period vs normal
+const sp = (travel: string) => F({ travelYmd: travel, cards: [C({ id: "cT", rates: [R({ id: "n", rateCardId: "cT", valueBp: 1000 }), R({ id: "s", rateCardId: "cT", valueBp: 1500, travelFrom: "2026-12-20", travelTo: "2026-12-31" })] })] });
+show("E6-1231", K.buildAgencyPricingInput(sp("2026-12-31")));
+show("E6-0101", K.buildAgencyPricingInput(sp("2027-01-01")));
+// E7 priority beats special
+show("E7", K.buildAgencyPricingInput(F({ cards: [C({ id: "cT", rates: [R({ id: "n", rateCardId: "cT", valueBp: 1000, priority: 5 }), R({ id: "s", rateCardId: "cT", valueBp: 1500, travelFrom: "2026-12-20" })] })] })));
+// E8 foreign cards ignored
+show("E8", K.buildAgencyPricingInput(F({ cards: [C({ id: "x1", tierId: "tA", rates: [R({ id: "r", rateCardId: "x1", valueBp: 9999 })] }), C({ id: "x2", ownerKind: "AGENT", tierId: null, agentAccountId: "acc2", rates: [R({ id: "r2", rateCardId: "x2", valueBp: 9000 })] }), C({ id: "x3", ownerKind: "AGENT", tierId: "tB", agentAccountId: null, rates: [R({ id: "r3", rateCardId: "x3", valueBp: 8000 })] })] })));
+// E9 WHT
+show("E9a-person", K.buildAgencyPricingInput(F({}, { payeeType: "TH_PERSON" })));
+show("E9b-foreign", K.buildAgencyPricingInput(F({}, { payeeType: "FOREIGN" })));
+show("E9c-eWht-on", K.buildAgencyPricingInput(F({}, {}, { "agency.wht.eWht": { enabled: true, rateBp: 100, untilPaidOn: "2026-12-15" } })));
+show("E9d-eWht-expired", K.buildAgencyPricingInput(F({}, {}, { "agency.wht.eWht": { enabled: true, rateBp: 100, untilPaidOn: "2026-12-14" } })));
+show("E9e-foundation-min0", K.buildAgencyPricingInput(F({}, { payeeType: "TH_FOUNDATION" })));
+show("E9f-payer-indiv", K.buildAgencyPricingInput(F({}, {}, { "agency.wht.payerType": "INDIVIDUAL" })));
+// E10 card validity edges + tier special shadowed
+show("E10-validTo-edge", K.buildAgencyPricingInput(F({ cards: [C({ id: "cT", validTo: "2026-12-15", rates: [R({ id: "r", rateCardId: "cT", valueBp: 1100 })] })] })));
+show("E10-validTo-past", K.buildAgencyPricingInput(F({ cards: [C({ id: "cT", validTo: "2026-12-14", rates: [R({ id: "r", rateCardId: "cT", valueBp: 1100 })] })] })));
+show("E11-shadow", K.buildAgencyPricingInput(F({ cards: [C({ id: "cT", rates: [R({ id: "s", rateCardId: "cT", valueBp: 1000, travelFrom: "2026-12-20" })] }), C({ id: "cA", ownerKind: "AGENT", tierId: null, agentAccountId: "acc1", rates: [R({ id: "r2", rateCardId: "cA", valueBp: 1200 })] })] })));
+// E12 tier default shadow? contract exists while tier only default
+show("E12-mixed", K.buildAgencyPricingInput(F({ cards: [C({ id: "cA", ownerKind: "AGENT", tierId: null, agentAccountId: "acc1", rates: [R({ id: "a", rateCardId: "cA", mode: "NET", paxTypeId: "ptC", valueMinor: 100000 }), R({ id: "b", rateCardId: "cA", valueBp: 1200 })] })] })));
+// A7 > INT4
+show("E13-A7-big", K.buildAgencyPricingInput(F({ cards: [C({ id: "cA", ownerKind: "AGENT", tierId: null, agentAccountId: "acc1", rates: [R({ id: "r", rateCardId: "cA", mode: "NET", valueMinor: 300000 })] })] }, {}, { "agency.price.minResalePrice": 3_000_000_000 })));
+// normalize checks
+const N = (o: Record<string, unknown>) => console.log("N", JSON.stringify(o), JSON.stringify(K.normalizeAgentRate({ productKind: "TRIP", productId: "p1", ...o })));
+N({ mode: "COMMISSION_PCT", valueBp: 1200 });
+N({ mode: "COMMISSION_PCT", valueBp: "1200" });
+N({ mode: "COMMISSION_PCT", valueBp: 12.5 });
+N({ mode: "COMMISSION_PCT", valueBp: -0 });
+N({ mode: "COMMISSION_FIXED", valueMinor: 2147483648 });
+N({ mode: "COMMISSION_FIXED", valueMinor: 100, currency: "USD" });
+N({ mode: "NET", valueMinor: 100, minSellMinor: 99 });
+N({ mode: "MARKUP", valueMinor: 100 });
+N({ mode: "NET", valueMinor: 100, travelFrom: "2026-02-29" });
+N({ mode: "NET", valueMinor: 100, travelFrom: "2026-03-02", travelTo: "2026-03-01" });
+N({ mode: "NET", valueMinor: 100, foo: 1 });
+N({ mode: "COMMISSION_PCT", valueBp: 100, paxTypeId: "x" });
+N({ mode: "COMMISSION_PCT", valueBp: 100, cabinTypeId: "x", productKind: "HOTEL" });
+// overlap
+const a = R({ id: "a", rateCardId: "c", travelFrom: "2026-12-01", travelTo: "2026-12-10" });
+console.log("ovl adj", K.rateRowsConflict(a, R({ id: "b", rateCardId: "c", travelFrom: "2026-12-11" })), "ovl same", K.rateRowsConflict(a, R({ id: "b", rateCardId: "c", travelFrom: "2026-12-10" })), "book-only vs travel-only", K.rateRowsConflict(a, R({ id: "b", rateCardId: "c", bookFrom: "2026-01-01" })));

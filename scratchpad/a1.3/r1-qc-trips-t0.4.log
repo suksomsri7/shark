@@ -1,0 +1,170 @@
+[env] qc-trips-t0.4 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:3885726) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุมบวก (ตารางของข้อสอบเอง) ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed P0.1 (andaman-dive) อยู่ · สร้างตารางควบคุมได้
+  ✅ [PC-2] ฟิกซ์เจอร์/README :42 สูตร R2: ส.14 24−15=9 · อา.15 24−21=3 · จ.16 24−4−10=10 · พฤ.19 24−3−10=11 · โควตา PTD 10 · ถือ 15 นาที
+  ✅ [PC-3] ตัวช่วยอ่าน-แล้ว-เขียน (ผิดโดยเจตนา) ขายเกินภายใต้ 50 คำขอพร้อมกันบนที่ว่าง 24 (≤ 3 ครั้ง · ไม่เกิน = control inconclusive)
+  ✅ [PC-4] คำสั่งเดียว UPDATE … WHERE sold+held+reserved+1 <= capacity RETURNING: 50 คำขอพร้อมกัน ⇒ สำเร็จ 24 พอดี · ตัวสุ่มอ่านไม่เจอค่าเกิน
+  ✅ [PC-5] ล็อกสลับลำดับ (A: r1→r2 · B: r2→r1) ⇒ Postgres ตอบ 40P01 (ตัวตรวจ deadlock ของข้อสอบมองเห็นได้จริง)
+  ✅ [PC-6] ตัวสุ่มอ่านจับค่าผิดได้: ตั้ง held > capacity ชั่วขณะ ⇒ viol > 0
+  ── สรุป PC: ผ่าน 6/6
+
+── S: ไฟล์และกติกาโค้ด ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: capacity-core · capacity · waitlist · capacity-actions · sellable-impl · jobs (ต่อท้าย) · platform/sellables
+  ✅ [S-2] facade ส่งออก 36 ฟังก์ชัน + ค่าคงที่ · บล็อก "// TRIPS T0.4 ▸" · ไม่มี export * · ค่าสถานะตรง CC
+  ✅ [S-3] capacity-actions.ts: "use server" · ส่งออกเฉพาะ async function · requireUnit + assertCan · ไม่รับ now
+  ✅ [S-4] ไม่มี any · ไม่มี console.* · ไม่มี DELETE/.delete( ในไฟล์ของใบ
+  ✅ [S-5] import: @/lib/core/* zod @prisma/client ./ node:crypto เท่านั้นในโมดูล · prisma ดิบเฉพาะ jobs.ts · capacity-core บริสุทธิ์
+  ✅ [S-6] ตัวนับ = คำสั่งเดียว: ไม่มี ORM แตะ sold/held/reserved · ไม่มี SET "held" = ค่าจากแอป · ทุก UPDATE ตัวนับมีเงื่อนไขใน WHERE + RETURNING · (ตัวควบคุม: โค้ดผิดตัวอย่างต้องถูกจับ)
+  ✅ [S-7] ทุกคำสั่งตัวนับตรวจจำนวนแถวด้วย expectRows( ทันทีหลังคำสั่ง · มี class CapacityAbort (มี .code) · TripHold CAS มี status='ACTIVE' + RETURNING
+  ✅ [S-8] ไม่มีตัวเลขธุรกิจตายตัว (นาทีถือ/ชั่วโมงยืนยัน/เพดาน/เกณฑ์ "เหลือ N") · ไม่มี now() ของฐานในเงื่อนไขเวลา
+  ✅ [S-9] minute-jobs: trips.expireHolds (1 นาที) + trips.waitlistOffers (5) · โหลด facade trips ตอนรัน
+  ✅ [S-10] event 4 ตัวลง 3 ทะเบียน (ป้ายไทย) · consumer trips.hold.expired เรียก onWaitlistTrigger
+  ✅ [S-11] สิทธิ์ trips.seat.sell + trips.seat.manage ใน MODULE_DEFS โมดูล trips (ป้ายไทย)
+  ✅ [S-12] platform/sellables.ts: sellableFor("TRIP") ⇒ ok · kind TRIP · availability/capacityRowsOf/reserveInTx · HOTEL/TICKET ⇒ KIND_NOT_SUPPORTED · TRIP.hold ⇒ KIND_NOT_SUPPORTED (T0.6)
+  ✅ [S-13] zod strict ใน capacity.ts + waitlist.ts · CAS ล็อกรอบด้วย FOR UPDATE ก่อน CAS hold (ลำดับ §D.5)
+  ❌ [S-14] ไม่แตะไฟล์ต้องห้ามเทียบ session/trips: prisma/ · core/settings/ · ไฟล์ของ T0.2/T0.3 · โมดูลเดิม · ข้อสอบ p0.1/t0.1–t0.4 — แตะ: scripts/qc-trips-t0.1.mts
+  ── สรุป S: ผ่าน 13/14
+
+── C: ฟังก์ชันบริสุทธิ์ ──
+  ✅ [C-1] canTransitionHold: ACTIVE → CONVERTED/EXPIRED/RELEASED · สถานะอื่นจบ (ไม่มีทางกลับ)
+  ✅ [C-2] canTransitionWaitlist: WAITING→OFFERED|CANCELLED|EXPIRED · OFFERED→ACCEPTED|DECLINED|EXPIRED|CANCELLED · ที่เหลือจบ
+  ✅ [C-3] publicLeftOf = capacity − sold − held − reserved ตรงตัว (ภาพ 20 ทั้ง 4 แถว · ไม่ clamp เมื่อข้อมูลผิด)
+  ✅ [C-4] holdExpiresAt: PAYMENT = holdMinutes · SHOP_CONFIRM = shopConfirmHours · WAITLIST_OFFER = waitlistHoldMinutes · ค่าที่ต้องใช้ไม่มี ⇒ null
+  ✅ [C-5] sortCapacityRows เรียง (layer, kindIndex, table, sortKey, id) · ไม่แก้ array เดิม
+  ✅ [C-6] idemKeyFor: pub:<basket>:<k> · ag:<agent>:<k> · st:<user>:<k> · sys:<job>:<k> (กันชนข้ามผู้เรียก)
+  ✅ [C-7] holdCapKeyHash/holdRequestHash: sha256 hex 64 · คงที่ · ไม่ขึ้นกับลำดับคีย์ · ไม่มีข้อความเดิมในผล
+  ── สรุป C: ผ่าน 7/7
+
+── AV: ที่ว่าง (R2 · ภาพ 20) ──
+  ✅ [AV-1] ภาพ 20 (24 ที่): (15,0,0)=9 · (21,0,0)=3 "เหลือ N" · (4,0,10)=10 · พฤ.19 (0,0,10)=14 → ขายหน้าร้าน 3 (ถือ+แปลง) = 11 · showLeft เฉพาะ 3
+  ✅ [AV-2] เลขสาธารณะ = เลขจริงทุกแถว: 12 รอบตัวนับสุ่ม ⇒ publicLeft = capacity − sold − held − reserved ของแถวในฐาน
+  ✅ [AV-3] ปิดรับต่อช่องทาง: หลัง 18:00 วันก่อน ⇒ WEB saleBlock CUTOFF publicLeft 0 · COUNTER (0 วัน 07:00) ยังขาย = เลขจริง · cutoffAt ของช่องทาง
+  ✅ [AV-4] หยุดขาย: stopSell {channels:[WEB]} ⇒ WEB STOP_SELL 0 · COUNTER เลขจริง · until ผ่านแล้ว ⇒ ไม่หยุด
+  ✅ [AV-5] สถานะ: CLOSED/CANCELLED ⇒ STATUS 0 · FULL ⇒ ไม่บล็อกแต่ 0 ตามสูตร · GUARANTEED ขายได้ · belowMin ตาม minPax · เริ่มแล้ว ⇒ STARTED
+  ✅ [AV-6] ตัวควบคุมบวก X6: ตั้ง showLeftAtOrBelow ชั้น PRODUCT = 2 ⇒ เหลือ 3 ไม่ขึ้น "เหลือ N" · คืนค่า
+  ✅ [AV-7] listAvailability: เฉพาะสินค้า/ช่วงวัน · เรียง startsAt · รวม CANCELLED (STATUS) · ช่วง > 62 วัน = VALIDATION
+  ── สรุป AV: ผ่าน 7/7
+
+── H: วงจร hold ──
+  ✅ [H-1] placeHold PUBLIC: แถว PAYMENT/ACTIVE/WEB · expiresAt = now+15 (T5) · capKeyHash แฮช 64 ไม่ใช่ข้อความ basket · คีย์ pub: · held +2 · publicLeft คืนถูก · event hold.created
+  ✅ [H-2] ตัวควบคุมบวก T5: ตั้ง holdMinutes ชั้น PRODUCT = 20 ⇒ expiresAt = now+20 · คืนค่า
+  ✅ [H-3] กันซ้ำ: คีย์+คำขอเดิม ⇒ hold เดิม duplicated ไม่นับซ้ำ · คีย์เดิมคำขอต่าง ⇒ IDEMPOTENCY_CONFLICT · คีย์เดียวกันคนละ basket ⇒ hold ใหม่
+  ✅ [H-4] 10 คำขอคีย์เดียวพร้อมกัน ⇒ hold 1 แถว · held ขยับครั้งเดียว · ทุกคำตอบ holdId เดียวกัน
+  ✅ [H-5] VALIDATION: คีย์สั้น · qty 0/51/1.5 · ช่องแปลก · PUBLIC ช่องทาง COUNTER · PUBLIC purpose SHOP_CONFIRM · PUBLIC ไม่มี capKey · AGENT ⇒ FORBIDDEN · ไม่มีอะไรเปลี่ยน
+  ✅ [H-6] บล็อก: WEB หลังปิดรับ ⇒ CUTOFF_PASSED (COUNTER ยังได้) · CLOSED/CANCELLED/หยุดขาย ⇒ SLOT_CLOSED · เริ่มแล้ว ⇒ CUTOFF_PASSED · ไม่มีอะไรเปลี่ยน
+  ✅ [H-7] SOLD_OUT + details.publicLeft · โควตาค้าง (reserved) ถูกเคารพ: ความจุ 10 ขาย 4 โควตา 5 ⇒ ขอ 2 ไม่ได้ · ขอ 1 ได้
+  ✅ [H-8] FULL ในคำสั่งเดียว: ถือจนเต็ม ⇒ FULL · ปล่อย ⇒ OPEN · มี minPax และ sold ถึง ⇒ GUARANTEED · มีโควตาค้าง ⇒ ไม่ FULL
+  ✅ [H-9] convertHold: CAS hold → CONVERTED · sold +q held −q ด้วย q ของแถว hold · หลังหมดเวลา (now ฉีด) ⇒ HOLD_EXPIRED ไม่เปลี่ยนอะไร
+  ✅ [H-10] ผังสถานะ hold: แปลงซ้ำ ⇒ STATE_CONFLICT · ปล่อยหลังแปลง ⇒ STATE_CONFLICT · แปลงหลังปล่อย ⇒ HOLD_EXPIRED · ปล่อยซ้ำ ⇒ duplicated · ตัวนับขยับครั้งเดียว
+  ✅ [H-11] extendHold: SHOP_CONFIRM ⇒ expiresAt = now ใหม่ + X2 · PAYMENT ⇒ STATE_CONFLICT · หมดเวลาแล้ว ⇒ HOLD_EXPIRED
+  ✅ [H-12] SHOP_CONFIRM ใช้ X2 (12 ชม.) ไม่ใช่ T5 · ตัวควบคุมบวก: ตั้ง X2 ชั้น PRODUCT = 2 ⇒ +2 ชม. · คืนค่า
+  ✅ [H-13] 0 แถวไม่ถูกปล่อยผ่าน (D.0.2): held ถูกทำให้ไม่ตรง (0) ⇒ convert = STATE_CONFLICT · rollback ทั้ง tx (hold ยัง ACTIVE · sold ไม่เปลี่ยน)
+  ✅ [H-14] convert บนรอบ CANCELLED ⇒ SLOT_CLOSED (hold ยัง ACTIVE) · convert หลังปิดรับ (ถือไว้ก่อน) ⇒ ได้ (§11 ข้อ 9)
+  ── สรุป H: ผ่าน 14/14
+
+── SW: ตัวกวาดหมดเวลา (§D.4 · X5) ──
+  ✅ [SW-1] กวาด (now = +16 นาที): hold ครบกำหนด 3 แถว ⇒ EXPIRED · held คืน · hold ยังไม่ครบไม่แตะ · event hold.expired ครั้งเดียวต่อแถว
+  ✅ [SW-2] ระยะถือแยกตาม purpose (M-3): SHOP_CONFIRM ไม่หลุดที่ +16 นาที · หลุดที่ +12 ชม. 1 นาที
+  ✅ [SW-3] การจองที่ผูก: HOLD และ PENDING ⇒ EXPIRED (version +1 · event booking.expired) · CONFIRMED ไม่แตะ
+  ✅ [SW-4] รันซ้ำ = ไม่มีงาน (expired 0) · ตัวนับ/แถว/event ไม่เปลี่ยน
+  ✅ [SW-5] X5: ตัวกวาด 4 ตัวซ้อนกันบน 30 hold ครบกำหนด ⇒ ทุกแถว EXPIRED ครั้งเดียว · held คืนครั้งเดียว · event 1 ต่อแถว
+  ✅ [SW-6] tenantIds จำกัดร้าน: hold ครบกำหนดของร้าน B ไม่ถูกแตะเมื่อรันด้วย [ร้าน A]
+  ✅ [SW-7] signal ที่ยกเลิกแล้ว ⇒ ไม่ทำงาน ไม่ค้างครึ่งทาง · มากกว่า 200 แถว (LIMIT 200) ⇒ วนหน้าจนหมด
+  ✅ [SW-8] รอบ FULL ⇒ กวาดแล้วกลับ OPEN ในคำสั่งเดียวกับคืนตัวนับ
+  ── สรุป SW: ผ่าน 8/8
+
+── RC: ยิงพร้อมกัน (ฐานจริง · หลาย connection) ──
+  ✅ [RC-1] (ก) 50 คำขอถือ 1 ที่พร้อมกันบนรอบว่าง 24 ⇒ สำเร็จ 24 พอดี · 26 ได้ SOLD_OUT · ไม่เกินความจุทุกจังหวะที่สุ่มอ่าน · held = Σ hold ACTIVE · มีหลาย backend ทำงานพร้อมกันจริง
+  ✅ [RC-2] (ก) ซ้ำ 3 รอบบนรอบใหม่ (ความเสถียร) ⇒ 24/26 ทุกรอบ
+  ✅ [RC-3] (ก) ขนาดปน 1–4 ที่ 50 คำขอ ⇒ ผลรวมที่ได้ ≤ 24 · ผู้แพ้ทุกรายขนาด > ที่เหลือสุดท้าย · ค่าคงที่ทุกจังหวะ
+  ✅ [RC-4] (ก) ถือ + ขายตรง (ถือ→แปลง) + โควตาค้าง 6 ขาย 5: 50 คำขอ ⇒ ไม่เกิน · reserved คงที่ 6 · sold+held ≤ 18
+  ✅ [RC-5] แปลง ∥ ตัวกวาด บน hold เดียวกัน (20 คู่) ⇒ แต่ละแถวมีผลเดียว: CONVERTED ⇔ แปลงสำเร็จ · ที่เหลือ EXPIRED · held 0 · sold = จำนวนที่แปลง
+  ✅ [RC-6] ยกเลิก (ปล่อย) ∥ ตัวกวาด บน hold เดียวกัน (20 คู่) ⇒ RELEASED ⇔ ปล่อยสำเร็จ (ไม่ duplicated) · held 0 · ไม่มีการคืนซ้ำ
+  ✅ [RC-7] ปล่อย ∥ แปลง บน hold เดียวกัน (20 คู่) ⇒ ฝ่ายเดียวชนะต่อแถว (แปลงชนะ ⇒ ปล่อย STATE_CONFLICT · ปล่อยชนะ ⇒ แปลง HOLD_EXPIRED) · sold = จำนวน CONVERTED
+  ✅ [RC-8] แปลงซ้อน 2 ทางบน hold เดียวกัน (20 แถว) ⇒ ชนะทางเดียวต่อแถว อีกทาง STATE_CONFLICT · sold 20 · held 0
+  ✅ [RC-9] ย้าย 20 ทางพร้อมกัน สลับทิศ (D1→D2 ×10 · D2→D1 ×10) × 2 ชุด ⇒ ไม่ค้าง (ตัวจับเวลา 90 วิ) ไม่มี 40P01 · ผลรวม sold คงที่ 20 · ไม่เกินความจุ
+  ✅ [RC-10] ร้านลดความจุ (T0.3 setDepartureCapacity) ∥ 30 คำขอถือ ⇒ ไม่เกินทุกจังหวะ · ความจุสุดท้าย ≥ ที่ใช้ · ผลความจุ = ok หรือ CAPACITY_BELOW_USED
+  ✅ [RC-11] คืนที่ขายแล้ว (ยกเลิก) ∥ คำขอถือ บนรอบเต็ม: 5 คืน ∥ 20 ถือ ⇒ ถือได้ ≤ 5 · sold 5 · ไม่เกินทุกจังหวะ
+  ✅ [RC-12] สาธารณะ 40 basket (คนละ clientKey) พร้อมกันบนรอบว่าง 20 ⇒ สำเร็จ 20 พอดี · ที่เหลือ SOLD_OUT · ไม่มี HOLD_LIMIT/RATE_LIMITED
+  ── สรุป RC: ผ่าน 12/12
+
+── DL: ลำดับล็อก (เส้นทางสลับของ §D.5 ที่ใบนี้ทำได้ · ตั๋ว = K1.1) ──
+  ✅ [DL-1] ตะกร้า [D1,D2] ใต้ล็อกเพดาน capKey เดียว ∥ ถือเดี่ยว D2 capKey เดียวกัน · 50 รอบพร้อมกัน ⇒ ไม่มี 40P01 · ตัวนับ = จำนวนที่สำเร็จ
+  ✅ [DL-2] ตะกร้าสองใบลำดับกลับกัน [D1,D2] / [D2,D1] ผ่าน sortCapacityRows · 30 คู่ ⇒ ไม่มี 40P01 · ไม่ค้าง
+  ✅ [DL-3] ยกเลิก (คืน) ∥ ตัวกวาด ∥ คืนโควตา (unreserve) ∥ ยืนยัน (แปลง) บนรอบเดียว 50 รอบ ⇒ ไม่มี 40P01 · ค่าคงที่ D.3 ถูก
+  ✅ [DL-4] ปล่อย (เสนอรายการรอ) ∥ ออกจากรายการรอ ∥ ตัวกวาด บนรอบเดียว ⇒ ไม่มี 40P01 · คนละ ≤ 1 ข้อเสนอ · ค่าคงที่ถูก
+  ── สรุป DL: ผ่าน 4/4
+
+── RS: คืน/ย้าย/โควตาฝั่งรอบ/เฟส 1 ──
+  ✅ [RS-1] returnSold สาธารณะ: sold −2 · FULL → OPEN · คืนเกิน sold ⇒ STATE_CONFLICT ไม่เปลี่ยน
+  ✅ [RS-2] returnSold toReserved (D.1 5b ครึ่งรอบ): sold −2 reserved +2 · publicLeft เท่าเดิม
+  ✅ [RS-3] moveSold: ผลรวมคงที่ · ปลายทางเต็ม ⇒ SOLD_OUT ต้นทางไม่เปลี่ยน (rollback) · ปลายทาง CLOSED ⇒ SLOT_CLOSED · ต้นทางไม่พอ ⇒ STATE_CONFLICT
+  ✅ [RS-4] reserveSeatsInTx (D.1 7) กันเกินความจุ ⇒ SOLD_OUT · unreserveSeatsInTx เกิน reserved ⇒ STATE_CONFLICT ไม่ปล่อยผ่าน (M-1) · ไม่เปลี่ยน
+  ✅ [RS-5] holdFromReservedInTx (D.1 2 ครึ่งรอบ): held +n reserved −n · เกิน reserved / หลังปิดรับ ⇒ INSUFFICIENT_ALLOTMENT · unholdToReservedInTx กลับด้าน
+  ✅ [RS-6] capacityRowsOf: บรรทัด ⇒ [{layer 1a · TripDeparture · id}] · {holdId} ⇒ แถวรอบของ hold · reserveInTx HOLD ⇒ held +2 · คืน Reservation {kind TRIP · slotId · qtyPublic 2}
+  ✅ [RS-7] reserveInTx เกินที่ว่าง ⇒ SOLD_OUT และ tx ของผู้เรียก rollback (แถวรอบไม่เปลี่ยน แม้ผู้เรียกเขียนอย่างอื่นก่อนหน้า)
+  ── สรุป RS: ผ่าน 7/7
+
+── CAP: เพดานถือ (§D.6 · N-11) ──
+  ✅ [CAP-1] basket เดียว: X10 = 3 ⇒ ครั้งที่ 4 HOLD_LIMIT · held ไม่เพิ่ม · basket อื่นยังถือได้
+  ✅ [CAP-2] นับเฉพาะ ACTIVE ที่ expiresAt > now: hold 3 แถวหมดเวลาแต่ตัวกวาดยังไม่มา ⇒ ถือใหม่ได้ (now = +16 นาที)
+  ✅ [CAP-3] basket เดียว 10 คำขอพร้อมกัน ⇒ สำเร็จ 3 พอดี · 7 HOLD_LIMIT (นับ+INSERT ใต้ advisory lock เดียว)
+  ✅ [CAP-4] ตัวควบคุมบวก X10 = 1 (ชั้น UNIT) ⇒ ครั้งที่ 2 HOLD_LIMIT · คืน 3
+  ✅ [CAP-5] ตรวจซ้ำด้วยผู้ติดต่อตอน confirm (rekeyHoldsToContactInTx): ผู้ติดต่อมี 3 แถว ACTIVE ⇒ basket ใหม่ HOLD_LIMIT ไม่แก้ capKeyHash · แถวหมดเวลาไม่นับ
+  ✅ [CAP-6] เส้นทางไม่นับ: พนักงานหน้าร้านถือ 5 ครั้ง (ไม่ติด X10) · ข้อเสนอรายการรอไม่ถูกนับในเพดานของใคร
+  ✅ [CAP-7] เพดานแบบที่นั่ง (เอเจนซี่ · acquireHoldCapInTx SEATS limit 20): 10 tx พร้อมกัน ขอ 3 ที่ + INSERT hold ใต้ล็อก ⇒ สำเร็จ 6 พอดี (18 ≤ 20)
+  ── สรุป CAP: ผ่าน 7/7
+
+── WL: รายการรอ + เสนอที่ (ภาพ 07ก · X4) ──
+  ✅ [WL-1] join เมื่อเต็ม ⇒ WAITING position 1,2 · ยังมีที่พอ ⇒ STATE_CONFLICT + details.publicLeft · listWaitlist ไม่มีข้อมูลบุคคล
+  ✅ [WL-2] join ซ้ำคนเดิม ⇒ แถวเดิม duplicated · party ร้านอื่น ⇒ NOT_FOUND · หลังปิดรับเว็บ ⇒ CUTOFF_PASSED · รอบยกเลิก ⇒ SLOT_CLOSED
+  ✅ [WL-3] FIFO เมื่อปล่อยที่: ปล่อย 2 ⇒ คนแรก (2 ที่) OFFERED · hold WAITLIST_OFFER channel WEB expiresAt = now+30 (T9) · คนที่สองยัง WAITING · held คงที่ · event waitlist.offered
+  ✅ [WL-4] FIFO เคร่ง: หัวคิวขอ 3 · คนถัดไปขอ 1 · ว่าง 1 ⇒ ไม่เสนอใคร (ไม่ข้ามหัวคิว)
+  ✅ [WL-5] เสนอโดยตัวกวาด: hold หมดเวลา ⇒ ที่ว่าง ⇒ คนแรก OFFERED ในรอบกวาดเดียวกัน (expiresAt = now ของตัวกวาด + 30)
+  ✅ [WL-6] เสนอเมื่อความจุเพิ่ม: ร้านเพิ่มความจุ 2 ⇒ runWaitlistOffers ⇒ คนแรก OFFERED · รันซ้ำไม่เสนอซ้ำ
+  ✅ [WL-7] ข้อเสนอหมดเวลา ⇒ แถว EXPIRED + hold EXPIRED ⇒ เสนอคนถัดไปในรอบกวาดเดียวกัน
+  ✅ [WL-8] ไม่เสนอเมื่อปิดรับเว็บแล้ว: ปล่อยหลังปิดรับ ⇒ ไม่มีข้อเสนอ · runWaitlistOffers ⇒ WAITING → EXPIRED
+  ✅ [WL-9] คนเดียวไม่ได้ 2 ข้อเสนอในรอบเดียว: join ซ้ำ + ที่ว่างเกิดหลายครั้ง ⇒ ข้อเสนอของ party นั้น = 1 · DECLINED แล้วไม่ถูกเสนอซ้ำอัตโนมัติ
+  ✅ [WL-10] ปฏิเสธข้อเสนอ ⇒ DECLINED + hold RELEASED + เสนอคนถัดไป · ออกจากคิว WAITING ⇒ CANCELLED · ปฏิเสธแถว WAITING ⇒ STATE_CONFLICT
+  ✅ [WL-11] X4: onWaitlistTrigger ด้วย event เดียวกันซ้ำ 3 ครั้ง (2 พร้อมกัน + 1 ตามหลัง) ⇒ ข้อเสนอ 1 · event waitlist.offered 1
+  ✅ [WL-12] แปลง hold ของข้อเสนอ ⇒ แถวรายการรอ ACCEPTED · sold +1
+  ── สรุป WL: ผ่าน 12/12
+
+── X1: แยกร้าน/หน่วย ──
+  ✅ [X1-1] รอบของร้าน B ผ่าน ctx ร้าน A (getAvailability · placeHold · joinWaitlist) ⇒ NOT_FOUND ข้อความเดียวกับ id ที่ไม่มีจริง · ไม่เปลี่ยนอะไร
+  ✅ [X1-2] หน่วยอื่นของร้านเดียวกัน (uA2) และหน่วย BOOKING ⇒ NOT_FOUND บนรอบของ uA
+  ✅ [X1-3] hold ของร้าน B: convert/release/extend ผ่าน ctx ร้าน A ⇒ HOLD_NOT_FOUND · แถวไม่เปลี่ยน
+  ✅ [X1-4] returnSold/moveSold ข้ามร้าน ⇒ NOT_FOUND · ย้ายข้ามหน่วย (uA → uA2) ⇒ NOT_FOUND · listAvailability สินค้าร้าน B ⇒ ว่างหรือ NOT_FOUND
+  ── สรุป X1: ผ่าน 4/4
+
+── X7: rate limit ถือที่สาธารณะ ──
+  ✅ [X7-1] clientKey เดียว: 10 ครั้ง/ชม. (X8) ⇒ ครั้งที่ 11 RATE_LIMITED retryable · id ที่ไม่มี/ของร้าน B กินโควตาและได้ NOT_FOUND ข้อความเดียวกัน · พนักงานไม่ถูกจำกัด
+  ✅ [X7-2] ตัวควบคุมบวก X8: ตั้ง holdPerHourPerContact = 12 ⇒ ครั้งที่ 11–12 ผ่าน · 13 RATE_LIMITED · คืนค่า
+  ── สรุป X7: ผ่าน 2/2
+
+── EV: event (3 ทะเบียน · ไม่มีข้อมูลบุคคล) ──
+  ✅ [EV-1] hold.created / hold.expired: payload ตรงชุด {holdId departureId qty channel} · qty = รวม · key …:<holdId>
+  ✅ [EV-2] booking.expired payload ⊆ {bookingId unitId departureId status channel amountSatang agentAccountId} มี bookingId/departureId/status · waitlist.offered ตรงชุด
+  ✅ [EV-3] X8: ทุก event trips.* ของร้านทดสอบไม่มีชื่อ/เบอร์/อีเมล/partyId/capKey ดิบ
+  ✅ [EV-4] แถว TripHold/TripWaitlist ไม่เก็บ capKey/ผู้ติดต่อดิบ (capKeyHash = hex 64 ทุกแถวของร้านทดสอบ)
+  ── สรุป EV: ผ่าน 4/4
+
+── R: seed (อ่านอย่างเดียว) ──
+  ✅ [R-1] รอบของร้าน seed ทุกรอบ: ตัวนับ ≥ 0 · sold+held+reserved ≤ capacity · held = Σ hold ACTIVE
+  ✅ [R-2] seed ไม่เขียน TripHold/TripWaitlist ตรง (§8 ค่าเริ่ม: ไม่เพิ่ม) · ไม่มีเงิน
+  ── สรุป R: ผ่าน 2/2
+
+===== QC TRIPS T0.4 · ที่ว่าง · ถือที่ · ตัดที่ · ตัวกวาด · เพดาน · รายการรอ =====
+ผ่าน 109/110 · ไม่ผ่าน 1 · ข้าม 0
+ต่อกลุ่ม: PC 6/6 · S 13/14 · C 7/7 · AV 7/7 · H 14/14 · SW 8/8 · RC 12/12 · DL 4/4 · RS 7/7 · CAP 7/7 · WL 12/12 · X1 4/4 · X7 2/2 · EV 4/4 · R 2/2
+JSON_SUMMARY {"suite":"qc-trips-t0.4","total":110,"passed":109,"failed":["S-14"],"skipped":[],"groups":{"PC":"6/6","S":"13/14","C":"7/7","AV":"7/7","H":"14/14","SW":"8/8","RC":"12/12","DL":"4/4","RS":"7/7","CAP":"7/7","WL":"12/12","X1":"4/4","X7":"2/2","EV":"4/4","R":"2/2"}}

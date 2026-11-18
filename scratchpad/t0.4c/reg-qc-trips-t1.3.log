@@ -1,0 +1,167 @@
+=== qc-trips-t1.3 start 23:37:15
+[env] qc-trips-t1.3 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1021959) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed andaman-dive + หน่วย TRIPS andaman-dive-trips อยู่
+  ✅ [PC-2] seed T0.6: การจองตรง 3 ใบ ราชา ส. 14 พ.ย. (ภัทรา · Chen Yu · วิทยา) CONFIRMED · COUNTER · payable 11,450 / 8,200 / 4,100 · ยังไม่มีแถวเงิน/งวด/คำขอคืนเงิน
+  ✅ [PC-3] ฟิกซ์เจอร์: TRIPS_AS_OF = 12 พ.ย. 2569 18:00 · RC-0588 ก่อนภาษี 9,299.07 VAT 650.93 เก็บแทน 1,500.00 รวม 11,450.00 · คำนวณถูก
+  ✅ [PC-4] บริการ T0.6/T0.7a ที่ใบนี้เรียกมีใน facade (getTripBooking · cancelTripBooking · approveTripBooking · bookTripsNow · quoteTrips · recordTripPayment · tripPaymentIntent · tripMoneySummary · tripCashDay · listTripRefunds · requestTripRefund · parseReason ผ่าน departure-view-core · tripsPageGate · loadTripsNav)
+  ✅ [PC-5] action เดิมมีครบ (money-actions: recordTripPaymentAction · tripPaymentIntentAction · booking-actions: cancelTripBookingAction ส่ง canRequest/canDecide · approveTripBookingAction) · facade party มี listBriefsByIds · searchByName · getProfile · สิทธิ์ trips.booking.* / payment.record อยู่ในทะเบียน
+  ✅ [PC-6] ดัชนีที่ตัวโหลดต้องใช้มีอยู่: TripBooking (tenantId,unitId,status,travelDate) · (tenantId,code) · bookerPartyId · TripBookingItem/TripHold/TripRefundRequest/TripMoneyEvent bookingId · TripMoneyEvent (tenantId,postingStatus) · TripRefundRequest (tenantId,unitId,status)
+  ── สรุป PC: ผ่าน 6/6
+
+── S: ไฟล์และกติกาโค้ด (static) ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: booking-view-core.ts · booking-screens.ts · คอมโพเนนต์ src/components/trips/Booking*.tsx · หน้า bookings
+  ✅ [S-2] facade trips: บล็อก "// TRIPS T1.3 ▸" ส่งออก 20 ชื่อ · ไม่มี export *
+  ✅ [S-3] หน้า bookings: ไม่ใช่ TripsNotYet · requireUnit + tripsPageGate(page "bookings") + loadBookingListVM (+ loadBookingDetailVM) · ไม่ส่ง now · TRIPS_NAV.bookings available (wo T1.3)
+  ✅ [S-4] ไม่มี prisma ในหน้า/คอมโพเนนต์ · ไฟล์โมดูลใหม่ไม่ import prisma ตรง (tenantDb ในโมดูลเท่านั้น)
+  ✅ [S-5] ไม่มี any ในไฟล์ของใบ (โมดูล · คอมโพเนนต์ Booking* · หน้า)
+  ✅ [S-6] 'use client' ไม่ import ของที่ลากถึง prisma (facade trips · core/settings · core/db · ไฟล์โมดูลที่ไม่ใช่ "use server" แต่ใช้ tenantDb)
+  ✅ [S-7] data-testid ครบในซอร์ส: ตายตัว 59 + แพตเทิร์น 7
+  ✅ [S-8] ทะเบียนปุ่ม: แถว wo T1.3 ครอบ testid ของใบ · page /app/u/[unitSlug]/trips/bookings · roles ถูก · needs = คีย์สิทธิ์ trips จริง · ไม่มีแถวผีทั้งไฟล์
+  ✅ [S-9] i18n: th/en คีย์ตรงกัน · คีย์ขั้นต่ำของใบครบ (สถานะการจอง 9 · ต้องทำ 4 · เงิน 6 · วิธีจ่าย · งวด · คำขอคืน 8 · เหตุผล) · ค่าอังกฤษใต้ bookings ไม่มีอักษรไทย
+  ✅ [S-10] ไม่แสดงรหัสดิบบนจอ: คอมโพเนนต์ Booking* ไม่มี {x.status|kind|channel|tender|postingStatus|money|collectMode|reasonKind|badge.kind} เป็นข้อความ JSX (แอตทริบิวต์ได้)
+  ✅ [S-11] วันเวลา: ไฟล์ของใบไม่ใช้ getDay/getDate/getHours/getMinutes/getMonth/getFullYear หรือ toLocaleDateString/TimeString · คอมโพเนนต์ไม่สร้าง Date จากนาฬิกา (new Date() / Date.now())
+  ✅ [S-12] เขียนผ่าน action เดิมเท่านั้น: คอมโพเนนต์ import recordTripPaymentAction · tripPaymentIntentAction (money-actions) · cancelTripBookingAction · approveTripBookingAction (booking-actions) · ถ้ามี booking-screen-actions.ts = "use server" + async function + requireUnit ทุกตัว
+  ❌ [S-13] ขอบเขต (เทียบ BASE 4288cf7ce · ไม่นับไฟล์ที่ตรงกับ session/trips): ไม่แตะ prisma/settings/sellable/permissions/platform/payment/api/โมดูลอื่น/ไฟล์บริการ trips/ข้อสอบเดิม/seed · ไฟล์ที่แก้ได้จำกัดจำนวนบรรทัด — แตะไฟล์ต้องห้าม: src/lib/core/settings/defs/trips.ts, src/lib/modules/trips/booking.ts, src/lib/modules/trips/capacity-service.ts, src/lib/modules/trips/capacity.ts
+  ✅ [S-14] ไฟล์โมดูลของใบไม่เขียนฐาน (ไม่มี create/update/delete/upsert/INSERT/UPDATE/DELETE · ไม่มี $transaction · ไม่แตะ TripCashClose)
+  ✅ [S-15] ไม่แตะ POS/บัญชี/โรงแรม/ส่วนในของ party: ไฟล์ของใบไม่ import modules/{pos,account,hotel,rooms,dorm,approval} หรือ modules/party/<ไฟล์ใน> (facade @/lib/modules/party เท่านั้น) · ไม่มีคำว่า "เก็บเงินที่ POS"/"ผ่าน POS" ในข้อความ bookings
+  ✅ [S-16] ตัวโหลดมีเพดาน + ไม่ N+1: มี take · ไม่มี await ในลูป · ไม่มี .map(async · listBriefsByIds (ชื่อเป็นชุด) · searchByName(…, 25) · getProfile ≤ 1 ที่ · นับชิปด้วย count แยก
+  ✅ [S-17] กล่องโต้ตอบ: ไฟล์ Booking* ที่มี role=dialog ต้องจัดการ Escape · ใช้ <Dialog ของ T1.1 · ลิ้นชักไม่ปิดเมื่อมีกล่องอื่นเปิดทับ (นับ [role=dialog])
+  ✅ [S-18] ตาราง/มือถือ: ทุก <table อยู่ในกล่อง relative min-w-0 overflow-x-auto · ไม่มี sr-only ในไฟล์ที่มี <table · มี trips-bk-cards + ตารางซ่อนใต้ md · ปุ่มลิ้นชัก trips-bk-actions เป็นกริด 2 คอลัมน์
+  ✅ [S-19] เครื่องมือภาพ: visual-trips มีสเปก t1.3 4 ฉาก (mockup 18 · booking0142 หาจาก Party ภัทรา) · parity-trips.sh รู้จัก 18 และ 15
+  ✅ [S-20] pure: booking-view-core.ts มีแต่ import type (ไม่มี import ค่า) · ไม่อ่าน new Date() / Date.now() · ไม่มี getDay ฯลฯ
+  ✅ [S-21] ไคลเอนต์ไม่คิดเงิน: Booking* ใช้ formatBaht · ไม่มี toFixed/toLocaleString/parseFloat/Intl.NumberFormat/หาร 100 · ไม่เรียกสูตรเงินของ money-core · ยอดที่พิมพ์อ่านด้วย parseAmountSatang
+  ✅ [S-22] กันกดซ้ำต่อเจตนา: คอมโพเนนต์ใช้ intentKey("pay" …) และ intentKey("cxl" …) · seed สุ่มครั้งเดียว (getRandomValues/randomUUID ใน useState/useRef) · ปุ่มยืนยัน disabled ระหว่างส่ง
+  ✅ [S-23] ไม่ส่งฟิลด์ที่บริการปฏิเสธ: Booking* ไม่มี note: · holdMinutes · moveToSlotId · choice: · pay: { tender · ยกเลิกส่ง mode "EXECUTE" · อนุมัติส่ง expectedVersion
+  ✅ [S-24] ข้อความใต้ bookings.* ไม่มีรหัสใบงาน (T1.3 A1.4 OQ21 …) และไม่ว่าง · เหตุผลยกเลิกรอบผ่าน parseReason/useReasonText · ชื่ออังกฤษใช้เมื่อมี (titleEn/labelEn/nameEn)
+  ✅ [S-25] ตัวโหลดไม่ตรึงเลขธุรกิจ/เขตเวลา: ไม่มี "Asia/Bangkok" · +07:00 · 7 * 60 · 25200 ใน booking-screens/booking-view-core (ใช้ utcToLocal/normalizeTimezone)
+  ── สรุป S: ผ่าน 24/25
+
+── P: ตัวช่วยบริสุทธิ์ (booking-view-core) ──
+  ✅ [P-1] ค่าคงที่: WHENS · CHIPS · ATTENTION (ลำดับความสำคัญ) · MONEY_STATES (ลำดับตัดสิน) · OWES · เพดาน 3 ตัวอยู่ใน 50–200
+  ✅ [P-2] outstandingOf: CONFIRMED 1,145,000/0 ⇒ 1,145,000 · PART_PAID จ่าย 400,000 ⇒ 745,000 · HOLD ⇒ ค้าง · PAID/CANCELLED/EXPIRED/TRAVELLED ⇒ 0 · จ่ายเกิน ⇒ 0
+  ✅ [P-3] moneyStateOf ตามลำดับ: เอเจนซี่ก่อนทุกอย่าง · คืนแล้ว · ยกเลิก/หมดเวลาไม่จ่าย = NONE · จ่ายครบ · บางส่วน · ยังไม่จ่าย
+  ✅ [P-4] bookingBadgeOf: ต้องทำ ⇒ alert + ตัวแรก · HOLD/PENDING ⇒ dashed · CONFIRMED/PART_PAID/PAID ⇒ solid · จบแล้ว/ไม่รู้จัก ⇒ muted
+  ✅ [P-5] listWindowOf: upcoming/today/tomorrow/next7/past30/all ณ 2026-11-12 · ข้ามปี (2026-12-29 next7 ⇒ 2027-01-04 · 2027-01-10 past30 ⇒ 2026-12-11..2027-01-09) · ผิด ⇒ null
+  ✅ [P-6] maskPhone: 081-234-5523 / +66812345523 / 66 81 234 5523 ⇒ 081-xxx-5523 · 7–8 หลัก ⇒ xxx-<4 ท้าย> · สั้น ⇒ xxx · ว่าง/null ⇒ null
+  ✅ [P-7] parseAmountSatang: จำนวนเต็ม ไม่ผ่าน float · "11,450.00" ⇒ 1,145,000 · "0.1" ⇒ 10 · "1 000.5" ⇒ 100,050 · 3 ตำแหน่ง/ลบ/0/ว่าง/เกิน int4 ⇒ null
+  ✅ [P-8] bookingCodeQuery: " tr-6911-0001 " ⇒ TR-6911-0001 · LB-7002-0031 · TR-6911-10000 ⇒ ตัวใหญ่ · ชื่อ/ไม่ครบ ⇒ null · รูปตรงกับ BOOKING_CODE_RE ของ numbering
+  ✅ [P-9] intentKey: ค่าเดียวกัน ⇒ คีย์เดียวกัน · ส่วนใดเปลี่ยน/seed เปลี่ยน ⇒ คีย์ใหม่ · รูป [A-Za-z0-9_-]{8,100} · ขึ้นต้น prefix_seed_
+  ✅ [P-10] intentKey ทนข้อมูลแปลก: prefix/seed มีอักขระพิเศษ/ยาวมาก ⇒ ยังตรงรูปและ ≤ 100 · parts มีอักษรไทย/ยาว 1,000 ตัว ⇒ คีย์คงที่
+  ✅ [P-11] ไม่ throw กับข้อมูลขยะ + ไม่แก้อินพุต: moneyStateOf/bookingBadgeOf/outstandingOf รับสถานะแปลก · อินพุต freeze แล้วยังทำงาน
+  ── สรุป P: ผ่าน 11/11
+
+── LV: รายการการจอง (ร้าน seed · now = TRIPS_AS_OF) ──
+  ✅ [LV-1] ปริยาย (upcoming): 3 แถว ราชา ส. 14 พ.ย. เรียง travelDate → เวลา → เลขจอง · ชื่อผู้จอง ภัทรา สายใจ / Chen Yu / วิทยา พรหมมา · เลขจองตรงฐาน
+  ✅ [LV-2] ยอด: payable 11,450.00 / 8,200.00 / 4,100.00 (ภาพ :45 :48 :50) · paid 0 · outstanding = payable · refunded 0 · money UNPAID · lastTender null
+  ✅ [LV-3] คน/รายการเสริม (ภาพ :45): ภัทรา ผู้ใหญ่ 2 · เด็ก 1 (ป้ายไทย/อังกฤษ) · รายการเสริม = เช่ากล้องกันน้ำ 1 (ค่าอุทยานเก็บแทนไม่อยู่ในรายการเสริม) · Chen Yu ผู้ใหญ่ 2 ไม่มีรายการเสริม
+  ✅ [LV-4] ทริป: ชื่อไทย "เกาะราชาใหญ่ เดย์ทริป" + อังกฤษ "Racha Yai Island Day Trip" · เวลา "08:00–16:30" (เขตเวลาร้าน) · รอบ GUARANTEED ไม่มีเหตุยกเลิก · ช่องทาง COUNTER · ไม่มีเอเจนซี่
+  ✅ [LV-5] ชิป/ท้ายตาราง (ภาพ :41 :55): ทั้งหมด 3 · เดินทาง 2026-11-14 = 3 · ถือที่ 0 · ต้องทำ 0 · total 3 shown 3 ไม่ถูกตัด · ยอดรวม ฿23,750.00 · คำขอคืนเงินเปิด 0 · เอกสารรอออก 0
+  ✅ [LV-6] หน้าต่างวัน ณ 12 พ.ย.: today 0 · tomorrow 0 · next7 3 · past30 0 · all 3 · date=2026-11-14 3 · date=2026-11-15 0
+  ✅ [LV-7] ค้น: เลขจองตัวเล็ก ⇒ 1 แถว (queryMode code · ไม่สนหน้าต่างวัน past30) · "ภัทรา" ⇒ 1 (text) · "Chen" ⇒ 1 · ชื่อที่ไม่มี ⇒ 0
+  ✅ [LV-8] ตัวกรองสินค้า: ราชา ⇒ 3 · สิมิลัน ⇒ 0 · id ที่ไม่ใช่ของร้าน ⇒ 0 แถว (ไม่ใช่ข้อผิดพลาด)
+  ✅ [LV-9] ตัวกรองช่องทาง: COUNTER 3 · WEB 0 · direct 3 · agent 0
+  ✅ [LV-10] input strict ⇒ INVALID_INPUT: คีย์แปลก · date 2026-02-30 · when soon · chip x · channel ไม่รู้จัก · q ยาว 101
+  ✅ [LV-11] flags เจ้าของ: canPay canApprove canCancel canSeeMoney = true · canCreate = false (จองหน้าร้าน = T1.3b) · products 4 สินค้า seed มี titleEn
+  ✅ [LV-12] แถบ: แท็บการจองเปิดจริง (available · wo T1.3) · เจ้าของเห็น · tripsPageGate bookings ok · unit tz Asia/Bangkok today 2026-11-12
+  ✅ [LV-13] แถวของ seed: ป้าย CONFIRMED ทึบ · ต้องทำ [] · hold/refund/nextDue null · ไม่ถูกลบข้อมูล · คีย์แถวครบตามใบสั่ง · ไม่มีเบอร์/อีเมล/token ในแถว
+  ✅ [LV-14] ชิป day/hold/attention เป็นตัวกรอง: chip=day ⇒ 3 · hold ⇒ 0 · attention ⇒ 0 · ชิปนับคงเดิมทุกครั้ง (นับจากชุดฐาน)
+  ✅ [LV-15] ตัวโหลดไม่เขียนฐาน: จำนวน TripBooking/TripMoneyEvent/TripPaymentDue/AuditLog/OutboxEvent ของร้าน seed เท่าเดิมหลังเรียกรายการ/รายละเอียด/เงินสด/เอกสาร
+  ── สรุป LV: ผ่าน 15/15
+
+── DV: รายละเอียดการจอง (ร้าน seed) ──
+  ✅ [DV-1] ภัทรา: ลูกค้า {ชื่อ · เบอร์ปิดบัง null (Party ไม่มีเบอร์) · ไม่ถูกลบ} · row เท่ากับแถวในรายการ (ตัวสร้างแถวเดียวกัน)
+  ✅ [DV-2] เอกสาร (ภาพ :76 = 13ค RC-0588): รวม VAT 9,950.00 · ก่อนภาษี 9,299.07 · VAT 650.93 · เก็บแทน 1,500.00 · รวม 11,450.00
+  ✅ [DV-3] บรรทัด 5 แถว (= tripMoneySummary.document.lines): ผู้ใหญ่ 2 7,000 · เด็ก 1 2,450 · อุทยานผู้ใหญ่ 2 1,200 (เก็บแทน) · อุทยานเด็ก 1 300 (เก็บแทน) · กล้อง 1 500 · labelEn ผู้ใหญ่ = Adult
+  ✅ [DV-4] เงิน: payable 1,145,000 · paid 0 · outstanding 1,145,000 · refunded 0 · งวด 1 ร่าง (id null · BALANCE · 1,145,000 · OPEN · dueLocal 2026-11-12)
+  ✅ [DV-5] การรับเงิน [] · เอกสาร { issued false · waiting [] · vatDiff 0 } · คำขอคืนเงิน []
+  ✅ [DV-6] ผู้เดินทาง: ที่นั่ง 3 · รายชื่อ [] (seed ไม่ได้กรอก) · แบบฟอร์มยังไม่เปิด (formsAvailable false)
+  ✅ [DV-7] ปุ่มของเจ้าของ (CONFIRMED · ค้าง · THB · ร้านเก็บ): pay qr = true · approve reject cancel = false · change refund = false เสมอ
+  ✅ [DV-8] ไม่มี/คีย์แปลก: bookingId ที่ไม่มี ⇒ NOT_FOUND · คีย์แปลก ⇒ INVALID_INPUT · Chen Yu ที่นั่ง 2 บรรทัด 2
+  ✅ [DV-9] ตรงบริการ: ทั้ง 3 ใบ payable/document/งวด/แถวเงิน = tripMoneySummary · payable ของแถว = tripMoneySummary.payableSatang
+  ── สรุป DV: ผ่าน 9/9
+
+── CS: เงินสดหน้าร้าน · เอกสารเงินรอออก (ร้าน seed) ──
+  ✅ [CS-1] เงินสดวันนี้ (ปริยาย = today ร้าน 2026-11-12): ทุกยอด 0 · แยก 4 tender · events [] · ปิดยอดยังไม่เปิด (closeAvailable false)
+  ✅ [CS-2] เงินสดเลือกวัน 2026-11-14 ได้ · วันผิด ⇒ INVALID_INPUT · คีย์แปลก ⇒ INVALID_INPUT
+  ✅ [CS-3] คิวเอกสารเงินรอออกของ seed: count 0 · items [] · cap = TRIPS_MONEY_DOCS_CAP · ไม่ถูกตัด
+  ✅ [CS-4] ผู้ใช้ seed ที่ไม่มีสิทธิ์ trips (ไกด์มิ้นท์) ⇒ ตัวโหลดทั้ง 4 ตัว FORBIDDEN/NOT_FOUND (ไม่เห็นการจอง)
+  ── สรุป CS: ผ่าน 4/4
+
+── BT: ร้านชั่วคราว (สิทธิ์ · แยกหน่วย/ร้าน · รับเงิน · ถือที่ · ต้องทำ · PII · ค้น · เพดาน · เขตเวลา) ──
+  ✅ [BT-1] ไม่มีสิทธิ์ดูการจอง (none · product.view อย่างเดียว · payment.record อย่างเดียว) ⇒ ตัวโหลด 4 ตัว FORBIDDEN · แท็บการจองไม่เห็น · tripsPageGate bookings FORBIDDEN
+  ✅ [BT-2] booking.view อย่างเดียว: รายการได้ · flags false ทั้งหมด · segments.docsWaiting null · รายละเอียด actions false ทั้งหมด · เอกสาร/เงินสด FORBIDDEN · แท็บเห็น
+  ✅ [BT-3] view + payment.record: canPay/canSeeMoney · รายละเอียดการจอง CONFIRMED ค้าง ⇒ pay/qr true (approve/cancel false) · เอกสาร/เงินสดได้
+  ✅ [BT-4] แยกหน่วย: ผู้ใช้หน่วย uA2 เปิด uA ⇒ NOT_FOUND · การจองของ uA2 ไม่อยู่ในรายการ uA · เปิดรายละเอียดการจอง uA2 ผ่านหน่วย uA ⇒ NOT_FOUND
+  ✅ [BT-5] แยกร้าน: ชื่อลูกค้าเดียวกันในร้าน B ไม่โผล่ในร้าน A · เลขจองของร้าน B ค้นในร้าน A ⇒ 0 · รายละเอียด id ร้าน B ⇒ NOT_FOUND
+  ✅ [BT-6] รับเงินสดเต็ม (recordTripPayment): แถว money PAID · lastTender CASH · outstanding 0 · ป้ายทึบ · รายละเอียด events 1 RECEIVED UNPOSTED · docs.waiting 1 (VAT = แถวเงิน) · pay/qr false
+  ✅ [BT-7] เงินสดวันนี้หลังรับเงินสด: businessDate = วันร้านของ now · expected = ยอดที่รับเป็นเงินสดทั้งหมดของวัน · byTender.CASH ตรง · แถวมีเลขจอง + เวลาท้องถิ่น
+  ✅ [BT-8] คิวเอกสารเงินรอออก: มีแถวรับเงินของการจองที่จ่ายแล้ว (kind RECEIVED · เลขจอง · ยอด · VAT · เก็บแทน) · count = แถว UNPOSTED ของหน่วยจากฐาน · segments.docsWaiting = count · ใหม่→เก่า
+  ✅ [BT-9] รับเงินบางส่วนแล้วครบ: 400,000 ⇒ PART_PAID ค้าง payable−400,000 · ป้ายทึบ · รับส่วนที่เหลือ ⇒ PAID ค้าง 0
+  ✅ [BT-10] กดซ้ำพร้อมกัน: คีย์เดียวกัน (intentKey) × 6 พร้อมกัน ⇒ ไม่มี THROW · แถว RECEIVED ชุดเดียว · แถวรายการจ่าย = ยอดครั้งเดียว · คีย์ตรงรูป CC
+  ✅ [BT-11] ถือที่ (PAY_NOW ⇒ HOLD): ป้ายเส้นประ · hold { time = เวลาหมดตามเขตเวลาร้าน · expired false } · ชิป hold 1 · ปุ่ม: vc cancel · vp pay/qr · v ไม่มีอะไร
+  ✅ [BT-12] ถือที่หมดเวลา ณ now: hold.expired true · ปุ่ม pay false (ตรงด่าน HOLD_EXPIRED ของบริการ) · cancel ยังได้
+  ✅ [BT-13] ยกเลิก HOLD ผ่านบริการ (cancelTripBooking EXECUTE): แถว CANCELLED ป้าย muted · money NONE · ค้าง 0 · ชิป hold 0 · ที่นั่งถือคืน 0
+  ✅ [BT-14] PENDING (จำลองบนร้านชั่วคราว): ต้องทำ PENDING_APPROVAL · ป้าย alert · ชิป attention 1 · va approve/reject · vc cancel · vp pay false
+  ✅ [BT-15] คำขอคืนเงินเปิด (requestTripRefund หลังจ่ายครบ): แถว refund {QUOTED · ยอด} · ต้องทำ REFUND_OPEN ขึ้นป้าย · segments.refundsOpen ≥ 1 · รายละเอียด refunds 1 · pay false
+  ✅ [BT-16] รอบถูกยกเลิก (จำลอง CANCELLED + เหตุ preset:WEATHER): ต้องทำ DEPARTURE_CANCELLED · departureCancelReason ดิบ preset:WEATHER (จอถอดเอง) · departureStatus CANCELLED
+  ✅ [BT-17] งวดเกินกำหนด (จำลอง OVERDUE): ต้องทำ OVERDUE · nextDue = งวดนั้น (localDate ตามเขตร้าน · ยอดค้าง)
+  ✅ [BT-18] PII: รายละเอียดเบอร์ปิดบัง = maskPhone(เบอร์ผู้จอง) รูป 0xx-xxx-xxxx · แถวไม่มีคีย์เบอร์/อีเมล/token · ลบข้อมูลผู้จอง (piiPurgedAt) ⇒ bookerName null · bookerPurged true · customer.purged · pay false
+  ✅ [BT-19] ค้น: เลขจองตัวเล็กข้ามหน้าต่างวัน (when=today) ⇒ เจอ · เลขอ้างอิงเอเจนซี่ (agentRef) ตรงตัว ⇒ เจอ · ชื่อบางส่วน ⇒ เจอ · ผลค้นยังผูกหน่วย
+  ✅ [BT-20] ชื่อที่ตรงเกิน 25 คน ⇒ search.nameCapped true (ไม่ไล่ทั้งร้าน) · ค้นเลขจอง ⇒ nameCapped false
+  ✅ [BT-21] เพดาน: หน่วย uA2 มีการจอง CAP+3 ⇒ shown = CAP · total = CAP+3 · truncated · ชิป all = CAP+3 (นับแยก) · ยอดรวม = Σ ทั้งชุด
+  ✅ [BT-22] เขตเวลา Asia/Tokyo: unit.today ณ 2027-03-01T15:30Z = 2027-03-02 · timeText เริ่ม 10:00 (รอบ 08:00 เวลาไทย) · เงินสดของวัน 03-02 มีแถวที่รับตอนนั้น · วัน 03-01 ไม่มี
+  ✅ [BT-23] หน้าต่างวันร้านชั่วคราว (now 1 มี.ค. 2570 · เดินทาง 10 เม.ย.): upcoming มี · next7 ไม่มี · past30 ไม่มี · date=วันเดินทาง มี
+  ✅ [BT-24] พร้อมกัน: รายละเอียด × 8 ขณะรับเงิน 2 ครั้ง (คนละคีย์) ⇒ ตัวโหลดไม่ล้ม/ไม่ THROW · สุดท้าย paid = ผลรวม · events 2
+  ✅ [BT-25] ตัวโหลดไม่เขียนฐาน (ร้านชั่วคราว): จำนวน TripBooking/TripMoneyEvent/TripPaymentDue/AuditLog/OutboxEvent/TripHold เท่าเดิมหลังเรียกรายการ/รายละเอียด/เอกสาร/เงินสด หลายรอบ
+  ✅ [BT-26] ภาษาอังกฤษ: แถวมี productTitleEn "Test A" · pax labelEn Adult/Child · extras nameEn "Waterproof camera" · รายละเอียด labelEn ของค่าอุทยานประกอบจากรายการเสริม+ประเภทคน
+  ✅ [BT-27] รายละเอียดตรงบริการบนร้านชั่วคราว (หลังรับเงินบางส่วน): document/payable/paid/outstanding/งวด = tripMoneySummary · vatDiff = vat.receiptRoundingDiffSatang
+  ✅ [BT-28] การจองเอเจนซี่ (จำลอง agentAccountId + AGENT): money AGENT_COLLECTS · pay false · ตัวกรองช่องทาง agent มี · direct ไม่มี
+  ✅ [BT-29] ตัวกรองรอบ/สินค้า: dep ของการจองนี้ ⇒ เฉพาะรอบนี้ · dep ของหน่วยอื่น ⇒ 0 · สินค้าอื่น (A9) ⇒ ไม่มีการจองนี้
+  ✅ [BT-30] รับเงินเป็นพร้อมเพย์ (QR intent + record PROMPTPAY): intent ยอด = ยอดค้าง · หลังบันทึก lastTender PROMPTPAY · เงินสดของวันไม่เพิ่มจากรายการนี้ (byTender.PROMPTPAY)
+  ✅ [BT-31] รายละเอียด: id ร้านอื่น/หน่วยอื่น ⇒ NOT_FOUND · คีย์แปลก ⇒ INVALID_INPUT · ผู้ใช้ไม่มีสิทธิ์ ⇒ FORBIDDEN (ไม่บอกว่ามีอยู่)
+  ── สรุป BT: ผ่าน 31/31
+
+── RV: มติ V1–V13 · พฤติกรรมที่ผู้ตรวจพิสูจน์ · ตัวโหลดตรงบริการ (เงินสดรายวัน / ส่วนต่าง VAT) ──
+  ✅ [RV-1] SQL ดิบของตัวโหลด: ทุกค่าที่แทรกในข้อความ SQL เป็น $n (x.add(…)) · ค่าคงที่ของไฟล์ · codeArray(ค่าคงที่) · ตัวประกอบเงื่อนไขของไฟล์ เท่านั้น — ไม่มีค่าจาก input ต่อสตริง · $queryRawUnsafe รับเฉพาะตัวแปร …Sql/template · ไม่มี Prisma.raw/$executeRaw
+  ✅ [RV-2] ข้อความฉีด SQL ผ่านตัวโหลดจริง: q × 8 · product · dep ⇒ ok + 0 แถว (ไม่ throw · pg_sleep ไม่ถูกรัน) · channel/date/when/chip/unitId ที่เป็นข้อความฉีด ⇒ INVALID_INPUT/NOT_FOUND · ตารางยังอยู่
+  ✅ [RV-3] V1 เก็บเลขอ้างอิง: recordTripPayment reference "  SCB-778899 " ⇒ TripMoneyEvent.reference = "SCB-778899" (ตัดช่องว่าง) · reference เป็นช่องว่างล้วน ⇒ NULL · ไม่ส่ง ⇒ NULL · reference ผิดรูป (ไทย · 65 ตัว · ว่าง · ;) ⇒ ปฏิเสธ ไม่มีแถวใหม่
+  ✅ [RV-4] V1 เลขอ้างอิงออกจอ: loadBookingDetailVM events[].reference + docs.waiting[].reference · loadBookingDocsVM items[].reference = ค่าในฐาน (แถวไม่มี ⇒ null ไม่ใช่ ""/undefined)
+  ✅ [RV-5] V1 × กันซ้ำ (สัญญา T0.7a: คีย์เดิม + การจอง/ยอด/tender/สลิปเดิม ⇒ ผลเดิม — reference ไม่อยู่ในตัวเทียบ): คีย์เดิม + reference ต่าง ⇒ replayed · แถวเดียว · reference แรกคงเดิม · คีย์เดิม + ยอดต่าง ⇒ IDEMPOTENCY_CONFLICT
+  ✅ [RV-6] V2 ค้นชื่อ = ค้นด้วยคำที่ตัด % _ \ ออกแล้ว: "ชื่อ%" "%ชื่อ" "ชื่_อ" "ชื่อ\" ⇒ ผลเท่าค้น "ชื่อ" · "ไว%…" / "ไ_ลด์…" (จะตรงก็ต่อเมื่อถูกตีความเป็นตัวแทน) ⇒ 0 แถว
+  ✅ [RV-7] V2 q มีแต่ % _ \ ⇒ ไม่ค้นชื่อ (0 แถว · nameCapped false · ไม่ใช่ "ทุกคน") · แต่เลขอ้างอิงเอเจนซี่ที่ตรงตัวกับ q เดิม (ยังไม่ตัด) ยังเจอ · เลขจองยังค้นได้
+  ✅ [RV-8] V3 อักขระควบคุม ⇒ INVALID_INPUT ไม่ throw: q (NUL · BEL · DEL · ขึ้นบรรทัด/แท็บกลางคำ) · product · dep · unitId · bookingId · หน่วยของคิวเอกสาร/เงินสด
+  ✅ [RV-9] V4 amountProblemOf (pure): ไม่ใช่ตัวเลข/ทศนิยม 3 ตำแหน่ง/ติดลบ/ว่าง ⇒ format · 0 / 0.00 / 000 ⇒ zero · เป็นตัวเลขแต่เกินที่ระบบรับ (99999999 · 21474836.48 · 9 หลัก) ⇒ tooHigh · ใช้ได้ ⇒ null · ตรงกับ parseAmountSatang ทุกกรณี
+  ✅ [RV-10] V4 จอ (static): ข้อผิดพลาดของยอด/เลขอ้างอิงแสดงผ่าน FieldError (role="alert" + สีอันตราย) ไม่ใช่ hint · tooHigh/zero/format ผูกข้อความคนละคีย์ (amountTooHigh · amountZero · invalidAmount) ที่มีทั้งสองภาษาและไม่ซ้ำกัน
+  ✅ [RV-11] V6 สกุลเงินทางเดียวต่อภาษา: Booking*.tsx ไม่ฝัง ฿ / บาท / THB · ใช้คีย์ bookings.detail.baht (ไทย "฿{amount}" · อังกฤษ "THB {amount}") · ข้อความไทยไม่มี THB/"{n} บาท" · อังกฤษไม่มี ฿ · คีย์ที่มี ฿ (ไทย) = คีย์ที่มี THB (อังกฤษ)
+  ✅ [RV-12] V8 เพดานเงินสดรายวัน/คิวเอกสาร: วันที่มีแถวเงิน CAP+3 ⇒ เงินสด shown = CAP · total = CAP+3 · truncated · ยอดรวม = Σ ทั้งวัน (ไม่ใช่ Σ ของแถวที่แสดง) · แถวที่แสดง = CAP แถวใหม่สุด · คิวเอกสาร shown = CAP · count = จำนวนจริง · truncated · segments.docsWaiting = count
+  ✅ [RV-13] V8 ต้องทำผูกหน่วย (งวด): งวด OVERDUE ที่อยู่คนละหน่วยในร้านเดียวกัน ⇒ ไม่นับ (แถว attention [] · ชิป attention 0 · chip=attention 0 แถว — SQL กับ JS ตรงกัน) · ย้ายงวดกลับหน่วยเดิม ⇒ OVERDUE + ชิป 1
+  ✅ [RV-14] V8 ต้องทำผูกหน่วย (รอบ) + SQL↔JS: รอบ CANCELLED ที่แถวรอบอยู่คนละหน่วย ⇒ ไม่นับทั้งแถวและชิป · ย้ายกลับ ⇒ DEPARTURE_CANCELLED + ชิป 1 · ทั้งหน่วย: chip=attention total = chips.attention และทุกแถวมี attention · (ไม่ถูกตัด) จำนวนแถวที่มี attention ใน when=all = chips.attention
+  ✅ [RV-15] V10 QR พร้อมเพย์ = ยอดค้างของงวดแรกที่ยังเปิด ไม่ใช่ยอดที่พิมพ์/ยอดค้างทั้งการจอง: tripPaymentIntent ไม่รับยอด (คีย์ amountSatang ⇒ ปฏิเสธ) · การจอง 2 งวด (1,000.00 + ที่เหลือ) ⇒ QR 1,000.00 งวด 1 · ไม่เขียนฐาน · รับ PROMPTPAY 1,000.00 แล้ว ⇒ QR ถัดไป = งวด 2 · แถวรายการ nextDue ตรง
+  ✅ [RV-16] V10 จอ (static): โหมดพร้อมเพย์ใช้ช่องอ่านอย่างเดียว trips-pay-amount-locked (readOnly) · ยอดที่บันทึก = amountSatang ของ QR · tripPaymentIntentAction ส่งแค่ bookingId · มีแถวทะเบียนปุ่ม
+  ✅ [RV-17] V11 ส่วนต่าง VAT ต่อแถวของคิวเอกสาร: การจองที่รับหลายครั้งจน VAT ต่อใบรับรวม ≠ VAT การจอง ⇒ ทุกแถวรับเงินของการจองนั้นมี vatDiffSatang = ส่วนต่าง (≠ 0) · จ่ายครั้งเดียว ⇒ 0 · ยังจ่ายไม่ครบ (แม้ VAT เพี้ยน) ⇒ 0 · แถวคืนเงินของการจองที่ต่าง ⇒ 0 · รายละเอียด docs.vatDiffSatang ตรงกัน
+  ✅ [RV-18] ตัวโหลด = บริการ (ส่วนต่าง VAT): ทุกแถวของคิวเอกสารหน่วย uA — แถวรับเงิน vatDiffSatang = tripMoneySummary(bookingId).vat.receiptRoundingDiffSatang · แถวชนิดอื่น = 0 · และ = สูตรจากฐาน (Σ VAT ใบรับ − VAT การจอง เมื่อจ่ายครบ)
+  ✅ [RV-19] ตัวโหลด = บริการ (เงินสดรายวัน): วันทำการที่มี CASH · TRANSFER · CARD · PROMPTPAY · คืนเงินสด · คืนเงินโอน · ร้านเก็บ (ไม่นับ) · แถวขอบวัน [ต้นวัน รวม · ต้นวันถัดไป ไม่รวม) ⇒ loadCashDayVM ยอดรวม/แยก tender/expected/จำนวน/ชุดแถว = tripCashDay ของหน่วย+วันเดียวกัน และ = ตัวเลขที่ข้อสอบคิดเอง
+  ✅ [RV-20] V11 จอ (static): ป้าย "ตรวจกับนักบัญชี" (bookings.docs.accountant) ในคิวเอกสารอยู่เฉพาะในข้อความเตือนต่อแถว (ซ่อนเมื่อส่วนต่าง = 0) — ไม่อยู่ในกล่องข้อความถาวร trips-docs-note · ไม่ใช่ปุ่ม/Pill · ลิ้นชักแสดงเมื่อ vatDiffSatang ≠ 0 เท่านั้น
+  ✅ [RV-21] V12 ทะเบียนปุ่ม: แถว trips-nav-bookings roles = [owner] · hiddenFor มี editor + viewer (แท็บเห็นด้วย trips.booking.view เท่านั้น) · V9: Booking*.tsx ไม่มี aria-selected (ใช้ aria-current)
+  ✅ [RV-22] V13 ป้ายช่องทางของจอนี้: bookings.channel.* ครบทุกช่องทางขาย (= DEPARTURE_SELL_CHANNELS) ทั้งสองภาษา · ไม่มีคำว่า POS / เครื่องขาย / register · POS = "จุดขายอื่น" / "Other sales point" · คอมโพเนนต์ Booking* ใช้ bookings.channel ไม่ใช้ departures.channel
+  ✅ [RV-23] PII ผู้มีแค่ trips.booking.view: JSON ของรายการและรายละเอียดไม่มีเบอร์เต็ม (ทั้งรูป 0xxxxxxxxx และ 8 หลักท้าย) · ไม่มีตัวเลขเงินสดของหน่วย (docsWaiting null · ไม่มีคีย์ cash) · เบอร์ปิดบังยังอยู่
+  ── สรุป RV: ผ่าน 23/23
+
+เหลือให้ด่านภาพ + การกดจริง (ผู้คุม · scripts/visual-trips.mts t1.3 + parity-trips.sh 18): ตารางเต็มกว้าง 1440 ไม่เลื่อน · ป้าย 3 รูปทรง · ชิปต้องทำกรอบแดง · ลิ้นชักหัว/ท้ายตรึง · ปุ่ม 2 คอลัมน์ · กล่องรับเงิน + แถบเงินสดแยก POS · 390 การ์ดไม่ล้น · ไม่มีรหัสดิบ · action รับเงิน/QR/ยกเลิก/อนุมัติ ผ่าน Next จริง
+
+===== QC TRIPS T1.3a · การจองฝั่งร้าน · รายการ · รายละเอียด · รับเงิน · เอกสารเงินรอออก · เงินสด =====
+ผ่าน 123/124 · ไม่ผ่าน 1 · ข้าม 0
+ต่อกลุ่ม: PC 6/6 · S 24/25 · P 11/11 · LV 15/15 · DV 9/9 · CS 4/4 · BT 31/31 · RV 23/23
+JSON_SUMMARY {"suite":"qc-trips-t1.3","total":124,"passed":123,"failed":["S-13"],"skipped":[],"groups":{"PC":"6/6","S":"24/25","P":"11/11","LV":"15/15","DV":"9/9","CS":"4/4","BT":"31/31","RV":"23/23"}}
+=== qc-trips-t1.3 exit 1 23:38:15

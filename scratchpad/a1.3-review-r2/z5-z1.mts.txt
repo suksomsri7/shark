@@ -1,0 +1,29 @@
+// อ่านอย่างเดียว · ฟังก์ชันบริสุทธิ์ · ผู้ตรวจรอบ 2 A1.3a
+import { resolveAgentLayer, buildAgencyPricingInput } from "../../src/lib/modules/agency/rates-core";
+
+const base = { productKind: "TRIP", productId: "p1", optionId: null, paxTypeId: null, cabinTypeId: null, valueBp: null, valueMinor: null, currency: "THB", minSellMinor: null, markupCapBp: null, bookFrom: null, bookTo: null, travelFrom: null, travelTo: null, priority: 0, active: true } as const;
+const row = (id: string, o: Record<string, unknown>) => ({ ...base, id, rateCardId: String(o.rateCardId ?? "c1"), ...o }) as never;
+const card = (id: string, priority: number, rates: unknown[]) => ({ id, ownerKind: "AGENT", tierId: null, agentAccountId: "acc1", status: "ACTIVE", validFrom: null, validTo: null, version: 1, priority, rates }) as never;
+const facts = (cards: unknown[], extra: Record<string, unknown> = {}) => ({
+  account: { id: "acc1", tierId: null, tierCode: null, payeeType: "TH_JURISTIC", vatRegistered: false },
+  product: { id: "p1", productType: "LIVEABOARD", optionId: "o1", paxTypes: [{ id: "ptA", code: "ADULT" }, { id: "ptC", code: "CHILD" }] },
+  currency: "THB", bookYmd: "2027-01-10", travelYmd: "2027-03-10", cards, policy: { values: {}, sources: {} }, vatRateBp: 700, ...extra,
+}) as never;
+
+// 1) ตัวเลือกเจาะจง (ไม่ระบุประเภทคน) vs รายประเภทคนของทั้งสินค้า — priority เท่า ไม่มีช่วงพิเศษ
+const r1 = resolveAgentLayer("CONTRACT", facts([card("c1", 0, [row("a", { mode: "NET", valueMinor: 300_000, optionId: "o1" }), row("b", { mode: "NET", valueMinor: 200_000, paxTypeId: "ptC" })])]));
+console.log("1 option-generic vs product-child:", JSON.stringify(r1.level?.unitMinorByPaxCode), r1.trace?.rateId);
+
+// 2) สอง card ของเอเจนซี่เดียว: card priority 10 แถวไม่ระบุ 150,000 · card priority 0 แถวเด็ก 200,000
+const r2 = resolveAgentLayer("CONTRACT", facts([card("cHi", 10, [row("g", { rateCardId: "cHi", mode: "NET", valueMinor: 150_000 })]), card("cLo", 0, [row("k", { rateCardId: "cLo", mode: "NET", valueMinor: 200_000, paxTypeId: "ptC" })])]));
+console.log("2 card-priority generic vs low-card child:", JSON.stringify(r2.level?.unitMinorByPaxCode), r2.trace?.rateId);
+
+// 3) Z1: แถว % ของสินค้า THB · จองเป็น USD (Liveaboard) ⇒ สัญญาหาย
+const r3 = resolveAgentLayer("CONTRACT", facts([card("c1", 0, [row("p", { mode: "COMMISSION_PCT", valueBp: 2000 })])], { currency: "USD" }));
+console.log("3 PCT row THB, booking USD:", JSON.stringify(r3));
+const b3 = buildAgencyPricingInput(facts([card("c1", 0, [row("p", { mode: "COMMISSION_PCT", valueBp: 2000 })])], { currency: "USD" }));
+console.log("3b built warnings:", JSON.stringify(b3.ok ? b3.warnings : b3), b3.ok ? JSON.stringify(b3.trace?.applied ?? null) : "");
+
+// 4) Z5ง: แถวรายประเภทอย่างเดียวมี minSell — ไม่มีคำเตือน
+const r4 = buildAgencyPricingInput(facts([card("c1", 0, [row("m", { mode: "NET", valueMinor: 280_000, paxTypeId: "ptA", minSellMinor: 330_000 })])]));
+console.log("4 pax-only minSell:", r4.ok ? JSON.stringify([r4.input.contract?.minSellMinor, r4.warnings]) : JSON.stringify(r4));

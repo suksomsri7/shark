@@ -1,0 +1,170 @@
+[env] qc-trips-a1.1 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:3622980) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม (ต้องเขียวตั้งแต่ก่อนมีงาน) ──
+  ✅ [PC-1] ฐาน QC ต่อได้ + migration ฐาน 20270201000100_trips ลงแล้ว
+  ✅ [PC-2] ทะเบียนค่าตั้งเดิมโหลดได้ (trips.sell.holdMinutes · T0.1) + evaluateTourRule มี
+  ✅ [PC-3] ตัวอ่าน CHECK ตามชื่อ + literal อ่านของเดิมได้ (TripHold_status_check)
+  ✅ [PC-4] ตัวทดสอบ 23514/23505 ทำงาน (positive control บนตารางเดิม · tx rollback)
+
+── M: migration ──
+  ✅ [M-1] migration ใหม่ = 1 โฟลเดอร์ `<ts>_agency` · ts > 20270201000100 · คำสั่งแรก = `SET lock_timeout` (ไม่ใช่ SET LOCAL) · ปิดด้วย RESET
+  ✅ [M-2] add-only: ทุกคำสั่งเป็น CREATE TABLE/INDEX/FUNCTION/TRIGGER · ALTER TABLE ADD COLUMN/CONSTRAINT · SET/RESET lock_timeout เท่านั้น
+  ✅ [M-3] ตารางเดิมที่แตะ = TripPickupZone/TripBooking/TripMoneyEvent/SellBasket (ADD COLUMN nullable + ADD CONSTRAINT) · ดัชนีบนตารางเดิมเฉพาะ TripMoneyEvent/SellBasket
+  ✅ [M-4] ไม่มี FOREIGN KEY / REFERENCES ในไฟล์ (id หลวม · ไม่มี cascade ลงสมุด)
+  ✅ [M-5] SQL มือครบ: NND ×2 · partial unique ×2 (ตะกร้า · ใบแจ้งยอดไม่นับ VOID) · partial index ×3 · ฟังก์ชัน+trigger สมุด (PENDING_DELETE · VOID · accountDocId)
+  ✅ [M-6] schema: agency.prisma + supplier.prisma ใหม่ · trips.prisma/sellable.prisma เพิ่มอย่างเดียว · ไม่แตะไฟล์ schema อื่น · ไม่ @@unique ซ้ำ SQL มือ
+  ✅ [M-7] migration เก่าไม่ถูกแก้
+  ✅ [M-8] โฟลเดอร์ใหม่ลงฐานนี้แล้ว (_prisma_migrations finished · ไม่ rollback · ไม่มีแถวค้างล้ม)
+
+── T: ตาราง · คอลัมน์ · ชนิด · default ──
+  ✅ [T-1] ตารางใหม่ครบ 31 ตัว · ตารางที่ย้ายไป L1.1 ไม่มี
+  ✅ [T-2] แกน: global ไม่มี tenantId · tenant มี tenantId NOT NULL · unit มี tenantId+unitId NOT NULL
+  ✅ [T-3] ชุดคอลัมน์/ชนิด/null ตรงใบสั่ง §2 — ตัวตน global (5 ตาราง) · AgentIdentity ไม่มีคอลัมน์อื่นนอกสเปก
+  ✅ [T-4] ชุดคอลัมน์/ชนิด/null ตรงใบสั่ง §2 — เอเจนซี่ต่อร้าน (tier · account · member · contract · rate card · rate · request · link · api key)
+  ✅ [T-5] ชุดคอลัมน์/ชนิด/null ตรงใบสั่ง §2 — โควตา · หยุดขาย · webhook + บันทึกการส่ง · สื่อ
+  ✅ [T-6] ชุดคอลัมน์/ชนิด/null ตรงใบสั่ง §2 — เงิน: สมุด (unitId · settlesStatementId · ไม่มี updatedAt) · หัวสมุด · ใบแจ้งยอด (BIGINT · version · overdueAt · otherSatang) · คอมฯ (clawback) · รอบ · การจ่าย
+  ✅ [T-7] ชุดคอลัมน์/ชนิด/null ตรงใบสั่ง §2 — ผู้ให้บริการ TripSupplier* (4) + TripPassengerLink
+  ✅ [T-8] คอลัมน์ที่เพิ่มบนตารางเดิม (§2.5) มีครบ ชนิดถูก และ nullable ทั้งหมด
+  ✅ [T-9] default: สถานะเริ่ม · ตัวนับ 0 · THB · AGENT · TH · ธง
+  ✅ [T-10] ไม่มี FK เข้า/ออกตารางใหม่และ 4 ตารางที่แตะ · ไม่มีคอลัมน์ USER-DEFINED · PK AgentBalance = agentAccountId · แถวเดิมของคอลัมน์ใหม่เป็น NULL
+  ✅ [T-11] BIGINT (มติ R4): 23 คอลัมน์ยอดรวมเก็บค่าเกิน int4 ได้ (3,000,000,000) · คอลัมน์ต่อรายการ int4 ปฏิเสธค่าเดียวกัน (22003 · positive control)
+
+── C: CHECK (ชุดค่าตามชื่อ · ปฏิเสธจริงทุกตัว · ชื่อ constraint จาก error) ──
+  ✅ [C-1] ชุดค่า CHECK กลุ่ม identity (10 คอลัมน์ · ชื่อ "<ตาราง>_<คอลัมน์>_check") ตรงใบสั่ง §3.1
+  ✅ [C-2] ชุดค่า CHECK กลุ่ม pricing (14 คอลัมน์ · ชื่อ "<ตาราง>_<คอลัมน์>_check") ตรงใบสั่ง §3.1
+  ✅ [C-3] ชุดค่า CHECK กลุ่ม money (10 คอลัมน์ · ชื่อ "<ตาราง>_<คอลัมน์>_check") ตรงใบสั่ง §3.1
+  ✅ [C-4] ชุดค่า CHECK กลุ่ม supplier (11 คอลัมน์ · ชื่อ "<ตาราง>_<คอลัมน์>_check") ตรงใบสั่ง §3.1
+  ✅ [C-5] ทุกชุดค่า (45): ค่าแปลก 'ZZ_BOGUS' ⇒ 23514 จาก CHECK ของตารางนั้น (tx rollback)
+  ✅ [C-6] CHECK ตัวเลข 22 กรณี (ตัวตน · ราคา · คำขอ · ลิงก์ · โควตา): ค่าผิดขอบ ⇒ 23514 จาก "<ตาราง>_<คอลัมน์>_check" (ใบสั่ง §3.2)
+  ✅ [C-7] CHECK ตัวเลข 32 กรณี (สมุด · หัวสมุด · ใบแจ้งยอด · คอมฯ · รอบ · การจ่าย): ค่าผิดขอบ ⇒ 23514 จาก "<ตาราง>_<คอลัมน์>_check" (ใบสั่ง §3.2)
+  ✅ [C-8] CHECK ตัวเลข 10 กรณี (webhook · สื่อ · ผู้ให้บริการ): ค่าผิดขอบ ⇒ 23514 จาก "<ตาราง>_<คอลัมน์>_check" (ใบสั่ง §3.2)
+  ✅ [C-9] CHECK ตัวเลขบนตารางเดิม: TripPickupZone.windowMin 721/−1 · CHECK ข้ามคอลัมน์บนตารางเดิม (v2 · agentRef) ⇒ ชื่อ constraint ตรง
+  ✅ [C-10] CHECK ข้ามคอลัมน์ 51 กรณี (ช่วงวัน · เจ้าของ · ค่า · สกุล · hold · สมุด · ใบแจ้งยอด · คอมฯ · ผู้ให้บริการ · ตะกร้าคู่): แถวผิดข้อเดียว ⇒ 23514 ชื่อตรง
+  ✅ [C-11] positive control: แถวถูกต้องเต็มของทั้ง 31 ตารางใหม่ + SellBasket ทั้งคู่/ไม่มีเลย insert ได้ · ค่าขอบที่ถูก (bp 10000 · responseCode 599 · clawback = commission+vat · INVITED/CLOSED ไม่มีตัวตน) ผ่าน
+  ✅ [C-12] สมุด: เมทริกซ์เครื่องหมาย 14 ชนิด (บวก/ลบ/ไม่บังคับ) · ยอด 0 ทุกชนิดตก · อ้างอิงบังคับครบตามชนิด
+  ✅ [C-13] ใบแจ้งยอด: ภาพ 13ง (ยกเลิก −7,181.50 มีเครื่องหมาย) = 86,121.15 ผ่าน · ยกเลิกสุทธิบวก (ดึงคอมฯ คืน) ผ่าน · otherSatang ±(เอเจนซี่ผสม) ผ่าน · ยอดยกมาติดลบผ่าน
+  ✅ [C-14] โควตา: เต็มพอดี (used+held+returned = qty) ผ่าน · คืนแล้วมี releasedQty ผ่าน · คืน 0 ที่ผ่าน
+
+── U: unique · NULLS NOT DISTINCT · partial ──
+  ✅ [U-1] pg_index: AgentRate_dims_key / TripSupplierCost_dims_key = UNIQUE NULLS NOT DISTINCT ตรงคอลัมน์ ไม่มี WHERE
+  ✅ [U-2] พฤติกรรม NND: AgentRate มิติเดียวกัน (มิติ NULL) ซ้ำ ⇒ 23505 · ต่าง travelFrom ผ่าน · ช่วงซ้อน (travelFrom อื่น) ผ่าน = ไม่ใช่ตัวกันช่วงซ้อน · TripSupplierCost ซ้ำ ⇒ 23505
+  ✅ [U-3] AgentIdentity: publicCode ซ้ำ ⇒ 23505 · taxIdHash = ดัชนีธรรมดา **ไม่ unique** (มติ R1) · แฮชเดียวกันสองตัวตนผ่าน
+  ✅ [U-4] AgentLogin (kind, providerId, subject): ซ้ำ ⇒ 23505 · LINE userId เดียวกันคนละ provider ผ่าน
+  ✅ [U-5] AgentAccount: ตัวตนเดียวในร้านเดียว ⇒ 23505 · คนละร้านผ่าน · INVITED ไม่มีตัวตน 2 แถวผ่าน · code ซ้ำ ⇒ 23505 · inviteTokenHash ซ้ำ ⇒ 23505
+  ✅ [U-6] สมาชิก (account, user) · สมุด (account, seq) + (tenant, idempotencyKey) · หัวสมุด PK · การจ่ายคอมฯ (run, agent, unit) + (tenant, idem) · บันทึก webhook (webhook, event) ⇒ 23505
+  ✅ [U-7] AgentAllotment (agentAccountId, productKind, slotId) ซ้ำ ⇒ 23505 · ดัชนี (productKind, slotId) · partial (releaseAt) WHERE releasedAt IS NULL
+  ✅ [U-8] ใบแจ้งยอด: unique (agent, periodKey) WHERE status <> 'VOID' — ใบซ้ำงวด ⇒ 23505 · VOID แล้วออกใบใหม่งวดเดิมได้ · ไม่มี unique เต็มตาราง
+  ✅ [U-9] unique/ดัชนีอื่นตาม §2 (pg_index · รวม AgentRequest holdId · สมุด unitId/settlesStatementId · webhook delivery partial)
+  ✅ [U-10] SellBasket: partial unique (tenantId, holdIdempotencyKey) WHERE NOT NULL · ซ้ำ ⇒ 23505 · TripMoneyEvent ดัชนี (tenantId, unitId, createdAt)
+
+── L: AgentLedgerEntry ต่อท้ายอย่างเดียว · ล้างร้าน · VOID · Prisma · ค่าคงที่ ──
+  ✅ [L-1] trigger `AgentLedgerEntry_append_only` BEFORE UPDATE OR DELETE · FOR EACH ROW · เปิดใช้
+  ✅ [L-2] UPDATE ยอด/ชนิด/การจอง/unitId/settlesStatementId/createdAt ⇒ 23001 AGENT_LEDGER_APPEND_ONLY
+  ✅ [L-3] DELETE ⇒ 23001 (ร้าน ACTIVE · ไม่มี GUC)
+  ✅ [L-4] statementId: null → ค่า ได้ · เปลี่ยน (ใบเดิมไม่ VOID) ⇒ 23001 · ค่าเดิมซ้ำได้ · กลับ null ⇒ 23001
+  ✅ [L-5] settledAt · whtCertDocId · accountDocId: null → ค่า ได้ครั้งเดียว · เปลี่ยนซ้ำ ⇒ 23001 · พ่วงคอลัมน์อื่น ⇒ 23001
+  ✅ [L-6] ลบได้ใน tx ที่ `SET LOCAL shark.ledger_purge = 'on'` · ค่าไม่ค้างข้าม tx
+  ✅ [L-7] ล้างร้านของแพลตฟอร์ม (platform/pdpa.ts · Prisma deleteMany ตาม tenantId): ร้าน ACTIVE ⇒ ปฏิเสธ · ร้าน PENDING_DELETE ⇒ ลบได้ทุกแถว
+  ✅ [L-8] ผ่าน Prisma client: create ได้ · update ยอด ⇒ ปฏิเสธ · ตั้ง statementId/accountDocId ครั้งแรกได้ · ตั้งซ้ำค่าอื่น ⇒ ปฏิเสธ · update ค่าเดิม (no-op) ได้
+  ✅ [L-9] ใบแจ้งยอด VOID → ย้ายรายการไปใบใหม่งวดเดิม: ใบซ้ำงวด ⇒ 23505 · VOID ใบเดิม · ออกใบใหม่ · ย้าย statementId ได้ · ย้ายออกจากใบที่ไม่ VOID ⇒ 23001
+  ✅ [L-10] ค่าคงที่กลาง (scripts/trips-agency-invariants.mts · มติ R6): สมุด+หัวสมุดตรง ⇒ ว่าง · หัวสมุดผิด ⇒ B2 · seq ขาด ⇒ B3 · ไม่มีหัวสมุด ⇒ B1 · ใบแจ้งยอดตรง ⇒ ว่าง · ผิด ⇒ เจอ
+  ✅ [L-11] schema/ฟังก์ชัน: AgentLedgerEntry ไม่มี updatedAt และไม่มีคอลัมน์ json · ฟังก์ชันเทียบทั้งแถว (IS DISTINCT FROM OLD)
+
+── S: scope · client · ไฟล์ · ขอบเขต ──
+  ✅ [S-1] scope.ts: 31 โมเดล · global 5 (มีเหตุผลไทย) · tenant 22 · unit 4 (ตรงใบสั่ง §2.6)
+  ✅ [S-2] Prisma client รู้จักโมเดลใหม่ทั้งหมด + คอลัมน์ที่เพิ่มบน TripBooking/TripMoneyEvent/TripPickupZone/SellBasket
+  ✅ [S-3] fitness F1 (static): ทุก model ใน prisma/schema ลงทะเบียน scope.ts · ไม่มีชื่อตกค้าง
+  ✅ [S-4] agency/index.ts facade: ไม่มี `export *` · ส่งออกครบ §5 · identity-core.ts ไม่มี import ค่า
+  ❌ [S-5] โมดูล agency: `prisma` ดิบเฉพาะ entry.ts · ไม่ import โมดูลอื่น (`@/lib/modules/*`) · ไฟล์อื่นไม่แตะโมเดล global — import ข้ามโมดูล: rates.ts
+  ✅ [S-6] ไม่มี `any` (ชนิด/แคสต์) ในไฟล์ src ที่ใบนี้เพิ่ม/แก้
+  ✅ [S-7] permissions: agency.settings.edit + agency.settings.money ป้ายไทย (โมดูล agency)
+  ✅ [S-8] settings: index.ts import ./defs/agency · service.ts SUPPORTED_SCOPES มี AGENT_TIER AGENT (VESSEL ยังไม่มี) + locate AgentTier/AgentAccount · ลบบรรทัด ≤ 2
+  ❌ [S-9] ขอบเขต (เทียบ BASE 4db90ad9e · ไม่นับไฟล์ที่ตรงกับ session/trips · ไม่นับ ledger/): แตะได้เฉพาะไฟล์ใบสั่ง §1 + โฟลเดอร์ migration ใหม่ — นอกขอบเขต 9: scripts/parity-trips.sh, scripts/qc-trips-a1.3.mts, scripts/visual-trips.mts, src/lib/modules/trips/index.ts, src/lib/platform/sellables.ts, scratchpad/a1.3/qc-a1.3-full.log
+  ❌ [S-10] ไม่แตะไฟล์ต้องห้าม: โมดูล trips/ticket/pos/hotel/rooms/dorm/booking/queue/account/party/crm/member · settings types/registry/form/legal/defs อื่น · components · app · fitness · with-gate-lock · ข้อสอบเดิม — แตะ: scripts/qc-trips-a1.3.mts, src/lib/modules/trips/index.ts, src/lib/platform/sellables.ts
+  ❌ [S-11] ผู้กระทำ AGENT ยังถูกปิดในเส้นทางขาย/จอง (T0.4/T0.6): capacity.ts + state.ts คง `AGENCY_NOT_ENABLED` · โมดูล trips ไม่เปลี่ยน — ไฟล์ trips ที่เปลี่ยน: ได้ ["src/lib/modules/trips/index.ts"] ต้องเป็น []
+  ✅ [S-12] defs/agency.ts บริสุทธิ์: import ได้แค่ zod · ../registry · import type
+  ❌ [S-13] fitness F17.1 (มติ R5): บล็อกใหม่ใน scripts/fitness.mts ระบุทางเข้าที่อนุญาตตรงตัว 2 ไฟล์ + 5 โมเดล global · แก้ fitness.mts แบบเพิ่มอย่างเดียว (ลบ 0 บรรทัด) — บรรทัดที่ลบใน fitness.mts (BASELINE = ORACLE-EDIT ผู้คุม): ได้ 1 ต้องเป็น 0
+
+── R: ทะเบียนค่าตั้ง agency ──
+  ✅ [R-1] doc-sync: ชุดคีย์ + ชั้น + ชนิด ที่ parse จาก TRIPS-DEFAULTS (§2 A1–A37 + ภาคผนวก ก agency.* ยกเว้น X27 agency.msg) = รายการฝัง
+  ✅ [R-2] ทุกคีย์ที่คาด (40) ลงทะเบียน domain agency · ไม่มีคีย์ agency เกิน (ไม่มี agency.msg.* ในใบนี้)
+  ✅ [R-3] ชนิด (type) ตรงทุกคีย์ · A7 A25 รับ null · คีย์อื่นไม่รับ null
+  ✅ [R-4] ชั้น (chain) ตรง TRIPS-DEFAULTS ทุกคีย์ (SHOP = UNIT)
+  ✅ [R-5] ค่าเริ่มต่อแม่แบบ (DS/DT/LA/AT) ตรงรายการฝัง · _fallback = DIVE_SHOP
+  ✅ [R-6] schema: ตัวเลือก enum ทุกตัวผ่าน · ค่าแปลกตก · A12 '14' ตก · A13 −1 ตก · A18 366 ตก · ตารางมีช่องเกิน (strict) ตก
+  ✅ [R-7] แม่แบบ agency: DIVE_SHOP DAY_TOUR LIVEABOARD ATTRACTION · version 1 · ป้ายไทย
+  ✅ [R-8] unitTypes ['TRIPS','TICKET'] ทุก def · group = ส่วนที่ 2 ของคีย์ · ป้ายกลุ่มไทยครบ 12 กลุ่ม
+  ✅ [R-9] sensitivity ตามกลุ่ม (price/money/hold/quota/comm MONEY + A1 · wht LEGAL · privacy PRIVACY+ownerOnly) · editPermission (เงิน = agency.settings.money)
+  ✅ [R-10] ซ่อน PHASE_2 = A3 เท่านั้น · effectiveDated = A26 A27 A28 เท่านั้น · ไม่มี percentScale
+  ✅ [R-11] snapshot "agency.booking" = CC §N.3 ตรงตัว (24 คีย์)
+  ✅ [R-12] reviewHint: ACCOUNTANT 8 คีย์ (A5 A6 A26–A30 X26) · AUTHORITY A37 'กรมการท่องเที่ยว' · คีย์อื่นไม่มีป้าย
+  ✅ [R-13] legal ต่อคีย์ตรงใบสั่ง §4 (6 คีย์: A5 W13 · A26 W07 W09 · A27 W43 · A29/A30 W44 · A34 W34) · คีย์อื่นไม่มี legal
+  ✅ [R-14] ป้ายแสดงผล: enum ทุกคีย์มี enumLabelsTh ไทยครบทุกตัวเลือก (ไม่ใช่ค่าดิบ) · ทุกคีย์ labelTh ไทย
+  ✅ [R-15] ค่าที่ปิดในรุ่นแรก: A5 AGENT_RESELLS · A22 BOOKING_CURRENCY ไม่ผ่าน schema · helpTh บอก 'ยังไม่เปิดใช้ในรุ่นนี้'
+  ✅ [R-16] legal: ค่าเริ่มทุกคีย์ที่มี legal ⇒ OK · ค่าที่ควรเตือน ⇒ WARN รหัสตรง (W07 W09 W43 W44×2 W34) ไม่มี BLOCK
+  ✅ [R-17] tableTh ครอบทุกช่องของค่าตาราง (ทุกชั้น): ป้ายไทย · ช่องข้อความแบบตัวเลือก = enum + options ไทยครบ · ช่อง null มี nullTh (ห้ามชื่อช่องดิบบนจอ · T1.1)
+  ✅ [R-18] ค่าเริ่ม A1 ตรงฟิกซ์เจอร์จอ 10 (`AGENCY_TIERS` bp ÷ 100 · promoteAt12mSatang · payment CREDIT/IMMEDIATE) · ไม่มีช่อง creditTermDays (มติ R3)
+  ✅ [R-19] เอกสารแก้ตามใบสั่ง §4.3 (มติ R3): TRIPS-DEFAULTS แถว A1 A12 A22 A25 A26 A27 X27 · สัญญามีชื่อ/กติกาใหม่
+
+── RS: ชั้น AGENT_TIER / AGENT บนฐานจริง ──
+  ✅ [RS-1] แม่แบบ agency ต่อหน่วย: LIVEABOARD ⇒ A18 = 60 (TEMPLATE) · DIVE_SHOP ⇒ 2 · หน่วยไม่มีโปรไฟล์ agency ⇒ 2 (FALLBACK)
+  ✅ [RS-2] ตั้ง A13 creditLimit ที่ชั้น AGENT (บัญชีของร้านเอง) ได้ · resolve ด้วย refs เต็ม ⇒ ค่า + source AGENT
+  ✅ [RS-3] A12 ที่ AGENT_TIER ใช้กับเอเจนซี่ในระดับนั้น · AGENT ทับระดับ · ล้างไม่ได้ทำในข้อนี้
+  ✅ [RS-4] ร้าน A ตั้งที่บัญชีเอเจนซี่ของร้าน B / ระดับที่ไม่มี ⇒ NOT_FOUND ไม่มีแถว (ตัวตนเดียวกันสองร้านไม่ข้ามกัน)
+  ✅ [RS-5] VESSEL ยัง SCOPE_UNSUPPORTED · คีย์ที่ chain ไม่มี AGENT ตั้งที่ AGENT ⇒ SCOPE_NOT_ALLOWED
+  ✅ [RS-6] snapshotPolicy('agency.booking') ด้วย refs เต็ม ⇒ 24 คีย์ · A13 ไม่อยู่ใน snapshot · A12 = ค่าของเอเจนซี่
+
+── WS: คำเตือน WARN ของ agency (รับทราบ ไม่บังคับเหตุผล · ไม่มี BLOCK) ──
+  ✅ [WS-1] A26 ที่เข้าเงื่อนไข W07 ชั้นร้าน ไม่รับทราบ ⇒ NEEDS_APPROVAL issue W07 · ไม่มีแถว
+  ✅ [WS-2] รับทราบโดยไม่มีเหตุผล ⇒ บันทึกได้ · SettingChange legalLevel WARN legalCode W07
+  ✅ [WS-3] ชั้น AGENT (unitId null): A26 เข้า W09 + รับทราบ ⇒ บันทึกได้ (ไม่มี LEGAL_BLOCK/STRICT) · A34 true ⇒ ต้องรับทราบ W34
+  ✅ [WS-4] ค่าปิด: A5 AGENT_RESELLS / A22 BOOKING_CURRENCY ⇒ VALIDATION · A3 (PHASE_2) ⇒ VALIDATION NOT_YET_AVAILABLE
+
+── X1: แยกร้าน/แยกหน่วยผ่าน tenantDb ──
+  ✅ [X1-1] ทุกตารางใหม่แกน tenant/unit (26): tenantDb ร้าน B มองไม่เห็นแถวร้าน A · ร้าน A (หน่วยเดียวกัน) เห็น (positive control)
+  ✅ [X1-2] tenantDb ร้าน B: updateMany บัญชีเอเจนซี่/สมุดคอมฯ ของ A = 0 แถว · ค่าเดิมไม่เปลี่ยน · tenantDb A create AgentTier เติม tenantId เอง
+  ✅ [X1-3] แกน unit: tenantDb ไม่มี unitId ⇒ โยน · หน่วยอื่นของร้านเดียวกันมองไม่เห็น (TripSupplierCost · TripPassengerLink)
+  ✅ [X1-4] ตาราง global ไม่ถูกเข้าถึงผ่าน tenantDb ในโค้ดของใบ (tenantDb ไม่กรองแกน global) — มีแค่ agency/entry.ts
+
+── AI: AgentIdentity — เอกลักษณ์ · ผูก · ความเป็นส่วนตัว ──
+  ✅ [AI-1] identity-core บริสุทธิ์: รหัสสาธารณะ AG-XXXXXX · normalizeAgentLogin · normalizeJuristicTaxId (13 หลัก **ขึ้นต้น 0** checksum · เลขบุคคล ⇒ null)
+  ✅ [AI-2] createAgentIdentity: ตัวตน + ผู้ใช้ OWNER + วิธีล็อกอิน (verifiedAt) ใน tx เดียว · publicCode ตรงรูป · ผลคืนเฉพาะ 4 ช่องสาธารณะ
+  ✅ [AI-3] ล็อกอินซ้ำ (อีเมลตัวใหญ่ = ตัวเดิม) ⇒ LOGIN_TAKEN ไม่มีตัวตน/ผู้ใช้ใหม่เกิด · LINE userId เดียวกันคนละ provider สร้างได้
+  ✅ [AI-4] findAgentIdentityByCode: เจอ = 4 ช่องสาธารณะ (ไม่มี taxIdHash) · รหัสไม่มี/ผิดรูป ⇒ null
+  ✅ [AI-5] setAgentIdentityTaxId (OWNER): เก็บ `v1:` + hex 64 = HMAC ตามสเปก (กุญแจสืบจาก INTEGRATIONS_CREDENTIALS_KEY · คำนวณโดยข้อสอบเอง) = agentTaxIdHash · เลขบุคคล/checksum ผิด ⇒ VALIDATION
+  ✅ [AI-6] เลขภาษีเดียวกันบนสองตัวตน ⇒ ตั้งได้ทั้งคู่ (ไม่มี unique · มติ R1) · verify ของแต่ละตัวตนตรง · ล้าง (null) ได้
+  ✅ [AI-7] verifyAgentIdentityTaxId: OWNER ของตัวตนตัวเอง ⇒ match true/false · ผู้ใช้ SALES ⇒ FORBIDDEN · ผู้ใช้ไม่มีอยู่ ⇒ FORBIDDEN
+  ✅ [AI-8] updateAgentIdentity: OWNER แก้ชื่อได้ · SALES/ADMIN ⇒ FORBIDDEN · ชื่อว่าง ⇒ VALIDATION · ผู้ใช้ DISABLED ⇒ FORBIDDEN
+  ✅ [AI-9] addAgentLogin: เพิ่ม LINE ให้ตัวเองได้ · ล็อกอินที่มีเจ้าของแล้ว ⇒ LOGIN_TAKEN · agentUserByLogin หาเจอทั้งสองวิธี
+  ✅ [AI-10] ความเป็นส่วนตัว (schema): AgentIdentity มีแค่ id displayName publicCode taxIdHash status createdAt updatedAt · ไม่มีคอลัมน์ภาษี/ธนาคาร/ติดต่อ/บัตร
+  ✅ [AI-11] ตัวตนเดียวสองร้าน: tenantDb ร้าน B ค้นด้วย identityId เห็นแค่บัญชีของ B (ไม่เห็นเลขภาษีกล่องปิด/ธนาคาร/ติดต่อของ A)
+  ✅ [AI-12] listAgentAccountsOfUser: คืนบัญชีของผู้ใช้ข้ามร้าน เฉพาะ {agentAccountId, tenantId, status, role} · สมาชิก inactive ไม่คืน · บัญชีของตัวตนอื่น (แถวสมาชิกผิดตัวตน) ไม่คืน
+  ✅ [AI-13] entry.ts ไม่มีฟังก์ชันค้นตัวตนด้วยชื่อ/เลขภาษี/อีเมล และไม่มีผลใดคืน taxIdHash (static + ค่าจริง)
+
+── F: ฟอร์มค่าตั้ง agency ──
+  ✅ [F-1] ฟอร์มหน่วย TRIPS ชั้นร้าน: คีย์ agency = 30 ตัวที่ chain มี UNIT (ไม่มี A3) · ตัวเลือก enum ป้ายไทยไม่ใช่ค่าดิบ · A5 ไม่มี AGENT_RESELLS · ตารางมี tableSpec · A37 ป้ายหน่วยงาน
+  ✅ [F-2] หน่วย BOOKING ⇒ ไม่มีคีย์ agency · หน่วย TICKET ⇒ มีคีย์ agency (CC §N.4)
+
+── D: drift (prisma migrate diff ฐาน → schema · อ่านอย่างเดียว) ──
+  ✅ [D-1] ข้อความ diff ที่แตะ Trip*/Sell*/Agent* = DROP INDEX ของ 5 ชื่อที่รู้เท่านั้น (ของ RUN อื่น เช่น HR ไม่นับ)
+  ✅ [D-2] schema มีคอมเมนต์ `// SQL มือ:` ระบุชื่อ SQL มือทุกตัวของใบ (ผู้ทำ migration ถัดไปรู้ว่าห้ามรับ DROP)
+
+── G: regression ──
+  ❌ [G-1] qc-trips-t0.1 หลัง migration: ที่ไม่ผ่านต้องอยู่ใน {M-1, M-6, RS-5} เท่านั้น (พลิกที่รู้ล่วงหน้า · ORACLE-EDIT ผู้คุม) — ไม่ผ่านนอกรายการ: S-8 · skip ["G-1"]
+  ✅ [G-2] qc-trips-p0.1 (seed/ฟิกซ์เจอร์/แยกร้าน) exit 0 หลัง migration
+  ✅ [G-3] fitness: F17.1 ✅ · ไม่มี ❌ นอก F5.1 · F5.1 ถ้ายังแดง = 52 ไฟล์พอดี (agency/entry.ts · รอ ORACLE-EDIT baseline 51→52)
+  ✅ [G-4] positive control ของ F17.1: ไฟล์ชั่วคราวนอกทางเข้า (src/lib/qc-a11-f17-probe.ts) อ้าง `.agentSession` ⇒ ❌ [F17.1] ชี้ไฟล์นั้น · ลบไฟล์ทิ้งทุกกรณี
+
+===== QC TRIPS A1.1 · migration agency + AgentIdentity + ค่าตั้ง agency =====
+ผ่าน 119/125 · ไม่ผ่าน 6 · ข้าม 0
+ต่อกลุ่ม: PC 4/4 · M 8/8 · T 11/11 · C 14/14 · U 10/10 · L 11/11 · S 8/13 · R 19/19 · RS 6/6 · WS 4/4 · X1 4/4 · AI 13/13 · F 2/2 · D 2/2 · G 3/4
+JSON_SUMMARY {"suite":"qc-trips-a1.1","total":125,"passed":119,"failed":["S-5","S-9","S-10","S-11","S-13","G-1"],"skipped":[]}

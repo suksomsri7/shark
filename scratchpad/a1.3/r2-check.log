@@ -1,0 +1,23 @@
+1 option-generic vs product-child: {"ADULT":300000,"CHILD":300000} a
+2 card-priority generic vs low-card child: {"ADULT":150000,"CHILD":150000} g
+3 PCT row THB, booking USD: {"level":{"refId":"p@1","mode":"COMMISSION_PCT","rateBp":2000,"fixedSatang":null,"unitMinorByPaxCode":null,"minSellMinor":null,"markupCapBp":null},"trace":{"source":"AGENT_CARD","cardId":"c1","cardVersion":1,"rateId":"p","mode":"COMMISSION_PCT","specialPeriod":false},"warnings":[]}
+3b built warnings: {"ok":false,"reason":"SETTINGS_INVALID"} 
+4 pax-only minSell: {"ok":false,"reason":"SETTINGS_INVALID"}
+5 PCT-THB + NET-USD card hi, USD booking: {"level":{"refId":"n@1","mode":"NET","rateBp":null,"fixedSatang":null,"unitMinorByPaxCode":{"ADULT":9000,"CHILD":9000},"minSellMinor":null,"markupCapBp":null},"trace":{"source":"AGENT_CARD","cardId":"c2","cardVersion":1,"rateId":"n","mode":"NET","specialPeriod":false},"warnings":["MIXED_MODES_IGNORED"]}
+6 PCT-THB + NET-THB(prio3) USD booking: {"level":{"refId":"p@1","mode":"COMMISSION_PCT","rateBp":2000,"fixedSatang":null,"unitMinorByPaxCode":null,"minSellMinor":null,"markupCapBp":null},"trace":{"source":"AGENT_CARD","cardId":"c1","cardVersion":1,"rateId":"p","mode":"COMMISSION_PCT","specialPeriod":false},"warnings":[]}
+7 FIXED-THB USD booking: {"level":null,"trace":null,"warnings":[]}
+V3 {"ok":false,"reason":"PAX_RATE_MIN_SELL"} true
+V4 2027-01-10T00:00:00Z true
+V4 2027-01-10T00:00:00.123Z true
+V4 2027-01-10T07:00+07:00 true
+V4 1900-01-01T05:00:00+07:00 false
+V4 2200-12-31T23:59:59-01:00 false
+V4 2027-01-10 false
+V4 2027-01-10T00:00:00 false
+V4 Jan 10 2027 false
+V4 2027-02-30T00:00:00Z false
+V4 2027-01-10T24:00:00Z false
+V4 2027-01-10 00:00:00Z false
+V4 1900-01-01T00:00:00Z true
+V4 2200-12-31T23:59:59Z true
+V4 2027-01-10T00:00:00+24:00 false

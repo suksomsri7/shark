@@ -1,0 +1,25 @@
+[env] probe-a1.3-hunt-1 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:311517) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+HELD [C1 ensureAgentTiers ×20 → 3 rows · Σcreated=3 · 1 audit · all ok] expected tiers A,B,C created 3 audit 1 all ok | got tiers A,B,C created 3 audit 1 tally {"ok":20} maxMs 769
+HELD [C2 create ×30 same owner → exactly 20 cards · 10 LIMIT_REACHED · audit = 20] expected 20 / 10 / 20 | got rows 20 tally {"ok":20,"VALIDATION:LIMIT_REACHED":10} audit +20
+HELD [C3 ACTIVATE ×20 overlapping → 1 ACTIVE · 19 CARD_OVERLAP · audit 1 · versions 2/1] expected 1 / 19 / 1 / ok | got active 1 tally {"VALIDATION:CARD_OVERLAP":19,"ok":1} audit +1 versions ["DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","DRAFT:1","ACTIVE:2","DRAFT:1"] maxMs 1076
+HELD [C4 cross-card range race (20 retrying updates) → no two ACTIVE same-priority cards overlap] expected no overlap | got rows [{"f":"2027-01-01","t":"2027-02-20"},{"f":"2027-03-01","t":"2027-03-31"}] tally {"ok":10,"VALIDATION:CARD_OVERLAP":10}
+HELD [C5 upsert ×20 same expectedVersion → 1 ok · 19 STALE · 1 row · version+1 · 1 audit] expected 1/19/1/v+1/1 | got tally {"STALE:":19,"ok":1} rows 1 version 2 (from 1) audit +1
+HELD [C6 overlap race ×20 (retrying) → 1 row · 19 RATE_OVERLAP · version steps = successes · audit = successes] expected 1 row / 1 ok / 19 overlap / +1 / +1 | got rows 1 tally {"VALIDATION:RATE_OVERLAP":19,"ok":1} version +1 audit +1
+HELD [C7 reactivate overlapping rows ×20 → at most 1 active] expected ≤ 1 active | got active 1 tally {"VALIDATION:RATE_OVERLAP":10,"ok":1,"ok-replayed":9}
+HELD [C8 setAgentRateActive ×20 same version → 1 real ok · 19 STALE/replayed · audit 1 · version+1] expected 1 / 19 STALE|replayed / 1 / +1 | got tally {"STALE:":10,"ok-replayed":9,"ok":1} audit +1 version 3 from 2
+HELD [C9 ARCHIVE/ACTIVATE/upsert ×20 on one version → exactly 1 real winner · version+1 · audit 1] expected 1 / +1 / 1 | got tally {"ok":1,"BAD_STATE:CARD_ARCHIVED":13,"ok-replayed":6} winners 1 version 2 from 1 audit 1 {"ok":1,"BAD_STATE:CARD_ARCHIVED":13,"ok-replayed":6}
+HELD [C10 setAgentAccountTier ×20 one expectedUpdatedAt → 1 real write · audit 1 · rest STALE/replayed] expected 1 / 1 | got real 1 audit +1 tally {"STALE:":15,"ok":1,"ok-replayed":4}
+HELD [C11 setAgentAccountTier ×20 same target → 1 write + 19 replayed · audit 1] expected 1 + 19 replayed / 1 | got real 1 tally {"ok-replayed":19,"ok":1} audit +1
+HELD [C12 mixed storm on one owner → no overlapping ACTIVE pair · no BUSY/THROW/give-up · finishes] expected 0 overlap / 0 unexpected | got overlapPairs 0 unexpected [] create {"SETUP:Error: ACTIVATE: {\"ok\":false,\"code\":\"VALIDATION\",\"message\":\"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่\",\"reason\":\"CARD_OVERLAP\"}":6,"ok":2} edits {"ok":3,"VALIDATION:CARD_OVERLAP":3} ms 1287
+
+== SUMMARY hunt-1: HELD 12 · FOUND 0
+CLEANUP ok — 0 rows left with prefix trips-a13h- (Tenant · User · AgentAccount · AgentRateCard · AgentRate · AgentTier · AgentIdentity · AgentUser · AgentLogin)

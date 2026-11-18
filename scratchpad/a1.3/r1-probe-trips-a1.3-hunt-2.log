@@ -1,0 +1,17 @@
+[env] probe-a1.3-hunt-2 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:3913005) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+PROBE ERROR Error: upsertAgentRate: {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"RATE_OVERLAP"} rate={"productKind":"TRIP","mode":"COMMISSION_PCT","valueBp":800,"productId":"a13h_pP_mwgm85tqb93e01","travelTo":"2027-01-31"}
+    at Object.mkCard (/root/projects/shark-trips-l2/scripts/probe-trips-a1.3-hunt-lib.mts:168:32)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+    at async <anonymous> (/root/projects/shark-trips-l2/scripts/probe-trips-a1.3-hunt-2.mts:26:16)
+
+== SUMMARY hunt-2: HELD 0 · FOUND 0
+CLEANUP ok — 0 rows left with prefix trips-a13h- (Tenant · User · AgentAccount · AgentRateCard · AgentRate · AgentTier · AgentIdentity · AgentUser · AgentLogin)

@@ -1,0 +1,133 @@
+[env] probe-a1.3-hunt-3 · ไฟล์ .env.qc-trips · DB ep-calm-sun-ao0wyfu5-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:4175646) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+HELD [X getAgentRateCard: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X updateAgentRateCard: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X setAgentRateCardStatus ARCHIVE: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X setAgentRateCardStatus ACTIVATE: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X upsertAgentRate (B card): B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X upsertAgentRate (A card, B rate id): B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X setAgentRateActive (A card, B rate id): B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X setAgentRateActive (B card, B rate): B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X createAgentRateCard owner = B account: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X createAgentRateCard copyFrom = B card: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X listAgentRateCards owner = B account: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X setAgentAccountTier B account: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X tryAgentPrice B account: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X tryAgentPrice B product/slot: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X tryAgentPrice B unit: B id ≡ nonexistent id (NOT_FOUND, no leak)] expected NOT_FOUND ≡ {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got B: {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X listAgentRateCards cursor = shop-B card id ≡ cursor = nonexistent id (no cross-shop existence oracle)] expected {"ok":true,"items":[],"nextCursor":null} | got B-cursor items 0 {"ok":true,"items":[],"nextCursor":null} · nonexistent {"ok":true,"items":[],"nextCursor":null}
+HELD [X rate productId of shop B → PRODUCT_NOT_FOUND ≡ bogus product] expected {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":" | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X try draft productId of shop B → PRODUCT_NOT_FOUND] expected PRODUCT_NOT_FOUND | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X rate optionId of shop B product → PRODUCT_NOT_FOUND ≡ bogus product] expected {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":" | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X try draft optionId of shop B product → PRODUCT_NOT_FOUND] expected PRODUCT_NOT_FOUND | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X rate optionId of other product (same shop) → PRODUCT_NOT_FOUND ≡ bogus product] expected {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":" | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X try draft optionId of other product (same shop) → PRODUCT_NOT_FOUND] expected PRODUCT_NOT_FOUND | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X rate paxTypeId of other product (same shop) → PRODUCT_NOT_FOUND ≡ bogus product] expected {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":" | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X try draft paxTypeId of other product (same shop) → PRODUCT_NOT_FOUND] expected PRODUCT_NOT_FOUND | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X rate paxTypeId of shop B → PRODUCT_NOT_FOUND ≡ bogus product] expected {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":" | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X try draft paxTypeId of shop B → PRODUCT_NOT_FOUND] expected PRODUCT_NOT_FOUND | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"PRODUCT_NOT_FOUND"}
+HELD [X restricted staff: card of invisible account ≡ nonexistent] expected {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"} | got {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X restricted staff: list excludes invisible account's cards] expected no cRU | got 4 items · has cRU false
+HELD [X restricted staff: try with invisible account → NOT_FOUND] expected NOT_FOUND | got {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X restricted staff: try in a unit outside own access → NOT_FOUND] expected NOT_FOUND | got {"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้"}
+HELD [X restricted staff cannot write (FORBIDDEN)] expected FORBIDDEN | got {"ok":false,"code":"FORBIDDEN","message":"ไม่มีสิทธิ์ทำรายการนี้"}
+HELD [X view-only staff write → FORBIDDEN before touching id] expected FORBIDDEN | got {"ok":false,"code":"FORBIDDEN","message":"ไม่มีสิทธิ์ทำรายการนี้"}
+HELD [X forged ctx (actor of shop B on tenant A) → FORBIDDEN] expected FORBIDDEN | got {"ok":false,"code":"FORBIDDEN","message":"ไม่มีสิทธิ์ทำรายการนี้"}
+HELD [X forged ctx (tenant B with actor of A) → FORBIDDEN] expected FORBIDDEN | got {"ok":false,"code":"FORBIDDEN","message":"ไม่มีสิทธิ์ทำรายการนี้"}
+HELD [X forged ctx (extra key role:OWNER) → FORBIDDEN] expected FORBIDDEN | got {"ok":false,"code":"FORBIDDEN","message":"ไม่มีสิทธิ์ทำรายการนี้"}
+HELD [X forged ctx (extra key unitAccess:*) → FORBIDDEN] expected FORBIDDEN | got {"ok":false,"code":"FORBIDDEN","message":"ไม่มีสิทธิ์ทำรายการนี้"}
+HELD [X forged ctx (null ctx) → FORBIDDEN] expected FORBIDDEN | got {"ok":false,"code":"FORBIDDEN","message":"ไม่มีสิทธิ์ทำรายการนี้"}
+HELD [X forged ctx (array ctx) → FORBIDDEN] expected FORBIDDEN | got {"ok":false,"code":"FORBIDDEN","message":"ไม่มีสิทธิ์ทำรายการนี้"}
+HELD [X shop B untouched (cards/rates/accounts/audit fingerprint)] expected {"audit":"13","cards":"83bb797d2a14ed0646e7d74ee0c7b952","rates":"a49d07ca9b2c471dd51a3ca9c874f309","acc":"016a2c1de4fe0fe1e4b10aa04acc6208","deps":"1bb4bb431db25220ef5d2b1176751317"} | got {"audit":"13","cards":"83bb797d2a14ed0646e7d74ee0c7b952","rates":"a49d07ca9b2c471dd51a3ca9c874f309","acc":"016a2c1de4fe0fe1e4b10aa04acc6208","deps":"1bb4bb431db25220ef5d2b1176751317"}
+HELD [X no audit in shop A from refused cross-shop calls] expected +3 | got +3
+HELD [I rate valueBp -1] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueBp 10001] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueBp 12.5] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueBp NaN] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueBp Infinity] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueBp '1200'] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueBp 1e3 as string exp] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueBp -0] expected OK | got OK {"id":"cmwgpcd3h001uy6kzmsoxodbf","productKind":"TRIP","productId":"a13h_pPA_mwgpc9im0ac4fc","optionId":null,"paxTypeId":null,"mode":"COMMISSION_PCT","valueBp":
+HELD [I rate valueMinor 2^31 (NET)] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueMinor -1 (NET)] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueMinor 1e20 (FIXED)] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate valueMinor bigint-ish string] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate markupCapBp 100001] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate priority -1] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate priority 1001] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate priority 1.5] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate currency thb] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate currency USD on THB product (PCT)] expected CURRENCY_MISMATCH | got CURRENCY_MISMATCH 
+HELD [I rate FIXED currency USD] expected CURRENCY_MISMATCH | got CURRENCY_MISMATCH 
+HELD [I rate productKind HOTEL] expected KIND_NOT_SUPPORTED | got KIND_NOT_SUPPORTED 
+HELD [I rate productKind TICKET] expected KIND_NOT_SUPPORTED | got KIND_NOT_SUPPORTED 
+HELD [I rate cabinTypeId set] expected CABIN_RATE_NOT_SUPPORTED | got CABIN_RATE_NOT_SUPPORTED 
+HELD [I rate PCT with paxTypeId] expected PAX_RATE_COMMISSION | got PAX_RATE_COMMISSION 
+HELD [I rate NET minSell < net] expected MIN_SELL_BELOW_NET | got MIN_SELL_BELOW_NET 
+HELD [I rate MARKUP with valueBp] expected MODE_VALUE_MISMATCH | got MODE_VALUE_MISMATCH 
+HELD [I rate MARKUP w/o cap] expected MODE_VALUE_MISMATCH | got MODE_VALUE_MISMATCH 
+HELD [I rate PCT with minSell] expected MODE_VALUE_MISMATCH | got MODE_VALUE_MISMATCH 
+HELD [I rate extra key tenantId] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate extra key rateCardId] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate extra key version] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate extra key createdAt] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate extra key specialPeriod] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate bookTo < bookFrom] expected BAD_RANGE | got BAD_RANGE 
+HELD [I rate productId with SQL] expected BAD_INPUT | got BAD_INPUT 
+HELD [I rate productId 65 chars] expected BAD_INPUT | got BAD_INPUT 
+FOUND [I rate proto-polluted rate] expected BAD_INPUT|OK | got RATE_OVERLAP 
+HELD [I rate id unknown (upsert by id)] expected NOT_FOUND | got NOT_FOUND 
+HELD [I rate id number] expected BAD_INPUT | got BAD_INPUT 
+HELD [I envelope expectedVersion 0 → VALIDATION BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I envelope expectedVersion '1' → VALIDATION BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I envelope expectedVersion 1.5 → VALIDATION BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I envelope expectedVersion 1e12 → VALIDATION BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I envelope envelope tenantId → VALIDATION BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I envelope rate = array → VALIDATION BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I envelope rate = null → VALIDATION BAD_INPUT] expected BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name empty] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name spaces] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name 81 chars] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name 80 chars] expected OK | got OK stored="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+HELD [I name 10k chars] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name NUL] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name newline] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name RLO] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name zero-width only] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name lone surrogate] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I name Thai 80 graphemes w/ marks] expected OK | got OK stored="กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ่กิ
+HELD [I card validFrom 0000-01-01 → VALIDATION BAD_INPUT (not BUSY/ops ERROR)] expected VALIDATION BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I card validTo 0000-12-31 → VALIDATION BAD_INPUT (not BUSY/ops ERROR)] expected VALIDATION BAD_INPUT | got {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+INFO [I name CSV-formula] "=HYPERLINK(\"http://evi→STORED · "+cmd|' /C calc'!A0"→STORED · "@SUM(1+1)"→STORED · "-2+3"→STORED (ใบสั่งไม่บังคับ — ตัวส่งออก CSV ของ A1.3b ต้องกันเอง)
+HELD [I try pax 21 lines] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try pax qty -1] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try pax qty 1.5] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try pax qty 100000 (amount overflow)] expected VALIDATION | got VALIDATION {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"AMOUNT_TOO_LARGE"}
+HELD [I try pax empty] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try at garbage] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try at far future 9999] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try agentDiscountSatang 2^31] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try agentDiscountSatang over cap] expected VALIDATION | got VALIDATION {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"DISCOUNT_OVER_CAP"}
+HELD [I try actualSaleSatang NaN] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try extra key tenantId] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try draft 201 rates] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try draft rate with id] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try draft ownerKind X] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try draft extra key] expected BAD_INPUT | got BAD_INPUT {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_INPUT"}
+HELD [I try draft validTo<validFrom] expected BAD_RANGE | got BAD_RANGE {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"BAD_RANGE"}
+HELD [I try draft duplicated NND] expected RATE_OVERLAP | got RATE_OVERLAP {"ok":false,"code":"VALIDATION","message":"ข้อมูลไม่ถูกต้อง — ตรวจช่องที่กรอกแล้วลองใหม่","reason":"RATE_OVERLAP"}
+INFO [I fingerprint] before {"audit":"18","cards":"b4f4eb47a7192a2590a9503d72071e07","rates":"732937d5b3729d39defa1262f1f246ca","acc":"4f2323d4514a0bb483b83e0b7b051396","deps":"e07c8e705072d18e9f754a7c009067eb"} after {"audit":"25","cards":"f9f55e22500224b799c94acba5ed0d56","rates":"a473be28ccf8c744d9f44806b422e67f","acc":"4f2323d4514a0bb483b83e0b7b051396","deps":"e07c8e705072d18e9f754a7c009067eb"} (expected writes: ≤ 2 rate rows · 2–3 cards from OK names/formula)
+HELD [I rejected rate inputs wrote nothing (rows on card A = 1 seed + accepted only)] expected ≤ 3 | got 2
+HELD [I no ops event from any dangerous input (§7 ข้อ 10)] expected 0 OpsEvent rows for shop A | got 0 rows · 
+
+== SUMMARY hunt-3: HELD 116 · FOUND 1 → I rate proto-polluted rate
+CLEANUP ok — 0 rows left with prefix trips-a13h- (Tenant · User · AgentAccount · AgentRateCard · AgentRate · AgentTier · AgentIdentity · AgentUser · AgentLogin)
+exit=0
