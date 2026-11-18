@@ -1,0 +1,18 @@
+[env] probe-w1.1-hunt-7 · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1418447) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+removed 0 bucket rows of recon client pc_81304c…
+removed 0 bucket rows of recon client pc_d73ff7…
+left: buckets of 127.0.0.1 (requests without IP header; may also be the controller's): [{"key":"trips:book:tripsqc-tenant-dive:pc_…","count":1}]
+hunt tenants left: { n: 0 }
+rows left under hunt ids (TripLinkStat/TripProduct/BusinessUnit with w11h_ ids): {"stat":0,"prod":0,"unit":0,"buckets":0}
+trips:* buckets total now: [{"kind":"book","n":8},{"kind":"link","n":1589},{"kind":"view","n":4}]
+OpsEvent trips.public last 2h: { n: 4 }
+seed shop andaman-dive TripLinkStat (not modified by cleanup; recon added 1 view on the latest day): [{"day":"2026-11-14","channel":"WEB","views":5}]

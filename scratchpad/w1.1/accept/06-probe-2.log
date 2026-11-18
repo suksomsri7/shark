@@ -1,0 +1,96 @@
+[env] probe-w1.1-hunt-2 · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1407343) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+== A. header → bucket ==
+HELD  [HDR XFF plain] expected: baseline → bucket of 100.88.7.9 | got: 200/INDEX bucket of 100.88.7.9
+HELD  [HDR XFF ip:port] expected: same bucket → bucket of 100.88.7.9 | got: 200/INDEX bucket of 100.88.7.9
+HELD  [HDR XFF ::ffff: mapped] expected: same bucket → bucket of 100.88.7.9 | got: 200/INDEX bucket of 100.88.7.9
+HELD  [HDR XFF [::FFFF:ip]:443 upper] expected: same bucket → bucket of 100.88.7.9 | got: 200/INDEX bucket of 100.88.7.9
+HELD  [HDR XFF leading zero octet] expected: same bucket → bucket of 100.88.7.9 | got: 200/INDEX bucket of 100.88.7.9
+HELD  [HDR XFF padded spaces] expected: same bucket → bucket of 100.88.7.9 | got: 200/INDEX bucket of 100.88.7.9
+HELD  [HDR XFF v6 a] expected: v6 /64 → bucket of 2001:db8:1:2::1 | got: 200/INDEX bucket of 2001:db8:1:2::1
+HELD  [HDR XFF v6 same /64, other host, upper] expected: same /64 bucket → bucket of 2001:db8:1:2::1 | got: 200/INDEX bucket of 2001:db8:1:2::1
+HELD  [HDR XFF v6 zone id] expected: same /64 bucket → bucket of 2001:db8:1:2::1 | got: 200/INDEX bucket of 2001:db8:1:2::1
+HELD  [HDR XFF v6 next /64] expected: new bucket (inherent) → bucket of 2001:db8:1:3::1 | got: 200/INDEX bucket of 2001:db8:1:3::1
+KNOWN [HDR XFF list real-last (spoofed first)] expected: trusted hop = last entry ⇒ same bucket → bucket of 100.88.7.9 | got: 200/INDEX bucket of 9.9.9.9 | known/accepted — deployment precondition OQ28 (ruling X2 ค): the edge must OVERWRITE X-Real-IP / X-Vercel-Forwarded-For / X-Forwarded-For; on a bare `next start` these headers are client-controlled
+KNOWN [HDR XFF two header lines] expected: trusted hop = last entry ⇒ same bucket → bucket of 100.88.7.9 | got: 200/INDEX bucket of 6.6.6.6 | known/accepted — deployment precondition OQ28 (ruling X2 ค): the edge must OVERWRITE X-Real-IP / X-Vercel-Forwarded-For / X-Forwarded-For; on a bare `next start` these headers are client-controlled
+KNOWN [HDR X-Real-IP spoof + XFF real] expected: client header must not override → bucket of 100.88.7.9 | got: 200/INDEX bucket of 8.8.4.4 | known/accepted — deployment precondition OQ28 (ruling X2 ค): the edge must OVERWRITE X-Real-IP / X-Vercel-Forwarded-For / X-Forwarded-For; on a bare `next start` these headers are client-controlled
+KNOWN [HDR x-vercel-forwarded-for spoof + XFF real] expected: client header must not override → bucket of 100.88.7.9 | got: 200/INDEX bucket of 5.5.5.5 | known/accepted — deployment precondition OQ28 (ruling X2 ค): the edge must OVERWRITE X-Real-IP / X-Vercel-Forwarded-For / X-Forwarded-For; on a bare `next start` these headers are client-controlled
+HELD  [HDR Forwarded: for= + XFF real] expected: ignored → bucket of 100.88.7.9 | got: 200/INDEX bucket of 100.88.7.9
+HELD  [HDR CF-Connecting-IP + True-Client-IP + XFF real] expected: ignored → bucket of 100.88.7.9 | got: 200/INDEX bucket of 100.88.7.9
+HELD  [HDR no IP header at all] expected: X2(ข): production + no forwarded IP ⇒ closed (rate page), never a 127.0.0.1 bucket → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [HDR XFF = 127.0.0.1 (server's own address)] expected: X2(ข): loopback is not a client ⇒ closed → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [HDR XFF = ::1] expected: X2(ข): loopback is not a client ⇒ closed → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [HDR XFF = ::ffff:127.0.0.1] expected: X2(ข): loopback is not a client ⇒ closed → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [HDR X-Real-IP loopback + XFF real] expected: X2(ข): first header decides; loopback ⇒ closed, no fall-through to the client header → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [HDR XFF garbage 'unknown'] expected: closed (RATE page, no bucket) → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [HDR XFF empty + nothing] expected: X2(ข): closed (rate page), never a 127.0.0.1 bucket → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [HDR X-Real-IP garbage + XFF valid] expected: closed → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [HDR XFF decimal int] expected: closed → 200/RATE, no bucket, no shop title | got: 200/RATE bucket of (no bucket) titles ["SHARK — ระบบบริหารจัดการร้านค้า"]
+  (socket keys known: 127.0.0.1 / ::1 = pc_9279ba2 / pc_e3a105d)
+
+== B. read limit (120 / 60 s / shop / client) ==
+HELD  [READ-LIMIT] expected: exactly 120 pages then limited | got: {"200/INDEX":120,"200/RATE":10} in 3905 ms
+  INFO  limited response: status=200 retry-after=(none) cache-control=private, no-cache, no-store, max-age=0, must-revalidate len=252197 titles=["SHARK — ระบบบริหารจัดการร้านค้า"]
+KNOWN [LIMITED-STATUS] expected: HTTP 429 (+ Retry-After) for a throttled client | got: 200, retry-after (none) | known/accepted debt — rate-limited page answers HTTP 200 without Retry-After until the gate moves to the proxy/route layer (W1.1b)
+HELD  [LIMITED-NO-SHOP-DATA] expected: limited page carries no shop data — title, body, product list (X1 · brief §6) | got: titles ["SHARK — ระบบบริหารจัดการร้านค้า"] · shopNameInBody=false · 0 of 10 limited responses carry shop data
+  INFO  median ms: limited client 89.1 vs normal first view 99.2 (after X1 a limited request should cost only: resolve shop + 1 gate write — no metadata/catalogue reads)
+HELD  [LIMIT-PER-SHOP] expected: limit on shop A does not block shop B | got: 200/INDEX
+HELD  [LIMITED-NOT-COUNTED] expected: limited client's product request: RATE page, no view counted, no dedupe bucket | got: 200/RATE views=0 viewBuckets=0
+KNOWN [LOCKOUT-VICTIM] expected: a third party cannot exhaust another visitor's bucket | got: attacker sent 121 requests with X-Forwarded-For=<victim>; victim's own first request → 200/RATE | known/accepted — deployment precondition OQ28 (ruling X2 ค): the edge must OVERWRITE X-Real-IP / X-Vercel-Forwarded-For / X-Forwarded-For; on a bare `next start` these headers are client-controlled
+KNOWN [LIMIT-BYPASS-ROTATE] expected: one sender cannot exceed 120/min by rotating a client-supplied header | got: 150 requests with rotating X-Forwarded-For → {"200/INDEX":150} | known/accepted — deployment precondition OQ28 (ruling X2 ค): the edge must OVERWRITE X-Real-IP / X-Vercel-Forwarded-For / X-Forwarded-For; on a bare `next start` these headers are client-controlled
+HELD  [NO-HEADER-CLOSED] expected: 20 requests without any IP header (index + product): all rate-limited page, no shop data, no view, no bucket of 127.0.0.1 / ::1 | got: {"200/RATE":20} · shop name in any: false · loopback buckets: []
+
+== C. miss bucket (30 / 10 min / client) ==
+HELD  [MISS-LIMIT] expected: 30 not-found then limited | got: {"404/OTHER":30,"200/RATE":4}
+HELD  [MISS-NO-LOCKOUT] expected: exhausted miss bucket does not block real pages of the same client | got: 200/INDEX · 200/PRODUCT
+HELD  [NOTFOUND-NO-SHOP-DATA] expected: not-found / miss-limited pages carry no shop name in any title or in the body (X1) | got: 0 of 34 responses carry the shop name · sample titles ["SHARK — ระบบบริหารจัดการร้านค้า"] · limited sample ["SHARK — ระบบบริหารจัดการร้านค้า"]
+HELD  [MISS-LIMITED-ORACLE] expected: after miss limit: draft and missing look the same | got: 200/RATE vs 200/RATE
+  INFO  miss-limited response status=200 (a guessed slug now answers 200 instead of 404)
+
+== D. view counter ==
+HELD  [VIEW-REFRESH-60] expected: +1 | got: +1
+HELD  [VIEW-PARALLEL-100] expected: +1 (one client, 100 parallel first views) | got: +1 · {"200/PRODUCT":100}
+KNOWN [VIEW-SPOOF-60] expected: one sender cannot add 60 views with 60 requests | got: +60 views for 60 requests ({"200/PRODUCT":60}) ⇒ 1 request per fake view | known/accepted — deployment precondition OQ28 (ruling X2 ค): the edge must OVERWRITE X-Real-IP / X-Vercel-Forwarded-For / X-Forwarded-For; on a bare `next start` these headers are client-controlled
+HELD  [VIEW plain browser GET (control)] expected: +1 view, no 5xx | got: +1 · 200/PRODUCT
+KNOWN [VIEW HEAD (browser UA)] expected: +0 view, no 5xx | got: +1 · 200/OTHER | known debt of X6 — a server component cannot see the HTTP method: a body-less non-GET request (HEAD / DELETE / OPTIONS) sent with a browser User-Agent may still count; closes when the gate moves to the proxy/route layer (W1.1b)
+HELD  [VIEW HEAD (no User-Agent)] expected: +0 view, no 5xx | got: +0 · 200/OTHER
+HELD  [VIEW HEAD (curl UA)] expected: +0 view, no 5xx | got: +0 · 200/OTHER
+HELD  [VIEW GET without User-Agent] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW POST] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW POST body, no content-type] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+KNOWN [VIEW DELETE no body (browser UA)] expected: +0 view, no 5xx | got: +1 · 200/PRODUCT | known debt of X6 — a server component cannot see the HTTP method: a body-less non-GET request (HEAD / DELETE / OPTIONS) sent with a browser User-Agent may still count; closes when the gate moves to the proxy/route layer (W1.1b)
+HELD  [VIEW RSC fetch (?_rsc + RSC:1)] expected: +1 view, no 5xx | got: +1 · 200/OTHER
+HELD  [VIEW router prefetch (RSC:1 + Next-Router-Prefetch:1)] expected: +0 view, no 5xx | got: +0 · 200/OTHER
+HELD  [VIEW browser speculative prefetch (Sec-Purpose: prefetch)] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW Sec-Purpose: prefetch only] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW Purpose: prefetch only] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW crawler UA (Googlebot)] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW link-preview bot (facebookexternalhit)] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW link-preview bot (LINE: facebookexternalhit;line-poker)] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW link-preview bot (Slackbot-LinkExpanding)] expected: +0 view, no 5xx | got: +0 · 200/PRODUCT
+HELD  [VIEW LINE in-app browser (a person)] expected: +1 view, no 5xx | got: +1 · 200/PRODUCT
+HELD  [VIEW not-found slug] expected: +0 view, no 5xx | got: +0 · 404/OTHER
+HELD  [VIEW draft slug] expected: +0 view, no 5xx | got: +0 · 404/OTHER
+HELD  [VIEW shop index] expected: +0 view, no 5xx | got: +0 · 200/INDEX
+HELD  [VIEW ?a=garbage long] expected: +1 view, no 5xx | got: +1 · 200/PRODUCT
+HELD  [VIEW ?a=valid-shape unknown code] expected: +1 view, no 5xx | got: +1 · 200/PRODUCT
+HELD  [VIEW ?a=other shop's unit id &s=x] expected: +1 view, no 5xx | got: +1 · 200/PRODUCT
+HELD  [VIEW ?a with NUL/control] expected: +1 view, no 5xx | got: +1 · 200/PRODUCT
+HELD  [VIEW ?a repeated] expected: +1 view, no 5xx | got: +1 · 200/PRODUCT
+HELD  [STAT-ROWS] expected: exactly 1 TripLinkStat row for the unit (day 2026-11-14, WEB, link null) — no attacker-keyed rows | got: [{"day":"2026-11-14","channel":"WEB","linkId":null,"views":73}]
+HELD  [VIEW-BUCKET-KEYS] expected: dedupe buckets keyed only by (unit, day, WEB, '-', client) — one per counted client | got: 73 buckets for 73 views · odd keys: []
+HELD  [STAT-DAY-TZ] expected: New York unit counts on its local day 2026-11-13 (Bangkok day is 2026-11-14) | got: 200/PRODUCT [{"day":"2026-11-13","channel":"WEB","linkId":null,"views":1}]
+  INFO  product B untouched: views(uB)=0 (expected 0) · pB slug under shop A → 404/OTHER
+HELD  [OPS] expected: no trips.public OpsEvent (limiter never reported down) | got: +0
+  INFO  rows this probe created outside TripLinkStat: ChatRateBucket trips:book:<A> = 261, trips:view:<uA> = 73 (all removed in cleanup)
+  cleanup: removed 4 miss buckets of 270 probe IPs
+  cleanup: hunt tenants left = 0

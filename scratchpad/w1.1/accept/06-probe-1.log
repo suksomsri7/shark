@@ -1,0 +1,67 @@
+[env] probe-w1.1-hunt-1 · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1405496) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  (skip PAUSED: status/type not insertable)
+  (skip TICKET: status/type not insertable)
+
+== 1. visibility: hidden product vs missing slug (same length) ==
+HELD  [VIS-DRAFT] expected: identical to missing slug (404/OTHER len 251048 titles ["SHARK — ระบบบริหารจัดการร้านค้า"]) | got: 404/OTHER len 251048 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] headersSame=true bodySame=true · median ms hidden 71.7 vs missing 82.5
+HELD  [VIS-ARCHIVED] expected: identical to missing slug (404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"]) | got: 404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] headersSame=true bodySame=true · median ms hidden 71.5 vs missing 84.2
+HELD  [VIS-LIVEABOARD] expected: identical to missing slug (404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"]) | got: 404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] headersSame=true bodySame=true · median ms hidden 69.3 vs missing 77.5
+HELD  [VIS-PAUSED_UNIT] expected: identical to missing slug (404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"]) | got: 404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] headersSame=true bodySame=true · median ms hidden 97.7 vs missing 68.0
+HELD  [VIS-NON_TRIPS_UNIT] expected: identical to missing slug (404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"]) | got: 404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] headersSame=true bodySame=true · median ms hidden 70.0 vs missing 78.9
+HELD  [VIS-OTHER_SHOP] expected: identical to missing slug (404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"]) | got: 404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] headersSame=true bodySame=true · median ms hidden 69.9 vs missing 103.7
+HELD  [NF-NO-SHOP-DATA missing-slug] expected: 404 · no shop / brand / product name in any title or in the body | got: 404/OTHER titles ["SHARK — ระบบบริหารจัดการร้านค้า"] · traces: []
+HELD  [NF-NO-SHOP-DATA hidden-DRAFT] expected: 404 · no shop / brand / product name in any title or in the body | got: 404/OTHER titles ["SHARK — ระบบบริหารจัดการร้านค้า"] · traces: []
+HELD  [NF-NO-SHOP-DATA hidden-ARCHIVED] expected: 404 · no shop / brand / product name in any title or in the body | got: 404/OTHER titles ["SHARK — ระบบบริหารจัดการร้านค้า"] · traces: []
+
+== 1b. shop visibility ==
+HELD  [VIS-SUSPENDED_SHOP] expected: identical to missing shop (404/OTHER len 250077) | got: 404/OTHER len 250077 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] · median ms 47.6 vs 58.0
+HELD  [VIS-SUSPENDED_SHOP_PRODUCT] expected: identical to missing shop (404/OTHER len 251046) | got: 404/OTHER len 251046 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] · median ms 52.1 vs 94.2
+HELD  [VIS-NO_TRIPS_UNIT_SHOP] expected: identical to missing shop (404/OTHER len 250077) | got: 404/OTHER len 250077 titles ["SHARK — ระบบบริหารจัดการร้านค้า"] · median ms 92.4 vs 54.5
+HELD  [VIS-INDEX] expected: index lists only the visible product | got: kind 200/INDEX · hidden slugs present: [] · visible present: true
+
+== 2. content of the visible product page ==
+HELD  [IDS-th] expected: no internal id of the temp shop in HTML/RSC payload | got: kind 200/PRODUCT · ids found: 0 []
+FOUND [SECRETS-th] expected: no unlisted body/meeting fields, no price internals | got: found: ["passThrough\\\":"]
+HELD  [XSS-STORED-th] expected: shop-written texts never appear as raw markup | got: raw marks: [] · escaped form present: true · title: ทัวร์ &lt;img src=x onerror=alert(1)&gt;&quot;&#x27;&lt;/script&gt;&lt;script&gt
+  INFO  [LOGO-th] <img> sources on the public page: []  referrer-policy=strict-origin-when-cross-origin csp=(none)
+HELD  [LOGO-EXTERNAL-th] expected: logo on a non-platform host is not rendered or referenced (X10) | got: <img> [] · host in payload: false
+HELD  [IDS-en] expected: no internal id of the temp shop in HTML/RSC payload | got: kind 200/PRODUCT · ids found: 0 []
+FOUND [SECRETS-en] expected: no unlisted body/meeting fields, no price internals | got: found: ["passThrough\\\":"]
+HELD  [XSS-STORED-en] expected: shop-written texts never appear as raw markup | got: raw marks: [] · escaped form present: true · title: Tour &lt;img src=x onerror=alert(1)&gt;&quot;&#x27;&lt;/script&gt;&lt;script&gt;
+  INFO  [LOGO-en] <img> sources on the public page: []  referrer-policy=strict-origin-when-cross-origin csp=(none)
+HELD  [LOGO-EXTERNAL-en] expected: logo on a non-platform host is not rendered or referenced (X10) | got: <img> [] · host in payload: false
+
+== 3. reflected parameters ==
+HELD  [REFLECT-lang] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 200/PRODUCT raw=false
+HELD  [REFLECT-m] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 200/PRODUCT raw=false
+HELD  [REFLECT-d] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 200/PRODUCT raw=false
+HELD  [REFLECT-a] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 200/PRODUCT raw=false
+HELD  [REFLECT-s] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 200/PRODUCT raw=false
+FOUND [REFLECT-a-valid-shape] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 200/PRODUCT raw=false aCarriedOrEchoed=true
+HELD  [REFLECT-unknown-key] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 200/PRODUCT raw=false
+HELD  [REFLECT-slug-404] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 404/OTHER raw=false
+HELD  [REFLECT-shop-404] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 404/OTHER raw=false
+FOUND [REFLECT-index-lang] expected: no raw reflection, no 5xx, unbound ?a not carried into links | got: 200/INDEX raw=false aCarriedOrEchoed=true
+
+== 4. headers / methods ==
+  INFO  [HDR-product] status=200 cache-control=private, no-cache, no-store, max-age=0, must-revalidate vary=rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding x-frame-options=DENY csp=(none) x-robots-tag=(none) set-cookie=(none) robotsMeta=noindex, nofollow
+HELD  [HDR-CACHE-product] expected: not cacheable by a shared proxy (private/no-store) | got: private, no-cache, no-store, max-age=0, must-revalidate
+HELD  [HDR-FRAME-product] expected: X-Frame-Options DENY | got: DENY
+HELD  [HDR-ROBOTS-product] expected: noindex (meta or header) | got: noindex, nofollow / (none)
+HELD  [HDR-COOKIE-product] expected: no cookie set on public page | got: (none)
+  INFO  [HDR-notfound] status=404 cache-control=private, no-cache, no-store, max-age=0, must-revalidate vary=rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding x-frame-options=DENY csp=(none) x-robots-tag=(none) set-cookie=(none) robotsMeta=noindex
+HELD  [HDR-CACHE-notfound] expected: not cacheable by a shared proxy (private/no-store) | got: private, no-cache, no-store, max-age=0, must-revalidate
+HELD  [HDR-FRAME-notfound] expected: X-Frame-Options DENY | got: DENY
+HELD  [HDR-ROBOTS-notfound] expected: noindex (meta or header) | got: noindex / (none)
+HELD  [HDR-COOKIE-notfound] expected: no cookie set on public page | got: (none)
+  cleanup: removed 210 miss buckets of 224 probe IPs
+  cleanup: hunt tenants left = 0

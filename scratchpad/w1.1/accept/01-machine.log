@@ -1,0 +1,16 @@
+Fri Nov 13 22:23:07 UTC 2026
+ 22:23:07 up 6 days, 27 min,  0 user,  load average: 10.94, 7.18, 4.68
+               total        used        free      shared  buff/cache   available
+Mem:              31          13          10           0           8          18
+Swap:             11           2           9
+  UNIT                           LOAD   ACTIVE SUB     DESCRIPTION
+  iso-1348951-1794608523.service loaded active running /usr/bin/bash scripts/with-gate-lock.sh pnpm typecheck
+  iso-1350614-1794608571.service loaded active running /usr/bin/bash scripts/with-gate-lock.sh pnpm typecheck
+  iso-1351648-1794608586.service loaded active running /usr/bin/pnpm exec prisma generate
+
+Legend: LOAD   → Reflects whether the unit definition was properly loaded.
+        ACTIVE → The high-level unit activation state, i.e. generalization of SUB.
+        SUB    → The low-level unit activation state, values depend on unit type.
+
+3 loaded units listed. Pass --all to see loaded but inactive units, too.
+To show all installed unit files use 'systemctl list-unit-files'.

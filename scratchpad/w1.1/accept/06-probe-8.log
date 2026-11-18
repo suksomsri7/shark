@@ -1,0 +1,12 @@
+[env] hunt-ops · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1418526) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[{"utc_min":"20:31","level":"WARN","detail":"Error","n":4},{"utc_min":"20:32","level":"WARN","detail":"Error","n":1},{"utc_min":"20:33","level":"WARN","detail":"Error","n":3},{"utc_min":"20:38","level":"WARN","detail":"Error","n":4},{"utc_min":"20:39","level":"WARN","detail":"Error","n":4},{"utc_min":"22:23","level":"WARN","detail":"Error","n":1},{"utc_min":"22:24","level":"WARN","detail":"Error","n":3}]
+now 2026-11-13T22:48:14.852Z

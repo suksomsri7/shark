@@ -1,0 +1,22 @@
+[env] visual-trips · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+🌐 QC server http://127.0.0.1:3241 ตอบ HTTP 200
+(node:1463447) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ book-index [desktop 1440] (↔ ภาพ 19) HTTP 200 → /root/projects/shark-trips-l3/.qc-shots/trips/w1.1/book-index-desktop.png
+  ✅ book-index [mobile 390] (↔ ภาพ 19) HTTP 200 → /root/projects/shark-trips-l3/.qc-shots/trips/w1.1/book-index-mobile.png
+  ✅ book-product [desktop 1440] (↔ ภาพ 01) HTTP 200 → /root/projects/shark-trips-l3/.qc-shots/trips/w1.1/book-product-desktop.png
+  ✅ book-product [mobile 390] (↔ ภาพ 01) HTTP 200 → /root/projects/shark-trips-l3/.qc-shots/trips/w1.1/book-product-mobile.png
+  ✅ book-product-en [desktop 1440] (↔ ภาพ 19) HTTP 200 → /root/projects/shark-trips-l3/.qc-shots/trips/w1.1/book-product-en-desktop.png
+  ✅ book-product-en [mobile 390] (↔ ภาพ 19) HTTP 200 → /root/projects/shark-trips-l3/.qc-shots/trips/w1.1/book-product-en-mobile.png
+  ✅ book-not-found [desktop 1440] (↔ ภาพ 19) HTTP 404 → /root/projects/shark-trips-l3/.qc-shots/trips/w1.1/book-not-found-desktop.png
+  ✅ book-not-found [mobile 390] (↔ ภาพ 19) HTTP 404 → /root/projects/shark-trips-l3/.qc-shots/trips/w1.1/book-not-found-mobile.png
+
+🧹 ลบ session ของรอบนี้ 0 · ภาพ 8 ใบใน /root/projects/shark-trips-l3/.qc-shots/trips/w1.1
+JSON_SUMMARY {"wo":"w1.1","shots":8,"failures":0,"fatal":null}

@@ -1,0 +1,103 @@
+[env] probe-w1.1-hunt-3 · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1410099) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+== 1. ?m / ?d / ?lang (today 2026-11-14) ==
+HELD  [Q m=0000-00] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 332ms
+HELD  [Q m=0000-01] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 304ms
+HELD  [Q m=9999-12] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 343ms
+HELD  [Q m=2026-13] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 298ms
+HELD  [Q m=past 2020-01] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 335ms
+HELD  [Q m=+12 (2027-11)] expected: 200 product page, month 2027-11, no 5xx | got: 200/PRODUCT month=2027-11 selected=(none) 121ms
+HELD  [Q m=+13 (2027-12)] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 323ms
+HELD  [Q m repeated] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 356ms
+HELD  [Q m[]=] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 379ms
+HELD  [Q m with NUL] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 326ms
+HELD  [Q m=-0001-01] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 282ms
+HELD  [Q m huge 6000 chars] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 305ms
+HELD  [Q d=2026-02-30] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 357ms
+HELD  [Q d=9999-12-31] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 391ms
+HELD  [Q d=0000-01-01] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 355ms
+HELD  [Q d outside m] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 279ms
+HELD  [Q d only, next month] expected: 200 product page, month 2026-12, no 5xx | got: 200/PRODUCT month=2026-12 selected=2026-12-23 327ms
+HELD  [Q d with newline] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 301ms
+HELD  [Q lang=xx] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 346ms
+HELD  [Q lang=EN] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 382ms
+HELD  [Q lang twice] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 306ms
+HELD  [Q lang=%00] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 342ms
+HELD  [Q 300 junk params] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 401ms
+HELD  [Q __proto__ / constructor keys] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 349ms
+HELD  [Q t=0800 (valid)] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 288ms
+HELD  [Q t=9999] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 295ms
+HELD  [Q t=08:00] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 308ms
+HELD  [Q t=0800-9 (no such)] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 306ms
+HELD  [Q t repeated] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 315ms
+HELD  [Q t[]=] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 318ms
+HELD  [Q t with NUL] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 290ms
+HELD  [Q t huge 6000 chars] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 303ms
+HELD  [Q t sql] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 339ms
+HELD  [Q t=-1] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 286ms
+HELD  [Q t=__proto__] expected: 200 product page, month 2026-11, no 5xx | got: 200/PRODUCT month=2026-11 selected=2026-11-16 292ms
+
+== 2. odd paths ==
+HELD  [P shop UPPERCASE] expected: no 5xx / no unintended resolve | got: 200/INDEX 142ms
+HELD  [P shop with %20 padding] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 96ms
+HELD  [P shop trailing dot] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 80ms
+HELD  [P shop + NUL] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 39ms
+HELD  [P shop = %00] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 57ms
+HELD  [P shop traversal] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 66ms
+HELD  [P shop 5000 chars] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 89ms
+HELD  [P shop unicode fullwidth] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 75ms
+HELD  [P product UPPERCASE] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 120ms
+HELD  [P product + NUL] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 125ms
+KNOWN [P product bad utf8] expected: no 5xx / no unintended resolve | got: 500/OTHER 9ms len=21 | known/accepted debt — framework 500 on a malformed percent-encoded path segment (not page code)
+KNOWN [P product lone %] expected: no 5xx / no unintended resolve | got: 500/OTHER 3ms len=21 | known/accepted debt — framework 500 on a malformed percent-encoded path segment (not page code)
+HELD  [P product 5000 chars] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 48ms
+HELD  [P product unicode + sql] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 61ms
+HELD  [P product % wildcard] expected: no 5xx / no unintended resolve | got: 404/NOTFOUND* 77ms
+HELD  [P product trailing slash] expected: no 5xx / no unintended resolve | got: 308/OTHER → /book/w11hunt-mwfkdrm10416-a/t/w11h-a-mwfkdrm10416 4ms
+HELD  [P product extra segment] expected: no 5xx / no unintended resolve | got: 404/OTHER 62ms
+HELD  [P /book/<shop>/t] expected: no 5xx / no unintended resolve | got: 404/OTHER 24ms
+HELD  [P /book] expected: no 5xx / no unintended resolve | got: 404/OTHER 74ms
+HELD  [P double slash] expected: no 5xx / no unintended resolve | got: 308/OTHER → /book/w11hunt-mwfkdrm10416-a 5ms
+
+== 3. methods / server actions / RSC ==
+HELD  [M HEAD] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 200/EMPTY allow=(none) x-action=(none) len=0
+KNOWN [M HEAD view] expected: +0 view (X6: only GET counts) | got: +1 | known debt of X6 — a server component cannot see the HTTP method: a body-less non-GET request (HEAD / DELETE / OPTIONS) sent with a browser User-Agent may still count; closes when the gate moves to the proxy/route layer (W1.1b)
+HELD  [M OPTIONS] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 400/EMPTY allow=(none) x-action=(none) len=0
+HELD  [M OPTIONS view] expected: +0 view (X6: only GET counts) | got: +0
+FOUND [M PUT] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 200/PRODUCT allow=(none) x-action=(none) len=364429
+HELD  [M PUT view] expected: +0 view (X6: only GET counts) | got: +0
+FOUND [M DELETE] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 200/PRODUCT allow=(none) x-action=(none) len=364429
+KNOWN [M DELETE view] expected: +0 view (X6: only GET counts) | got: +1 | known debt of X6 — a server component cannot see the HTTP method: a body-less non-GET request (HEAD / DELETE / OPTIONS) sent with a browser User-Agent may still count; closes when the gate moves to the proxy/route layer (W1.1b)
+FOUND [M PATCH] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 200/PRODUCT allow=(none) x-action=(none) len=364429
+HELD  [M PATCH view] expected: +0 view (X6: only GET counts) | got: +0
+FOUND [M POST form] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 200/PRODUCT allow=(none) x-action=(none) len=364429
+HELD  [M POST form view] expected: +0 view (X6: only GET counts) | got: +0
+HELD  [M POST Next-Action (fake id)] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 404/OTHER allow=(none) x-action=1 len=24
+HELD  [M POST Next-Action (fake id) view] expected: +0 view (X6: only GET counts) | got: +0
+FOUND [M POST Next-Action multipart] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 500/OTHER allow=(none) x-action=(none) len=21
+HELD  [M POST Next-Action multipart view] expected: +0 view (X6: only GET counts) | got: +0
+FOUND [M POST 2 MB body] expected: no 5xx; non-GET methods should not render/count the page (405) | got: 200/PRODUCT allow=(none) x-action=(none) len=364429
+HELD  [M POST 2 MB body view] expected: +0 view (X6: only GET counts) | got: +0
+HELD  [M HEAD (no User-Agent) view] expected: +0 view | got: +0 · 200/EMPTY
+HELD  [M OPTIONS (no User-Agent) view] expected: +0 view | got: +0 · 400/EMPTY
+HELD  [M DELETE (no User-Agent) view] expected: +0 view | got: +0 · 200/PRODUCT
+  INFO  views added by the 12 non-GET requests above: +2 (expected 0; anything above 0 comes from the KNOWN body-less lines)
+HELD  [RSC-GATED-NO-SHOP-NAME] expected: RSC / prefetch payload of an exhausted client carries no shop name or title (X1) | got: 0 of 3 payloads carry the shop name
+HELD  [RSC-GATED] expected: RSC payload of an exhausted client is the rate-limited notice, no product data | got: rsc → 200/rsc:RATE (has price data: false) · prefetch → 200/OTHER (has product data: false) · segment prefetch → 200/OTHER len 322 (product data: false)
+  INFO  RSC response headers: cache-control=private, no-cache, no-store, max-age=0, must-revalidate vary=rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch, Accept-Encoding content-type=text/x-component
+  INFO  prefetch response headers: cache-control=private, no-cache, no-store, max-age=0, must-revalidate len=322
+
+== 4. follow-ups from probe 1 ==
+HELD  [A-CARRY] expected: unbound ?a never carried into page links | got: hrefs with the code: 0 · other occurrences: ["\\\",\\\"w11hunt-mwfkdrm10416-a\\\",\\\"t\\\",\\\"w11h-a-mwfkdrm10416?a=HUNTCODE123\\u0026lang=en\\\"],\\\"q\\\":\\\"?a=HU","0416\\\",\\\"d\\\",null],{\\\"children\\\":[\\\"__PAGE__?{\\\\\\\"a\\\\\\\":\\\\\\\"HUNTCODE123\\\\\\\",\\\\\\\"lang\\\\\\\":\\\\\\\"en\\\\\\\"}\\"]
+HELD  [DRAFT-BYTES] expected: draft 404 byte-identical to missing 404 (after slug substitution) in 6/6 pairs | got: 6/6 identical
+  cleanup: removed 24 miss buckets of 83 probe IPs
+  cleanup: hunt tenants left = 0

@@ -1,0 +1,106 @@
+[env] probe-w1.1-hunt-4 · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1411124) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+== zone Asia/Bangkok (local now 2026-11-14 05:45) ==
+  (oversold row refused by DB: error: new row for relation "TripDeparture" violates check constraint "TripDepar)
+HELD  [TRUTH bkk 2026-11-13 yesterday] expected: service: past | got: page: PAST "Fri 13 Nov 2026 · Past"
+HELD  [TRUTH bkk 2026-11-14 today-started-1h-ago + today-in-20min] expected: service: not sellable ["OPEN/STARTED/0","OPEN/CUTOFF/0"] | got: page: CLOSED "Sat 14 Nov 2026 · Closed"
+HELD  [TRUTH bkk 2026-11-16 sold-out] expected: service: not sellable ["OPEN/null/0"] | got: page: FULL "Mon 16 Nov 2026 · Full"
+HELD  [TRUTH bkk 2026-11-17 held-out(4 sold+6 held)] expected: service: not sellable ["OPEN/null/0"] | got: page: FULL "Tue 17 Nov 2026 · Full"
+HELD  [TRUTH bkk 2026-11-18 sold2+held3+reserved2 of 10] expected: service: sellable ×1, earliest left 3 (best 3), showLeft [true] | got: page: LOW "Wed 18 Nov 2026 · 3 left"
+HELD  [PRICE bkk 2026-11-18] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH bkk 2026-11-19 cancelled] expected: service: not sellable ["CANCELLED/STATUS/0"] | got: page: NOT_RUNNING "Thu 19 Nov 2026 · Not running"
+HELD  [TRUTH bkk 2026-11-20 cutoff-passed] expected: service: sellable ×1, earliest left 40 (best 40), showLeft [false] | got: page: OPEN "Fri 20 Nov 2026 · 40 seats"
+HELD  [PRICE bkk 2026-11-20] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH bkk 2026-11-21 two: 07:00 left5 base price + 13:00 left40 own price 2,000] expected: service: sellable ×2, earliest left 5 (best 40), showLeft [true,false] | got: page: LOW "Sat 21 Nov 2026 · 5 left · 2 trips"
+HELD  [PRICE bkk 2026-11-21] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) · other departures quote 2,000 | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [SLOT-ROWS bkk 2026-11-21] expected: each departure row shows its own time · seats · price — service: ["07:00 left 5 ADULT 1,234","13:00 left 40 ADULT 2,000"] | got: rows: ["07:00–15:00 5 seats left Join-in max 10 guests Booking closes Fri 20 Nov 2026 18:00 From THB 1,234.00 per person Selected departure <li","13:00–21:00 40 seats available Join-in max 40 guests Booking closes Fri 20 Nov 2026 18:00 From THB 2,000.00 per person Choose the 13:00–21:00 departur"]
+HELD  [HEADER-SLOT bkk 2026-11-21] expected: header line shows the selected (first sellable) departure 07:00 | got: "07:00–15:00 Join-in max 10 guests สรุป Tbkk <svg aria-hidden="true" vi"
+HELD  [SLOT-PICK bkk 2026-11-21 t=1300] expected: price table + header of the 13:00 departure: ADULT 2,000 | got: adult "Adult THB 2,000.00 Child THB 1,400.00 <li data-tes" · header "13:00–21:00 Join-in max 40 guests สรุป Tbkk <svg a"
+HELD  [SLOT-TOKEN-SHAPE bkk 2026-11-21] expected: departure references in links are time tokens (HHMM), never ids | got: []
+HELD  [TRUTH bkk 2026-11-22 two: 07:00 full + 13:00 open own price 2,000] expected: service: sellable ×1, earliest left 39 (best 39), showLeft [false] | got: page: OPEN "Sun 22 Nov 2026 · 39 seats"
+HELD  [PRICE bkk 2026-11-22] expected: price table = first sellable departure: ADULT 2,000 THB (quoteTripLine) | got: "Adult THB 2,000.00 Child THB 1,400.00 <li data-tes"
+HELD  [SLOT-ROWS bkk 2026-11-22] expected: each departure row shows its own time · seats · price — service: ["07:00 left 0 (not sellable)","13:00 left 39 ADULT 2,000"] | got: rows: ["07:00–15:00 Fully booked Join-in max 10 guests Booking closes Sat 21 Nov 2026 18:00 <li","13:00–21:00 39 seats available Join-in max 40 guests Booking closes Sat 21 Nov 2026 18:00 From THB 2,000.00 per person"]
+HELD  [HEADER-SLOT bkk 2026-11-22] expected: header line shows the selected (first sellable) departure 13:00 | got: "13:00–21:00 Join-in max 40 guests สรุป Tbkk <svg aria-hidden="true" vi"
+HELD  [TRUTH bkk 2026-11-23 left 6] expected: service: sellable ×1, earliest left 6 (best 6), showLeft [false] | got: page: OPEN "Mon 23 Nov 2026 · 6 seats"
+HELD  [PRICE bkk 2026-11-23] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH bkk 2026-11-24 left 5] expected: service: sellable ×1, earliest left 5 (best 5), showLeft [true] | got: page: LOW "Tue 24 Nov 2026 · 5 left"
+HELD  [PRICE bkk 2026-11-24] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH bkk 2026-11-25 left 1] expected: service: sellable ×1, earliest left 1 (best 1), showLeft [true] | got: page: LOW "Wed 25 Nov 2026 · 1 left"
+HELD  [PRICE bkk 2026-11-25] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH bkk 2026-11-26 oversold (sold 12 of 10)] expected: service: not sellable [] | got: page: NONE "Thu 26 Nov 2026 · No departure"
+
+== zone America/New_York (local now 2026-11-13 17:45) ==
+  (oversold row refused by DB: error: new row for relation "TripDeparture" violates check constraint "TripDepar)
+HELD  [TRUTH ny 2026-11-12 yesterday] expected: service: past | got: page: PAST "Thu 12 Nov 2026 · Past"
+HELD  [TRUTH ny 2026-11-13 today-started-1h-ago + today-in-20min] expected: service: not sellable ["OPEN/STARTED/0","OPEN/CUTOFF/0"] | got: page: CLOSED "Fri 13 Nov 2026 · Closed"
+HELD  [TRUTH ny 2026-11-15 sold-out] expected: service: not sellable ["OPEN/null/0"] | got: page: FULL "Sun 15 Nov 2026 · Full"
+HELD  [TRUTH ny 2026-11-16 held-out(4 sold+6 held)] expected: service: not sellable ["OPEN/null/0"] | got: page: FULL "Mon 16 Nov 2026 · Full"
+HELD  [TRUTH ny 2026-11-17 sold2+held3+reserved2 of 10] expected: service: sellable ×1, earliest left 3 (best 3), showLeft [true] | got: page: LOW "Tue 17 Nov 2026 · 3 left"
+HELD  [PRICE ny 2026-11-17] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH ny 2026-11-18 cancelled] expected: service: not sellable ["CANCELLED/STATUS/0"] | got: page: NOT_RUNNING "Wed 18 Nov 2026 · Not running"
+HELD  [TRUTH ny 2026-11-19 cutoff-passed] expected: service: sellable ×1, earliest left 40 (best 40), showLeft [false] | got: page: OPEN "Thu 19 Nov 2026 · 40 seats"
+HELD  [PRICE ny 2026-11-19] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH ny 2026-11-20 two: 07:00 left5 base price + 13:00 left40 own price 2,000] expected: service: sellable ×2, earliest left 5 (best 40), showLeft [true,false] | got: page: LOW "Fri 20 Nov 2026 · 5 left · 2 trips"
+HELD  [PRICE ny 2026-11-20] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) · other departures quote 2,000 | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [SLOT-ROWS ny 2026-11-20] expected: each departure row shows its own time · seats · price — service: ["07:00 left 5 ADULT 1,234","13:00 left 40 ADULT 2,000"] | got: rows: ["07:00–15:00 5 seats left Join-in max 10 guests Booking closes Thu 19 Nov 2026 18:00 From THB 1,234.00 per person Selected departure <li","13:00–21:00 40 seats available Join-in max 40 guests Booking closes Thu 19 Nov 2026 18:00 From THB 2,000.00 per person Choose the 13:00–21:00 departur"]
+HELD  [HEADER-SLOT ny 2026-11-20] expected: header line shows the selected (first sellable) departure 07:00 | got: "07:00–15:00 Join-in max 10 guests สรุป Tny <svg aria-hidden="true" vie"
+HELD  [SLOT-PICK ny 2026-11-20 t=1300] expected: price table + header of the 13:00 departure: ADULT 2,000 | got: adult "Adult THB 2,000.00 Child THB 1,400.00 <li data-tes" · header "13:00–21:00 Join-in max 40 guests สรุป Tny <svg ar"
+HELD  [SLOT-TOKEN-SHAPE ny 2026-11-20] expected: departure references in links are time tokens (HHMM), never ids | got: []
+HELD  [TRUTH ny 2026-11-21 two: 07:00 full + 13:00 open own price 2,000] expected: service: sellable ×1, earliest left 39 (best 39), showLeft [false] | got: page: OPEN "Sat 21 Nov 2026 · 39 seats"
+HELD  [PRICE ny 2026-11-21] expected: price table = first sellable departure: ADULT 2,000 THB (quoteTripLine) | got: "Adult THB 2,000.00 Child THB 1,400.00 <li data-tes"
+HELD  [SLOT-ROWS ny 2026-11-21] expected: each departure row shows its own time · seats · price — service: ["07:00 left 0 (not sellable)","13:00 left 39 ADULT 2,000"] | got: rows: ["07:00–15:00 Fully booked Join-in max 10 guests Booking closes Fri 20 Nov 2026 18:00 <li","13:00–21:00 39 seats available Join-in max 40 guests Booking closes Fri 20 Nov 2026 18:00 From THB 2,000.00 per person"]
+HELD  [HEADER-SLOT ny 2026-11-21] expected: header line shows the selected (first sellable) departure 13:00 | got: "13:00–21:00 Join-in max 40 guests สรุป Tny <svg aria-hidden="true" vie"
+HELD  [TRUTH ny 2026-11-22 left 6] expected: service: sellable ×1, earliest left 6 (best 6), showLeft [false] | got: page: OPEN "Sun 22 Nov 2026 · 6 seats"
+HELD  [PRICE ny 2026-11-22] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH ny 2026-11-23 left 5] expected: service: sellable ×1, earliest left 5 (best 5), showLeft [true] | got: page: LOW "Mon 23 Nov 2026 · 5 left"
+HELD  [PRICE ny 2026-11-23] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH ny 2026-11-24 left 1] expected: service: sellable ×1, earliest left 1 (best 1), showLeft [true] | got: page: LOW "Tue 24 Nov 2026 · 1 left"
+HELD  [PRICE ny 2026-11-24] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH ny 2026-11-25 oversold (sold 12 of 10)] expected: service: not sellable [] | got: page: NONE "Wed 25 Nov 2026 · No departure"
+
+== zone Pacific/Kiritimati (local now 2026-11-14 12:45) ==
+  (oversold row refused by DB: error: new row for relation "TripDeparture" violates check constraint "TripDepar)
+HELD  [TRUTH kir 2026-11-13 yesterday] expected: service: past | got: page: PAST "Fri 13 Nov 2026 · Past"
+HELD  [TRUTH kir 2026-11-14 today-started-1h-ago + today-in-20min] expected: service: not sellable ["OPEN/STARTED/0","OPEN/CUTOFF/0"] | got: page: CLOSED "Sat 14 Nov 2026 · Closed"
+HELD  [TRUTH kir 2026-11-16 sold-out] expected: service: not sellable ["OPEN/null/0"] | got: page: FULL "Mon 16 Nov 2026 · Full"
+HELD  [TRUTH kir 2026-11-17 held-out(4 sold+6 held)] expected: service: not sellable ["OPEN/null/0"] | got: page: FULL "Tue 17 Nov 2026 · Full"
+HELD  [TRUTH kir 2026-11-18 sold2+held3+reserved2 of 10] expected: service: sellable ×1, earliest left 3 (best 3), showLeft [true] | got: page: LOW "Wed 18 Nov 2026 · 3 left"
+HELD  [PRICE kir 2026-11-18] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH kir 2026-11-19 cancelled] expected: service: not sellable ["CANCELLED/STATUS/0"] | got: page: NOT_RUNNING "Thu 19 Nov 2026 · Not running"
+HELD  [TRUTH kir 2026-11-20 cutoff-passed] expected: service: sellable ×1, earliest left 40 (best 40), showLeft [false] | got: page: OPEN "Fri 20 Nov 2026 · 40 seats"
+HELD  [PRICE kir 2026-11-20] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH kir 2026-11-21 two: 07:00 left5 base price + 13:00 left40 own price 2,000] expected: service: sellable ×2, earliest left 5 (best 40), showLeft [true,false] | got: page: LOW "Sat 21 Nov 2026 · 5 left · 2 trips"
+HELD  [PRICE kir 2026-11-21] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) · other departures quote 2,000 | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [SLOT-ROWS kir 2026-11-21] expected: each departure row shows its own time · seats · price — service: ["07:00 left 5 ADULT 1,234","13:00 left 40 ADULT 2,000"] | got: rows: ["07:00–15:00 5 seats left Join-in max 10 guests Booking closes Fri 20 Nov 2026 18:00 From THB 1,234.00 per person Selected departure <li","13:00–21:00 40 seats available Join-in max 40 guests Booking closes Fri 20 Nov 2026 18:00 From THB 2,000.00 per person Choose the 13:00–21:00 departur"]
+HELD  [HEADER-SLOT kir 2026-11-21] expected: header line shows the selected (first sellable) departure 07:00 | got: "07:00–15:00 Join-in max 10 guests สรุป Tkir <svg aria-hidden="true" vi"
+HELD  [SLOT-PICK kir 2026-11-21 t=1300] expected: price table + header of the 13:00 departure: ADULT 2,000 | got: adult "Adult THB 2,000.00 Child THB 1,400.00 <li data-tes" · header "13:00–21:00 Join-in max 40 guests สรุป Tkir <svg a"
+HELD  [SLOT-TOKEN-SHAPE kir 2026-11-21] expected: departure references in links are time tokens (HHMM), never ids | got: []
+HELD  [TRUTH kir 2026-11-22 two: 07:00 full + 13:00 open own price 2,000] expected: service: sellable ×1, earliest left 39 (best 39), showLeft [false] | got: page: OPEN "Sun 22 Nov 2026 · 39 seats"
+HELD  [PRICE kir 2026-11-22] expected: price table = first sellable departure: ADULT 2,000 THB (quoteTripLine) | got: "Adult THB 2,000.00 Child THB 1,400.00 <li data-tes"
+HELD  [SLOT-ROWS kir 2026-11-22] expected: each departure row shows its own time · seats · price — service: ["07:00 left 0 (not sellable)","13:00 left 39 ADULT 2,000"] | got: rows: ["07:00–15:00 Fully booked Join-in max 10 guests Booking closes Sat 21 Nov 2026 18:00 <li","13:00–21:00 39 seats available Join-in max 40 guests Booking closes Sat 21 Nov 2026 18:00 From THB 2,000.00 per person"]
+HELD  [HEADER-SLOT kir 2026-11-22] expected: header line shows the selected (first sellable) departure 13:00 | got: "13:00–21:00 Join-in max 40 guests สรุป Tkir <svg aria-hidden="true" vi"
+HELD  [TRUTH kir 2026-11-23 left 6] expected: service: sellable ×1, earliest left 6 (best 6), showLeft [false] | got: page: OPEN "Mon 23 Nov 2026 · 6 seats"
+HELD  [PRICE kir 2026-11-23] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH kir 2026-11-24 left 5] expected: service: sellable ×1, earliest left 5 (best 5), showLeft [true] | got: page: LOW "Tue 24 Nov 2026 · 5 left"
+HELD  [PRICE kir 2026-11-24] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH kir 2026-11-25 left 1] expected: service: sellable ×1, earliest left 1 (best 1), showLeft [true] | got: page: LOW "Wed 25 Nov 2026 · 1 left"
+HELD  [PRICE kir 2026-11-25] expected: price table = first sellable departure: ADULT 1,234 THB (quoteTripLine) | got: "Adult THB 1,234.00 Child THB 567.00 <li data-testi"
+HELD  [TRUTH kir 2026-11-26 oversold (sold 12 of 10)] expected: service: not sellable [] | got: page: NONE "Thu 26 Nov 2026 · No departure"
+
+== price edges ==
+HELD  [EDGE ZERO] expected: what quoteTripLine says · service: quote ok ADULT 0 total 60000 | got: day OPEN "Tue 17 Nov 2026 · 39 seats" · adult row: "Adult Free <div lang="en" class="break-words t" · child row: "Child Free <div lang="en" class="break-words" · unavailable note: (none) · cta: "Continue to payment <p d"
+HELD  [EDGE NOPRICE] expected: price unavailable · service: quote refused (VALIDATION) | got: day OPEN "Tue 17 Nov 2026 · 39 seats" · adult row: (none) · child row: (none) · unavailable note: "Prices are not available right now — please contact the shop <div class="flex fl" · cta: "Continue to payment <p d"
+  INFO  [EDGE NOPRICE] calendar still offers the day as OPEN with seats although quoteTripLine refuses (VALIDATION) — the page says price unavailable (accepted by oracle IS-5/6?)
+HELD  [EDGE NOADULT] expected: X7: only the adult row is hidden — child 567 still shown, no 'unavailable' note · service: quote refused (VALIDATION) | got: day OPEN "Tue 17 Nov 2026 · 39 seats" · adult row: (none) · child row: "Child THB 567.00 <div lang="en" class="break-" · unavailable note: (none) · cta: "Continue to payment <p d"
+  INFO  [EDGE NOADULT] calendar still offers the day as OPEN with seats although quoteTripLine refuses (VALIDATION) — the page says price unavailable (accepted by oracle IS-5/6?)
+  cleanup: removed 0 miss buckets of 32 probe IPs
+  cleanup: hunt tenants left = 0

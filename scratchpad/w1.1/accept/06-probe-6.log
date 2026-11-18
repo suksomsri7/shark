@@ -1,0 +1,24 @@
+[env] probe-w1.1-hunt-6 · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1416232) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  INFO  200 parallel fresh clients · missing shop (404): {"404/OTHER":200} · wall 6035 ms (33.1 req/s) · p50 4676 p95 5777 ms · avg body 465 KB
+HELD  [COST missing shop (404) errors (fresh connections)] expected: 0 connection errors / 5xx | got: 0
+  INFO  200 parallel fresh clients · missing product (404): {"404/OTHER":200} · wall 6390 ms (31.3 req/s) · p50 3250 p95 6234 ms · avg body 466 KB
+HELD  [COST missing product (404) errors (fresh connections)] expected: 0 connection errors / 5xx | got: 0
+  INFO  200 parallel fresh clients · shop index: {"200/INDEX":200} · wall 6854 ms (29.2 req/s) · p50 4331 p95 6729 ms · avg body 470 KB
+HELD  [COST shop index errors (fresh connections)] expected: 0 connection errors / 5xx | got: 0
+  INFO  200 parallel fresh clients · product page: {"200/PRODUCT":200} · wall 24451 ms (8.2 req/s) · p50 21309 p95 24390 ms · avg body 591 KB
+HELD  [COST product page errors (fresh connections)] expected: 0 connection errors / 5xx | got: 0
+  INFO  200 parallel fresh clients · product page, month without departures: {"200/PRODUCT":200} · wall 12018 ms (16.6 req/s) · p50 9791 p95 11940 ms · avg body 565 KB
+HELD  [COST product page, month without departures errors (fresh connections)] expected: 0 connection errors / 5xx | got: 0
+FOUND [COST product vs cheapest] expected: a public page that any header-rotating sender can request without limit should not cost far more than a 404 | got: product page wall 24451 ms vs 404 6035 ms (×4.1) for 200 parallel
+  INFO  product page weight: 591 KB uncompressed · whole-app i18n message catalogue inlined by the root layout: true (staff-side strings such as settings labels are shipped to anonymous visitors; pre-existing root layout, not W1.1a code)
+  cleanup: removed 400 miss buckets of 1004 probe IPs
+  cleanup: hunt tenants left = 0

@@ -1,0 +1,27 @@
+[env] probe-w1.1-hunt-5 · ไฟล์ .env.qc-trips · DB ep-red-cake-aozcx44y-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1412462) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  INFO  storm-1 (300 parallel, distinct clients): {"200/PRODUCT":300} · wall 36719 ms · latency p50 33802 p95 36469 max 36697 ms · views +300
+HELD  [STORM storm-1 (300 parallel, distinct clients) errors] expected: 0 errors / 5xx | got: 0
+HELD  [STORM storm-1 (300 parallel, distinct clients) fail-closed] expected: no first-time visitor is shown the 'too many requests' notice | got: 0 of 300 fresh clients got the rate-limited page
+HELD  [STORM storm-1 (300 parallel, distinct clients) counter] expected: views +300 (= pages served; each client is new) | got: +300
+  INFO  storm-2 (300 parallel, distinct clients, repeat): {"200/PRODUCT":297,"ERR(Error: socket hang up)":3} · wall 37271 ms · latency p50 34599 p95 37090 max 37253 ms · views +297
+FOUND [STORM storm-2 (300 parallel, distinct clients, repeat) errors] expected: 0 errors / 5xx | got: 3
+HELD  [STORM storm-2 (300 parallel, distinct clients, repeat) fail-closed] expected: no first-time visitor is shown the 'too many requests' notice | got: 0 of 300 fresh clients got the rate-limited page
+HELD  [STORM storm-2 (300 parallel, distinct clients, repeat) counter] expected: views +297 (= pages served; each client is new) | got: +297
+  INFO  mixed storm: all {"200/PRODUCT":137,"200/INDEX":120,"ERR(Error: socket hang up)":26,"200/RATE":17} · same-client index (150 parallel): {"200/INDEX":120,"ERR(Error: socket hang up)":13,"200/RATE":17}
+FOUND [STORM mixed errors] expected: 0 errors / 5xx | got: 26
+HELD  [STORM same-client limit under parallel] expected: ≤ 120 index pages for one client in the window | got: 120 served
+HELD  [STORM ops] expected: no limiter-down OpsEvent | got: [] (trips.public total +0)
+HELD  [STORM stat rows] expected: 1 TripLinkStat row (no duplicates from racing upserts) | got: 1 row(s), views total 735 (start 1)
+  INFO  buckets created: book 736 · view 735 (removed in cleanup)
+HELD  [STORM recovery] expected: page healthy after the storm | got: 200/PRODUCT 285 ms
+  cleanup: removed 0 miss buckets of 755 probe IPs
+  cleanup: hunt tenants left = 0
