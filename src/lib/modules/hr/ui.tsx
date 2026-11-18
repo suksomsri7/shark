@@ -532,7 +532,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
   // คอลัมน์ตามความกว้าง: ไม่มีแผง = 9 คอลัมน์ที่ ≥ 1280 · 1024 = 6 (ประเภทจ้างพับเข้าบรรทัดรหัส · บัญชีพับใต้ PIN · เริ่มงานเฉพาะ ≥ 1280 — 7 คอลัมน์ล้นจอ 1024) · < 768 = การ์ด ·
   //   แผงเปิด (≥ 1280) = ชื่อ · ตำแหน่ง · สถานะ (+ สาขา ที่ ≥ 1360) — ข้อยกเว้นที่ประกาศไว้: ข้างแผงคอลัมน์น้อยกว่า 9 (เมนูข้าง 288 px ของแอปกว้างกว่ารางในภาพ)
   const col = pv
-    ? { unit: "hidden md:table-cell xl:hidden min-[1360px]:table-cell", type: "hidden", start: "hidden", pin: "hidden lg:table-cell xl:hidden", acct: "hidden", typeFold: "", acctFold: "", name: "md:max-w-[9rem] min-[1360px]:max-w-[11rem]", pos: "max-w-[7rem] min-[1360px]:max-w-[9rem]" }
+    ? { unit: "hidden md:table-cell xl:max-[1359px]:hidden", type: "hidden", start: "hidden", pin: "hidden lg:table-cell xl:hidden", acct: "hidden", typeFold: "", acctFold: "", name: "md:max-w-[11rem] xl:max-[1359px]:max-w-[9rem]", pos: "max-w-[9rem] xl:max-[1359px]:max-w-[7rem]" }
     : { unit: "hidden md:table-cell", type: "hidden xl:table-cell", start: "hidden xl:table-cell", pin: "hidden lg:table-cell", acct: "hidden xl:table-cell", typeFold: "xl:hidden", acctFold: "xl:hidden", name: "md:max-w-[10rem] xl:max-w-[11rem]", pos: "max-w-[8rem] xl:max-w-[9rem]" };
   const th = `px-2 py-2.5 text-left align-bottom text-xs font-semibold ${muted}`; // HR VIS-5c ◂ (หัวคอลัมน์ขึ้นบรรทัดได้ที่ช่องว่าง)
   const td = "md:table-cell md:whitespace-nowrap md:px-2 md:py-2 md:align-middle"; // HR VIS-5c ◂
@@ -545,7 +545,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
   const pill = "btn btn-ghost min-h-[44px] max-w-full cursor-pointer list-none whitespace-nowrap text-sm [&::-webkit-details-marker]:hidden";
 
   return (
-    <div /* HR VIS-5c */ className={pv ? "xl:-mb-10 xl:-mr-6 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] min-[1360px]:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_440px]" : ""}>
+    <div /* HR VIS-5c */ className={pv ? "xl:-mb-10 xl:-mr-6 xl:grid xl:grid-cols-[minmax(0,1fr)_400px] xl:max-[1359px]:grid-cols-[minmax(0,1fr)_380px] 2xl:grid-cols-[minmax(0,1fr)_440px]" : ""}>
       <div className={`flex min-w-0 flex-col gap-3 ${pv ? "xl:pb-10 xl:pr-6" : ""}`}>
         {/* หัว: ชื่อหน้า · จำนวนต่อสาขา — ทะเบียนลูกจ้างตามกฎหมาย · + พนักงาน (ไม่มีนำเข้า CSV — owner list) */}
         <div className="flex items-start gap-3">
