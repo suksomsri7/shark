@@ -2339,3 +2339,7 @@
   - ORACLE-EDIT ทั้ง RUN 454 commits (HANDOVER §3 · `ledger/wo-notes/pos-oracle-edits.md`)
   - ของเจ้าของที่ยังเปิด: W4 · W5 · W20 · W32 deploy · W33 · W34 · **W40 POS_DEVICE_KEY ก่อน deploy** · W44 (หนี้ UX บิลพักรออนุมัติ)
   - ▶️ ไม่มีเลนเปิด · ไม่มียูนิตค้าง · เริ่มงานต่อ = HANDOVER §7
+
+## 🧹 31 ต.ค. 2026 เคลียร์ดิสก์ (เจ้าของสั่ง)
+- ย้าย `node_modules` ของ `shark-pos-p11` มาเป็นของ `shark-pos` เอง (ไม่ใช่ bind mount แล้ว) · `shark-pos-f` bind mount จาก `shark-pos/node_modules` · หลัง reboot: `mount --bind /root/projects/shark-pos/node_modules /root/projects/shark-pos-f/node_modules`
+- ลบ worktree ที่จบงาน: shark-pos-b, shark-pos-c, shark-pos-p11 (branch ยังอยู่ใน git) · โน้ต `ledger/wo-notes/pos-P4.3-fix10-review.md` จาก p11 ย้ายมาไว้ใน tree นี้แล้ว
