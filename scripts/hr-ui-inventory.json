@@ -17444,7 +17444,7 @@
    ],
    "expect": {
     "type": "navigation",
-    "target": "/app/sys/[id]/hr/employees/*?tab=history#hr-life"
+    "target": "/app/sys/[id]/hr/employees/*?tab=history"
    },
    "wo": "VIS-5c",
    "oracle": "qc-hr-vis-5c",

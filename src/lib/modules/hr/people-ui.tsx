@@ -172,7 +172,7 @@ export async function ProfileProbation({ systemId, tenantId, viewer, emp, inPane
         <ProbationStats systemId={systemId} tenantId={tenantId} viewer={viewer} emp={emp} />
       </div>
       {canReview && (
-        <Link href={profileHref(systemId, emp.id, "?tab=history#hr-life")} data-testid={inPanel ? "hr-people-panel-review" : "hr-people-prob-review"} className="btn btn-primary min-h-[44px] whitespace-nowrap text-sm">
+        <Link href={profileHref(systemId, emp.id, "?tab=history")} data-testid={inPanel ? "hr-people-panel-review" : "hr-people-prob-review"} className="btn btn-primary min-h-[44px] whitespace-nowrap text-sm">
           {t("prob.review")} ›
         </Link>
       )}
