@@ -1,0 +1,79 @@
+[env] qc-account-api-core · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:2089367) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [CORE-1.1] ไม่มี Bearer → 401 unauthorized + envelope error (code/message_th/message_en/requestId + header X-Request-Id)
+  ✅ [CORE-1.2] คีย์ผิด → 401 unauthorized
+  ✅ [CORE-1.3] คีย์หมดอายุ → 401 key_expired
+  ✅ [CORE-2.1] GET /ping คีย์อ่าน (ผูกสมุด A) → 200 data.ok + data.systemId = A + envelope
+  ✅ [CORE-2.2] 200 มี header X-RateLimit-Remaining เป็นตัวเลข
+  ✅ [CORE-2.3] response ไม่มี keyHash / rawKey / tenantId ของร้านหลุด
+  ✅ [CORE-2.4] GET /echo/{id} → params จาก template (data.id = abc-123)
+  ✅ [CORE-3.1] คีย์ระดับร้านไม่ส่ง X-Shark-System → 400 system_required
+  ✅ [CORE-3.2] คีย์ระดับร้าน + header สมุด A → 200 systemId = A
+  ✅ [CORE-3.3] คีย์ร้าน A + header สมุดของร้าน B → 403 system_mismatch (ไม่ใช่ 404 ไม่ใช่ 200)
+  ✅ [CORE-3.4] header ชี้ระบบ POS (ไม่ใช่ ACCOUNT) → 403 system_mismatch
+  ✅ [CORE-3.5] คีย์ผูกสมุด A ส่ง header สมุด A2 (ร้านเดียวกัน) → 403 system_mismatch (คีย์ผูกแล้วเปลี่ยนไม่ได้)
+  ✅ [CORE-3.6] คีย์ผูกสมุด A ส่ง header สมุด A (ตรงกัน) → 200
+  ✅ [CORE-3.7] คีย์ร้าน B → 200 systemId = B
+  ✅ [CORE-4.1] คีย์อ่านอย่างเดียว POST /echo → 403 scope_missing + hint บอก scope ที่ขาด
+  ✅ [CORE-4.2] คีย์แบบเดิม (scopes []) → 403 scope_missing (คีย์เก่าไม่ได้สิทธิ์บัญชีอัตโนมัติ)
+  ✅ [CORE-4.3] คีย์ออกเอกสาร POST /echo → 200 data.echo = body + data.nonce
+  ✅ [CORE-4.4] scope account.doc.create อย่างเดียว → GET /ping (doc.view) ผ่านด้วย IMPLIES
+  ✅ [CORE-5.1] body ไม่ใช่ JSON → 400 invalid_json
+  ✅ [CORE-5.2] ขาด field บังคับ → 422 validation + details[] ระบุ path
+  ✅ [CORE-5.3] field เกิน (tenantId/extra) → 422 validation (strict — ไม่รับ tenantId จาก body)
+  ✅ [CORE-5.4] amountSatang ติดลบ → 422
+  ✅ [CORE-5.5] amountSatang ทศนิยม → 422 (สตางค์ต้องเป็นจำนวนเต็ม)
+  ✅ [CORE-6.1] write ไม่ส่ง Idempotency-Key → 400 idempotency_required
+  ✅ [CORE-6.2] ซ้ำ key+body เดิม → 200 เดิม (nonce เดียวกัน) + header Idempotent-Replayed: true
+  ✅ [CORE-6.3] key เดิม body ต่าง → 409 idempotency_conflict
+  ✅ [CORE-6.4] ยิงพร้อมกัน key เดียว → ทำจริงครั้งเดียว (200 คู่ nonce เดียวกัน หรือ 200+409 in_progress)
+  ✅ [CORE-6.5] Idempotency-Key ค่าเดียวกันแต่คนละคีย์ API → ไม่ชน (200 ใหม่ nonce ต่าง)
+  ✅ [CORE-6.6] แถว ApiIdempotency ของ key เดิม: status 200 · หมดอายุ ~24 ชม.
+  ✅ [CORE-6.7] GET ส่ง Idempotency-Key มาด้วยก็ไม่เก็บแถว (read ไม่ idempotency)
+  ✅ [CORE-7.1] danger op คีย์ไม่มี account.doc.void → 403 scope_missing
+  ✅ [CORE-7.2] danger ไม่มี confirm:true → 409 confirm_required
+  ✅ [CORE-7.3] confirm เป็นสตริง "true" → ไม่นับ (409 หรือ 422)
+  ✅ [CORE-7.4] reason สั้นกว่า 5 ตัว → 422 validation
+  ✅ [CORE-7.5] danger ครบ (scope+confirm+reason) → 200 data.reason
+  ✅ [CORE-8.1] ทุก write ที่สำเร็จมี AuditLog actorType API_KEY · actorId = keyId · action = op.action
+  ✅ [CORE-8.2] audit.after มี keyName + opId + requestId
+  ✅ [CORE-8.3] audit ของ danger เก็บ reason
+  ✅ [CORE-8.4] replay/ปฏิเสธ ไม่สร้าง audit (kWrite echo สำเร็จ = 3 แถว: wr · first · race)
+  ✅ [CORE-8.5] read ไม่เขียน audit
+  ✅ [CORE-9.1] path ไม่มีในทะเบียน → 404 not_found envelope
+  ✅ [CORE-9.2] path มีแต่ method ไม่ตรง → 405 method_not_allowed + header Allow
+  ✅ [CORE-9.3] trailing slash → ยังจับคู่ /ping ได้
+  ✅ [CORE-9.4.GET] route export GET
+  ✅ [CORE-9.4.POST] route export POST
+  ✅ [CORE-9.4.PATCH] route export PATCH
+  ✅ [CORE-9.4.PUT] route export PUT
+  ✅ [CORE-9.4.DELETE] route export DELETE
+  ✅ [CORE-10.1] ACCOUNT_OPS เป็น array มี ping/echo/echo-by-id/danger-echo
+  ✅ [CORE-10.2] ทุก op มี id/method/path/kind/action(account.*)/summary(EN)/label(TH)/test/handler
+  ✅ [CORE-10.3] id และ method+path ไม่ซ้ำ
+  ✅ [CORE-10.4] matchOp คืน op + params จาก template · path ที่ไม่มี → null
+  ✅ [CORE-10.5] danger-echo kind=danger action=account.doc.void · echo kind=write action=account.doc.create · ping kind=read action=account.doc.view
+  ✅ [CORE-11.period_locked] mapError "ปิดงวด" → 409 period_locked + message_th ไทย + message_en ascii
+  ✅ [CORE-11.period_locked] mapError "ล็อกวันที่" → 409 period_locked + message_th ไทย + message_en ascii
+  ✅ [CORE-11.state_conflict] mapError "ไม่ใช่ร่าง" → 409 state_conflict + message_th ไทย + message_en ascii
+  ✅ [CORE-11.duplicate] mapError "ซ้ำ" → 409 duplicate + message_th ไทย + message_en ascii
+  ✅ [CORE-11.not_found] mapError "ไม่พบ" → 404 not_found + message_th ไทย + message_en ascii
+  ✅ [CORE-11.forbidden] mapError "ไม่มีสิทธิ์" → 403 forbidden + message_th ไทย + message_en ascii
+  ✅ [CORE-11.leak] error อังกฤษ/ภายใน → 422 unprocessable · message_th ไทยกลาง (ไม่รั่วข้อความดิบ)
+  ✅ [CORE-11.zod] ZodError → 422 validation
+  ✅ [CORE-12.1] อ่านเกิน 300/นาที/คีย์ → 429 rate_limited + Retry-After (ผ่านก่อนหน้า 300 พอดี)
+  ✅ [CORE-12.2] เพดานแยกต่อคีย์ — คีย์อื่นยังเรียกได้
+  ✅ [CORE-12.3] ตัวนับอยู่บน DB (ChatRateBucket) ไม่ใช่ Map ในโปรเซส
+
+===== QC Account API Core (A3) =====
+ผ่าน 64/64
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":64,"passed":64,"findings":[]}

@@ -1,0 +1,6 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-hr-l4
+> tsc --noEmit
+
+src/components/account-v2/ConnectionsPanel.tsx(386,7): error TS2739: Type '{ "read-only": string; "issue-and-collect": string; accountant: string; danger: string; settings: string; "kanban-read": string; "kanban-edit": string; "kanban-admin": string; "member-read": string; "member-operate": string; ... 6 more ...; "pos-admin": string; }' is missing the following properties from type 'Record<ApiScopeBundleId, string>': "hr-read", "hr-leave", "hr-payroll-read"
+ ELIFECYCLE  Command failed with exit code 2.

@@ -1,0 +1,26 @@
+ℹ️  CI env — ไม่มี .env.qc · ใช้ DATABASE_URL/DIRECT_URL จาก env (host ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech)
+(node:2083738) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [M1.11-S1.1] ทะเบียน MEMBER_OPS ≥ 55 op · id ไม่ซ้ำ · method+path ไม่ซ้ำ · ทุก op มี test (M<x>-S…) · kind ∈ read/write/danger · action ขึ้นต้น member. · registry ใช้แกนกลาง @/lib/api (matchOpIn/allowedMethodsIn) ไม่ก๊อป dispatch
+  ✅ [M1.11-S1.2] op หลักครบ 54 ตัว (MEMBER-API §2.1–2.5 + me.*)
+  ✅ [M1.11-S1.3] danger ops = members.merge · privacy.erase · tiers.setManual (kind danger) · write อื่นเป็น write · list/get/report เป็น read
+  ✅ [M1.11-S1.4] bundle member-read / member-operate / member-admin ใน scopes.ts · read = เฉพาะ *.read/*.view (ไม่มี sensitive.read · ไม่มี write) · operate ⊇ read + customer.create/update · loyalty.stamp · promo.issue (ไม่มี settings/privacy/api.manage) · admin ⊇ operate + settings.manage/privacy.manage/tier.manage/customer.delete/api.manage
+  ✅ [M1.11-S1.5] route [...path] ใช้ dispatch แกนกลาง (@/lib/api หรือ member/api/dispatch ที่ห่อแกนกลาง) · export GET/POST/PATCH/PUT/DELETE · openapi.json route มี · ไม่มี any
+  ✅ [M1.11-S2.1] GET /ping → 200 {ok, systemId, keyName} + requestId + X-RateLimit-Remaining · ไม่มีคีย์ → 401
+  ❌ [M1.11-S2.2] GET /members (คีย์ read) → 200 {items[20], total 60} · แถว MemberBrief+listFields (memberCode name tier phoneMasked points) · ไม่มีเบอร์เต็ม · ไม่มีค่าอ่อนไหว · Accept text/csv → BOM — exp 60 · ปลอดภัย | act 200 total=63 n=20 leak=false
+  ❌ [M1.11-S2.3] 🔴 GET /members/{id}: read/operate → 200 แต่ส่วน health visible=false ไม่มีค่าโรคประจำตัวใน JSON (§6.3 API ไม่เห็นอ่อนไหว) · admin → เห็น · DTO มี profile/sections/stats/tier/identities/consents/attribution — exp ซ่อน/ซ่อน/เห็น | act 404/undefined op=undefined admin=undefined leakRead=false
+  ✅ [M1.11-S2.4] POST /members (operate + Idempotency-Key) → 200 {customerId, memberCode, partyId, created true} · source API + sourceDetail.apiKeyName · consent LINE · fields · ยิงซ้ำคีย์เดิม → ตอบเดิม + Idempotent-Replayed · ไม่มี Idempotency-Key → 400 idempotency_required · สมาชิกใน DB 1 คน
+💥 TypeError: Cannot read properties of null (reading 'nickname')
+    at <anonymous> (/root/projects/shark-hr-l4/scripts/qc-member-m1.11.mts:97:524)
+    at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+  ❌ [M1.11-ERR] ข้อสอบรันจนจบ — exp จบ | act Cannot read properties of null (reading 'nickname')
+
+🔴 M1.11: 7/10
+JSON_SUMMARY {"total":10,"passed":7,"findings":[{"id":"M1.11-S2.2","sev":"CRITICAL"},{"id":"M1.11-S2.3","sev":"CRITICAL"},{"id":"M1.11-ERR","sev":"CRITICAL"}]}

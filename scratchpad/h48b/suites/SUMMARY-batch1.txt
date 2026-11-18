@@ -1,0 +1,14 @@
+seed exit=1 ===== seed-hr-qc ===== ผ่าน 3/4
+h48f2 exit=0 ===== qc-hr-h4.8 ===== passed 41/41 (QC_FORCE)
+h48f3 exit=0 ===== qc-hr-h4.8 ===== passed 41/41 (QC_FORCE)
+h48u exit=0 ===== qc-hr-h4.8 ===== passed 41/41
+h22 exit=1 ===== qc-hr-h2.2 ===== passed 59/60 (QC_FORCE)
+h27 exit=0 ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+h210 exit=0 ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+h38 exit=1 ===== qc-hr-h3.8 ===== passed 77/78 (QC_FORCE)
+h39 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+h11 exit=1 ===== qc-hr-h1.1 ===== passed 80/81 (QC_FORCE)
+h01 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+hfpriv exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+audit exit=0 
+DONE

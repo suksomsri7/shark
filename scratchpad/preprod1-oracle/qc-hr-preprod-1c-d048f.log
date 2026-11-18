@@ -1,0 +1,32 @@
+[env] qc-hr-preprod-1c · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-preprod-1c] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:754174) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [PP1C-Z0] own law rows: none before · 3 inserted
+  ✅ [PP1C-V1b.1] 10–14 Mar paid 2.0 / unpaid 3.0, then 13 Mar becomes a holiday (roster removed) ⇒ counted 10,11,12,14 · UNPAID_LEAVE 12 + 14 = −200,000 · split 2 / 2 from 12 Mar (reader + DTO) · ledger untouched
+  ✅ [PP1C-V1b.4] (accepted, debt) surplus: fully paid 10–14 Mar (USE −5.0), 13 Mar becomes a holiday ⇒ all remaining days paid · unpaid 0 · no UNPAID_LEAVE · ledger unchanged
+  ✅ [PP1C-V1b.2] 27.3 used, 10–14 Mar paid 2.7 / unpaid 2.3, roster of 13 Mar removed ⇒ 12 Mar 0.3 unpaid (−30,000) + 14 Mar (−100,000) = −130,000 · split 2.7 / 1.3 · ledger untouched
+  ✅ [PP1C-V1b.3] day off 12 Mar inside 10–14 Mar (4.0 counted, paid 2 / unpaid 2) becomes a working day ⇒ paid stays Σ USE 2.0 (10, 11) · unpaid 12–14 = −300,000 · split 2 / 3 · ledger untouched
+  ✅ [PP1C-V8c.1] v2 run reversed (no-book path): March approved −300,000 · January revoked (March skipped) · reverse ⇒ appended USE −3.0 'resplit;unpaid:0.0' · Σ 25.0 · re-run no UNPAID_LEAVE
+  ✅ [PP1C-V8c.2] leave 27 Feb–3 Mar spanning APPROVED Feb: January revoked ⇒ untouched (control) · Feb run reversed ⇒ appended −3.0 'resplit;unpaid:0.0' · Σ 25.0
+  ✅ [PP1C-V8c.3] engine v1 run with JV reversed (reverseRun path) ⇒ March leave re-split (appended −3.0 'resplit;unpaid:0.0') · Σ 25.0
+  ✅ [PP1C-V8c.5] v2 booked run reversed (H3.7 book path) ⇒ March leave re-split (appended −3.0 'resplit;unpaid:0.0') · Σ 25.0 · re-run no UNPAID_LEAVE
+  ✅ [PP1C-V8c.4] year job writes carry +5.0 into 2031 ⇒ March 0/5 leave re-split (appended −5.0 'resplit;unpaid:0.0') · Σ 2031 0.0
+  ❌ [PP1C-V8d.1] missed re-split (employee not in the reversed run) ⇒ creating the March v2 draft re-splits first (appended −3.0 'resplit;unpaid:0.0') · draft has no UNPAID_LEAVE for that employee — expected create re-splits | actual resplit,lines,sum {"d1":true,"u":["-2|unpaid:3.0;from:2031-03-12"],"up":["UNPAID_LEAVE:-100000@2031-03-12","UNPAID_LEAVE:-100000@2031-03-13","UNPAID_LEAVE:-100000@2031-03-14"]}
+  ❌ [PP1C-V8d.2] same through recompute of an existing draft — expected recompute re-splits | actual resplit,lines {"r1":true,"u":["-2|unpaid:3.0;from:2031-03-12"],"up":["UNPAID_LEAVE:-100000@2031-03-12","UNPAID_LEAVE:-100000@2031-03-13","UNPAID_LEAVE:-100000@2031-03-14"]}
+  ❌ [PP1C-V8d.3] idempotent: second recompute and delete + re-create append no ledger row · still no UNPAID_LEAVE — expected no new rows | actual lines {"n0":3535,"r2":true,"del":{"ok":true},"d2":true}
+  ✅ [PP1C-V8d.4] a leave with a day in APPROVED Feb stays untouched by the March draft (single USE row) · draft deducts Mar 1–3 = −300,000
+  ✅ [PP1C-Z2] no deadlock
+RESIDUE none (tenants=2 users=8 activeLaw=0->0)
+  ✅ [PP1C-Z1] no residue
+BASE-EXPECTATION 16/16 as registered (RED-by-design 3 · GREEN controls 13)
+
+===== qc-hr-preprod-1c ===== passed 13/16 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-preprod-1c","total":16,"passed":13,"failed":["PP1C-V8d.1","PP1C-V8d.2","PP1C-V8d.3"],"findings":[{"id":"PP1C-V8d.1","sev":"CRITICAL"},{"id":"PP1C-V8d.2","sev":"CRITICAL"},{"id":"PP1C-V8d.3","sev":"MAJOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":3,"baseGreen":13,"offBase":[]}

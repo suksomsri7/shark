@@ -1,0 +1,84 @@
+  ✅ [PP1-ST1] payroll-rules.ts sha frozen
+  ✅ [PP1-ST2] frozen files unchanged vs base (rules/attendance-pay/judge/ot/labor/reports/correction/prisma/core/api)
+  ✅ [PP1-ST3] allowed files only · older oracles changed only by explicit-allowlist ORACLE-EDIT (…PREPROD-1) hunks · covers scripts/*.mts
+  ✅ [PP1-ST4] every changed src hunk carries "HR PREPROD-1" · no bare removals
+  ✅ [PP1-ST5] no AppSystem settings write outside lockHrSettings + writeHrSettingsKeys
+  ✅ [PP1-ST6] R4 one pay-scope predicate: payTarget · decideAdjustmentAs · setAdjustmentConsent · giveBackClaim · chargeGate use inPayScope/payScopeWhere · no second copy
+  ✅ [PP1-ST7] texts: PAY_SCOPE_NO_ACCESS_TEXT (scope.ts, one constant) · SETTINGS_TEXT.paidLocked · each literal once in src · leaveSplitOf exported
+  ✅ [PP1-ST8] R2 page: REFUND_BEHIND line · PRIV-2 filter on strandedAdjustments kept
+  ✅ [PP1-R6.1] runbook 13a (HF-SSO-M2) under row 13 of HANDOVER-H3.md §3
+[env] qc-hr-preprod-1 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-preprod-1] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:3990344) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[qc-hr-preprod-1] base=a4e2fb4ae
+  ✅ [PP1-Z0] own law rows: none before · 3 inserted
+  ✅ [PP1-R1.1] [db] v1+JV reverse: REVERSED · LATE/ABSENT rows APPROVED unbound 106,250 · heads unchanged
+  ✅ [PP1-R1.2] [db] v1+JV re-create binds the same rows · sync writes nothing
+  ✅ [PP1-R1.3] [db] v1+JV MONEY-2 leave gate: refuses before reverse · allows after
+  ✅ [PP1-R1.4] [db] v2 no-book finalized reverse: REVERSED · rows unbound 106,250 · heads unchanged
+  ✅ [PP1-R1.5] [db] v2 no-book re-create: ABSENT_RULE −100,000 + LATE_RULE −6,250 bound · sync writes nothing
+  ✅ [PP1-R1.6] [db] v2 no-book leave gate: refuses before · allows after
+  ✅ [PP1-R1.7] [db] v2 booked reverse: REVERSED · rows unbound 106,250 · heads unchanged
+  ✅ [PP1-R1.8] [db] v2 booked re-create: same lines bound · sync writes nothing
+  ✅ [PP1-R1.9] [db] v2 booked leave gate: refuses before · allows after
+  ✅ [PP1-R2.7] [db] (V5) payroll page: REFUND_BEHIND row of a u2 employee hidden from [u1] viewer · shown to owner · in-scope row shown
+  ✅ [PP1-R2.5] [db] control: ordinary give-back (period after lastCovered) not listed
+  ✅ [PP1-R2.1] [db] refund 50,000 in run-less 2031-04 behind approved 2031-05 ⇒ strandedAdjustments lists it · REFUND_BEHIND
+  ✅ [PP1-R2.6] [db] control: old stranded BONUS listed unchanged · moves to 2031-04
+  ✅ [PP1-R2.2] [db] moveStrandedAdjustment(refund) ⇒ 2031-06 · APPROVED unbound · audit hr.payadjust.move
+  ✅ [PP1-R2.3] [db] 2031-06 draft carries REFUND:+50,000
+  ✅ [PP1-R2.4] [db] (Q7) leaver (end 2031-05) refund listed · move refused fixed text · nothing written
+  ✅ [PP1-R3.1] [db] SICK 10–14 Mar (5.0) with 28.0 used ⇒ request accepted (PENDING)
+  ✅ [PP1-R3.2] [db] approve ⇒ USE −2.0 · note unpaid:3.0;from:2031-03-12
+  ✅ [PP1-R3.3] [db] (ruling 1) leaveSplitOf → { paidDays 2, unpaidDays 3, unpaidFrom 2031-03-12 } · leave item paidDays / unpaidDays
+  ✅ [PP1-R3.4] [db] balance never negative: used 30.0 · balance 0.0 · available 0.0 · Σ ledger 0
+  ❌ [PP1-R3.5] [db] v2 March: UNPAID_LEAVE 12/13/14 Mar −100,000 each = −300,000 · none on 10/11 — expected −300,000 on 12–14 | actual run,lines,total {"mar":"ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ","up1":[]}
+  ❌ [PP1-R3.16] [db] positive control: unpaid-policy day on the R3 roster = UNPAID_LEAVE −100,000 (fixture basis N = 480) — expected −100,000 @20 Mar | actual run,line []
+  ❌ [PP1-R3.17] [db] (V1) 27.0 + 0.3 used ⇒ paid 2.7 exact · USE −2.7 · unpaid:2.3;from:2031-03-12 · split 2.7/2.3 · −30,000 −100,000 −100,000 = −230,000 · balance 0.0 — expected 2.7 / 2.3 · −230,000 · 0.0 | actual use,split,lines,balance {"d11":{"ok":true},"u":{"k":"USE","d":"-2.5","sk":"use:cmwgn55du00ecywkzivd2spgs","note":"unpaid:2.5;from:2031-03-12;half"},"sp":{"paidDays":2.5,"unpaidDays":2.5,"unpaidFrom":"2031-03-12"},"up":[],"bal":"0.2"}
+  ❌ [PP1-R3.18] [db] (V3) SICK paid=false: within balance no split (USE −5.0 note null · −500,000 · no split fields) · over balance refused LEAVE_TEXT.balance — expected no split · refused over | actual within,over {"d14":{"ok":true},"u":{"k":"USE","d":"-5.0","sk":"use:cmwgn55qz00ejywkze5bul1ok","note":null},"sp":{"paidDays":5,"unpaidDays":0,"unpaidFrom":null},"q14b":"cmwgn563i00eqywkzy38o90a8"}
+  ❌ [PP1-R3.23] [db] (V5) malformed USE note ⇒ fully paid: no split · no UNPAID_LEAVE — expected fully paid | actual lines {"sp":{"paidDays":1,"unpaidDays":0,"unpaidFrom":null},"up":[]}
+  ❌ [PP1-R3.24] [db] (V5) half-day AM with 0.0 left ⇒ USE −0.0 · unpaid:0.5;from:2031-03-19 · −50,000 — expected −50,000 | actual lines {"d13":{"ok":true},"u":{"k":"USE","d":"0.0","sk":"use:cmwgn568t00etywkz0ukq74il","note":"unpaid:0.5;from:2031-03-19"},"up":[]}
+  ❌ [PP1-R3.6] [db] (V1) 27.5 used ⇒ USE −2.5 · unpaid:2.5;from:2031-03-12 (no ;half) · −50,000 −100,000 −100,000 = −250,000 — expected −250,000 | actual use,lines,total {"d2":{"ok":true},"u2":{"k":"USE","d":"-2.5","sk":"use:cmwgn54a900cvywkzercjfkcq","note":"unpaid:2.5;from:2031-03-12;half"},"up2":[]}
+  ❌ [PP1-R3.13] [db] control: SICK within balance ⇒ USE −2.0 · note null (ruling 2) · no unpaid — expected USE −2.0 · no unpaid | actual noLines {"d9":{"ok":true},"u9":{"k":"USE","d":"-2.0","sk":"use:cmwgn54q000d7ywkz4u0y6p2u","note":null}}
+  ✅ [PP1-R3.14] [db] control: PERSONAL over quota still refused (LEAVE_TEXT.balance) · no row
+  ✅ [PP1-R3.7] [db] revoke approved over-balance leave ⇒ use-revert +2.0 only · Σ 2.0
+  ❌ [PP1-R3.19] [db] (V2) borrowing-branch manager + API-key viewer (no pay keys) see the leave row without paidDays/unpaidDays — expected no split fields | actual mgr,key {"a":{"id":"cmwgn53rr00coywkzshvtbtbo","employeeName":"S1 afcgxyhpnyt","type":"SICK","fromDate":"2031-03-10T00:00:00.000Z","toDate":"2031-03-14T00:00:00.000Z","status":"APPROVED","reason":"qc ป่วย","filedBy":"ยื่นโดย QPP nowner afcgxyhpnyt"
+  ✅ [PP1-R3.20] [db] (V2) control: home-branch pay viewer sees paidDays 2 / unpaidDays 3 · self sees unpaidDays 3.0
+  ✅ [PP1-R3.8] [db] unpaid part in APPROVED Feb ⇒ decideLeave refused CORRECTION_TEXT.paid · PENDING · no USE
+  ✅ [PP1-R3.11] [db] leave spanning Feb(APPROVED)/Mar: paid 27–28 Feb, unpaid 1–3 Mar ⇒ approved · unpaid:3.0;from:2031-03-01
+  ✅ [PP1-R3.12] [db] control: MONEY-2 gate — unpaid-policy leave in APPROVED Feb still refused
+  ✅ [PP1-R3.9] [db] same, owner auto-approve ⇒ refused · no row
+  ✅ [PP1-R3.10] [db] same, chain apply ⇒ PAID · CANCELLED · no USE
+  ❌ [PP1-R3.21] [db] (V4) race: decide passed the gate, policy flip paid→unpaid commits first (row-lock queue) ⇒ never APPROVED unpaid-policy leave in APPROVED Feb — expected not APPROVED + unpaid in paid month | actual safe {"blocked":[true,true],"res":[true,true],"st":"APPROVED","paid":false}
+  ✅ [PP1-R3.22] [db] (V5) two sick approvals race for the last 2.0 ⇒ Σ paid 2.0 · Σ ledger 0 · both APPROVED
+  ✅ [PP1-R3.25] [db] (V5) approving a split leave outdates the month's work entries; split note change outdates them again
+  ✅ [PP1-R3.15] [db] control: engine v1 March run unchanged (gross 3,000,000 · no UNPAID_LEAVE)
+  ✅ [PP1-R4.1] [db] inbox decideAdjustmentAs: borrowed · other-branch · missing ⇒ PAY_SCOPE_NO_ACCESS_TEXT byte-equal · nothing written
+  ✅ [PP1-R4.2] [db] decideAdjustmentAction on borrowed + other-branch rows = not-found answer · nothing written
+  ✅ [PP1-R4.3] [db] cancelAdjustmentAction borrowed + other-branch = not-found answer · nothing written
+  ✅ [PP1-R4.4] [db] moveStrandedAdjustmentAction borrowed + other-branch = not-found answer · nothing written
+  ✅ [PP1-R4.5] [db] setAdjustmentConsent home-less + other-branch = not-found answer · nothing written
+  ✅ [PP1-R4.6] [db] giveBackClaim borrowed + other-branch = not-found answer · nothing written
+  ✅ [PP1-R4.7] [db] withdrawStockCharge borrowed home-less + other-branch = not-found answer · nothing written
+  ✅ [PP1-R4.8] [db] control: all-branch viewer does all 7 on borrowed / home-less rows
+  ✅ [PP1-R4.9] [db] control: limited viewer, in-scope home: 6 actions ok
+  ✅ [PP1-R4.10] [db] control: inbox decideAdjustmentAs in-scope ok
+  ✅ [PP1-R5.1] [db] paid→unpaid flip with approved leave in APPROVED Aug ⇒ paidLocked · row byte-same · no audit
+  ✅ [PP1-R5.2] [db] unpaid→paid flip, same ⇒ refused · unchanged
+  ✅ [PP1-R5.3] [db] control: approved leave only in open month (+ pending in Aug) ⇒ flip allowed
+  ✅ [PP1-R5.4] [db] control: rename + paid unchanged on the locked policy ⇒ allowed
+  ✅ [PP1-Z2] no deadlock
+RESIDUE none (tenants=3 users=15 activeLaw=0->0)
+  ✅ [PP1-Z1] no residue
+BASE-EXPECTATION 62/67 as registered (RED-by-design 5 · GREEN controls 62) · off: PP1-R3.5(GREEN→fail) PP1-R3.16(GREEN→fail) PP1-R3.23(GREEN→fail) PP1-R3.24(GREEN→fail) PP1-R3.13(GREEN→fail)
+
+===== qc-hr-preprod-1 ===== passed 57/67 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-preprod-1","total":67,"passed":57,"failed":["PP1-R3.5","PP1-R3.16","PP1-R3.17","PP1-R3.18","PP1-R3.23","PP1-R3.24","PP1-R3.6","PP1-R3.13","PP1-R3.19","PP1-R3.21"],"findings":[{"id":"PP1-R3.5","sev":"CRITICAL"},{"id":"PP1-R3.16","sev":"MAJOR"},{"id":"PP1-R3.17","sev":"CRITICAL"},{"id":"PP1-R3.18","sev":"CRITICAL"},{"id":"PP1-R3.23","sev":"MAJOR"},{"id":"PP1-R3.24","sev":"MAJOR"},{"id":"PP1-R3.6","sev":"CRITICAL"},{"id":"PP1-R3.13","sev":"MINOR"},{"id":"PP1-R3.19","sev":"CRITICAL"},{"id":"PP1-R3.21","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":5,"baseGreen":62,"offBase":["PP1-R3.5(GREEN→fail)","PP1-R3.16(GREEN→fail)","PP1-R3.23(GREEN→fail)","PP1-R3.24(GREEN→fail)","PP1-R3.13(GREEN→fail)"]}

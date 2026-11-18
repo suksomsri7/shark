@@ -1,0 +1,128 @@
+// H5.3l hunter (PREPROD-1 R2 + R5) — refund behind a later run: double/concurrent move, pay-once across reverse/re-run · policy paid flip races
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scratchpad/h53l/q2-refund-flip.mts
+import { type Any, setupPP1, dd } from "./kit.mjs";
+import { errText } from "../../scripts/qc-hr-lib.mjs";
+import { underLock, dist, short } from "./common.mjs";
+
+const N = Number(process.env.H53L_N ?? 20);
+const S = await setupPP1("h53l-q2");
+const { P, tag, kit, rows, safe, linesOf, PAY } = S;
+const out = (k: string, v: unknown) => console.log(`${k} ${typeof v === "string" ? v : short(v, 1600)}`);
+let crashed = "";
+try {
+  const SV = (await import("@/lib/modules/hr/service")) as Any;
+  const STG = (await import("@/lib/modules/hr/settings")) as Any;
+  const K = await kit("q2", "R2 R5 hunt");
+  const TT = K.TT;
+
+  // ══ R2 ══
+  if (!process.env.SKIP_R2) {
+    const s = await K.sys("คืนค้าง");
+    const c = K.c(s);
+    const emps: string[] = [];
+    const claims: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const e = await K.emp(s, `E${i}`, { salary: 2_000_000 });
+      emps.push(e);
+      claims.push((await K.adj(s, e, "2031-03", "DEDUCTION", 150_000)).id);
+    }
+    const mar = await K.create(s, "2031-03");
+    out("R2.mar", (await K.approve(s, mar.id))?.ok);
+    const refunds: string[] = [];
+    for (const cl of claims) {
+      const g = await K.giveBack(s, cl, 50_000, "2031-04");
+      if (g?.id) { await safe(() => PAY.decideAdjustment(c, g.id, "APPROVED", K.ownA)); refunds.push(g.id); }
+    }
+    const may = await K.create(s, "2031-05");
+    out("R2.may", (await K.approve(s, may.id))?.ok);
+    const listed = ((await PAY.strandedAdjustments(c)) as Any[]).filter((x) => x.reason === "REFUND_BEHIND").length;
+    // concurrent double move (row lock on the adjustment orders nothing — use the period advisory lock of 2031-04)
+    const o: string[] = [];
+    for (let i = 0; i < refunds.length; i++) {
+      const id = refunds[i]!;
+      const { res } = await underLock(P, { key: `hr:payroll:run:${s}:2031-04` }, [() => safe(() => PAY.moveStrandedAdjustment(c, id, K.ownA)), () => safe(() => PAY.moveStrandedAdjustment(c, id, K.ownA))]);
+      const r = (await rows(`SELECT "periodKey" AS p, status::text AS s FROM "HrPayAdjustment" WHERE id = $1`, id))[0];
+      const au = Number((await rows(`SELECT count(*)::int AS n FROM "AuditLog" WHERE "targetId" = $1 AND action = 'hr.payadjust.move'`, id))[0]?.n);
+      o.push(`ok=${res.map((x: Any) => x.ok).sort().join("/")}·to=${r.p}·audit=${au}`);
+    }
+    out("R2.concurrentMove", `listed=${listed}/${refunds.length} · ${dist(o)}`);
+    out("R2.moveAgain", await safe(() => PAY.moveStrandedAdjustment(c, refunds[0]!, K.ownA)));
+    const paidRefunds = async () => Number((await rows(`SELECT COALESCE(SUM(a."amountSatang"),0)::bigint AS n FROM "HrPayAdjustment" a JOIN "HrPayrollRun" r ON r.id = a."runId" WHERE a.id = ANY($1::text[]) AND r.status::text IN ('APPROVED','PAID')`, refunds))[0]?.n);
+    const jun = await K.create(s, "2031-06");
+    const lines0 = jun?.id ? (await linesOf(jun.id, emps[0]!)).filter((x) => x.startsWith("REFUND")) : null;
+    await K.approve(s, jun.id);
+    const p1 = await paidRefunds();
+    const rv = await K.reverse(s, jun.id);
+    const p2 = await paidRefunds();
+    const listedAfterReverse = ((await PAY.strandedAdjustments(c)) as Any[]).filter((x) => refunds.includes(x.id)).length;
+    const jun2 = await K.create(s, "2031-06");
+    await K.approve(s, jun2.id);
+    const p3 = await paidRefunds();
+    const lines2 = jun2?.id ? (await linesOf(jun2.id, emps[0]!)).filter((x) => x.startsWith("REFUND")) : null;
+    out("R2.payOnce", { lines0, paidAfterJun: p1, reverse: rv?.ok, paidAfterReverse: p2, listedAfterReverse, paidAfterRerun: p3, lines2, want: 50_000 * refunds.length });
+    // refund behind, but a DRAFT run already exists for the next period ⇒ where does it go?
+    const e = await K.emp(s, "DR", { salary: 2_000_000 });
+    const cl = (await K.adj(s, e, "2031-07", "DEDUCTION", 150_000)).id;
+    const jul = await K.create(s, "2031-07");
+    await K.approve(s, jul.id);
+    const g = await K.giveBack(s, cl, 50_000, "2031-08");
+    await safe(() => PAY.decideAdjustment(c, g.id, "APPROVED", K.ownA));
+    const sep = await K.create(s, "2031-09");
+    await K.approve(s, sep.id);
+    const oct = await K.create(s, "2031-10"); // draft only
+    await P.hrEmployee.update({ where: { id: e }, data: { endDate: dd("2031-10-31") } });
+    out("R2.draftNextAndLeaver", { listed: ((await PAY.strandedAdjustments(c)) as Any[]).some((x) => x.id === g.id), move: await safe(() => PAY.moveStrandedAdjustment(c, g.id, K.ownA)), octDraft: !!oct?.id });
+  }
+
+  // ══ R5 ══
+  {
+    const s = await K.sys("สลับค่าจ้าง");
+    const c = K.c(s);
+    const e = await K.emp(s, "F");
+    const p = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "PERSONAL", name: `กิจ ${tag}`, paid: true, quotaDays: null } })).id as string;
+    const aug = await K.create(s, "2031-08");
+    out("R5.augApproved", (await K.approve(s, aug.id))?.ok);
+    const req = async (d: string) => (await safe(() => SV.requestLeave(c, { employeeId: e, type: "PERSONAL", fromDate: d, toDate: d, reason: "qc", actorUserId: K.U.owner.id, policyId: p })))?.id as string;
+    const dec = (id: string) => safe(() => SV.decideLeave(c, id, "APPROVED", K.U.pay1.id, { from: "PENDING" }).then(() => ({ ok: true })));
+    const flip = (paid: boolean) => safe(() => STG.updateLeavePolicy(c, K.V.owner, p, { paid }));
+    const augDays = Array.from({ length: 31 }, (_, i) => `2031-08-${String(i + 1).padStart(2, "0")}`);
+    // controls
+    const l0 = await req(augDays[0]!);
+    out("R5.ctl.approvePaidInAug", await dec(l0));
+    out("R5.ctl.flipAfter", await flip(false));
+    // race: the flip's write is in flight (row locked, not committed) while the approval runs; the flip's own check already passed (no APPROVED leave yet)
+    const o: string[] = [];
+    for (let i = 0; i < Math.min(N, 25); i++) {
+      await P.hrLeave.updateMany({ where: { employeeId: e, status: "APPROVED" }, data: { status: "CANCELLED" } }); // earlier leaves out of the flip check ⇒ the real flip's check would pass
+      await P.hrLeavePolicy.update({ where: { id: p }, data: { paid: true } });
+      const l = await req(augDays[i + 2]!);
+      const chk = await safe(() => P.$transaction(async (tx: Any) => (await import("@/lib/modules/hr/leave")).leavePolicyPaidLockedInTx(tx, c, p)));
+      const { res, blocked } = await underLock(P, { rowSql: `UPDATE "HrLeavePolicy" SET paid = false WHERE id = $1 RETURNING id`, args: [p] }, [() => dec(l)]);
+      const fin = (await rows(`SELECT l.status::text AS s, p.paid FROM "HrLeave" l JOIN "HrLeavePolicy" p ON p.id = l."policyId" WHERE l.id = $1`, l))[0];
+      o.push(`flipCheckBefore=${chk}·blocked=${blocked[0]}·dec=${res[0]?.ok ?? res[0]?.reason}·leave=${fin.s}·paid=${fin.paid}`);
+    }
+    out("R5.race.flipInFlight_vs_approve", dist(o));
+    const sequential = await req(augDays[29]!);
+    out("R5.ctl.approveUnpaidInAugSequential", await dec(sequential));
+    // REVERSED month
+    const s2 = await K.sys("สลับค่าจ้าง-กลับรายการ");
+    const e2 = await K.emp(s2, "F2");
+    const p2 = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s2, category: "PERSONAL", name: `กิจ2 ${tag}`, paid: true, quotaDays: null } })).id as string;
+    await P.hrLeave.create({ data: { tenantId: TT, systemId: s2, employeeId: e2, type: "PERSONAL", fromDate: dd("2031-08-12"), toDate: dd("2031-08-12"), status: "APPROVED", policyId: p2, days: "1.0", reason: "qc" } });
+    const a2 = await K.create(s2, "2031-08");
+    await K.approve(s2, a2.id);
+    const before = await safe(() => STG.updateLeavePolicy(K.c(s2), K.V.owner, p2, { paid: false }));
+    await K.reverse(s2, a2.id);
+    const after = await safe(() => STG.updateLeavePolicy(K.c(s2), K.V.owner, p2, { paid: false }));
+    out("R5.reversed", { beforeReverse: before?.ok ?? before?.reason, afterReverse: after?.ok ?? after?.reason });
+    // other edits that change money meaning without touching `paid`: category SICK↔other on a policy with split leaves is allowed?
+    const catEdit = await safe(() => STG.updateLeavePolicy(K.c(s2), K.V.owner, p2, { category: "SICK", quotaDays: 0 }));
+    out("R5.otherEdit.categoryQuota", catEdit?.ok ?? catEdit?.reason);
+  }
+} catch (x) {
+  crashed = errText(x);
+  console.log(`CRASH ${crashed} ${(x as Error)?.stack?.split("\n").slice(1, 5).join(" | ")}`);
+} finally {
+  await S.cleanup();
+}
+process.exit(crashed ? 1 : 0);

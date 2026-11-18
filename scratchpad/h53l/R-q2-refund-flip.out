@@ -1,0 +1,25 @@
+[env] h53l-q2 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h53l-q2] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:372909) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+R2.mar true
+R2.may true
+R2.concurrentMove listed=20/20 · ok=false/true·to=2031-06·audit=1×20
+R2.moveAgain {"ok":false,"reason":"งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย"}
+R2.payOnce {"lines0":["REFUND:50000"],"paidAfterJun":1000000,"reverse":true,"paidAfterReverse":0,"listedAfterReverse":0,"paidAfterRerun":1000000,"lines2":["REFUND:50000"],"want":1000000}
+R2.draftNextAndLeaver {"listed":true,"move":{"ok":true,"movedFrom":"2031-08","movedTo":"2031-10"},"octDraft":true}
+R5.augApproved true
+R5.ctl.approvePaidInAug {"ok":true}
+R5.ctl.flipAfter {"ok":false,"reason":"เปลี่ยน 'ได้รับค่าจ้าง' ของประเภทการลานี้ไม่ได้ เพราะมีใบลาที่อนุมัติแล้วอยู่ในเดือนที่อนุมัติเงินเดือนแล้ว — สร้างประเภทการลาใหม่แทน"}
+R5.race.flipInFlight_vs_approve flipCheckBefore=false·blocked=true·dec=false·leave=PENDING·paid=false×20
+R5.ctl.approveUnpaidInAugSequential {"ok":false,"code":"THROW","reason":"HrLeaveDecisionError: เดือนนี้อนุมัติเงินเดือนแล้ว — แก้เวลาย้อนหลังไม่ได้","__throw":{"name":"HrLeaveDecisionError"}}
+R5.reversed {"beforeReverse":false,"afterReverse":true}
+R5.otherEdit.categoryQuota true
+RESIDUE none (tenants=1 users=4 activeLaw=0->0)

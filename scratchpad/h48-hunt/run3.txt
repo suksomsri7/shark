@@ -1,0 +1,133 @@
+[env] h48-hunt · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h48-hunt] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2151569) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+## P1 key confusion
+P1a unbound-noscope+hdr: no 2xx · 403:scope_missing
+P1a unbound-hr+hdr: no 2xx · 403:scope_missing
+P1a pos-key+hdr: no 2xx · 403:system_mismatch
+P1a pos-key(nohdr): no 2xx · 403:system_mismatch
+P1a posHr-key(nohdr): no 2xx · 403:system_mismatch
+P1a posHr+hdr: no 2xx · 403:system_mismatch
+P1a sA2-key+hdr sA: no 2xx · 403:system_mismatch
+P1a B-key+hdr sA: no 2xx · 403:system_mismatch
+P1c empGet: foreign=404:not_found random=404:not_found same bytes
+P1c empGet-sA2: foreign=404:not_found random=404:not_found same bytes
+P1c month-B: foreign=404:not_found random=404:not_found same bytes
+P1c month-sA2: foreign=404:not_found random=404:not_found same bytes
+P1c day-unitB: foreign=404:not_found random=404:not_found same bytes
+P1c hist-B: foreign=404:not_found random=404:not_found same bytes
+P1c hist-sA2: foreign=404:not_found random=404:not_found same bytes
+P1c slip-runB: foreign=404:not_found random=404:not_found same bytes
+P1c slip-runA-empB: foreign=404:not_found random=404:not_found same bytes
+P1c report-unitB rows foreign=0 random=0 unrestricted=0
+P1c report-unitB: foreign=200 random=200 same bytes
+P1c report-pay-unitB rows foreign=0 random=0 unrestricted=1
+P1c report-pay-unitB: foreign=200 random=200 same bytes
+P1c bal-unitB: foreign=200 random=200 same bytes
+P1c roster-unitB: foreign=200 random=200 same bytes
+P1c emps-unitB: foreign=200 random=200 same bytes
+P1c shifts-unitB: foreign=200 random=200 same bytes
+P1d post-empB: 404:not_found · ไม่พบข้อมูลนี้ในระบบงานบุคคล หรือคีย์นี้ไม่มีสิทธิ์ดู
+P1d post-empX(sA2): 404:not_found · ไม่พบข้อมูลนี้ในระบบงานบุคคล หรือคีย์นี้ไม่มีสิทธิ์ดู
+P1d post-rand: 404:not_found · ไม่พบข้อมูลนี้ในระบบงานบุคคล หรือคีย์นี้ไม่มีสิทธิ์ดู
+P1d post-ended: 422:unprocessable · พนักงานคนนี้พ้นสภาพแล้ว — ยื่นใบลาใหม่ไม่ได้
+P1d post-owner: 403:forbidden · ยื่นใบลาของเจ้าของร้านผ่าน API ไม่ได้ — ใบลาของเจ้าของร้านอนุมัติทันที ให้ทำในแอป
+P1d post-policy-sA2: 422:unprocessable · ไม่พบประเภทการลานี้ หรือปิดใช้แล้ว — กรุณาเลือกใหม่
+P1d post-policy-rand: 422:unprocessable · ไม่พบประเภทการลานี้ หรือปิดใช้แล้ว — กรุณาเลือกใหม่
+P1e revoked=401:unauthorized expired=401:key_expired issuerOwner=200 demoted:slip=403:forbidden post=403:forbidden · user deleted · key.createdById=kept → 403:forbidden
+P1 leaves written during P1: 0 (expected 0)
+## P2 scope escalation / sentinels
+P2 cells: 141 · non-200 under read: /reports/payroll-month?period=2026-06=403:scope_missing | /reports/payroll-year?period=2026=403:scope_missing | /reports/wages?period=2026-06=403:scope_missing | /reports/tax-month?period=2026-06=403:scope_missing | /reports/tax-year?period=2026=403:scope_missing | /reports/register?period=2026=404:not_found | /reports/REGISTER?period=2026-06=404:not_found | /reports/register%20?period=2026-06=404:not_found | /reports/time%2F..%2Fregister?period=2026-06=404:not_found | /reports/__proto__?period=2026-06=404:not_found | /reports/constructor?period=2026-06=404:not_found | /employees/cmwfurgml000p5tkzhlpx4ed3/payslips?taxYear=2026=403:scope_missing | /payslips/cmwfurh61001c5tkzf4vpxdks/cmwfurgml000p5tkzhlpx4ed3=403:scope_missing | /payslips/cmwfurh6p001e5tkzsqopnsix/cmwfurgml000p5tkzhlpx4ed3=403:scope_missing | /employees?include=bank=422:validation | /employees?fields=nationalId=422:validation | /employees?expand=docs=422:validation | /employees?format=csv=422:validation | /employees?sort=salary=422:validation | /EMPLOYEES=404:not_found | /employees/cmwfurgml000p5tkzhlpx4ed3/docs=404:not_found | /employees/cmwfurgml000p5tkzhlpx4ed3/profile=404:not_found | /leaves?status=ALL=422:validation | /leaves?status=pending=422:validation | PUT /employees=405:method_not_allowed | PATCH /employees=405:method_not_allowed | DELETE /employees=405:method_not_allowed
+P2 2xx under read: /units | /employees | /employees?pageSize=50 | /employees/cmwfurgml000p5tkzhlpx4ed3 | /employees/cmwfurgp6000s5tkzxw44vp9n | /employees/cmwfurgq4000t5tkzfmt6eewk | /shifts | /roster?from=2026-06-01&to=2026-06-30 | /attendance/day?day=2026-06-10 | /attendance/month?employeeId=cmwfurgml000p5tkzhlpx4ed3&month=2026-06 | /leave-policies | /leaves | /leaves?status=HISTORY | /leave-balances?year=2026 | /leave-balances?year=2031 | /reports/time?period=2026-06 | /reports/ot?period=2026-06 | /reports/leave?period=2026 | /employees/ | /employees/cmwfurgml000p5tkzhlpx4ed3/
+P2 sentinel hits: pay /reports/payroll-month?period=2026-06~salaryB | pay /reports/payroll-year?period=2026~salaryB | pay /reports/wages?period=2026-06~salaryB | pay /reports/tax-month?period=2026-06~salaryB | pay /reports/tax-year?period=2026~salaryB | pay /employees/cmwfurgml000p5tkzhlpx4ed3/payslips?taxYear=2026~salary | pay /employees/cmwfurgml000p5tkzhlpx4ed3/payslips?taxYear=2026~net | pay /payslips/cmwfurh61001c5tkzf4vpxdks/cmwfurgml000p5tkzhlpx4ed3~salary | pay /payslips/cmwfurh61001c5tkzf4vpxdks/cmwfurgml000p5tkzhlpx4ed3~net
+P2 money-looking keys in hr-read bodies: none
+P2 ot+pay key: 200 cols=code,name,unit,pending,approved,rejected,approvedMin,otWorkdayMin,holidayWorkMin,otHolidayMin,keptHolidayWorkMin,otWorkdayAmt,holidayWorkAmt,otHolidayAmt,keptHolidayWorkAmt,amount · pay-audit rows +0 (payroll-month control: 200 +1)
+P2 ot+read key: 200 cols=code,name,unit,pending,approved,rejected,approvedMin,otWorkdayMin,holidayWorkMin,otHolidayMin,keptHolidayWorkMin
+P2 ended employee: get=200 active=false status=ENDED · in list=false
+## P3 issuing
+P3 manager hr-read: PERMISSION_DENIED เฉพาะเจ้าของร้านออกหรือเพิกถอนคีย์ API ของระบบงานบุคคลได้
+P3 manager spoofed session role OWNER: PERMISSION_DENIED เฉพาะเจ้าของร้านออกหรือเพิกถอนคีย์ API ของระบบงานบุคคลได้
+P3 staff(api perms) pay: PERMISSION_DENIED เฉพาะเจ้าของร้านออกหรือเพิกถอนคีย์ API ของระบบงานบุคคลได้
+P3 payroll viewer pay: PERMISSION_DENIED เฉพาะเจ้าของร้านออกหรือเพิกถอนคีย์ API ของระบบงานบุคคลได้
+P3 owner pay no consent: VALIDATION คีย์ที่อ่านข้อมูลเงินเดือนได้ ต้องติ๊กยืนยันว่าข้อมูลเงินเดือนจะออกจาก
+P3 owner raw payroll.read no consent: VALIDATION คีย์ที่อ่านข้อมูลเงินเดือนได้ ต้องติ๊กยืนยันว่าข้อมูลเงินเดือนจะออกจาก
+P3 owner payConsent:'true' (string): VALIDATION คีย์ที่อ่านข้อมูลเงินเดือนได้ ต้องติ๊กยืนยันว่าข้อมูลเงินเดือนจะออกจาก
+P3 owner hr.payroll.create: VALIDATION คีย์ของระบบงานบุคคลถือสิทธิ์ "hr.payroll.create" ไม่ได้ — เลือกจากชุดอ
+P3 owner arbitrary scope: VALIDATION คีย์ของระบบงานบุคคลถือสิทธิ์ "*" ไม่ได้ — เลือกจากชุดอ่าน / ยื่นใบลา /
+P3 owner scopes ['hr.*']: VALIDATION คีย์ของระบบงานบุคคลถือสิทธิ์ "hr.*" ไม่ได้ — เลือกจากชุดอ่าน / ยื่นใบล
+P3 owner pos bundle: VALIDATION ชุดสิทธิ์ที่เลือกไม่ใช่ชุดของระบบงานบุคคล — สิทธิ์ของระบบอื่นออกที่หน้
+P3 owner pos scope: VALIDATION คีย์ของระบบงานบุคคลถือสิทธิ์ "pos.report.view" ไม่ได้ — เลือกจากชุดอ่า
+P3 owner TTL 100000: VALIDATION อายุคีย์ต้องเป็น 30 / 90 / 365 วัน หรือไม่หมดอายุ
+P3 owner TTL 0 + pay: VALIDATION คีย์ที่อ่านข้อมูลเงินเดือนได้ต้องมีวันหมดอายุ — เลือก 30 / 90 / 365 วั
+P3 owner TTL -1: VALIDATION อายุคีย์ต้องเป็น 30 / 90 / 365 วัน หรือไม่หมดอายุ
+P3 owner POS systemId: NOT_FOUND ไม่พบระบบงานบุคคลนี้ในร้านนี้
+P3 owner tenant-B HR systemId: NOT_FOUND ไม่พบระบบงานบุคคลนี้ในร้านนี้
+P3 owner scopes [] + bundle pay no consent: VALIDATION คีย์ที่อ่านข้อมูลเงินเดือนได้ ต้องติ๊กยืนยันว่าข้อมูลเงินเดือนจะออกจาก
+P3 owner name with control chars: THROW DriverAdapterError: invalid byte sequence for encoding "UTF8": 0x00
+P3 keys created by issuer probes: 0
+## P4 POST /leaves
+P4 reason: 422:validation ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด
+P4 status APPROVED: 422:validation ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด
+P4 decidedBy: 422:validation ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด
+P4 __proto__ status: 200 {"id":"cmwfurv9u002p5tkzncmxb2jz","status":"PENDING"}
+P4 invalid date 2031-02-31: 422:unprocessable วันที่ไม่ถูกต้อง
+P4 invalid date 2031-13-45: 422:unprocessable วันที่ไม่ถูกต้อง
+P4 toDate<fromDate: 422:unprocessable วันเริ่มลาต้องไม่หลังวันสิ้นสุด
+P4 10-year range: 422:unprocessable ใบลาหนึ่งใบยาวได้ไม่เกิน 366 วัน
+P4 past date: 422:unprocessable วันลาอยู่นอกช่วงการจ้างงาน — ตรวจวันที่อีกครั้ง
+P4 halfDay+hours: 422:unprocessable เลือกลาครึ่งวันหรือลาเป็นชั่วโมงอย่างใดอย่างหนึ่ง
+P4 hours=1.5: 422:validation ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด
+P4 ended employee: 422:unprocessable พนักงานคนนี้พ้นสภาพแล้ว — ยื่นใบลาใหม่ไม่ได้
+P4 owner-linked: 403:forbidden ยื่นใบลาของเจ้าของร้านผ่าน API ไม่ได้ — ใบลาของเจ้าของร้านอนุมัติทันที ให้ทำในแอ
+P4 staff-linked eS: 200 {"id":"cmwfurwjm00335tkzl43szoas","status":"PENDING"}
+P4 text/plain body: 200 {"id":"cmwfurwtq00395tkze6iy3nc9","status":"PENDING"}
+P4 idem key X via key leave: 200 {"id":"cmwfurx3l003f5tkz3cs0xtlx","status":"PENDING"}
+P4 idem key X via key all (other API key, other body): 200 {"id":"cmwfurxdf003l5tkzghrln1r2","status":"PENDING"}
+P4 idem key X via key leave, other body: 409:idempotency_conflict ค่า Idempotency-Key นี้เคยใช้กับคำสั่งที่มีเนื้อหาต่างจากครั้งนี้ — กรุณาใช้ค่าใ
+P4 overlap: 409:duplicate ช่วงนี้มีใบลาที่รออนุมัติหรืออนุมัติแล้ว — ยกเลิกใบเดิมก่อน หรือเลือกวันอื่น
+P4 rows written: 5 · statuses APPROVED,PENDING · reasons non-null 2 · a1=200 a2=200 a3=409:idempotency_conflict
+P4 mass: 42 created then 429 at #43 Retry-After=43
+## P5 readers vs brief
+P5 roster: 200 entries=2 unpublished present=false
+P5 attendance day of unpublished entry (06-11): 200 rows=2 slots=[1,1]
+P5 attendance month 06-11 (unpublished roster day) slots=[{"shift":null,"inAt":null,"outAt":null,"method":null,"breaks":[],"status":"DAY_OFF","phase":"FINAL","final":true,"lateMin":0,"earlyOutMin":0,"workedMin":0,"otMin":0,"missingOut":false,"leave":null}]
+P5 DRAFT slip: 409:state_conflict
+P5 reversed run: slip=409:state_conflict history count=0 report rows=0
+P5 ended employee attendance month: 200
+P5 leave balances rows include ended=false owner=true
+P5 leaves HISTORY includes other-system leave=false
+## P6 abuse
+P6 employees?pageSize=1000: 422:validation n=- page=null
+P6 employees?pageSize=-1: 422:validation n=- page=null
+P6 employees?pageSize=NaN: 422:validation n=- page=null
+P6 employees?pageSize=20abc: 422:validation n=- page=null
+P6 employees?pageSize=1e1: 200 n=4 page={"page":1,"pageSize":10,"pageCount":1,"total":4,"hasMore":false}
+P6 employees?pageSize=20.0: 200 n=4 page={"page":1,"pageSize":20,"pageCount":1,"total":4,"hasMore":false}
+P6 employees?pageSize=%2020: 200 n=4 page={"page":1,"pageSize":20,"pageCount":1,"total":4,"hasMore":false}
+P6 employees?page=0: 422:validation n=- page=null
+P6 employees?page=-1: 422:validation n=- page=null
+P6 employees?page=999999: 422:validation n=- page=null
+P6 employees?page=100000: 200 n=0 page={"page":100000,"pageSize":20,"pageCount":1,"total":4,"hasMore":false}
+P6 employees?page=1&page=2: 200 n=0 page={"page":2,"pageSize":20,"pageCount":1,"total":4,"hasMore":false}
+P6 employees?pageSize=10&pageSize=50: 200 n=4 page={"page":1,"pageSize":50,"pageCount":1,"total":4,"hasMore":false}
+P6 employees?unitId=: 422:validation n=- page=null
+P6 /roster?from=2016-01-01&to=2026-01-01: 422:unprocessable เลือกช่วงวันได้ไม่เกิน 31 วัน
+P6 /roster?from=2026-06-30&to=2026-06-01: 422:unprocessable วันเริ่มต้องไม่หลังวันสิ้นสุด
+P6 /roster?from=2026-02-31&to=2026-03-01: 422:unprocessable วันที่ไม่ถูกต้อง
+P6 /attendance/day?day=2026-02-31: 200 
+P6 /attendance/day?day=0000-00-00: 422:unprocessable ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง
+P6 /leave-balances?year=2600: 200 
+P6 /reports/time?period=2016: 422:unprocessable ช่วงเวลาหรือรูปแบบไฟล์ไม่ถูกต้อง
+P6 /reports/time?period=2026-13: 422:unprocessable ช่วงเวลาหรือรูปแบบไฟล์ไม่ถูกต้อง
+P6 /reports/tax-year?period=99999: 422:unprocessable ช่วงเวลาหรือรูปแบบไฟล์ไม่ถูกต้อง
+P6 /reports/time?period=2026-06-01x: 422:validation ข้อมูลที่ส่งมาไม่ถูกต้องตามรูปแบบที่กำหนด
+P6 report bucket with path/header-case variants: first 429 at request #none
+CLEANUP tenants qc-h48hunt-* left=0 · my keys left=0 · tenants created=2

@@ -1,0 +1,6 @@
+h48f1 exit=0 ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+h48f2 exit=0 ===== qc-hr-h4.8 ===== passed 48/48 (QC_FORCE)
+h48u exit=0 ===== qc-hr-h4.8 ===== passed 48/48
+apiv1 exit=0 ===== QC HF-APIV1 scope =====
+acccore exit=0 ===== QC Account API Core (A3) =====
+DONE

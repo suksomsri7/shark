@@ -1,0 +1,27 @@
+[env] h48-hunt2 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h48-hunt2] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2154662) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Q1 day 06-11 e1 row: {"employeeId":"cmwfutg1i000pjqkzoniccwtp","name":"เอกชัย afbomxbesqd","position":"บาริสต้า","borrowed":false,"slots":[{"shift":null,"inAt":null,"outAt":null,"method":null,"breaks":[],"status":"DAY_OFF","phase":"FINAL","final":true,"lateMin":0,"earlyOutMin":0,"workedMin":0,"otMin":0,"missingOut":false,"leave":null}]}
+Q2 day=2026-02-31 → 200 data.day = 2026-11-14
+Q3 day=0000-00-00 → 422:unprocessable {"error":{"code":"unprocessable","message_th":"ทำรายการไม่สำเร็จ — ลองใหม่อีกครั้ง","message_en":"The request could not be processed."},"requestId":"req_eb7686be3d4e1492"}
+Q3b day=2026-06-31 → 200 data.day = 2026-11-14
+Q4 variant /reports/time/?period=2026-06 ["authorization"] Bearer → 200
+Q4 variant /REPORTS/time?period=2026-06 ["authorization"] Bearer → 404:not_found
+Q4 variant /reports/TIME?period=2026-06 ["authorization"] Bearer → 404:not_found
+Q4 variant /reports//time?period=2026-06 ["authorization"] Bearer → 200
+Q4 variant /reports/time?period=2026-06 ["authorization"] bearer → 200
+Q4 variant /reports/time?period=2026-06 ["Authorization"] BEARER → 200
+Q4 plain x33: 26:429:rate_limited 27:429:rate_limited 28:429:rate_limited 29:429:rate_limited 30:429:rate_limited 31:429:rate_limited 32:429:rate_limited 33:429:rate_limited
+Q4 buckets: [{"key":"hr:api:report:cmwfutgct001ijqkzm70mvicf","count":38},{"key":"hr:api:read:cmwfutgct001ijqkzm70mvicf","count":4}]
+Q5 name "a‮b\u001b[31mc\nX" → ISSUED stored="a‮b\u001b[31mc\nX"
+Q5 name "\t\r\n" → VALIDATION
+Q5 name "xxxxxxxxxxxxxxxxxxxxxxxxxxxxx → VALIDATION
+CLEANUP tenants qc-h48hunt-* left=0 · tenants created=2

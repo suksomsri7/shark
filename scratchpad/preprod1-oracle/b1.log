@@ -1,0 +1,39 @@
+[env] qc-hr-preprod-1b · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-preprod-1b] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:4003280) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [PP1B-Z0] own law rows: none before · 3 inserted
+  ❌ [PP1B-V1.1] 27.0 + 0.3 used, 10–14 Mar ⇒ paid 2.7 exact · USE −2.7 · unpaid:2.3;from:2031-03-12 · split 2.7/2.3 · −30,000 −100,000 −100,000 = −230,000 · balance 0.0 — expected 2.7 / 2.3 · −230,000 · 0.0 | actual use,split,lines,balance {"d":{"ok":true},"u":{"d":"-2.5","note":"unpaid:2.5;from:2031-03-12;half"},"sp":{"paidDays":2.5,"unpaidDays":2.5,"unpaidFrom":"2031-03-12"},"up":["UNPAID_LEAVE:-100000@2031-03-13","UNPAID_LEAVE:-100000@2031-03-14","UNPAID_LEAVE:-50000@2031-03-12"],"bal":"0.2"}
+  ❌ [PP1B-V2.1] borrowing-branch manager + API-key viewer without pay keys see the leave row without paidDays/unpaidDays — expected row without split fields | actual mgr,key {"im":{"id":"cmwgnbznh001my8kzl5bjfs69","employeeName":"V21 afchfegdqxt","type":"SICK","fromDate":"2031-03-10T00:00:00.000Z","toDate":"2031-03-14T00:00:00.000Z","status":"APPROVED","reason":"qc ป่วย","filedBy":"ยื่นโดย QPP aowner afchfegdqxt","paidDays":2,"unp
+  ✅ [PP1B-V2.2] control: home-branch pay viewer sees paidDays 2 / unpaidDays 3 · self sees unpaidDays 3.0
+  ❌ [PP1B-V3.1] SICK paid=false: within balance no split (USE −5.0 · note null · −500,000 · no split fields) · over balance refused LEAVE_TEXT.balance, no row — expected no split · over refused | actual over {"d":{"ok":true},"u":{"d":"-5.0","note":null},"sp":{"paidDays":5,"unpaidDays":0,"unpaidFrom":null},"up":-500000,"q":"cmwgnc61f003uy8kza0yucra7"}
+  ❌ [PP1B-V4.1] race: decide passed the paid-month gate, policy flip paid→unpaid queued first on the row ⇒ never an APPROVED unpaid-policy leave in APPROVED Feb — expected not APPROVED + unpaid in a paid month | actual safe {"blocked":[true,true],"res":[true,true],"st":"APPROVED","paid":false}
+  ✅ [PP1B-V5.1] two approvals race for the last 2.0 ⇒ both APPROVED · Σ paid 2.0 · Σ ledger 0
+  ✅ [PP1B-V5.4] approving a split leave outdates the month's work entries · rebuilt current · split note change outdates them again
+  ✅ [PP1B-V5.2] malformed USE note ⇒ fully paid: no split · no split fields · no UNPAID_LEAVE
+  ✅ [PP1B-V5.3] half-day AM with 0.0 left ⇒ USE 0.0 · unpaid:0.5;from:2031-03-19 · −50,000
+CRASH V8 PrismaClientKnownRequestError: Invalid `P.hrLeavePolicy.create()` invocation in /root/projects/shark-hr-l4/scripts/qc-hr-preprod-1b.mts:89:28 86 function leaveKit(K: Any) { 87 cons Invalid `P.hrLeavePolicy.create()` invocation in | /root/projects/shark-hr-l4/scripts/qc-hr-preprod-1b.mts:89:28 | 
+  ❌ [PP1B-V7.1] OT 1 h filed by [u1] viewer for borrowed home-u2 employees: reply has no amount and is byte-identical for 45,600 ฿ · 91,200 ฿ · no salary profile — expected generic · identical ×3 | actual noAmount,same {"rB":{"status":"ok","message":"ยื่นแล้ว 285 บาท — รออนุมัติ"},"rD":{"status":"ok","message":"ยื่นแล้ว 570 บาท — รออนุมัติ"},"rN":{"status":"error","message":"ตั้งเงินเดือนของพนักงานคนนี้ก่อน จึงคิดค่า OT ได้"}}
+  ✅ [PP1B-V7.2] the requester's adjustment list (pay scope [u1]) and payroll page show none of those rows / amounts
+  ✅ [PP1B-V7.3] control: in-scope employee reply "ยื่นแล้ว 187.5 บาท — รออนุมัติ" · all-branch viewer still gets 285 บาท for the borrowed employee
+  ✅ [PP1B-V5.5] payroll page: REFUND_BEHIND row of a u2 employee hidden from the [u1] viewer · shown to owner · in-scope row shown
+  ❌ [PP1B-V9.1] leaver (end 31 Oct) refund behind approved Sep with Oct DRAFT ⇒ moved to 2031-10 · Oct run carries REFUND:+50,000 exactly once · approved — expected → 2031-10 · paid once | actual moved,line,once {"mv":{"ok":false,"reason":"ย้ายเงินคืนรายการนี้ไม่ได้ เพราะพนักงานพ้นสภาพก่อนงวดที่ยังไม่มีรอบจ่าย — ให้คืนเงินนอกระบบเงินเดือน"},"rc":true,"oa":true,"lines":[],"paidOnce":0}
+  ✅ [PP1B-Z2] no deadlock
+RESIDUE none (tenants=2 users=11 activeLaw=0->0)
+  ✅ [PP1B-Z1] no residue
+  ❌ [PP1B-V8.1] January sick leave (28.0) revoked ⇒ March split 2/3 re-split to paid 5 / unpaid 0 · USE −5.0 note null · Σ 25.0 · no UNPAID_LEAVE in the March v2 run — expected checked | actual not reached (harness crashed: V8: PrismaClientKnownRequestError: Invalid `P.hrLeavePolicy.create()` invocation)
+  ❌ [PP1B-V8.2] quota raised 30 → 33 ⇒ March split re-split to 5 / 0 · Σ 0.0 — expected checked | actual not reached (harness crashed: V8: PrismaClientKnownRequestError: Invalid `P.hrLeavePolicy.create()` invocation)
+  ❌ [PP1B-V8.3] partial return 1.5 ⇒ paid 3.5 / unpaid 1.5 · unpaid:1.5;from:2031-03-13 · −50,000 −100,000 = −150,000 · Σ 0.0 — expected checked | actual not reached (harness crashed: V8: PrismaClientKnownRequestError: Invalid `P.hrLeavePolicy.create()` invocation)
+  ❌ [PP1B-V8.4] control: March run APPROVED ⇒ split unchanged after the return (USE −2.0 · unpaid:3.0;from:2031-03-12 · Σ 28.0) — expected checked | actual not reached (harness crashed: V8: PrismaClientKnownRequestError: Invalid `P.hrLeavePolicy.create()` invocation)
+  ❌ [PP1B-V8.5] two later split leaves re-split in date order: 3.0 back ⇒ March 5/0 · April stays 0/5 · Σ 0.0 — expected checked | actual not reached (harness crashed: V8: PrismaClientKnownRequestError: Invalid `P.hrLeavePolicy.create()` invocation)
+BASE-EXPECTATION 21/22 as registered (RED-by-design 10 · GREEN controls 12) · off: PP1B-V8.4(GREEN→fail)
+
+===== qc-hr-preprod-1b ===== passed 11/22 (QC_FORCE) · CRASHED
+JSON_SUMMARY {"suite":"qc-hr-preprod-1b","total":22,"passed":11,"failed":["PP1B-V1.1","PP1B-V2.1","PP1B-V3.1","PP1B-V4.1","PP1B-V7.1","PP1B-V9.1","PP1B-V8.1","PP1B-V8.2","PP1B-V8.3","PP1B-V8.4","PP1B-V8.5"],"findings":[{"id":"PP1B-V1.1","sev":"CRITICAL"},{"id":"PP1B-V2.1","sev":"CRITICAL"},{"id":"PP1B-V3.1","sev":"CRITICAL"},{"id":"PP1B-V4.1","sev":"CRITICAL"},{"id":"PP1B-V7.1","sev":"CRITICAL"},{"id":"PP1B-V9.1","sev":"CRITICAL"},{"id":"PP1B-V8.1","sev":"CRITICAL"},{"id":"PP1B-V8.2","sev":"CRITICAL"},{"id":"PP1B-V8.3","sev":"CRITICAL"},{"id":"PP1B-V8.4","sev":"MAJOR"},{"id":"PP1B-V8.5","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":true,"missing":[],"baseRed":10,"baseGreen":12,"offBase":["PP1B-V8.4(GREEN→fail)"]}

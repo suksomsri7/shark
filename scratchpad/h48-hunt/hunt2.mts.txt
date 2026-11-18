@@ -1,0 +1,86 @@
+// H4.8 bug hunt — follow-up probe (draft-roster day board · report bucket statuses · issuer name · odd days)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Any = any;
+import { makeFixtures, cleanupFx, qc4Env, authOf, errText, tagOf } from "../../scripts/qc-hr-lib.mjs";
+import { seedH48 } from "../../scripts/qc-hr-h4.8-lib.mjs";
+
+const { P, coreHash } = await qc4Env("h48-hunt2");
+const RT = (await import("@/app/api/v1/hr/[...path]/route")) as Any;
+const AK = (await import("@/lib/api-keys/service")) as Any;
+const KEYS = (await import("@/lib/modules/hr/api/keys")) as Any;
+const sysSvc = (await import("@/lib/modules/system/service")) as Any;
+const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
+const SLUG = `qc-h48hunt-${Date.now()}${tag}`;
+const fx = makeFixtures(P, coreHash, SLUG);
+type Res = { status: number; body: Any; text: string; headers: Headers };
+async function api(method: string, path: string, headers: Record<string, string>): Promise<Res> {
+  const pathOnly = path.split("?")[0]!;
+  try {
+    const res: Response = await RT[method](new Request(`http://x/api/v1/hr${path}`, { method, headers }), { params: Promise.resolve({ path: pathOnly.split("/").filter(Boolean) }) });
+    const text = await res.text();
+    let body: Any = null;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      body = { _raw: text };
+    }
+    return { status: res.status, body, text, headers: res.headers };
+  } catch (e) {
+    return { status: -1, body: null, text: errText(e), headers: new Headers() };
+  }
+}
+const sc = (r: Res) => `${r.status}${r.body?.error?.code ? `:${r.body.error.code}` : ""}`;
+async function main() {
+  const S = await seedH48(P, fx, sysSvc, tag);
+  const { TA, sA, U, E } = S;
+  const mk = async (name: string, scopes: string[]) => (await AK.createApiKey({ tenantId: TA }, `${name} ${tag}`, { scopes, systemId: sA, createdById: U.owner.id })).rawKey as string;
+  const k = await mk("r", ["hr.employee.read", "hr.roster.read", "hr.leave.read"]);
+  const H = { authorization: `Bearer ${k}` };
+  const d = await api("GET", "/attendance/day?day=2026-06-11", H);
+  console.log("Q1 day 06-11 e1 row:", JSON.stringify((d.body?.data?.rows ?? []).find((r: Any) => r.employeeId === E.e1)));
+  const d2 = await api("GET", "/attendance/day?day=2026-02-31", H);
+  console.log("Q2 day=2026-02-31 →", sc(d2), "data.day =", d2.body?.data?.day);
+  const d3 = await api("GET", "/attendance/day?day=0000-00-00", H);
+  console.log("Q3 day=0000-00-00 →", sc(d3), d3.text.slice(0, 200));
+  const d4 = await api("GET", "/attendance/day?day=2026-06-31", H);
+  console.log("Q3b day=2026-06-31 →", sc(d4), "data.day =", d4.body?.data?.day);
+  // report bucket: variants first, then plain
+  const variants: [string, Record<string, string>][] = [
+    ["/reports/time/?period=2026-06", H], ["/REPORTS/time?period=2026-06", H], ["/reports/TIME?period=2026-06", H], ["/reports//time?period=2026-06", H],
+    ["/reports/time?period=2026-06", { authorization: `bearer ${k}` }], ["/reports/time?period=2026-06", { Authorization: `BEARER ${k}` }],
+  ];
+  for (const [p, h] of variants) console.log("Q4 variant", p, JSON.stringify(Object.keys(h)), (h.authorization ?? h.Authorization).slice(0, 6), "→", sc(await api("GET", p, h)));
+  const st: string[] = [];
+  for (let i = 1; i <= 33; i++) st.push(sc(await api("GET", "/reports/time?period=2026-06", H)));
+  console.log("Q4 plain x33:", st.map((s, i) => `${i + 1}:${s}`).filter((s) => !s.endsWith(":200")).join(" ") || "all 200");
+  const kid = (await P.apiKey.findFirst({ where: { tenantId: TA, name: `r ${tag}` } })).id;
+  const b = (await fx.rawRows(`SELECT key, count FROM "ChatRateBucket" WHERE key LIKE $1`, `%:${kid}`)) as Any[];
+  console.log("Q4 buckets:", JSON.stringify(b));
+  // issuer name with control chars (no NUL)
+  for (const name of ["a‮b\u001b[31mc\nX", "\t\r\n", "x".repeat(60) + "́"]) {
+    let r: Any;
+    try {
+      r = await KEYS.issueHrApiKey(authOf(U.owner), { systemId: sA, name, ttlDays: 30 });
+    } catch (e) {
+      r = { thrown: errText(e).slice(0, 100) };
+    }
+    const row = r?.ok ? await P.apiKey.findFirst({ where: { id: r.keyId }, select: { name: true } }) : null;
+    console.log("Q5 name", JSON.stringify(name).slice(0, 30), "→", r?.ok ? `ISSUED stored=${JSON.stringify(row?.name)}` : r?.thrown ? `THROW ${r.thrown}` : `${r?.code}`);
+  }
+}
+async function cleanMine(): Promise<void> {
+  const ids = (((await fx.rawRows(`SELECT "id" FROM "ApiKey" WHERE "tenantId" = ANY($1::text[])`, fx.tenants)) ?? []) as Any[]).map((r) => String(r.id));
+  for (const id of ids) await fx.rawRows(`DELETE FROM "ChatRateBucket" WHERE "key" LIKE $1`, `%:${id}`);
+  for (const t of ["ApiIdempotency", "ApiKey"]) await fx.rawRows(`DELETE FROM "${t}" WHERE "tenantId" = ANY($1::text[])`, fx.tenants);
+}
+try {
+  await main();
+} catch (e) {
+  console.log(`💥 ${errText(e)}`);
+} finally {
+  await cleanMine();
+  await cleanupFx(P, fx, SLUG);
+  const left = (await fx.rawRows(`SELECT count(*)::int n FROM "Tenant" WHERE slug LIKE 'qc-h48hunt-%'`)) as Any[];
+  console.log(`CLEANUP tenants qc-h48hunt-* left=${left?.[0]?.n} · tenants created=${fx.tenants.length}`);
+  await P.$disconnect?.();
+}

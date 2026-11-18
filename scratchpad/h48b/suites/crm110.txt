@@ -1,0 +1,125 @@
+ℹ️  CI env — ไม่มี .env.qc · ใช้ DATABASE_URL/DIRECT_URL จาก env (host ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech)
+
+═══ QC CRM v2 · C1.10 — REST + AI first set · webhooks · docs · settings/api ═══
+[env] DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech · tag qc-c110-iqiezo
+
+(node:2083889) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [C1.10-SETUP.1] [prerequisite C1.2a–C1.4] fixtures: objects car/contract (+ S2/B), records, contact/company custom fields (plain + sensitive) and their values were created through the accepted services — if red, checks relying on them are red for that reason
+[setup] A cmwftnw120000xtkzd8x07wqk · S cmwftnw9w000kxtkz05jzm4aq · S2 cmwftnwa6000lxtkzdbz4linm · MEM cmwftnwah000mxtkzwv7d8xwv · B cmwftnw480001xtkzteg3dfnb · SB(v1) cmwftnwar000nxtkziswnzfrb · teams P cmwftnwc9000oxtkzziv7ts4i / K cmwftnwco000pxtkzsv7ohtlq · bundles ro=crm.readonly op=crm.operate ad=crm.admin · keyErrors filter-foreign-team
+
+── S0 structure ──
+  ✅ [C1.10-S0.1] crm/api files exist (op · registry · dispatch · actor · config · tools · openapi · webhook-events · ops/{contacts,companies,deals,activities,objects,teams,settings}) · registry loads CRM_OPS · route [...path] exports GET/POST/PATCH/PUT/DELETE through the dispatcher · openapi.json route exists
+  ✅ [C1.10-S0.2] registry shape: ≥ 45 ops · ids unique · method+path unique · kind read/write/danger · action = a crm.* API scope · summary ASCII EN · label Thai · test `C1.10-S…/X…` · object inputs strict (no tenantId/systemId smuggling)
+  ✅ [C1.10-S0.3] the 57 MUST ops of the contract exist with the contract method · path · kind · action (deals.forecast rate "report")
+  ✅ [C1.10-S0.4] R-C.7: teams REST lives at /api/v1/teams/* (src/app/api/v1/teams/[...path]/route.ts) and dispatches the SAME CRM registry/config (no second dispatcher) — see Q1
+  ✅ [C1.10-S0.5] no second engine: ops/*.ts touch no prisma/tenantDb and write no CRM table themselves — they call the C1.2b–C1.8 services (+ core teams); dispatch.ts wraps core `@/lib/api/dispatch` [static]
+  ✅ [C1.10-S0.6] implementation sites marked `// AUDIT-CLASS X1 · X2 · X6 · X9` inside crm/api/** [static]
+  ✅ [C1.10-S0.7] C1.2a/C1.4 debt: API actor built by a memberActorForKey-style `crmActorForKey({keyId,scopes,createdById})` → apiRole READONLY/OPERATE/ADMIN per bundle · unitAccess ['*'] · permissions = the scopes (filters kept as pseudo-scopes) · no implicit read
+
+── S1 test ids + fitness ──
+  ✅ [C1.10-S1.1] F13.10: every CRM op's `test` id appears in scripts/qc-crm-*.mts · fitness.mts has F13.10 (test ids) · F13.11 (CRM-API.md = generator, via renderDocs import) · F13.12 (every op tool has a home in skills.ts) · F13.12 holds now
+
+── S2 keys ──
+  ✅ [C1.10-S2.1] GET /ping (readonly) → 200 {ok, systemId S} + requestId + X-RateLimit-Limit/Remaining · no key / bad key → 401 · tenant-B key pointing at tenant A's system (X-Shark-System) → 403 system_mismatch
+  ✅ [C1.10-S2.2] 3 bundles in scopes.ts (crm.readonly · crm.operate · crm.admin): readonly ⊂ operate ⊂ admin · readonly = read/view keys only (contact/company/deal/activity/record read + report.view, no commission.view) · operate adds the STAFF writes, no *.manage / merge / delete (activity.delete tolerated) / export · admin = every §6.1 key · every scope isApiScope
+  ✅ [C1.10-S2.3] 🔴 readonly key: every MUST write/danger op → 403 (scope_missing|forbidden · Thai message) and NOTHING changes in the database · reads work (GET /contacts/{id} 200)
+  ✅ [C1.10-S2.4] operate key: POST /contacts · /deals · /activities → 200 with ids (rows in system S) and API_KEY audit rows · merge / deal delete / settings.set / teams.create → 403
+  ✅ [C1.10-S2.5] admin key: GET /settings → uiVersion 2 · PUT /settings {chatToLead:true} persisted (settings.crm.chatToLead, uiVersion kept 2) · POST /teams → Team row in tenant A · PUT /teams/{id}/members → TeamMember rows · GET /teams (readonly) lists both teams and nothing of tenant B
+  ✅ [C1.10-S2.6] 🔴 key filters (R-C.3 pseudo-scopes in scopesJson): `crm.filter.team:<phuket>` → GET /deals lists phuket deals only (dP1, dP2 · no krabi) · GET krabi deal 404 · POST deal on a krabi contact 404 · `crm.filter.owner:<kai>` → only kai's deal · a filter naming a team of ANOTHER tenant is refused at key creation
+
+── S3 idempotency ──
+  ✅ [C1.10-S3.1] same Idempotency-Key + same body twice → second answer = first (same contactId) with `Idempotent-Replayed: true` · ONE row · POST without Idempotency-Key → 400 idempotency_required (nothing written)
+  ✅ [C1.10-S3.2] same Idempotency-Key with a DIFFERENT body → 409 idempotency_conflict · no second row
+
+── S4 error shapes ──
+  ✅ [C1.10-S4.1] PUT /deals/{id}/stage into a stage with requireLines and no lines → 409|422 code stage_requirements · the missing list names LINES (error.details[] or error.missing) · Thai message · deal stays in its stage
+  ✅ [C1.10-S4.2] PUT /deals/{id}/lines above the discount cap (policy crm.discount present) → 202 {status APPROVAL_REQUIRED, approvalRequestId} or 409 approval_required carrying approvalRequestId · the ApprovalRequest row exists (entityType crm.discount) · deal lines NOT applied
+  ✅ [C1.10-S4.3] CONFLICT: PATCH /companies/{id} with the taxId of another company → 409 (duplicate|state_conflict|conflict) Thai message that does not echo the other company's name · taxId unchanged
+  ✅ [C1.10-S4.4] error mapping (C1.3 debt FORBIDDEN→403): unknown id → 404 not_found · operate key cross-team reassign (no crm.deal.reassign) → 403, deal unchanged · service VALIDATION (value > ฿20M) → 400|422 code validation (not `unprocessable`) Thai · schema error → 400|422 validation + details[] · every `crm.object.manage` op with an ADMIN key → 403 (never 422)
+
+── S5 objects ──
+  ✅ [C1.10-S5.1] GET /objects/car/records (readonly) → this system's car records (recP, recK) and not S2's · the key resolves at dispatch: /objects/nope/records → 404 · GET /objects lists car + contract, not S2's `onlys2`
+  ✅ [C1.10-S5.2] POST /objects/car/records (operate) → record in system S under kP2 · title from titleFieldKey (plate) · PATCH values → GET returns the new value · readonly key POST → 403 and no row (C1.2b: records writes need OPERATE/ADMIN)
+  ✅ [C1.10-S5.3] a record addressed through the WRONG object key (/objects/contract/records/<car record>) → 404 · POST …/{id}/archive → archivedAt set · POST /objects/car/records/export (danger, confirm+reason) → {csv} containing plate values of this system only
+
+── S6 AI tools ──
+  ✅ [C1.10-S6.1] the 14 tools of R-E.4 come from CRM_OPS `tool` (one op each · read tools on read ops, write tools on write/danger ops · op per the contract map) · crmToolInfos() lists them · skill `crm` holds all 14 · assertSkillRegistryComplete passes · tools-crm.ts builds crmTools() from the registry with createProposal + pendingConfirmation · ProposalKind has `crm.${string}`
+  ✅ [C1.10-S6.2] read tools run immediately: crm_deal_360 (owner viewer) → mode read with the deal · crm_search finds the phuket contact · unknown id → mode error in Thai (never throws)
+  ✅ [C1.10-S6.3] 🔴 write tool crm_create_deal → mode propose {kind crm.<opId>, Thai summary} and NO row · crmTools().execute in a conversation → AiProposal PENDING kind crm.* · executeProposal by a STAFF without crm.deal.create → refused, stays PENDING · by the OWNER → the deal exists in system S + audit row of the owner
+  ✅ [C1.10-S6.4] crm_create_lead on a uiVersion-2 system → proposal · dispatchCrmKind with the owner → exactly one contact in system S (the name kept by the v2 op)
+
+── S7 webhooks ──
+  ✅ [C1.10-S7.1] crmWebhookEvents() = exactly the WEBHOOK_EVENTS entries prefixed crm. / custom.record. / team. (no duplicates, no member./account.) and covers the 21 phase-C1 events · isCrmWebhookEndpoint(['crm.deal.won']) true · ([]) false · (['crm.deal.won','member.created']) false
+  ✅ [C1.10-S7.2] a webhook endpoint subscribed to crm.deal.won + crm.contact.created receives both after POST /contacts and PUT /deals/{id}/stage→WON (consumers run on OUR outbox rows) · X-Shark-Signature = HMAC(secret, body) · V2 = HMAC(secret, `ts.body`) · WebhookDelivery OK rows · crm.deal.won payload carries the dealId
+
+── S8 docs ──
+  ✅ [C1.10-S8.1] docs/api/CRM-API.md === renderDocs() of scripts/gen-crm-api-docs.mts (main guarded by invokedDirectly · no --check run: the skill folder is gitignored) · no longer the hand draft ('draft สำหรับสั่งทำ' gone) · every registry path documented · keeps a clearly marked Planned section · mentions Idempotency-Key, confirm, the 3 bundles, crm.deal.won, AI tools
+
+── S9 page ──
+  ✅ [C1.10-S9.1] page /crm/settings/api: CRM system guard (type CRM) + requireCrmV2Page + crmCan(…,'crm.api.manage') else notFound · 3 bundles · curl sample · skill manifest/tool list from CRM_OPS · webhooks + delivery log (reusing webhook service / member components) · testids crm-api-page/keys/new/curl/webhooks/deliveries · rows in crm-ui-inventory.json · registered in nav.ts · client files import no prisma-reaching module · visual-crm.mts has a "1.10" spec for it
+
+── S10 uiVersion-1 ──
+  ✅ [C1.10-S10.1] 🔴 R-E.14: a key of a uiVersion-1 CRM system gets 409 code crm_v2_disabled (Thai message) from EVERY registry op but ping (122) — with a valid body AND with an empty body (the gate precedes validation) — and nothing of tenant B changes, no API audit row
+  ✅ [C1.10-S10.2] AI on the uiVersion-1 shop: crm_search → mode error (Thai) · crm_create_deal → error at proposal time (or a proposal whose dispatch refuses, nothing written) · the legacy crm_create_lead keeps working end-to-end (tool → proposal → executeProposal → contact in SB) · a pending proposal of the old kind `crm_create_lead` still executes
+
+── S11 debts ──
+  ✅ [C1.10-S11.1] C1.2b debt: `crm.objects.*` design ops are not exposed to API keys — POST /objects and POST /objects/car/archive with an ADMIN key → 403|404|405, no object created, car not archived
+  ✅ [C1.10-S11.2] C1.2b debt: records export → import round-trips title · parentId · every value · unitId · ownerUserId (import of the exported file recreates identical records)
+  ✅ [C1.10-S11.3] C1.2b debt: a custom field keyed `title` or `parentId` is either refused at creation with a Thai reason, or survives export→import without clobbering the record title/parent
+  ✅ [C1.10-S11.4] C1.2b debt: changing titleFieldKey (sn → note) recomputes the title of existing records
+  ✅ [C1.10-S11.5] C1.2b debt: renaming an object key (0 records) that a LOOKUP points at succeeds and rewrites the LOOKUP's options.objectKey to the new key
+  ✅ [C1.10-S11.6] C1.3/C1.4 debt: merging (REST, danger) moves the merged record's custom values onto the kept one when the kept has none — contact qcRegion and company qcCoTier
+  ✅ [C1.10-S11.7] C1.7 debt: AccessForm no longer claims managers can do everything without the CRM exception (names CRM / the settings keys a manager needs to be granted) [static]
+  ✅ [C1.10-S11.8] C1.5 debt (R-A): the general /crm/settings page exists and links the settings cards including /settings/api [static · see Q4]
+
+── X1 scope ──
+  ✅ [C1.10-X1.1] 🔴 every registry op with a path id, called by an ADMIN key of system S with ids of the other system (same shop) → 404 (never 403/200) and no foreign name in the body
+  ✅ [C1.10-X1.2] 🔴 every registry op with a path id, called by an ADMIN key of system S with ids of the other tenant → 404 (never 403/200) and no foreign name in the body
+  ✅ [C1.10-X1.3] foreign ids inside BODIES / filters: deal on another system's contact · activity on another system's deal · add tenant-B contact to a company · owner = tenant-B user · record under another system's contact · deal into another system's pipeline → 400|404|422, nothing written · GET /deals?contactId=<foreign> → 200 empty or 404 · every foreign row (S2 + tenant B) byte-identical afterwards
+  ✅ [C1.10-X1.4] AI tools with foreign ids (crm_deal_360 of S2 · crm_contact_360 of tenant B) → mode error, no foreign data
+
+── X2 keys+assistant ──
+  ✅ [C1.10-X2.1] 🔴 H1: a key of another module (member bundle, bound to the member system or unbound + X-Shark-System S) and a key with NO scopes → 403 on EVERY CRM op (incl. ping and teams)
+  ✅ [C1.10-X2.2] 🔴 H1 for tools: toolAllowedForApiKey denies ALL 14 crm tools — legacy crm_create_lead included — to a member-scoped key and to a no-scope key · readonly bundle may call read tools, not crm_create_deal · POST /api/v1/ai/tools/crm_create_lead with a member key → 403, no proposal
+  ✅ [C1.10-X2.3] C1.7: an API key holding only crm.contact.create gets NO implicit read — GET /contacts and GET /contacts/{id} → 403
+  ✅ [C1.10-X2.4] 🔴 H3: assistant asked by thana (STAFF, team phuket) — crm_pipeline_summary shows phuket deals and nothing of krabi · crm_search for the krabi secret finds nothing · crm_deal_360 of a krabi deal → error
+  ✅ [C1.10-X2.5] H3: assistant asked by a STAFF whose only key is crm.activity.create cannot read reports — crm_forecast → error (Thai) · the owner gets it (positive control)
+  ✅ [C1.10-X2.6] H3: the assistant uses the asker's UNITS (never unitAccess []) — a MANAGER limited to the phuket unit sees no krabi deal · with no identifiable human (crmTools().execute outside a session) the read fails closed: no krabi/owner data
+
+── X3 races ──
+  ✅ [C1.10-X3.1] 🔴 18 POST /contacts with ONE Idempotency-Key + body at the same instant (2 worker processes × 6 + 6 in-process) → exactly ONE row · every 200 carries the same contactId · the rest only 409 idempotency_in_progress · a later retry replays the same contactId
+  ✅ [C1.10-X3.2] 10 parallel POST /contacts/{id}/convert with one Idempotency-Key (the service idempotencyKey) → ONE deal + ONE company · all 200 answers name the same dealId
+
+── X6 inputs ──
+  ✅ [C1.10-X6.1] POST /contacts/export → {csv} through csvRow: the contact named `=HYPERLINK(…)` appears only neutralised ('=…), never as a live formula cell
+  ✅ [C1.10-X6.2] page-size cap: take=101 → 400|422 validation on every list op (contacts · companies · deals · activities · records), take=100 → 200 {items, nextCursor} · cursor paging (take=2) walks every contact / deal exactly once
+  ✅ [C1.10-X6.3] every string in every op input schema is capped (maxLength · enum · format · pattern) and every array has maxItems [schema walk over CRM_OPS]
+  ✅ [C1.10-X6.4] URL fields accept http/https only — POST /companies with website javascript:… → 400|422, no company
+
+── X7 rate ──
+  ✅ [C1.10-X7.1] CRM_API_CONFIG: systemType CRM · scopePrefix crm. · its own rateNs (not acct/kb/mbr) · rateLimits read/write/report defined (report ≤ read)
+  ✅ [C1.10-X7.2] a full read bucket → GET /contacts 429 rate_limited + Retry-After while the report bucket still serves /deals/forecast · a full report bucket → forecast 429 while reads pass · a full write bucket → POST 429 (nothing written) while reads pass
+
+── X8 PDPA ──
+  ✅ [C1.10-X8.1] outbox rows of our tenants created through the API and every webhook body carry ids only — no phone, e-mail, person name or deal title (R-C.8 · crm.deal.won ids only)
+  ✅ [C1.10-X8.2] readonly key: contact get / list / search show phone and e-mail MASKED (the full values of kP appear nowhere) — CRM-API §3 ContactBrief
+  ✅ [C1.10-X8.3] the sensitive contact value (sensitive section) never leaves through readonly/operate REST nor through ANY assistant output (even when the owner asks)
+
+── X9 danger ──
+  ✅ [C1.10-X9.1] every danger op (MUST: contacts.archive/merge/export · companies.archive/merge · deals.delete · activities.delete · records.export) refuses without confirm:true (409 confirm_required, also for the string "true") and with a reason < 5 chars (400|422) — nothing changes
+  ✅ [C1.10-X9.2] with confirm + reason the danger ops run (contact archived · deal deleted · activity deleted · company archived · merge) and EACH writes an AuditLog row carrying its reason · bulk ops (if any) refuse 501 ids (400|422)
+
+── H http ──
+  ⏭️  [C1.10-H] SKIPPED — server down (fetch failed) · the controller re-runs this oracle after build
+  ✅ [C1.10-CLEAN] the oracle gives the QC database back exactly as found — both throwaway tenants and every row they owned, the throwaway users, the rate buckets of our keys; docs file unchanged
+
+🟢 C1.10: 66/66 · webhook fetch stubbed 4× · keyErrors filter-foreign-team=ทีมในตัวกรองของคีย์ไม่ใช่ทีมของร้านนี้ — เลือกทีมจากรายชื่อท…
+JSON_SUMMARY {"total":66,"passed":66,"findings":[]}

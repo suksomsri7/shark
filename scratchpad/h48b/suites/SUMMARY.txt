@@ -1,0 +1,15 @@
+h22b exit=0 ===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+h38b exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+h11b exit=1 ===== qc-hr-h1.1 ===== passed 80/81 (QC_FORCE)
+posp213 exit=4 
+posskill exit=4 
+posp02 exit=0 ===== QC: POS P0.2 ทะเบียน op =====
+kb115 exit=1 ===== QC Kanban K1.15 =====
+mb111 exit=1 
+crm110 exit=0   ⏭️  [C1.10-H] SKIPPED — server down (fetch failed) · the controller re-runs this oracle after build
+acckeys exit=0 ===== QC Account API Keys (A1) =====
+acccore exit=0 ===== QC Account API Core (A3) =====
+apiv1 exit=0 ===== QC HF-APIV1 scope =====
+pubapi exit=0 ===== QC Public API =====
+h48f4 exit=0 ===== qc-hr-h4.8 ===== passed 41/41 (QC_FORCE)
+DONE

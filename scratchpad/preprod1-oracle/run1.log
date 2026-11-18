@@ -1,0 +1,74 @@
+  ✅ [PP1-ST1] payroll-rules.ts sha frozen
+  ✅ [PP1-ST2] frozen files unchanged vs base (rules/attendance-pay/judge/ot/labor/reports/correction/prisma/core/api)
+  ✅ [PP1-ST3] allowed files only · older oracles changed only by explicit-allowlist ORACLE-EDIT (…PREPROD-1) hunks · covers scripts/*.mts
+  ✅ [PP1-ST4] every changed src hunk carries "HR PREPROD-1" · no bare removals
+  ✅ [PP1-ST5] no AppSystem settings write outside lockHrSettings + writeHrSettingsKeys
+  ❌ [PP1-ST6] R4 one pay-scope predicate: payTarget · decideAdjustmentAs · setAdjustmentConsent · giveBackClaim · chargeGate use inPayScope/payScopeWhere · no second copy — expected one predicate | actual payTarget,decideAs,consent,giveBack,chargeGate
+  ❌ [PP1-ST7] texts: PAY_SCOPE_NO_ACCESS_TEXT (scope.ts, one constant) · SETTINGS_TEXT.paidLocked · each literal once in src · leaveSplitOf exported — expected texts + leaveSplitOf | actual scope,oneConst,settings,once,split noAccess×0 paidLocked×0 scopeAdded=0
+  ❌ [PP1-ST8] R2 page: REFUND_BEHIND line · PRIV-2 filter on strandedAdjustments kept — expected line + filter | actual line
+  ❌ [PP1-R6.1] runbook 13a (HF-SSO-M2) under row 13 of HANDOVER-H3.md §3 — expected 13a paragraph | actual para,keys,afterRow13
+[env] qc-hr-preprod-1 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-preprod-1] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:3483425) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[qc-hr-preprod-1] base=a4e2fb4ae
+  ✅ [PP1-Z0] own law rows: none before · 3 inserted
+  ✅ [PP1-R1.1] [db] v1+JV reverse: REVERSED · LATE/ABSENT rows APPROVED unbound 106,250 · heads unchanged
+  ✅ [PP1-R1.2] [db] v1+JV re-create binds the same rows · sync writes nothing
+  ✅ [PP1-R1.3] [db] v1+JV MONEY-2 leave gate: refuses before reverse · allows after
+  ✅ [PP1-R1.4] [db] v2 no-book finalized reverse: REVERSED · rows unbound 106,250 · heads unchanged
+  ✅ [PP1-R1.5] [db] v2 no-book re-create: ABSENT_RULE −100,000 + LATE_RULE −6,250 bound · sync writes nothing
+  ✅ [PP1-R1.6] [db] v2 no-book leave gate: refuses before · allows after
+  ✅ [PP1-R1.7] [db] v2 booked reverse: REVERSED · rows unbound 106,250 · heads unchanged
+  ✅ [PP1-R1.8] [db] v2 booked re-create: same lines bound · sync writes nothing
+  ✅ [PP1-R1.9] [db] v2 booked leave gate: refuses before · allows after
+  ✅ [PP1-R2.5] [db] control: ordinary give-back (period after lastCovered) not listed
+  ❌ [PP1-R2.1] [db] refund 50,000 in run-less 2031-04 behind approved 2031-05 ⇒ strandedAdjustments lists it · REFUND_BEHIND — expected listed REFUND_BEHIND | actual listed ["BONUS:2031-03"]
+  ✅ [PP1-R2.6] [db] control: old stranded BONUS listed unchanged · moves to 2031-04
+  ❌ [PP1-R2.2] [db] moveStrandedAdjustment(refund) ⇒ 2031-06 · APPROVED unbound · audit hr.payadjust.move — expected → 2031-06 · audit | actual moved,row,audit {"mv":{"ok":false,"reason":"งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย"},"r1":{"id":"rfdfae171204814bd693a1896b0c7357d9","s":"APPROVED","r":null,"a":50000,"k":"REFUND","p":"2031-04","src":"MANUAL","
+  ❌ [PP1-R2.3] [db] 2031-06 draft carries REFUND:+50,000 — expected REFUND:+50,000 | actual refund {"jun":true,"lj":["BASE:2000000"]}
+  ❌ [PP1-R2.4] [db] (Q7) leaver (end 2031-05) refund listed · move refused fixed text · nothing written — expected listed · fixed refusal · unchanged | actual listed {"mvL":{"ok":false,"reason":"งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย"}}
+  ❌ [PP1-R3.1] [db] SICK 10–14 Mar (5.0) with 28.0 used ⇒ request accepted (PENDING) — expected PENDING 5.0 | actual accepted HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น
+  ❌ [PP1-R3.2] [db] approve ⇒ USE −2.0 · note unpaid:3.0;from:2031-03-12 — expected USE −2.0 · note | actual approved,use {"d1":"HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น"}
+  ❌ [PP1-R3.3] [db] split readable: leaveSplitOf + leave DTO paid 2.0 / unpaid 3.0 — expected paid 2.0 / unpaid 3.0 | actual reader,dto {"sp":null}
+  ❌ [PP1-R3.4] [db] balance never negative: used 30.0 · balance 0.0 · available 0.0 · Σ ledger 0 — expected 30.0 · 0.0 · 0.0 · Σ 0 | actual approved,item,sum {"policyId":"cmwgihiag00blttkz4rwtj3w6","name":"SICK p afccaeevqqq","category":"SICK","unlimited":false,"granted":"30.0","carried":"0.0","used":"28.0","adjusted":"0.0","expired":"0.0","balance":"2.0",
+  ❌ [PP1-R3.5] [db] v2 March: UNPAID_LEAVE 12/13/14 Mar −100,000 each = −300,000 · none on 10/11 — expected −300,000 on 12–14 | actual lines,total {"mar":true,"up1":[]}
+  ❌ [PP1-R3.6] [db] half edge 27.5 used ⇒ USE −2.5 · unpaid:2.5;from:2031-03-12;half · −50,000 −100,000 −100,000 = −250,000 — expected −250,000 | actual approved,use,lines,total {"d2":"HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น","up2":[]}
+  ✅ [PP1-R3.13] [db] control: SICK within balance ⇒ USE −2.0 · no unpaid
+  ✅ [PP1-R3.14] [db] control: PERSONAL over quota still refused (LEAVE_TEXT.balance) · no row
+  ❌ [PP1-R3.7] [db] revoke approved over-balance leave ⇒ use-revert +2.0 only · Σ 2.0 — expected +2.0 only · Σ 2.0 | actual approved,revoked,rows {"d3":"HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น","rv":"HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น","t3":[]}
+  ❌ [PP1-R3.8] [db] unpaid part in APPROVED Feb ⇒ decideLeave refused CORRECTION_TEXT.paid · PENDING · no USE — expected paid text · PENDING | actual pending,refused,st {"r":"HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น","d":"HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น"}
+  ❌ [PP1-R3.11] [db] leave spanning Feb(APPROVED)/Mar: paid 27–28 Feb, unpaid 1–3 Mar ⇒ approved · unpaid:3.0;from:2031-03-01 — expected approved · note | actual approved,use {"r":"HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น","d":"HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น"}
+  ✅ [PP1-R3.12] [db] control: MONEY-2 gate — unpaid-policy leave in APPROVED Feb still refused
+  ❌ [PP1-R3.9] [db] same, owner auto-approve ⇒ refused · no row — expected paid text · no row | actual refused HrLeaveRequestError: วันลาคงเหลือไม่พอสำหรับใบลานี้ — ดูยอดคงเหลือก่อนยื่น
+  ❌ [PP1-R3.10] [db] same, chain apply ⇒ PAID · CANCELLED · no USE — expected PAID · CANCELLED | actual refused {"applied":false,"code":"BALANCE"}
+  ✅ [PP1-R3.15] [db] control: engine v1 March run unchanged (gross 3,000,000 · no UNPAID_LEAVE)
+  ❌ [PP1-R4.1] [db] inbox decideAdjustmentAs: borrowed · other-branch · missing ⇒ PAY_SCOPE_NO_ACCESS_TEXT byte-equal · nothing written — expected PAY_SCOPE_NO_ACCESS_TEXT ×3 | actual borrowed,other,missing,nothing {"a":{"ok":true,"status":"APPROVED"},"b":{"ok":false,"reason":"พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ"},"m":{"ok":false,"reason":"ไม่พบรายการ"}}
+  ❌ [PP1-R4.2] [db] decideAdjustmentAction on borrowed employee's row = not-found answer · nothing written — expected = not-found · nothing written | actual refused,sameAsMissing,nothing {"out":{"ok":true},"miss":{"ok":false,"reason":"ไม่พบรายการ"}}
+  ❌ [PP1-R4.3] [db] cancelAdjustmentAction borrowed = not-found answer · nothing written — expected = not-found · nothing written | actual refused,sameAsMissing,nothing {"out":{"ok":true},"miss":{"ok":false,"reason":"ไม่พบรายการ"}}
+  ❌ [PP1-R4.4] [db] moveStrandedAdjustmentAction borrowed = not-found answer · nothing written — expected = not-found · nothing written | actual refused,sameAsMissing,nothing {"out":{"ok":true,"reason":"ย้ายไปงวด 2031-03 แล้ว"},"miss":{"ok":false,"reason":"ไม่พบรายการ"}}
+  ❌ [PP1-R4.5] [db] setAdjustmentConsent home-less employee = not-found answer · nothing written — expected = not-found · nothing written | actual refused,sameAsMissing,nothing {"out":{"ok":true},"miss":{"ok":false,"reason":"ไม่พบรายการนี้ หรือคุณไม่มีสิทธิ์บันทึกหนังสือยินยอม"}}
+  ❌ [PP1-R4.6] [db] giveBackClaim borrowed = not-found answer · nothing written — expected = not-found · nothing written | actual refused,sameAsMissing,nothing {"out":{"ok":true,"id":"rfd13838337a3548e481ac07514e287915"},"miss":{"ok":false,"code":"NO","reason":"คืนเงินรายการหักนี้ไม่ได้ — ต้องเป็นรายการหักที่หักในรอบจ่ายที่อนุมัติหรือจ่ายแล้ว และคุณต้องมีสิทธิ์ยื่นรายการเพิ่ม/หัก"}}
+  ❌ [PP1-R4.7] [db] withdrawStockCharge borrowed home-less = not-found answer · nothing written — expected = not-found · nothing written | actual refused,sameAsMissing,nothing {"out":{"ok":true,"outcome":"REJECTED"},"miss":{"ok":false,"reason":"คุณไม่มีสิทธิ์ดูหรือจัดการรายการหักเงินของพนักงานคนนี้"}}
+  ❌ [PP1-R4.8] [db] control: all-branch viewer does all 7 on the same rows — expected all ok | actual decideAs,decide,cancel,move,withdraw {"decideAs":{"ok":false,"reason":"รายการนี้ตัดสินไปแล้ว"},"decide":{"ok":false,"reason":"รายการนี้ตัดสินไปแล้ว"},"cancel":{"ok":false,"reason":"ไม่พบรายการ"},"move":{"ok":false,"reason":"งวดของรายการนี้ยังไม่มีรอบจ่าย — ไม่ต้องย้าย"},"withdraw":{"ok":false,"re
+  ✅ [PP1-R4.9] [db] control: limited viewer, in-scope home: 6 actions ok
+  ✅ [PP1-R4.10] [db] control: inbox decideAdjustmentAs in-scope ok
+  ⚠ setup R5: {"r":"ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ","ra":{"ok":false,"code":"WORK_ENTRIES","reason":"ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงา
+  ❌ [PP1-R5.1] [db] paid→unpaid flip with approved leave in APPROVED Aug ⇒ paidLocked · row byte-same · no audit — expected paidLocked · unchanged | actual setup,refused,same,noAudit {"ok":true,"id":"cmwgihts700grttkz68ggprg2"}
+  ❌ [PP1-R5.2] [db] unpaid→paid flip, same ⇒ refused · unchanged — expected paidLocked · unchanged | actual setup,refused,same,noAudit {"ok":true,"id":"cmwgihtsh00gsttkzjitgord3"}
+  ❌ [PP1-R5.3] [db] control: approved leave only in open month (+ pending in Aug) ⇒ flip allowed — expected flipped | actual setup {"ok":true,"id":"cmwgihtsr00gtttkzl6a1ulxj"}
+  ❌ [PP1-R5.4] [db] control: rename + paid unchanged on the locked policy ⇒ allowed — expected renamed | actual setup {"ok":true,"id":"cmwgihts700grttkz68ggprg2"}
+  ✅ [PP1-Z2] no deadlock
+RESIDUE none (tenants=3 users=12 activeLaw=0->0)
+  ✅ [PP1-Z1] no residue
+BASE-EXPECTATION 53/56 as registered (RED-by-design 28 · GREEN controls 28) · off: PP1-R4.8(GREEN→fail) PP1-R5.3(GREEN→fail) PP1-R5.4(GREEN→fail)
+
+===== qc-hr-preprod-1 ===== passed 25/56 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-preprod-1","total":56,"passed":25,"failed":["PP1-ST6","PP1-ST7","PP1-ST8","PP1-R6.1","PP1-R2.1","PP1-R2.2","PP1-R2.3","PP1-R2.4","PP1-R3.1","PP1-R3.2","PP1-R3.3","PP1-R3.4","PP1-R3.5","PP1-R3.6","PP1-R3.7","PP1-R3.8","PP1-R3.11","PP1-R3.9","PP1-R3.10","PP1-R4.1","PP1-R4.2","PP1-R4.3","PP1-R4.4","PP1-R4.5","PP1-R4.6","PP1-R4.7","PP1-R4.8","PP1-R5.1","PP1-R5.2","PP1-R5.3","PP1-R5.4"],"findings":[{"id":"PP1-ST6","sev":"CRITICAL"},{"id":"PP1-ST7","sev":"MAJOR"},{"id":"PP1-ST8","sev":"MINOR"},{"id":"PP1-R6.1","sev":"MINOR"},{"id":"PP1-R2.1","sev":"CRITICAL"},{"id":"PP1-R2.2","sev":"CRITICAL"},{"id":"PP1-R2.3","sev":"MAJOR"},{"id":"PP1-R2.4","sev":"MAJOR"},{"id":"PP1-R3.1","sev":"CRITICAL"},{"id":"PP1-R3.2","sev":"CRITICAL"},{"id":"PP1-R3.3","sev":"MAJOR"},{"id":"PP1-R3.4","sev":"CRITICAL"},{"id":"PP1-R3.5","sev":"CRITICAL"},{"id":"PP1-R3.6","sev":"CRITICAL"},{"id":"PP1-R3.7","sev":"MAJOR"},{"id":"PP1-R3.8","sev":"CRITICAL"},{"id":"PP1-R3.11","sev":"MAJOR"},{"id":"PP1-R3.9","sev":"CRITICAL"},{"id":"PP1-R3.10","sev":"CRITICAL"},{"id":"PP1-R4.1","sev":"CRITICAL"},{"id":"PP1-R4.2","sev":"CRITICAL"},{"id":"PP1-R4.3","sev":"CRITICAL"},{"id":"PP1-R4.4","sev":"CRITICAL"},{"id":"PP1-R4.5","sev":"CRITICAL"},{"id":"PP1-R4.6","sev":"CRITICAL"},{"id":"PP1-R4.7","sev":"CRITICAL"},{"id":"PP1-R4.8","sev":"MAJOR"},{"id":"PP1-R5.1","sev":"CRITICAL"},{"id":"PP1-R5.2","sev":"CRITICAL"},{"id":"PP1-R5.3","sev":"MAJOR"},{"id":"PP1-R5.4","sev":"MINOR"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":28,"baseGreen":28,"offBase":["PP1-R4.8(GREEN→fail)","PP1-R5.3(GREEN→fail)","PP1-R5.4(GREEN→fail)"]}

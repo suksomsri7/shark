@@ -1,0 +1,20 @@
+ℹ️  CI env — ไม่มี .env.qc · ใช้ DATABASE_URL/DIRECT_URL จาก env (host ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech)
+[env] seed-hr-qc · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4)
+📅 วันนี้ (เวลาไทย) 2026-11-14 · รอบที่จ่ายแล้ว 2026-10 · เดือนนี้ 2026-11
+  ✅ [T0] HR_TABLES ทุกตัวเป็น delegate จริงของ Prisma
+(node:2026167) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [D1] ลบร้านเดิม cmwfr41zj0000m0kzmye58kj2 (667 แถว) — ไม่เหลือแถวที่มี tenantId นี้
+  ✅ [D2] ไม่มีผู้ใช้ QC ค้าง (อีเมล HQC)
+🏢 ร้าน "บ้านกาแฟสวนผึ้ง (QC HR)" cmwfszzuz0000efkz5yd71fnu · HR cmwfszzvw0003efkzjzkfm09u · บัญชี cmwfszzw70004efkzjcgjx1t7
+  ❌ [X0] seed ทำงานจนจบ — expected จบ | actual Error: setPin keng: ระบบยังไม่ได้ตั้งค่าความปลอดภัยของ PIN — แจ้งผู้ดูแลระบบ |     at <anonymous> (/root/projects/shark-hr-l4/scripts/seed-hr-qc.mts:207:26) |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+
+===== seed-hr-qc ===== ผ่าน 3/4
+JSON_SUMMARY {"suite":"seed-hr-qc","total":4,"passed":3,"findings":[{"id":"X0","title":"seed ทำงานจนจบ","expected":"จบ","actual":"Error: setPin keng: ระบบยังไม่ได้ตั้งค่าความปลอดภัยของ PIN — แจ้งผู้ดูแลระบบ |     at <anonymous> (/root/projects/shark-hr-l4/scripts/seed-hr-qc.mts:207:26) |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)","sev":"CRITICAL"}]}

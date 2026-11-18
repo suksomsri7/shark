@@ -1,0 +1,24 @@
+seed exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+h48f1 exit=0 ===== qc-hr-h4.8 ===== passed 47/47 (QC_FORCE)
+h48f2 exit=0 ===== qc-hr-h4.8 ===== passed 47/47 (QC_FORCE)
+h48f3 exit=0 ===== qc-hr-h4.8 ===== passed 47/47 (QC_FORCE)
+h48u exit=0 ===== qc-hr-h4.8 ===== passed 47/47
+h11 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+h22 exit=0 ===== qc-hr-h2.2 ===== passed 60/60 (QC_FORCE)
+h27 exit=0 ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+h210 exit=0 ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+h38 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+h39 exit=0 ===== qc-hr-h3.9 ===== passed 60/60 (QC_FORCE)
+h42 exit=0 ===== qc-hr-h4.2 ===== passed 53/53
+ytd exit=0 ===== qc-hr-h3.4-ytd ===== passed 44/44 (QC_FORCE)
+h01 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+set1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+h24 exit=0 ===== qc-hr-h2.4 ===== passed 68/68 (QC_FORCE)
+hfpriv exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+audit exit=0 
+acckeys exit=0 ===== QC Account API Keys (A1) =====
+acccore exit=0 ===== QC Account API Core (A3) =====
+apiv1 exit=0 ===== QC HF-APIV1 scope =====
+pubapi exit=0 ===== QC Public API =====
+posp02 exit=0 ===== QC: POS P0.2 ทะเบียน op =====
+DONE

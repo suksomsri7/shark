@@ -1,0 +1,66 @@
+[env] qc-account-api-keys · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:2470609) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [AK-1.scopesJson] ApiKey มีคอลัมน์ scopesJson
+  ✅ [AK-1.systemId] ApiKey มีคอลัมน์ systemId
+  ✅ [AK-1.expiresAt] ApiKey มีคอลัมน์ expiresAt
+  ✅ [AK-1.createdById] ApiKey มีคอลัมน์ createdById
+  ✅ [AK-1.rotatedFromId] ApiKey มีคอลัมน์ rotatedFromId
+  ✅ [AK-1.idem] ตาราง ApiIdempotency มีคอลัมน์ครบ (tenantId keyId idemKey requestHash status responseJson expiresAt)
+  ✅ [AK-1.idem-unique] ApiIdempotency unique (keyId, idemKey)
+  ✅ [AK-1.actor] enum ActorType มี API_KEY
+  ✅ [AK-2.1] createApiKey(ctx,name) แบบเดิม → verify ได้ scopes [] systemId null
+  ✅ [AK-2.2] แถวคีย์แบบเดิม: expiresAt null · keyHash = sha256(raw)
+  ✅ [AK-3.1] คีย์ที่มี scope → verify คืน scopes (dedupe) + systemId
+  ✅ [AK-3.2] แถวเก็บ expiresAt/createdById ตามที่ส่ง
+  ✅ [AK-3.3] scope ที่ไม่ใช่ permission key จริง → throw ไทย
+  ✅ [AK-3.4] param key (account.approve.limit) ใช้เป็น scope ไม่ได้ → throw ไทย
+  ✅ [AK-3.5] systemId ของร้านอื่น → throw ไทย (ไม่สร้าง)
+  ✅ [AK-3.6] systemId ของระบบชนิดอื่นในร้านเดียวกัน (POS) สร้างได้ (คีย์ระดับระบบทั่วไป)
+  ✅ [AK-3.7] expiresAt ในอดีต → throw ไทย
+  ✅ [AK-3.8] ชื่อว่าง → throw ไทย (เหมือนเดิม)
+  ✅ [AK-4.1] คีย์หมดอายุ → verify null และไม่แตะ lastUsedAt
+  ✅ [AK-4.2] authenticateApiRequest คีย์หมดอายุ → 401
+  ✅ [AK-5.1] หมุน: คีย์เก่า verify null (revokedAt ตั้ง) · คีย์ใหม่ verify ได้
+  ✅ [AK-5.2] คีย์ใหม่คัดลอก name/scopes/systemId/expiresAt + rotatedFromId ชี้ตัวเก่า
+  ✅ [AK-5.3] rawKey ใหม่ ≠ เดิม · prefix ใหม่ · รูปแบบ shark_ + ≥64 hex
+  ✅ [AK-5.4] หมุนคีย์ที่เพิกถอนแล้ว → throw ไทย
+  ✅ [AK-5.5] หมุนคีย์ที่ไม่มีวันหมดอายุ → ตั้ง +365 วัน
+  ✅ [AK-5.6] หมุนพร้อมกัน 2 ครั้ง → สำเร็จ 1 · ลูก 1 (claim อะตอมมิก)
+  ✅ [AK-6.1] listApiKeys มี scopes/systemId/expiresAt/rotatedFromId · ไม่มี keyHash
+  ✅ [AK-7.1] bundle 5 ชุด id ตามสัญญา
+  ✅ [AK-7.2] ทุก scope ใน bundle เป็น permission key จริง module account + ไม่ใช่ param key
+  ✅ [AK-7.3] bundle มี label ไทย + summary อังกฤษ
+  ✅ [AK-7.4] read-only ⊂ issue-and-collect ⊂ accountant · danger ไม่ทับกับ accountant
+  ✅ [AK-7.5] danger ครอบ void/payment.void/period.reopen/wht.unmark/contact.merge/cheque.void/asset.writeoff/doc.approve
+  ✅ [AK-7.6] read-only = doc.view report.view journal.view tax.view
+  ✅ [AK-7.7] DEFAULT_BUNDLE_ID = issue-and-collect · DEFAULT_KEY_TTL_DAYS = 365
+  ✅ [AK-7.8] expandBundles ไม่ซ้ำ + รวมทั้ง 2 ชุด
+  ✅ [AK-7.9] bundlesCovering(accountant scopes) มี read-only/issue-and-collect/accountant ไม่มี danger
+  ✅ [AK-7.9b] NON_API_SCOPE_KEYS มี account.approve.limit (ค่าตั้ง ไม่ใช่การกระทำ) และไม่อยู่ใน bundle ใด
+  ✅ [AK-7.10] ACCOUNT_SCOPE_KEYS = permission key ของ module account ทั้งหมด (ไม่รวม param/ค่าตั้ง)
+  ✅ [AK-7.11] accountant ∪ danger ∪ settings = ACCOUNT_SCOPE_KEYS ทั้งหมด (ไม่มี key ตกหล่นจาก bundle)
+  ✅ [AK-7.12] expandBundles id ที่ไม่รู้จัก → throw ไทย
+  ✅ [AK-8.1] authenticateApiRequest คืน scopes + systemId + expiresAt
+  ✅ [AK-8.2] คีย์แบบเดิม → scopes [] systemId null (พฤติกรรมเดิม)
+  ✅ [AK-8.3] ไม่มี key → 401 (เดิม)
+  ✅ [AK-9.1] writeAudit actorType API_KEY → แถว actorType API_KEY + actorId = keyId
+  ✅ [AK-9.2] writeAudit ไม่ระบุ actorType → USER (เดิม)
+  ✅ [AK-10.1] ร้าน B ไม่เห็นคีย์ร้าน A
+  ✅ [AK-10.2] ร้าน B หมุนคีย์ร้าน A ไม่ได้ (throw) และคีย์ A ยังใช้ได้
+  ✅ [AK-10.3] ร้าน B เพิกถอนคีย์ร้าน A → false และคีย์ยังใช้ได้
+  ✅ [AK-11.1] ApiIdempotency ลงทะเบียน scope.ts (tenant axis) — สร้างผ่าน tenantDb ได้
+  ✅ [AK-11.2] ร้าน B มองไม่เห็นแถว idempotency ของ A
+  ✅ [AK-11.3] (keyId, idemKey) ซ้ำ → DB ปฏิเสธ
+
+===== QC Account API Keys (A1) =====
+ผ่าน 51/51
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":51,"passed":51,"findings":[]}

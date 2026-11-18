@@ -1,0 +1,44 @@
+[env] h48-hunt · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h48-hunt] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2151061) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+## P1 key confusion
+P1a unbound-noscope+hdr: no 2xx · 403:scope_missing
+P1a unbound-hr+hdr: no 2xx · 403:scope_missing
+P1a pos-key+hdr: no 2xx · 403:system_mismatch
+P1a pos-key(nohdr): no 2xx · 403:system_mismatch
+P1a posHr-key(nohdr): no 2xx · 403:system_mismatch
+P1a posHr+hdr: no 2xx · 403:system_mismatch
+P1a sA2-key+hdr sA: no 2xx · 403:system_mismatch
+P1a B-key+hdr sA: no 2xx · 403:system_mismatch
+P1c empGet: foreign=404:not_found random=404:not_found same bytes
+P1c empGet-sA2: foreign=404:not_found random=404:not_found same bytes
+P1c month-B: foreign=404:not_found random=404:not_found same bytes
+P1c month-sA2: foreign=404:not_found random=404:not_found same bytes
+P1c day-unitB: foreign=404:not_found random=404:not_found same bytes
+P1c hist-B: foreign=404:not_found random=404:not_found same bytes
+P1c hist-sA2: foreign=404:not_found random=404:not_found same bytes
+P1c slip-runB: foreign=404:not_found random=404:not_found same bytes
+P1c slip-runA-empB: foreign=404:not_found random=404:not_found same bytes
+P1c report-unitB: foreign=200 random=200 🔴 DIFFERENT · {"data":{"report":"time","period":"2026-06","unitId":"cmwfuqwlp0004rpkz47q8jfcx","columns":[{"key":"code","label":"รหัส"},{"key":"name","label":"ชื่อ"},{"key":" || {"data":{"report":"time","period":"2026-06","unitId":"ctlzxbzb3znq4w8x","columns":[{"key":"code","label":"รหัส"},{"key":"name","label":"ชื่อ"},{"key":"unit","la
+P1c report-pay-unitB: foreign=200 random=200 🔴 DIFFERENT · {"data":{"report":"payroll-month","period":"2026-06","unitId":"cmwfuqwlp0004rpkz47q8jfcx","columns":[{"key":"code","label":"รหัส"},{"key":"name","label":"ชื่อ"} || {"data":{"report":"payroll-month","period":"2026-06","unitId":"ctlzxbzb3znq4w8x","columns":[{"key":"code","label":"รหัส"},{"key":"name","label":"ชื่อ"},{"key":"
+P1c bal-unitB: foreign=200 random=200 same bytes
+P1c roster-unitB: foreign=200 random=200 same bytes
+P1c emps-unitB: foreign=200 random=200 same bytes
+P1c shifts-unitB: foreign=200 random=200 same bytes
+P1d post-empB: 404:not_found · ไม่พบข้อมูลนี้ในระบบงานบุคคล หรือคีย์นี้ไม่มีสิทธิ์ดู
+P1d post-empX(sA2): 404:not_found · ไม่พบข้อมูลนี้ในระบบงานบุคคล หรือคีย์นี้ไม่มีสิทธิ์ดู
+P1d post-rand: 404:not_found · ไม่พบข้อมูลนี้ในระบบงานบุคคล หรือคีย์นี้ไม่มีสิทธิ์ดู
+P1d post-ended: 422:unprocessable · พนักงานคนนี้พ้นสภาพแล้ว — ยื่นใบลาใหม่ไม่ได้
+P1d post-owner: 403:forbidden · ยื่นใบลาของเจ้าของร้านผ่าน API ไม่ได้ — ใบลาของเจ้าของร้านอนุมัติทันที ให้ทำในแอป
+P1d post-policy-sA2: 422:unprocessable · ไม่พบประเภทการลานี้ หรือปิดใช้แล้ว — กรุณาเลือกใหม่
+P1d post-policy-rand: 422:unprocessable · ไม่พบประเภทการลานี้ หรือปิดใช้แล้ว — กรุณาเลือกใหม่
+💥 Error: วันหมดอายุของคีย์ต้องเป็นเวลาในอนาคต
+CLEANUP tenants qc-h48hunt-* left=0 · my keys left=0 · tenants created=2

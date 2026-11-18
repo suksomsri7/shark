@@ -1,0 +1,20 @@
+[env] h53l-q3 · ไฟล์ .env.qc-hr · DB ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h53l-q3] DB host = ep-ancient-truth-ao56olit-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:377099) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Q3.lim.perms {"role":"STAFF","unitAccess":["cmwgu4vwk0001yzkz2yv5dnqz"]}
+Q3.OT1h.borrowed(home u2) {"status":"ok","message":"ผลการยื่นของพนักงานนอกขอบเขตค่าจ้างของคุณไม่แสดงที่นี่ — ผู้ดูแลเงินเดือนของสาขาประจำของพนักงานเป็นผู้ตรวจยอดและแจ้งผล"}
+Q3.OT1h.otherBranch(home u2) {"status":"error","message":"พนักงานคนนี้อยู่สาขาอื่น — คุณจัดการได้เฉพาะสาขาของคุณ"}
+Q3.OT1h.borrowedNoSalary {"status":"ok","message":"ผลการยื่นของพนักงานนอกขอบเขตค่าจ้างของคุณไม่แสดงที่นี่ — ผู้ดูแลเงินเดือนของสาขาประจำของพนักงานเป็นผู้ตรวจยอดและแจ้งผล"}
+Q3.OT1h.home(control) {"status":"ok","message":"ยื่นแล้ว 187.5 บาท — รออนุมัติ"}
+Q3.rowsWritten {"before":0,"rows":[{"code":"BORROWED","s":"PENDING","amt":28500,"h":"1"},{"code":"HOME","s":"PENDING","amt":18750,"h":"1"}]}
+Q3.expected {"borrowedHourly":19000,"ot1h_x1_5":28500}
+Q3.listForLim {"ok":false,"code":"THROW","reason":"PrismaClientValidationError: Invalid `tenantDb(ctx).hrPayAdjustment.findMany()` invocation in /root/projects/shark-hr-l4/src/lib/modules/hr/payroll.ts:442:40 439 // HR H2.11 ▸ กล่อ","__throw":{"name":"PrismaClientValidationError","clientVersion":"7.8.0"}}
+RESIDUE none (tenants=1 users=4 activeLaw=0->0)

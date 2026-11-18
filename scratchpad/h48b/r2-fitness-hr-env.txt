@@ -1,0 +1,33 @@
+
+── F16.1: ไฟล์ "use client" ของ HR ไม่แตะช่องอ่อนไหว (pinCode · pinHash · nationalId · bankAccountNo · ssoNumber · houseRegAddress · lat · lng · photoKey · attachmentKey) ──
+  ✅ [F16.1] ไฟล์ "use client" ใต้ hr/** + sys/[id]/payroll/** ไม่ import/อ่านช่องอ่อนไหว (ยกเว้น DTO ของ privacy-shared.ts · pinCode/pinHash ไม่มีข้อยกเว้น) (ไฟล์ client 14 · สแกน 180 · หนี้เดิม 0) — สะอาด (14 ไฟล์ client)
+
+── F16.2: payroll-rules.ts ไบต์ตรงเดิม (FREEZE) ──
+  ✅ [F16.2] src/lib/modules/hr/payroll-rules.ts sha256 = PAYROLL_RULES_SHA256 — ตรง 75a66c0c1354…
+
+── F16.3: ทุก page.tsx ของ HR/payroll/kiosk มีตัวกันจาก hr/privacy หรือ hr/scope ──
+  ✅ [F16.3] page.tsx ใต้ src/app/** ที่มีส่วน hr|payroll|kiosk import+เรียกตัวกันในรายการของ @/lib/modules/hr/privacy|scope (hrViewerOf อย่างเดียวไม่นับ) (18 หน้า · มีตัวกัน 14 · หนี้เดิม 4) — ครบ (14 มีตัวกัน · 4 อยู่ใน baseline)
+
+── F16.4: ข้อความ hr.* ครบทั้ง th/en ──
+  ✅ [F16.4] คีย์ hr.* ใน th/en ตรงกัน · ไม่ว่าง · ค่าไทยไม่ใช่ ^[A-Z_]+$ — ครบ 1732 keys (th/common.json#hr, en/common.json#hr)
+
+── F16.5: pinCode แตะได้แค่ hr/pin.ts + สคริปต์ backfill (หลัง H0.5) ──
+  ✅ [F16.5] ไม่มีการแตะ pinCode นอก src/lib/modules/hr/pin.ts · scripts/hr-backfill-pin-hash.mts — สะอาด (หนี้เดิม 0 ไฟล์ตามตัวเลข · scripts/qc-*.mts not scanned — oracles that read the column must never print it)
+
+── F16.6: ผู้เรียก requestLeave / cancelLeave ใน src ส่ง actorUserId (H0.7) ──
+  ✅ [F16.6] ทุกจุดเรียก requestLeave( / cancelLeave( ใต้ src/** ส่งคีย์ actorUserId ในนิพจน์เรียกเดียวกัน (ทาง legacy ไม่ส่งผู้กด = งานภายใน/ข้อสอบเก่าเท่านั้น) — สะอาด
+
+── F16.7: partial unique HrEmployee_tenantId_linkedUserId_key ยังอยู่ (H0.7) ──
+  ✅ [F16.7] ชื่อ partial unique จาก 20261203000000_hr_link_unique_requester ถูกอ้างใน prisma/schema หรือ migration ใหม่กว่า · ไม่มี migration ใหม่กว่า DROP — HrEmployee_tenantId_linkedUserId_key อ้างอยู่ · ไม่มี DROP
+
+── F16.9: ไม่มีโค้ดร้านเขียน HrLawTable (ตารางกลาง — หลังบ้าน/สคริปต์เท่านั้น · H1.3) ──
+  ✅ [F16.9] ไม่มีการเขียน HrLawTable ใต้ src/lib/modules · src/app · src/lib/ai (ที่เขียนได้: src/lib/platform/** · scripts/hr-seed-law-draft.mts) — สะอาด
+
+── F16.8: ทะเบียนปุ่ม HR ↔ data-testid ในโค้ด สองทาง (H2.2) ──
+  ✅ [F16.8] scripts/hr-ui-inventory.json ↔ testid ใต้ src/lib/modules/hr · src/app/app/sys/[id]/hr · src/app/app/sys/[id]/payroll (ConfirmDialog = แถว -trigger/-sheet · ช่องว่างเดิมใน F168_*_BASELINE) — ครบ (testid 535 · แถว 557 · หนี้เดิม 1+14)
+
+===== FITNESS-HR =====
+ผ่าน 9/9
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"suite":"fitness-hr","total":9,"passed":9,"findings":[]}

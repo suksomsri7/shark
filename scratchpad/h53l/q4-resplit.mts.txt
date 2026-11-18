@@ -1,0 +1,154 @@
+// H5.3l hunter (PREPROD-1 fix rounds) — re-split sequences, revoke race, skip-then-reverse, holiday inside split, exact tenths, V2 visibility, m3 draft
+// Run (lane 4): bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scratchpad/h53l/q4-resplit.mts
+import { type Any, setupPP1, dd, bk } from "./kit.mjs";
+import { errText } from "../../scripts/qc-hr-lib.mjs";
+import { underLock, dist, short } from "./common.mjs";
+
+const N = Number(process.env.H53L_N ?? 20);
+const S = await setupPP1("h53l-q4");
+const { P, tag, kit, rows, safe, linesOf, PAY } = S;
+const out = (k: string, v: unknown) => console.log(`${k} ${typeof v === "string" ? v : short(v, 2000)}`);
+let crashed = "";
+try {
+  const SV = (await import("@/lib/modules/hr/service")) as Any;
+  const LV = (await import("@/lib/modules/hr/leave")) as Any;
+  const JG = (await import("@/lib/modules/hr/judge")) as Any;
+  const WE = (await import("@/lib/modules/hr/work-entries")) as Any;
+  const PV = (await import("@/lib/modules/hr/privacy")) as Any;
+  const K = await kit("q4", "resplit hunt");
+  const TT = K.TT;
+  const pol = async (s: string) => (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "SICK", name: `ป่วย ${tag}`, paid: true, quotaDays: 30, allowHalfDay: true } })).id as string;
+  const earlier = async (s: string, e: string, p: string, from: string, to: string, used: string, grant = true) => {
+    if (grant) await P.hrLeaveBalanceTxn.create({ data: { tenantId: TT, systemId: s, employeeId: e, policyId: p, kind: "GRANT", days: "30.0", leaveYear: 2031, effectiveDate: dd("2031-01-01"), sourceKey: `grant:${e}:${p}:2031` } });
+    const l = (await P.hrLeave.create({ data: { tenantId: TT, systemId: s, employeeId: e, type: "SICK", fromDate: dd(from), toDate: dd(to), status: "APPROVED", policyId: p, days: used, reason: "qc" } })).id as string;
+    await P.hrLeaveBalanceTxn.create({ data: { tenantId: TT, systemId: s, employeeId: e, policyId: p, kind: "USE", days: `-${used}`, leaveYear: 2031, effectiveDate: dd(from), sourceKey: `use:${l}`, leaveId: l } });
+    return l;
+  };
+  const req = async (s: string, e: string, from: string, to: string, p: string, extra: Any = {}) => (await safe(() => SV.requestLeave(K.c(s), { employeeId: e, type: "SICK", fromDate: from, toDate: to, reason: "qc", actorUserId: K.U.owner.id, policyId: p, ...extra })))?.id as string;
+  const dec = (s: string, id: string, st = "APPROVED", from = "PENDING") => safe(() => SV.decideLeave(K.c(s), id, st, K.U.pay1.id, { from }).then(() => ({ ok: true })));
+  const sum = async (e: string, p: string) => Number((await rows(`SELECT COALESCE(SUM(days),0)::text AS n FROM "HrLeaveBalanceTxn" WHERE "employeeId" = $1 AND "policyId" = $2 AND "leaveYear" = 2031`, e, p))[0]?.n);
+  const uses = async (id: string) => (await rows(`SELECT "sourceKey" AS k, days::text AS d, note FROM "HrLeaveBalanceTxn" WHERE "leaveId" = $1 ORDER BY "createdAt", id`, id)).map((r: Any) => `${r.k.replace(id, "L")}:${r.d}:${r.note ?? "-"}`);
+  const split = async (s: string, ids: string[]) => LV.leaveSplitOf(K.c(s), ids);
+  const unpaidLines = (ls: string[]) => ls.filter((x) => x.startsWith("UNPAID_LEAVE"));
+  const tot = (xs: string[]) => xs.reduce((t, x) => t + Number(x.split(":")[1]!.split("@")[0]), 0);
+
+  // ── S1 back twice · revoke a re-split leave ──
+  {
+    const s = await K.sys("S1"); const p = await pol(s); const e = await K.emp(s, "S1");
+    const A = await earlier(s, e, p, "2031-01-05", "2031-01-24", "20.0");
+    const B = await earlier(s, e, p, "2031-02-02", "2031-02-09", "8.0", false);
+    const L1 = await req(s, e, "2031-03-10", "2031-03-14", p); await dec(s, L1);
+    const L2 = await req(s, e, "2031-03-17", "2031-03-21", p); await dec(s, L2);
+    const t0 = { L1: await uses(L1), L2: await uses(L2), sum: await sum(e, p) };
+    await dec(s, B, "REJECTED", "APPROVED");
+    const t1 = { L1: await uses(L1), L2: await uses(L2), sum: await sum(e, p), split: await split(s, [L1, L2]) };
+    await dec(s, A, "REJECTED", "APPROVED");
+    const t2 = { sum: await sum(e, p), split: await split(s, [L1, L2]) };
+    await dec(s, L2, "REJECTED", "APPROVED");
+    const t3 = { L2: await uses(L2), sum: await sum(e, p) };
+    out("S1.backTwice", { t0, afterRevokeB: t1, afterRevokeA: t2, afterRevokeL2: t3 });
+  }
+  // ── S2 skipped (month APPROVED) then run reversed — re-split ever? ──
+  {
+    const s = await K.sys("S2"); const p = await pol(s); const e = await K.emp(s, "S2");
+    const A = await earlier(s, e, p, "2031-01-05", "2031-02-01", "28.0");
+    const L = await req(s, e, "2031-03-10", "2031-03-14", p); await dec(s, L);
+    for (const d of ["2031-04-05"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT }));
+    const now = bk("2031-04-03");
+    await safe(() => WE.buildWorkEntrySnapshot(K.c(s), K.V.owner, { periodKey: "2031-03" }, { now }));
+    const mar = await K.create(s, "2031-03"); const ma = await K.approve(s, mar.id);
+    const l1 = unpaidLines(await linesOf(mar.id, e));
+    const rv = await dec(s, A, "REJECTED", "APPROVED");
+    const afterRevoke = { sum: await sum(e, p), split: (await split(s, [L]))[L] };
+    const rr = await K.reverse(s, mar.id);
+    await safe(() => WE.buildWorkEntrySnapshot(K.c(s), K.V.owner, { periodKey: "2031-03" }, { now }));
+    const mar2 = await K.create(s, "2031-03");
+    const l2 = mar2?.id ? unpaidLines(await linesOf(mar2.id, e)) : mar2;
+    // any later trigger? approve + revoke another small leave in April (balance back again)
+    const X = await req(s, e, "2031-04-07", "2031-04-07", p); await dec(s, X); await dec(s, X, "REJECTED", "APPROVED");
+    out("S2.skipThenReverse", { marApproved: ma?.ok, unpaidMar: tot(l1), revokeA: rv?.ok ?? rv?.reason, afterRevoke, reverse: rr?.ok, rerunUnpaid: Array.isArray(l2) ? tot(l2) : l2, afterLaterTrigger: (await split(s, [L]))[L], sumEnd: await sum(e, p) });
+  }
+  // ── S3 two revokes racing (employee lock ordered) ──
+  {
+    const s = await K.sys("S3"); const p = await pol(s);
+    const o: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const e = await K.emp(s, `R${i}`);
+      const A = await earlier(s, e, p, "2031-01-05", "2031-01-18", "14.0");
+      const B = await earlier(s, e, p, "2031-02-02", "2031-02-15", "14.0", false);
+      const L1 = await req(s, e, "2031-03-10", "2031-03-14", p); await dec(s, L1);
+      const L2 = await req(s, e, "2031-03-17", "2031-03-21", p); await dec(s, L2);
+      const calls = [() => dec(s, A, "REJECTED", "APPROVED"), () => dec(s, B, "REJECTED", "APPROVED")];
+      const { res } = await underLock(P, { key: `hr-leave-emp:${s}:${e}` }, i % 2 ? calls.reverse() : calls);
+      const sp = await split(s, [L1, L2]);
+      const keys = (await rows(`SELECT "sourceKey" AS k FROM "HrLeaveBalanceTxn" WHERE "employeeId" = $1 AND "sourceKey" LIKE 'use-resplit:%'`, e)).map((r: Any) => r.k);
+      const dup = keys.length !== new Set(keys).size;
+      const paid = (sp[L1]?.paidDays ?? 0) + (sp[L2]?.paidDays ?? 0);
+      const total = await sum(e, p);
+      const ok = res.every((r: Any) => r.ok) && Math.abs(paid - 10) < 1e-9 && total === 20 && !dup;
+      o.push(`paid=${paid}·Σ=${total}·resplitRows=${keys.length}·dup=${dup}·${ok ? "OK" : "BAD"}`);
+    }
+    out("S3.revokeRace", dist(o));
+  }
+  // ── S4 exact tenths + holiday/day-off inside the unpaid range after approval · v2 satang ──
+  {
+    const s = await K.sys("S4"); const p = await pol(s); const sh = await K.shift(s);
+    const mar = Array.from({ length: 31 }, (_, i) => `2031-03-${String(i + 1).padStart(2, "0")}`).filter((d) => [1, 2, 3, 4, 5].includes(new Date(`${d}T00:00:00Z`).getUTCDay()));
+    const mk = async (code: string, used: string) => { const e = await K.emp(s, code); for (const d of mar) await K.roster(s, sh, e, d); await earlier(s, e, p, "2031-01-05", "2031-02-28", used); return e; };
+    const E27 = await mk("T27", "27.3"); // 2.7 left · 10–14 Mar (5 days)
+    const E01 = await mk("T01", "29.9"); // 0.1 left · half-day PM 19 Mar
+    const EHO = await mk("THO", "27.3"); // 2.7 left · 10–14 Mar, then the 13th stops being a working day (roster removed)
+    const L27 = await req(s, E27, "2031-03-10", "2031-03-14", p); await dec(s, L27);
+    const L01 = await req(s, E01, "2031-03-19", "2031-03-19", p, { halfDay: "PM" }); await dec(s, L01);
+    const LHO = await req(s, EHO, "2031-03-10", "2031-03-14", p); await dec(s, LHO);
+    await P.hrRosterEntry.deleteMany({ where: { employeeId: EHO, date: dd("2031-03-13") } });
+    for (const d of ["2031-03-15", "2031-03-22", "2031-03-29", "2031-04-05"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT }));
+    for (const r of await rows(`SELECT id FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND date = '2031-03-13'`, EHO)) await safe(() => JG.recomputeAttendanceDay(K.c(s), K.V.owner, { dayId: r.id, reason: "qc กะถูกลบหลังอนุมัติ" }, { now: bk("2031-04-03") }));
+    const b = await safe(() => WE.buildWorkEntrySnapshot(K.c(s), K.V.owner, { periodKey: "2031-03" }, { now: bk("2031-04-03") }));
+    const wd = await rows(`SELECT e.code, w.date::text AS d, w."plannedMin" AS pm, w."paidLeaveMin" AS pl, w."unpaidLeaveMin" AS ul, w."absentMin" AS ab, w.review FROM "HrWorkDay" w JOIN "HrEmployee" e ON e.id = w."employeeId" WHERE w."systemId" = $1 AND (w."paidLeaveMin" > 0 OR w."unpaidLeaveMin" > 0 OR cardinality(w.review) > 0) ORDER BY e.code, w.date`, s);
+    const run = await K.create(s, "2031-03");
+    const r: Any = { build: b?.ok ?? b?.reason, run: run?.ok ?? run?.reason, splits: await split(s, [L27, L01, LHO]), uses: { T27: await uses(L27), T01: await uses(L01), THO: await uses(LHO) }, leaveDays: (await rows(`SELECT days::text AS d FROM "HrLeave" WHERE id = $1`, LHO))[0]?.d };
+    if (run?.id) for (const [k, e] of [["T27", E27], ["T01", E01], ["THO", EHO]] as const) { const ls = unpaidLines(await linesOf(run.id, e)); r[`lines.${k}`] = { ls, total: tot(ls) }; }
+    out("S4.exactTenths", r);
+    out("S4.workDays", wd);
+  }
+  // ── S5 V2 visibility: borrowing-branch manager · self · pay viewer ──
+  {
+    const s = await K.sys("S5"); const p = await pol(s);
+    const mgr = await S.fx.mkUser(TT, "q4mgr", `Q53 mgr ${tag}`, "MANAGER", [K.u1], { "hr.leave.read": true, "hr.leave.decide": true });
+    const self = await S.fx.mkUser(TT, "q4self", `Q53 self ${tag}`, "STAFF", [K.u2], {});
+    const e = await K.emp(s, "V2", { unit: K.u2, linkedUserId: self.id });
+    await P.hrEmployeeUnit.create({ data: { tenantId: TT, systemId: s, employeeId: e, unitId: K.u1, fromDate: dd("2031-01-01"), toDate: null } });
+    await earlier(s, e, p, "2031-01-05", "2031-02-01", "28.0");
+    const L = await req(s, e, "2031-03-10", "2031-03-14", p); await dec(s, L);
+    const see = async (v: Any) => { const r = await safe(() => PV.leaveItemsForViewer(K.c(s), v)); const it = [...(r?.history ?? []), ...(r?.pending ?? [])].find((x: Any) => x.id === L); return it ? { listed: true, paidDays: it.paidDays, unpaidDays: it.unpaidDays } : { listed: false, err: r?.reason }; };
+    out("S5.visibility", { owner: await see({ ...K.V.owner, userId: K.U.owner.id }), borrowingManager: await see({ role: "MANAGER", unitAccess: [K.u1], permissions: mgr.permissions, userId: mgr.id }), self: await see({ role: "STAFF", unitAccess: [K.u2], permissions: {}, userId: self.id }), limPayViewerOtherBranch: await see({ role: "STAFF", unitAccess: [K.u1], permissions: K.U.lim.permissions, userId: K.U.lim.id }) });
+  }
+  // ── S6 m3: leaver refund moved into an open DRAFT — recompute includes it once · reverse → re-run ──
+  {
+    const s = await K.sys("S6"); const c = K.c(s);
+    const e = await K.emp(s, "LV", { salary: 2_000_000 });
+    const cl = (await K.adj(s, e, "2031-07", "DEDUCTION", 150_000)).id;
+    const jul = await K.create(s, "2031-07"); await K.approve(s, jul.id);
+    const g = await K.giveBack(s, cl, 50_000, "2031-08"); await safe(() => PAY.decideAdjustment(c, g.id, "APPROVED", K.ownA));
+    const sep = await K.create(s, "2031-09"); await K.approve(s, sep.id);
+    const oct = await K.create(s, "2031-10");
+    await P.hrEmployee.update({ where: { id: e }, data: { endDate: dd("2031-10-31") } });
+    const mv = await safe(() => PAY.moveStrandedAdjustment(c, g.id, K.ownA));
+    const rc = await safe(() => PAY.recomputeDraftRun(c, oct.id, K.ownA, { viewer: K.V.pay1 }));
+    const rc2 = await safe(() => PAY.recomputeDraftRun(c, oct.id, K.ownA, { viewer: K.V.pay1 }));
+    const linesA = (await linesOf(oct.id, e)).filter((x) => x.startsWith("REFUND"));
+    const ap = await K.approve(s, oct.id);
+    const bound = (await rows(`SELECT "runId" = $2 AS b FROM "HrPayAdjustment" WHERE id = $1`, g.id, oct.id))[0]?.b;
+    const rv = await K.reverse(s, oct.id);
+    const oct2 = await K.create(s, "2031-10");
+    const linesB = oct2?.id ? (await linesOf(oct2.id, e)).filter((x) => x.startsWith("REFUND")) : oct2;
+    out("S6.leaverDraft", { move: mv, recompute: [rc?.ok ?? rc?.reason, rc2?.ok ?? rc2?.reason], linesA, approve: ap?.ok, bound, reverse: rv?.ok, linesB });
+  }
+} catch (x) {
+  crashed = errText(x);
+  console.log(`CRASH ${crashed} ${(x as Error)?.stack?.split("\n").slice(1, 5).join(" | ")}`);
+} finally {
+  await S.cleanup();
+}
+process.exit(crashed ? 1 : 0);
