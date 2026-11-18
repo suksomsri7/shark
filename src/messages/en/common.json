@@ -997,13 +997,13 @@
         "emergencyRelation": "Relationship",
         "emergencyRelationPh": "e.g. Spouse",
         "sensitiveHint": "Only the business owner or people allowed to see payroll can see these — fill in only what the shop really needs (documents, social security, salary transfer)",
-        "nationalId": "National ID (13 digits)",
-        "sso": "Social security number",
-        "houseReg": "House-registration address (if different from the current address)",
+        "idCardNo": "National ID (13 digits)",
+        "socialNo": "Social security number",
+        "regAddress": "House-registration address (if different from the current address)",
         "bankName": "Bank",
         "bankNamePh": "e.g. Kasikorn",
-        "bankAccountNo": "Account number",
-        "bankAccountName": "Account name"
+        "acctNo": "Account number",
+        "acctName": "Account name"
       },
       "lawTail": "the statutory employee register comes from this page",
       "summary": {

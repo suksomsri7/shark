@@ -146,9 +146,9 @@ export default async function HrEmployeeProfilePage({
       ) : (
         // HR VIS-5c ▸ แท็บทั่วไป: มุมมองอ่าน ∣ รายการรับเข้า (อ่าน) + เชื่อมระบบ · r2 (B6): แถบทดลองงาน (ลิงก์ประเมิน ›) / สัญญา / สิ้นสุด เป็นรายการแรก ◂
         <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
-          {life?.status === "PROBATION" && life.probationEndAt ? (
+          {emp.employmentStatus === "PROBATION" && emp.probationEndAt ? (
             <div className="xl:col-span-2">
-              <ProfileProbation systemId={id} tenantId={auth.active.tenantId} viewer={hrViewerOf(auth)} emp={emp} life={life} />
+              <ProfileProbation systemId={id} tenantId={auth.active.tenantId} viewer={hrViewerOf(auth)} emp={emp} />
             </div>
           ) : (
             <div className="empty:hidden xl:col-span-2">

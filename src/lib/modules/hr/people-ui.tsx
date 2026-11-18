@@ -91,7 +91,7 @@ export const PROFILE_TABS = ["general", "docs", "schedule", "leave", "pay", "his
 export type ProfileTab = (typeof PROFILE_TABS)[number];
 export const profileTabOf = (v: unknown): ProfileTab => (PROFILE_TABS.includes(v as ProfileTab) ? (v as ProfileTab) : "general");
 
-export async function ProfileTabs({ href, tab, tabs }: { href: (tab: ProfileTab) => string; tab: ProfileTab | null; tabs: readonly ProfileTab[] }) {
+export async function ProfileTabs({ href, tab, tabs, compact }: { href: (tab: ProfileTab) => string; tab: ProfileTab | null; tabs: readonly ProfileTab[]; compact?: boolean /* HR VIS-5c ▸ r2: แผงข้างทะเบียน — ระยะแท็บแคบลง (6 แท็บพอดีแผง) ◂ */ }) {
   const t = await getTranslations("hr.people");
   return (
     <nav aria-label={t("prof.tab.label")} data-scroll="x" className="-mx-1 flex gap-1 overflow-x-auto border-b border-[color:var(--color-line)]">
@@ -101,7 +101,7 @@ export async function ProfileTabs({ href, tab, tabs }: { href: (tab: ProfileTab)
           href={href(k)}
           data-testid={`hr-profile-tab-${k}`}
           aria-current={tab === k ? "page" : undefined}
-          className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center whitespace-nowrap px-3 text-sm ${tab === k /* HR VIS-5c ▸ r2 (B2): shrink-0 — แท็บไม่ถูกบีบจนป้ายชนกันที่ 390 ◂ */ ? "border-b-2 border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : muted}`}
+          className={`inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center whitespace-nowrap text-sm ${compact ? "px-2" : "px-3"} ${tab === k /* HR VIS-5c ▸ r2 (B2): shrink-0 — แท็บไม่ถูกบีบจนป้ายชนกันที่ 390 ◂ */ ? "border-b-2 border-[color:var(--color-ink)] font-bold text-[color:var(--color-ink)]" : muted}`}
         >
           {t(`prof.tab.${k}`)}
         </Link>
@@ -112,9 +112,8 @@ export async function ProfileTabs({ href, tab, tabs }: { href: (tab: ProfileTab)
 
 // ═════════════ HR VIS-5c ▸ r2 (A1/B6): แถบทดลองงาน (ภาพ 02) — "ทดลองงาน · ครบ <วัน> (อีก N วัน)" + "เริ่ม … · N วัน · สาย · ขาด · OT" + ลิงก์ "ประเมิน ›" ไปแท็บประวัติ ·
 //   ปุ่มยืนยันผ่านทดลองงานจริง (LifecycleBanner · confirmProbationAction) อยู่ที่แท็บประวัติเท่านั้น — ที่นี่ไม่ผูก action ·
-//   ด่าน = life (loadLifecycleForViewer · null ⇒ ไม่แสดง เหมือน LifecycleBanner) · ลิงก์ประเมินตามด่านปุ่มยืนยันเดิม (ผู้ดูข้อมูลบันทึก · ไม่ใช่ตัวเอง · ยังทำงาน) ·
+//   ข้อมูล = DTO ที่ไม่อ่อนไหว (สถานะ · วันครบทดลองงาน · วันเริ่มงาน — แถว "การจ้างงาน" ของมุมมองอ่านแสดงอยู่แล้วกับผู้ดูทุกคน) · ลิงก์ประเมินตามด่านปุ่มยืนยันเดิม (ผู้ดูข้อมูลบันทึก · ไม่ใช่ตัวเอง · ยังทำงาน) ·
 //   สาย/ขาด/OT = loadAttendanceMonth (ด่านเดิม) รวมทุกเดือนตั้งแต่เดือนเริ่มงานถึงเดือนนี้ · ตัวอ่านปฏิเสธ ⇒ ไม่แสดงตัวเลข ◂ ═════════════
-type LifeLite = { status: string | null; probationEndAt: string | null } | null;
 export async function ProbationStats({ systemId, tenantId, viewer, emp }: { systemId: string; tenantId: string; viewer: HrViewer; emp: EmployeeProfileDto }) {
   const t = await getTranslations("hr.people");
   const locale = await getLocale();
@@ -144,13 +143,14 @@ export async function ProbationStats({ systemId, tenantId, viewer, emp }: { syst
   );
 }
 
-export async function ProfileProbation({ systemId, tenantId, viewer, emp, life, reviewTestId = "hr-people-prob-review" }: { systemId: string; tenantId: string; viewer: HrViewer; emp: EmployeeProfileDto; life: LifeLite; reviewTestId?: string }) {
-  if (!life || life.status !== "PROBATION" || !life.probationEndAt) return null;
+export async function ProfileProbation({ systemId, tenantId, viewer, emp, reviewTestId = "hr-people-prob-review" }: { systemId: string; tenantId: string; viewer: HrViewer; emp: EmployeeProfileDto; reviewTestId?: string }) {
+  const probEnd = ymdOf(emp.probationEndAt);
+  if (emp.employmentStatus !== "PROBATION" || !probEnd) return null;
   const tl = await getTranslations("hr.life");
   const t = await getTranslations("hr.people");
   const locale = await getLocale();
   const today = thaiDateKey(new Date());
-  const left = Math.round((Date.parse(`${life.probationEndAt}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+  const left = Math.round((Date.parse(`${probEnd}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
   const leftText = left > 0 ? tl("banner.left", { n: left }) : left === 0 ? tl("banner.today") : tl("banner.over", { n: -left });
   const canReview = emp.active && canSeeLifecycle(viewer) && !(await isLinkedTo({ tenantId, systemId }, viewer.userId, emp.id));
   return (
@@ -161,7 +161,13 @@ export async function ProfileProbation({ systemId, tenantId, viewer, emp, life, 
             <path d="M5 21V4" />
             <path d="M5 4h11l-2 4 2 4H5" />
           </svg>
-          <span className="min-w-0">{tl("banner.probation", { date: dayMonth(life.probationEndAt, locale), left: leftText })}</span>
+          {/* วันที่และ "อีก N วัน" ไม่ถูกตัดกลาง (ขึ้นบรรทัดที่ช่องว่าง) */}
+          <span className="min-w-0">
+            {tl("banner.probation", { date: "\u0001", left: "\u0002" })
+              .replace("(\u0002)", "\u0003")
+              .split(/(\u0001|\u0002|\u0003)/)
+              .map((p, i) => (p === "\u0001" ? <span key={i} className="whitespace-nowrap">{dayMonth(probEnd, locale)}</span> : p === "\u0002" || p === "\u0003" ? <span key={i} className="whitespace-nowrap">{p === "\u0003" ? `(${leftText})` : leftText}</span> : p))}
+          </span>
         </b>
         <ProbationStats systemId={systemId} tenantId={tenantId} viewer={viewer} emp={emp} />
       </div>

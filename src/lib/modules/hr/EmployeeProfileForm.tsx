@@ -168,24 +168,24 @@ export default function EmployeeProfileForm({
             {t("sensitiveHint") /* HR VIS-5c */}
           </p>
           <div className="grid grid-cols-2 gap-2">
-            <Field label={t("nationalId")}>{/* HR VIS-5c */}
+            <Field label={t("idCardNo")}>{/* HR VIS-5c */}
               <input name="nationalId" inputMode="numeric" defaultValue={emp.nationalId ?? ""} className="input" />
             </Field>
-            <Field label={t("sso")}>{/* HR VIS-5c */}
+            <Field label={t("socialNo")}>{/* HR VIS-5c */}
               <input name="ssoNumber" inputMode="numeric" defaultValue={emp.ssoNumber ?? ""} className="input" />
             </Field>
           </div>
-          <Field label={t("houseReg")}>{/* HR VIS-5c */}
+          <Field label={t("regAddress")}>{/* HR VIS-5c */}
             <textarea name="houseRegAddress" rows={2} defaultValue={emp.houseRegAddress ?? ""} className="input" />
           </Field>
           <div className="grid grid-cols-2 gap-2">
             <Field label={t("bankName")}>{/* HR VIS-5c */}
               <input name="bankName" defaultValue={emp.bankName ?? ""} placeholder={t("bankNamePh")} className="input" />
             </Field>
-            <Field label={t("bankAccountNo")}>{/* HR VIS-5c */}
+            <Field label={t("acctNo")}>{/* HR VIS-5c */}
               <input name="bankAccountNo" inputMode="numeric" defaultValue={emp.bankAccountNo ?? ""} className="input" />
             </Field>
-            <Field label={t("bankAccountName")}>{/* HR VIS-5c */}
+            <Field label={t("acctName")}>{/* HR VIS-5c */}
               <input name="bankAccountName" defaultValue={emp.bankAccountName ?? ""} className="input" />
             </Field>
           </div>

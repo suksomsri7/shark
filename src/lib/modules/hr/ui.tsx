@@ -529,12 +529,12 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
   const footUnits = units.length >= 2 ? [...new Set(tabActive.map((e) => e.unitId))].map((id) => ({ id, n: tabActive.filter((e) => e.unitId === id).length })).sort((a, b) => b.n - a.n) : [];
   const footEnded = tabRows.filter((x) => x.ended).length;
   const footer = [pg.pages > 1 ? t("shown", { from: pg.from, to: pg.to, total: counts[tab] }) : t("summary.shown", { n: counts[tab] }), ...footUnits.map((x) => t("summary.unit", { name: unitOf(x.id), n: x.n })), ...(footEnded ? [t("summary.ended", { n: footEnded })] : [])].join(" · ");
-  // คอลัมน์ตามความกว้าง: ไม่มีแผง = 9 คอลัมน์ที่ ≥ 1280 · 1024 = 7 (ประเภทจ้างพับเข้าบรรทัดรหัส · บัญชีพับใต้ PIN) · < 768 = การ์ด ·
-  //   แผงเปิด (≥ 1280) = ชื่อ · ตำแหน่ง · สาขา · สถานะ (+ เริ่มงาน · PIN ที่ ≥ 1536) — ข้อยกเว้นที่ประกาศไว้: ข้างแผงคอลัมน์น้อยกว่า 9
+  // คอลัมน์ตามความกว้าง: ไม่มีแผง = 9 คอลัมน์ที่ ≥ 1280 · 1024 = 6 (ประเภทจ้างพับเข้าบรรทัดรหัส · บัญชีพับใต้ PIN · เริ่มงานเฉพาะ ≥ 1280 — 7 คอลัมน์ล้นจอ 1024) · < 768 = การ์ด ·
+  //   แผงเปิด (≥ 1280) = ชื่อ · ตำแหน่ง · สถานะ (+ สาขา ที่ ≥ 1360) — ข้อยกเว้นที่ประกาศไว้: ข้างแผงคอลัมน์น้อยกว่า 9 (เมนูข้าง 288 px ของแอปกว้างกว่ารางในภาพ)
   const col = pv
-    ? { type: "hidden", start: "hidden lg:table-cell xl:hidden 2xl:table-cell", pin: "hidden lg:table-cell xl:hidden 2xl:table-cell", acct: "hidden", typeFold: "", acctFold: "" }
-    : { type: "hidden xl:table-cell", start: "hidden lg:table-cell", pin: "hidden lg:table-cell", acct: "hidden xl:table-cell", typeFold: "xl:hidden", acctFold: "xl:hidden" };
-  const th = `whitespace-nowrap px-2 py-2.5 text-left text-xs font-semibold ${muted}`; // HR VIS-5c ◂
+    ? { unit: "hidden md:table-cell xl:hidden min-[1360px]:table-cell", type: "hidden", start: "hidden", pin: "hidden lg:table-cell xl:hidden", acct: "hidden", typeFold: "", acctFold: "", name: "md:max-w-[9rem] min-[1360px]:max-w-[11rem]", pos: "max-w-[7rem] min-[1360px]:max-w-[9rem]" }
+    : { unit: "hidden md:table-cell", type: "hidden xl:table-cell", start: "hidden xl:table-cell", pin: "hidden lg:table-cell", acct: "hidden xl:table-cell", typeFold: "xl:hidden", acctFold: "xl:hidden", name: "md:max-w-[10rem] xl:max-w-[11rem]", pos: "max-w-[8rem] xl:max-w-[9rem]" };
+  const th = `px-2 py-2.5 text-left align-bottom text-xs font-semibold ${muted}`; // HR VIS-5c ◂ (หัวคอลัมน์ขึ้นบรรทัดได้ที่ช่องว่าง)
   const td = "md:table-cell md:whitespace-nowrap md:px-2 md:py-2 md:align-middle"; // HR VIS-5c ◂
   const one = "block truncate"; // ข้อความบรรทัดเดียว ยาวเกิน = …
   const chipCls = "inline-flex min-h-[26px] items-center whitespace-nowrap rounded-lg border px-2 py-0.5 text-xs font-semibold"; // HR VIS-5c ◂
@@ -545,7 +545,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
   const pill = "btn btn-ghost min-h-[44px] max-w-full cursor-pointer list-none whitespace-nowrap text-sm [&::-webkit-details-marker]:hidden";
 
   return (
-    <div /* HR VIS-5c */ className={pv ? "xl:-mb-10 xl:-mr-6 xl:grid xl:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_440px]" : ""}>
+    <div /* HR VIS-5c */ className={pv ? "xl:-mb-10 xl:-mr-6 xl:grid xl:grid-cols-[minmax(0,1fr)_380px] min-[1360px]:grid-cols-[minmax(0,1fr)_400px] 2xl:grid-cols-[minmax(0,1fr)_440px]" : ""}>
       <div className={`flex min-w-0 flex-col gap-3 ${pv ? "xl:pb-10 xl:pr-6" : ""}`}>
         {/* หัว: ชื่อหน้า · จำนวนต่อสาขา — ทะเบียนลูกจ้างตามกฎหมาย · + พนักงาน (ไม่มีนำเข้า CSV — owner list) */}
         <div className="flex items-start gap-3">
@@ -562,7 +562,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
               <summary data-testid="hr-people-add" className="btn btn-primary min-h-[44px] cursor-pointer list-none whitespace-nowrap text-sm [&::-webkit-details-marker]:hidden">
                 {t("add")}
               </summary>
-              <div className="fixed inset-x-4 top-24 z-30 max-h-[calc(100vh-7rem)] overflow-y-auto rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 shadow-lg sm:absolute sm:inset-x-auto sm:right-0 sm:top-full sm:mt-2 sm:w-[560px]">
+              <div className="absolute right-0 top-full z-30 mt-2 w-[min(calc(100vw-2rem),560px)] rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 shadow-lg">
                 <h3 className="mb-3 text-base font-bold">{t("addPanel.title")}</h3>
                 <form action={createEmployeeAction} className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <input type="hidden" name="systemId" value={systemId} />
@@ -620,7 +620,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
 
         {/* ตัวกรองตามภาพ: ค้น · สาขา · แผนก · แสดงที่สิ้นสุด — ค้นด้วย Enter (ปุ่มส่งเป็น sr-only) */}
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">{/* HR VIS-5c */}
-          <form method="get" action={base} role="search" className="flex min-w-[12rem] flex-[1_1_16rem]">
+          <form method="get" action={base} role="search" className="flex min-w-[10rem] flex-[1_1_12rem]">
             {chip && <input type="hidden" name="unit" value={chip} />}
             {tab !== "all" && <input type="hidden" name="tab" value={tab} />}
             {dept && <input type="hidden" name="dept" value={dept} />}
@@ -695,7 +695,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                 <tr className="border-b border-[color:var(--color-line)]">
                   <th className={`${th} pl-4`}>{t("col.name")}</th>
                   <th className={th}>{t("col.position")}</th>
-                  <th className={th}>{t("col.unit")}</th>
+                  <th className={`${th} ${col.unit}`}>{t("col.unit")}</th>
                   <th className={`${th} ${col.type}`}>{t("col.type")}</th>
                   <th className={`${th} ${col.start}`}>{t("col.start")}</th>
                   <th className={th}>{t("col.status")}</th>
@@ -737,7 +737,7 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                             <span aria-hidden="true" className="grid h-[34px] w-[34px] shrink-0 place-items-center rounded-[10px] border border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] text-[13px] font-semibold">
                               {initialOf(e.name)}
                             </span>
-                            <div className="min-w-0 max-w-[12rem] md:max-w-[11rem]">
+                            <div className={`min-w-0 max-w-[12rem] ${col.name}`}>
                               <Link href={href({ emp: e.id })} scroll={false} title={e.name} data-testid={`hr-people-name-${e.id}`} className={`hidden font-semibold hover:underline xl:block ${one}`}>
                                 {e.name}
                               </Link>
@@ -746,18 +746,18 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                               </Link>
                               <small className={`text-xs ${muted} ${one}`} title={[e.code, e.position, unitTxt].filter(Boolean).join(" · ")}>
                                 {e.code || "—"}
-                                <span className={`hidden md:inline ${col.typeFold}`}>{` · ${typeTxt}${pay ? ` · ${pay}` : ""}`}</span>
+                                <span className={`hidden md:inline ${col.typeFold}`}>{` · ${typeTxt}`}</span>
                                 <span className="md:hidden">{[e.position, unitTxt].filter((x) => x && x !== "—").map((x) => ` · ${x}`).join("")}</span>
                               </small>
                             </div>
                           </div>
                         </td>
                         <td className={`hidden ${td}`}>
-                          <span className={`max-w-[9rem] ${one}`} title={e.position ?? undefined}>{e.position || "—"}</span>
-                          {e.department && <small className={`max-w-[9rem] text-xs ${muted} ${one}`} title={e.department}>{e.department}</small>}
+                          <span className={`${col.pos} ${one}`} title={e.position ?? undefined}>{e.position || "—"}</span>
+                          {e.department && <small className={`${col.pos} text-xs ${muted} ${one}`} title={e.department}>{e.department}</small>}
                         </td>
-                        <td className={`hidden ${td}`}>
-                          <span data-testid={showBranches ? `hr-register-unit-${e.id}` : undefined} title={unitTxt} className={`max-w-[8rem] ${one}`}>
+                        <td className={`${col.unit} md:whitespace-nowrap md:px-2 md:py-2 md:align-middle`}>
+                          <span data-testid={showBranches ? `hr-register-unit-${e.id}` : undefined} title={unitTxt} className={`max-w-[6.5rem] xl:max-w-[8rem] ${one}`}>
                             {unitTxt}
                           </span>
                         </td>
@@ -797,8 +797,8 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
                               <summary data-testid={`hr-people-more-${e.id}`} aria-label={t("more.label", { name: e.name })} className="grid min-h-[44px] min-w-[44px] cursor-pointer list-none place-items-center rounded-lg text-lg text-[color:var(--color-muted)] hover:bg-[color:var(--color-surface-2)] [&::-webkit-details-marker]:hidden">
                                 ⋯
                               </summary>
-                              {/* r2 (B9): เมนูลอยตรึงกับจอ — สูงไม่เกินจอ (เลื่อนในเมนู) · ตารางเวลาพับไว้ ⇒ ปุ่มลบอยู่ในจอเสมอ */}
-                              <div className="fixed inset-x-3 bottom-3 z-40 flex max-h-[calc(100vh-1.5rem)] flex-col gap-3 overflow-y-auto whitespace-normal rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 text-sm text-[color:var(--color-ink)] shadow-lg sm:absolute sm:inset-x-auto sm:bottom-auto sm:right-0 sm:top-full sm:mt-1 sm:max-h-[min(70vh,34rem)] sm:w-[420px]">
+                              {/* r2 (B9): เมนูสูงไม่เกิน 70% ของจอ (เลื่อนในเมนู) · ปุ่มลบอยู่แถวบนสุด · ตารางเวลาพับไว้ */}
+                              <div className="absolute right-0 top-full z-40 mt-1 flex max-h-[70vh] w-[min(calc(100vw-1.5rem),420px)] flex-col gap-3 overflow-y-auto whitespace-normal rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4 text-sm text-[color:var(--color-ink)] shadow-lg">
                                 <div className="flex items-center gap-3">
                                   <Link href={profileHref(systemId, e.id)} data-testid={`hr-people-menu-open-${e.id}`} className="inline-flex min-h-[44px] items-center font-semibold text-[color:var(--color-accent)]">
                                     {t("more.openProfile")} →
@@ -902,15 +902,15 @@ export async function HrEmployeesSection({ systemId, unit, query = {} }: { syste
             <ProfileHeader emp={pv.profile} close={href({ emp: "" })} />
           </div>
           <div className="px-3">
-            <ProfileTabs href={(k) => profileHref(systemId, pv.profile.id, `?tab=${k}`)} tab="general" tabs={pv.canSeeSensitive ? ["general", "docs", "schedule", "leave", "pay", "history"] : ["general", "docs", "schedule", "leave", "history"]} />
+            <ProfileTabs compact href={(k) => profileHref(systemId, pv.profile.id, `?tab=${k}`)} tab="general" tabs={pv.canSeeSensitive ? ["general", "docs", "schedule", "leave", "pay", "history"] : ["general", "docs", "schedule", "leave", "history"]} />
           </div>
           <div className="flex flex-1 flex-col gap-6 px-5 py-5">{/* HR VIS-5c */}
-            <ProfileProbation systemId={systemId} tenantId={auth.active.tenantId} viewer={viewer} emp={pv.profile} life={pvLife} reviewTestId="hr-people-panel-review" />
+            <ProfileProbation systemId={systemId} tenantId={auth.active.tenantId} viewer={viewer} emp={pv.profile} reviewTestId="hr-people-panel-review" />
             <EmployeeReadView systemId={systemId} emp={pv.profile} sensitive={pv.canSeeSensitive} canEdit={canEdit} compact />
             <ProfileChecklist systemId={systemId} tenantId={auth.active.tenantId} viewer={viewer} employeeId={pv.profile.id} life={pvLife} manageHref={profileHref(systemId, pv.profile.id, "?tab=history#hr-life")} />
             <ProfileConnections systemId={systemId} tenantId={auth.active.tenantId} emp={pv.profile} canEdit={canEdit} />
           </div>
-          <div className="sticky bottom-0 flex items-center gap-3 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface)] px-5 py-4">
+          <div className="flex items-center gap-3 border-t border-[color:var(--color-line)] px-5 py-4">
             <Link href={profileHref(systemId, pv.profile.id)} data-testid="hr-people-panel-open" className="btn btn-primary min-h-[44px] text-sm">
               {t("panel.open")} →
             </Link>
