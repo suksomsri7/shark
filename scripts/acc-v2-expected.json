@@ -1,29 +1,29 @@
 {
   "_readme": "เฉลยชุดเดียวของงานบัญชี V2 — เขียนโดย scripts/seed-acc-v2-qc.mts ทุกครั้งที่ seed · จำนวนเงินเป็นสตางค์ (integer)",
-  "generatedAt": "2026-09-26T23:36:59.887Z",
+  "generatedAt": "2026-09-30T02:01:21.499Z",
   "today": "2026-09-30",
   "oracleValidUntil": "2026-10-31",
-  "tenantId": "cmuj11qvp0000m4kzy9st8jf5",
+  "tenantId": "cmungjwz5000056kzt87exnca",
   "tenantName": "SIAM DIVE QC",
   "ownerEmail": "qc-owner@shark.local",
-  "ownerUserId": "cmuj11qw20001m4kzapohjxb2",
-  "unitId": "cmuj11qws0003m4kzzh1szqzm",
-  "systemId": "cmuj11qx60004m4kzc2kmxqdu",
+  "ownerUserId": "cmungjwzo000156kz571j4s1j",
+  "unitId": "cmungjx0h000356kzlr3qqotn",
+  "systemId": "cmungjx0t000456kzud07jupq",
   "systems": {
-    "ACCOUNT": "cmuj11qx60004m4kzc2kmxqdu",
-    "POS": "cmuj11qyz0006m4kzidxk6x7v",
-    "INVENTORY": "cmuj11r110008m4kzvvok9eer",
-    "MEMBER": "cmuj11r2v000am4kzx6snjpp3",
-    "CRM": "cmuj11r4u000cm4kz2flqnq1d",
-    "CHAT": "cmuj14avc09slm4kzhiztk0kb",
-    "HR": "cmuj14awr09snm4kzutylprk1"
+    "ACCOUNT": "cmungjx0t000456kzud07jupq",
+    "POS": "cmungjx2f000656kzax4s095q",
+    "INVENTORY": "cmungjx3w000856kzee6roevy",
+    "MEMBER": "cmungjx5e000a56kzz5pyp7nz",
+    "CRM": "cmungjx6v000c56kzufu7hilc",
+    "CHAT": "cmunglhj609si56kz2eq50pqz",
+    "HR": "cmunglhks09sk56kzb9u1df8o"
   },
   "permissions": {
     "memberships": {
-      "sales@siamdive-qc.test": "cmuj14b3s09stm4kzeyiojb7o",
-      "approver@siamdive-qc.test": "cmuj14b4a09svm4kzt9g29ihv",
-      "manager@siamdive-qc.test": "cmuj14b4t09sxm4kz94n030ky",
-      "pos@siamdive-qc.test": "cmuj14b5b09szm4kzd2lz1m1b"
+      "sales@siamdive-qc.test": "cmunglhrj09sq56kzxagzy25a",
+      "approver@siamdive-qc.test": "cmunglhs209ss56kzxkv71zsp",
+      "manager@siamdive-qc.test": "cmunglhsn09su56kzre8nsig2",
+      "pos@siamdive-qc.test": "cmunglht609sw56kz1qmsdl2m"
     },
     "roles": [
       {
@@ -83,8 +83,8 @@
       "autoCreateContact",
       "inboxFromChat"
     ],
-    "apiKeyPrefix": "shark_db1f77",
-    "webhookId": "cmuj14bdh09t5m4kzbd05rxf2",
+    "apiKeyPrefix": "shark_631560",
+    "webhookId": "cmungli1x09t256kzbem877sg",
     "webhookUrl": "http://127.0.0.1:9/shark-acc-v2-qc"
   },
   "receivable": 49430000,
@@ -106,7 +106,7 @@
   "financeAccounts": [
     {
       "code": "CSH001",
-      "id": "cmuj11yao00gom4kzidym4adn",
+      "id": "cmungk31600go56kz2xmvdxhn",
       "name": "เงินสด",
       "type": "CASH",
       "opening": 1400000,
@@ -114,7 +114,7 @@
     },
     {
       "code": "BSV001",
-      "id": "cmuj11yjs00l6m4kz9ngy3spj",
+      "id": "cmungk38t00l656kzmlbrjn9q",
       "name": "กสิกรไทย ออมทรัพย์",
       "type": "BANK",
       "opening": 40505000,
@@ -122,7 +122,7 @@
     },
     {
       "code": "EWL001",
-      "id": "cmuj11yxi00rym4kz290er7ln",
+      "id": "cmungk3k800ry56kzx0ghyjnt",
       "name": "พร้อมเพย์",
       "type": "E_WALLET",
       "opening": 5000000,
@@ -130,7 +130,7 @@
     },
     {
       "code": "PTY001",
-      "id": "cmuj11z6a00wgm4kzlul9zzey",
+      "id": "cmungk3rk00wg56kzf8s8hb5u",
       "name": "เงินสดย่อย",
       "type": "PETTY_CASH",
       "opening": 2000000,
@@ -145,7 +145,7 @@
   },
   "financeOpeningSplit": {
     "code": "BSV001",
-    "financeId": "cmuj11yjs00l6m4kz9ngy3spj",
+    "financeId": "cmungk38t00l656kzmlbrjn9q",
     "entries": [
       {
         "seq": 1,
@@ -159,22 +159,22 @@
     "sum": 40505000
   },
   "financeArchived": {
-    "id": "cmuj11zf9010ym4kz1hyk1rtw",
+    "id": "cmungk3yw010y56kzh2tlw9ia",
     "code": "BSV002"
   },
   "pettyCash": {
-    "id": "cmuj11z6a00wgm4kzlul9zzey",
+    "id": "cmungk3rk00wg56kzf8s8hb5u",
     "code": "PTY001",
     "balance": 2970000,
     "topUpAmount": 1000000,
     "topUpDate": "2026-09-10",
     "reimbursed": {
-      "paymentId": "cmuj12sm30805m4kzo6xj6ri5",
+      "paymentId": "cmungkuv5080556kz0drm5a5j",
       "amount": 50000,
       "date": "2026-09-12"
     },
     "pending": {
-      "paymentId": "cmuj12t2n084sm4kz5f8qqrig",
+      "paymentId": "cmungkv9x084s56kz0eq954jv",
       "amount": 30000,
       "date": "2026-09-20"
     }
@@ -193,7 +193,16 @@
     "customer": 41,
     "vendor": 22,
     "archived": 5,
-    "active": 58
+    "active": 58,
+    "regular": 0,
+    "groups": [],
+    "source": {
+      "member": 0,
+      "crm": 0,
+      "chat": 0,
+      "pos": 0,
+      "imported": 0
+    }
   },
   "products": 13,
   "productsByType": {
@@ -206,7 +215,7 @@
     "total": 15
   },
   "bundle": {
-    "id": "cmuj11sto003ym4kzu2w95hif",
+    "id": "cmungjymi003y56kz91asyvdj",
     "code": "B00001",
     "sku": "SET-SNK",
     "name": "ชุดดำน้ำตื้นครบเซ็ต (หน้ากาก + ถังอากาศ)",
@@ -214,19 +223,19 @@
     "components": [
       {
         "sku": "MASK-01",
-        "productId": "cmuj11s00003fm4kzqprxrrj5",
+        "productId": "cmungjxx3003f56kzxsgpulkk",
         "qty": 1
       },
       {
         "sku": "TANK-12",
-        "productId": "cmuj11s5u003nm4kzkzec7eep",
+        "productId": "cmungjy1u003n56kz21fsxpii",
         "qty": 1
       }
     ]
   },
   "openingLot": {
     "sku": "LOGBK-01",
-    "productId": "cmuj11s79003pm4kzt123ty3y",
+    "productId": "cmungjy31003p56kza339pn1c",
     "qty": 50,
     "unitCost": 18000,
     "amount": 900000,
@@ -234,10 +243,10 @@
     "crCode": "3999"
   },
   "costAdjustment": {
-    "docId": "cmuj11t8a006dm4kz4uhi46f1",
+    "docId": "cmungjyyh006d56kzc54h1vz4",
     "docNo": "CA-202609-0001",
     "sku": "MASK-01",
-    "productId": "cmuj11s00003fm4kzqprxrrj5",
+    "productId": "cmungjxx3003f56kzxsgpulkk",
     "oldCost": 168000,
     "newCost": 175000,
     "qty": 24,
@@ -246,17 +255,17 @@
     "crCode": "5310"
   },
   "inventory": {
-    "systemId": "cmuj11r110008m4kzvvok9eer",
+    "systemId": "cmungjx3w000856kzee6roevy",
     "linked": [
       {
         "sku": "MASK-01",
-        "itemId": "cmuj11s88003rm4kznq7qoqb2",
+        "itemId": "cmungjy3t003r56kzqr9li15f",
         "onHand": 22,
         "costSatang": 175000
       },
       {
         "sku": "TANK-12",
-        "itemId": "cmuj11sj3003vm4kzl5e2xwtd",
+        "itemId": "cmungjyd7003v56kzgd4vzvyq",
         "onHand": 8,
         "costSatang": 520000
       }
@@ -266,8 +275,8 @@
   },
   "posSales": {
     "docType": "TAX_INVOICE_ABB",
-    "posSystemId": "cmuj11qyz0006m4kzidxk6x7v",
-    "memberSystemId": "cmuj11r2v000am4kzx6snjpp3",
+    "posSystemId": "cmungjx2f000656kzax4s095q",
+    "memberSystemId": "cmungjx5e000a56kzz5pyp7nz",
     "count": 2,
     "lineCount": 3,
     "grandTotal": 1350000,
@@ -275,50 +284,50 @@
     "sales": [
       {
         "key": "A",
-        "saleId": "cmuj12u7e08c8m4kzitun18uu",
+        "saleId": "cmungkw9k08c856kzynrfsfdq",
         "receiptNo": "202609-0001",
         "grandTotalSatang": 1065000
       },
       {
         "key": "B",
-        "saleId": "cmuj12uwg08gym4kzji208ska",
+        "saleId": "cmungkwxy08gy56kz3vp2e0kq",
         "receiptNo": "202609-0002",
         "grandTotalSatang": 285000
       }
     ],
     "docs": [
       {
-        "id": "cmuj143iu08jgm4kznh62hkl9",
+        "id": "cmungl8wb08jg56kzc6phobrk",
         "docNo": "202609-0001",
-        "refId": "cmuj12u7e08c8m4kzitun18uu",
-        "contactId": "cmuj11usl00a7m4kzj5ppax9c",
+        "refId": "cmungkw9k08c856kzynrfsfdq",
+        "contactId": "cmungk04y00a756kzcbwrrmaf",
         "subTotal": 995327,
         "vatAmount": 69673,
         "grandTotal": 1065000,
         "lines": [
           {
-            "productId": "cmuj11s00003fm4kzqprxrrj5",
+            "productId": "cmungjxx3003f56kzxsgpulkk",
             "qty": 1,
             "amount": 285000
           },
           {
-            "productId": "cmuj11s5u003nm4kzkzec7eep",
+            "productId": "cmungjy1u003n56kz21fsxpii",
             "qty": 1,
             "amount": 780000
           }
         ]
       },
       {
-        "id": "cmuj1444w08jom4kzmujy5lwx",
+        "id": "cmungl9m708jo56kzrqga5f6m",
         "docNo": "202609-0002",
-        "refId": "cmuj12uwg08gym4kzji208ska",
+        "refId": "cmungkwxy08gy56kz3vp2e0kq",
         "contactId": null,
         "subTotal": 266355,
         "vatAmount": 18645,
         "grandTotal": 285000,
         "lines": [
           {
-            "productId": "cmuj11s00003fm4kzqprxrrj5",
+            "productId": "cmungjxx3003f56kzxsgpulkk",
             "qty": 1,
             "amount": 285000
           }
@@ -382,15 +391,15 @@
       }
     },
     "fixtures": {
-      "manualJvId": "cmuj14ae309s4m4kzjpm2vygt",
-      "flaggedJvId": "cmuj14ag209s7m4kzerafkyy9",
-      "reversedJvId": "cmuj14ai909sbm4kzlysyags2",
-      "reversalJvId": "cmuj14akz09sem4kzp5uilv7c",
-      "assetOpeningJvId": "cmuj149wj09rcm4kzzieqc44n"
+      "manualJvId": "cmunglh0909s156kz7bw30ie7",
+      "flaggedJvId": "cmunglh2c09s456kzhmkcc5cw",
+      "reversedJvId": "cmunglh4w09s856kzxut4o165",
+      "reversalJvId": "cmunglh7w09sb56kz31h5rkto",
+      "assetOpeningJvId": "cmunglgil09r956kz9wlmn1yo"
     },
     "assets": [
       {
-        "id": "cmuj149uv09ram4kzix2w7s3v",
+        "id": "cmunglggw09r756kzakk1qbfs",
         "code": "FA-0001",
         "name": "เรือยางท้ายติดเครื่อง Zodiac Pro 5.5",
         "cost": 48000000,
@@ -402,7 +411,7 @@
         "netBookValue": 45600006
       },
       {
-        "id": "cmuj149v809rbm4kzqy2svp6y",
+        "id": "cmunglgh709r856kzp46kepg8",
         "code": "FA-0002",
         "name": "เครื่องอัดอากาศ Bauer Junior II",
         "cost": 36000000,
@@ -459,11 +468,11 @@
     ]
   },
   "bankReconcile": {
-    "tenantId": "cmuj11qvp0000m4kzy9st8jf5",
-    "systemId": "cmuj11qx60004m4kzc2kmxqdu",
-    "financeId": "cmuj11yjs00l6m4kz9ngy3spj",
+    "tenantId": "cmungjwz5000056kzt87exnca",
+    "systemId": "cmungjx0t000456kzud07jupq",
+    "financeId": "cmungk38t00l656kzmlbrjn9q",
     "financeCode": "BSV001",
-    "ledgerAccountId": "cmuj11yjg00l5m4kz9t03a212",
+    "ledgerAccountId": "cmungk38j00l556kz07izxbb7",
     "ledgerCode": "1010-01",
     "periodKey": "2026-09",
     "openingSatang": 77055000,
@@ -483,17 +492,17 @@
     "feeSatang": -25000,
     "interestSatang": 1235,
     "fileName": "kbank-2026-09.csv",
-    "statementId": "cmuj144gh08jqm4kzw9cjsghq",
+    "statementId": "cmungl9y108jq56kzw77r3dj9",
     "imported": 11,
     "autoMatched": 8,
     "autoSuggested": 1,
     "autoUnmatched": 2,
     "prev": {
-      "tenantId": "cmuj11qvp0000m4kzy9st8jf5",
-      "systemId": "cmuj11qx60004m4kzc2kmxqdu",
-      "financeId": "cmuj11yjs00l6m4kz9ngy3spj",
+      "tenantId": "cmungjwz5000056kzt87exnca",
+      "systemId": "cmungjx0t000456kzud07jupq",
+      "financeId": "cmungk38t00l656kzmlbrjn9q",
       "financeCode": "BSV001",
-      "ledgerAccountId": "cmuj11yjg00l5m4kz9t03a212",
+      "ledgerAccountId": "cmungk38j00l556kz07izxbb7",
       "ledgerCode": "1010-01",
       "periodKey": "2026-08",
       "openingSatang": 67205000,
@@ -508,21 +517,21 @@
       "feeSatang": 0,
       "interestSatang": 0,
       "fileName": "kbank-2026-08.csv",
-      "statementId": "cmuj144ul08k4m4kzhlq0umtj",
+      "statementId": "cmungladc08k456kzjtw9kgg7",
       "imported": 6,
       "autoMatched": 6
     }
   },
   "whtV2": {
     "creditCertIds": [
-      "cmuj145mw08p2m4kzzf6nka4w",
-      "cmuj1466308tvm4kzew4iuleg",
-      "cmuj146og08yom4kzfntnqh85"
+      "cmunglb5y08p156kzi54cu6g5",
+      "cmunglbrt08tt56kznkewk5xm",
+      "cmunglcct08yl56kzhnfo10gd"
     ],
     "deductCertIds": [
-      "cmuj1476h093gm4kz00v169tn",
-      "cmuj147nj0986m4kz0qbtlar3",
-      "cmuj1485009cwm4kzn3mpwppc"
+      "cmunglcvy093d56kzy0fdxgpu",
+      "cmungldk6098356kz64bgbh8s",
+      "cmunglejs09ct56kzddksgbh3"
     ],
     "creditCashInSatang": 6240000,
     "creditWhtTotalSatang": 180000,
@@ -535,39 +544,39 @@
     ],
     "filedForm": 53,
     "filedPeriodKey": "2026-09",
-    "filedCertId": "cmuj1485009cwm4kzn3mpwppc"
+    "filedCertId": "cmunglejs09ct56kzddksgbh3"
   },
   "promptPay": {
-    "financeId": "cmuj11yxi00rym4kz290er7ln",
+    "financeId": "cmungk3k800ry56kzx0ghyjnt",
     "financeCode": "EWL001",
     "promptpayId": "0835565001234",
     "beam": {
-      "requestId": "cmuj149bk09oom4kzyo56m360",
-      "token": "kEPplno_JHXw19LDrCQDrQ",
+      "requestId": "cmunglftj09ol56kz7mrfmnh1",
+      "token": "MOsM7F1SWGFzT4z6t7d94g",
       "chargeId": "qc_beam_charge_5_5",
-      "documentId": "cmuj1490f09mbm4kzqda2ueth",
+      "documentId": "cmunglfh609m856kzz8kbhw5y",
       "docNo": "IV-2026-09-0023",
       "amountSatang": 749000,
-      "paymentId": "cmuj149fg09oqm4kzrnamw6lf"
+      "paymentId": "cmunglfz409on56kzbopjr1wk"
     },
     "staticPending": {
-      "requestId": "cmuj149qe09r5m4kz681as1cj",
-      "token": "B84-ztB0PVb1NcZK0fYBOg",
-      "documentId": "cmuj120vo01afm4kzqgjghr4u",
+      "requestId": "cmunglgc709r256kzlpqxecb3",
+      "token": "W7CfPhq86INOo98asUP9Zw",
+      "documentId": "cmungk58901af56kzf00yamu6",
       "amountSatang": 2490000,
       "qrPayload": "00020101021229370016A000000677010111021308355650012345303764540824900.005802TH63045112"
     },
     "ewalletDeltaSatang": 749000
   },
   "chequeV2": {
-    "inDueSoonId": "cmuj1489w09f5m4kzng7p4wl9",
+    "inDueSoonId": "cmungleqf09f256kz9uiakhc1",
     "inDueSoonChequeNo": "1000123",
-    "inDueSoonDate": "2026-10-01T23:36:54.432Z",
-    "inBouncedId": "cmuj148f509hfm4kzm5k1eupe",
+    "inDueSoonDate": "2026-10-05T02:01:14.901Z",
+    "inBouncedId": "cmunglev309hc56kzstlr8jx4",
     "inBouncedChequeNo": "1000124",
-    "outPendingId": "cmuj148o509jtm4kz3if6oyp1",
+    "outPendingId": "cmunglf4e09jq56kzt36fsfk8",
     "outPendingChequeNo": "5551001",
-    "outVoidedId": "cmuj148t209m3m4kzove0hvml",
+    "outVoidedId": "cmunglf9409m056kzl38mjrrw",
     "outVoidedChequeNo": "5551002"
   },
   "coa": {
@@ -610,27 +619,27 @@
     "samples": [
       {
         "code": "1000-01",
-        "id": "cmuj11yac00gnm4kzgzpf5uvb",
+        "id": "cmungk30x00gn56kzrihdi62q",
         "balanceSatang": 12488000,
         "monthDeltaSatang": 3808000
       },
       {
         "code": "1100",
-        "id": "cmuj11ra1000mm4kzq1n8v3eo",
+        "id": "cmungjxaw000m56kzzkmpcojh",
         "balanceSatang": 49430000,
         "monthDeltaSatang": 37790000
       },
       {
         "code": "4000",
-        "id": "cmuj11ra10018m4kzu41d9p8z",
+        "id": "cmungjxaw001856kzx8g424ao",
         "balanceSatang": 141121497,
         "monthDeltaSatang": 59140188
       }
     ],
     "custom": {
-      "onlineAds": "cmuj149r709r7m4kzhkywf7z8",
-      "rentalIncome": "cmuj149r709r8m4kz0f3r7bt6",
-      "archived": "cmuj149r709r9m4kz8vl6o3f1"
+      "onlineAds": "cmunglgd209r456kz96bd6o97",
+      "rentalIncome": "cmunglgd209r556kzaa8wpcpr",
+      "archived": "cmunglgd209r656kzpwotyhfq"
     }
   },
   "attachments": {
@@ -638,19 +647,19 @@
     "unlinked": 3,
     "linked": 2,
     "notAccounting": 1,
-    "staffUploaderId": "cmuj14bj309t6m4kzrok3d23f",
+    "staffUploaderId": "cmungli8109t356kzko35t0l6",
     "staffUploaderName": "นภาพร ใจเย็น",
-    "ownerUploaderId": "cmuj11qw20001m4kzapohjxb2",
+    "ownerUploaderId": "cmungjwzo000156kz571j4s1j",
     "ids": {
-      "unlinked1": "cmuj14brj09t9m4kz085xr7lf",
-      "unlinked2": "cmuj14bvw09tbm4kz5db6fg9c",
-      "unlinked3": "cmuj14c0y09tdm4kz40ctonis",
-      "linkedExp": "cmuj14c4v09tfm4kzd1xfgi1r",
-      "linkedIv": "cmuj14c7809thm4kzyqdm9ihp",
-      "notAccounting": "cmuj14c9u09tjm4kz380vu0ra"
+      "unlinked1": "cmungliix09t656kzkeqrmxjm",
+      "unlinked2": "cmunglinu09t856kzobz7424x",
+      "unlinked3": "cmunglitw09ta56kz2wus8b5f",
+      "linkedExp": "cmunglj1p09tc56kzsbfei56n",
+      "linkedIv": "cmungljfc09te56kz9f6oan9k",
+      "notAccounting": "cmungljmg09tg56kzamukn3c4"
     },
-    "linkedExpDocumentId": "cmuj12m9506dvm4kzezlilstc",
-    "linkedIvDocumentId": "cmuj120vo01afm4kzqgjghr4u"
+    "linkedExpDocumentId": "cmungkpg006dv56kzbpe5skqo",
+    "linkedIvDocumentId": "cmungk58901af56kzf00yamu6"
   },
   "inbox": {
     "unlinked": 3,
@@ -660,9 +669,9 @@
     "aiUnsupported": 1,
     "docsFromInboxThisMonth": 0,
     "ids": {
-      "done": "cmuj14brj09t9m4kz085xr7lf",
-      "unread": "cmuj14bvw09tbm4kz5db6fg9c",
-      "failed": "cmuj14c0y09tdm4kz40ctonis"
+      "done": "cmungliix09t656kzkeqrmxjm",
+      "unread": "cmunglinu09t856kzobz7424x",
+      "failed": "cmunglitw09ta56kz2wus8b5f"
     },
     "sources": {
       "done": "CHAT",
@@ -747,9 +756,9 @@
       "warnOnGap": true
     },
     "channelOrder": [
-      "cmuj11yxi00rym4kz290er7ln",
-      "cmuj11yjs00l6m4kz9ngy3spj",
-      "cmuj11yao00gom4kzidym4adn"
+      "cmungk3k800ry56kzx0ghyjnt",
+      "cmungk38t00l656kzmlbrjn9q",
+      "cmungk31600go56kz2xmvdxhn"
     ],
     "channelCodesInOrder": [
       "EWL001",
@@ -772,10 +781,10 @@
       }
     ],
     "tagIds": {
-      "ทริปสิมิลัน": "cmuj14as809sjm4kzil57yn0m",
-      "ลูกค้าองค์กร": "cmuj14at309skm4kzrezr6ifq"
+      "ทริปสิมิลัน": "cmunglhfc09sg56kzqzldypnb",
+      "ลูกค้าองค์กร": "cmunglhg309sh56kz7l74vwof"
     },
-    "taggedInvoiceId": "cmuj120vo01afm4kzqgjghr4u",
+    "taggedInvoiceId": "cmungk58901af56kzf00yamu6",
     "numberedDocTypes": 18
   },
   "policy": {
@@ -839,18 +848,18 @@
     "subSections": 12
   },
   "fixtures": {
-    "invPiyathidaId": "cmuj11zl1010zm4kzt8wtgjnv",
+    "invPiyathidaId": "cmungk43v010z56kzbr4v28vb",
     "invPiyathidaDocNo": "IV-2026-08-0001",
-    "invNattapholId": "cmuj120vo01afm4kzqgjghr4u",
+    "invNattapholId": "cmungk58901af56kzf00yamu6",
     "invNattapholDocNo": "IV-2026-09-0001",
-    "invSimilanViewId": "cmuj1257s027jm4kz4te8qo7i",
+    "invSimilanViewId": "cmungk92l027j56kz06f177xp",
     "invSimilanViewDocNo": "IV-2026-09-0015",
-    "depositNattapholId": "cmuj12lmo069bm4kzo7duuba4",
+    "depositNattapholId": "cmungkp25069b56kzue2ullkz",
     "depositNattapholDocNo": "DR-2026-09-0001",
-    "firstOpenBillId": "cmuj12m9506dvm4kzezlilstc",
-    "contactC00019Id": "cmuj11usl00a7m4kzj5ppax9c",
-    "contactNattapholId": "cmuj11tqo008ym4kzga15mio5",
-    "contactSimilanViewId": "cmuj11tld008sm4kzp79mcdb1",
+    "firstOpenBillId": "cmungkpg006dv56kzbpe5skqo",
+    "contactC00019Id": "cmungk04y00a756kzcbwrrmaf",
+    "contactNattapholId": "cmungjzbo008y56kznnvmxuxk",
+    "contactSimilanViewId": "cmungjz7m008s56kz2fyq3l05",
     "contactC00019Name": "ปิยธิดา อินสุ่ม",
     "contactC00019Code": "C00019",
     "invPiyathidaGrand": 3840000,
@@ -863,5 +872,547 @@
     "invSimilanViewGrand": 12450000,
     "invSimilanViewPaid": 6225000,
     "invSimilanViewRemain": 6225000
+  },
+  "dashboard": {
+    "_readme": "เฉลยของ WO 2.1 (หน้าหลัก/ภาพรวม) — เขียนโดย scripts/acc-v2-expected-dashboard.mts ด้วย SQL ดิบที่ไม่พึ่ง dashboard.ts · สตางค์ล้วน · seed ใหม่ต้องรันสคริปต์นี้ซ้ำ",
+    "generatedAt": "2026-10-07T12:22:28.667Z",
+    "now": "2026-09-30T12:00:00+07:00",
+    "year": 2026,
+    "periodKey": "2026-09",
+    "series": {
+      "months": [
+        {
+          "periodKey": "2026-01",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-02",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-03",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-04",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-05",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-06",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-07",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-08",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-09",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-10",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-11",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        },
+        {
+          "periodKey": "2026-12",
+          "revenue": 0,
+          "expense": 0,
+          "profit": 0
+        }
+      ],
+      "total": {
+        "revenue": 0,
+        "expense": 0,
+        "profit": 0
+      },
+      "prevYear": {
+        "revenue": 0,
+        "expense": 0,
+        "profit": 0
+      },
+      "yoyBp": {
+        "revenue": null,
+        "expense": null,
+        "profit": null
+      }
+    },
+    "categories": {
+      "income": {
+        "total": 0,
+        "rows": []
+      },
+      "expense": {
+        "total": 0,
+        "rows": []
+      }
+    },
+    "cash": {
+      "total": 0,
+      "accounts": []
+    },
+    "arap": {
+      "receivable": {
+        "count": 0,
+        "amount": 0,
+        "overdueCount": 0,
+        "overdueAmount": 0,
+        "contactCount": 0,
+        "aging": {
+          "notDueSatang": 0,
+          "d1_30Satang": 0,
+          "d31_60Satang": 0,
+          "d61_90Satang": 0,
+          "d90plusSatang": 0,
+          "totalSatang": 0
+        }
+      },
+      "payable": {
+        "count": 0,
+        "amount": 0,
+        "overdueCount": 0,
+        "overdueAmount": 0,
+        "contactCount": 0,
+        "aging": {
+          "notDueSatang": 0,
+          "d1_30Satang": 0,
+          "d31_60Satang": 0,
+          "d61_90Satang": 0,
+          "d90plusSatang": 0,
+          "totalSatang": 0
+        }
+      }
+    },
+    "issued": {
+      "INVOICE": {
+        "total": {
+          "count": 0,
+          "amount": 0
+        },
+        "byStatus": {}
+      },
+      "QUOTATION": {
+        "total": {
+          "count": 0,
+          "amount": 0
+        },
+        "byStatus": {}
+      }
+    },
+    "topCustomers": [],
+    "topVendors": [],
+    "topProducts": [],
+    "topExpenseCategories": {
+      "total": 0,
+      "rows": []
+    },
+    "pending": {
+      "quotationAwaitingAccept": 0,
+      "poAwaitingApproval": 0,
+      "depositAwaitingDeduct": 0,
+      "needsReview": 0,
+      "purchaseTaxAwaiting": 0,
+      "recurringDraftsAwaiting": 0,
+      "total": 0
+    },
+    "recent": [],
+    "calendar": {
+      "monthKey": "2026-09",
+      "tiles": {
+        "inflow": {
+          "count": 0,
+          "amount": 0
+        },
+        "outflow": {
+          "count": 0,
+          "amount": 0
+        },
+        "expectedIn": {
+          "count": 0,
+          "amount": 0
+        },
+        "expectedOut": {
+          "count": 0,
+          "amount": 0
+        },
+        "overdueReceivable": {
+          "count": 0,
+          "amount": 0
+        },
+        "overduePayable": {
+          "count": 0,
+          "amount": 0
+        }
+      },
+      "days": [],
+      "expectedDays": []
+    }
+  },
+  "overview": {
+    "_readme": "เฉลยของ WO 2.3 (ดูภาพรวมรายรับ/รายจ่าย §6) — SQL ดิบคนละสำนวนจาก dashboard.ts (monthlyStatusSeries/issuedByType/topTrackedContacts)",
+    "monthKey": "2026-09",
+    "revenue": {
+      "series": {
+        "months": [
+          {
+            "periodKey": "2026-01",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-02",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-03",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-04",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-05",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-06",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-07",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-08",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-09",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-10",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-11",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-12",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          }
+        ],
+        "total": {
+          "paid": 0,
+          "awaiting": 0,
+          "overdue": 0,
+          "paidCount": 0,
+          "awaitingCount": 0,
+          "overdueCount": 0,
+          "grand": 0,
+          "grandCount": 0
+        }
+      },
+      "issuedThisMonth": {
+        "count": 0,
+        "amount": 0
+      },
+      "tracked": []
+    },
+    "expense": {
+      "series": {
+        "months": [
+          {
+            "periodKey": "2026-01",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-02",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-03",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-04",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-05",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-06",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-07",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-08",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-09",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-10",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-11",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          },
+          {
+            "periodKey": "2026-12",
+            "paid": 0,
+            "awaiting": 0,
+            "overdue": 0,
+            "paidCount": 0,
+            "awaitingCount": 0,
+            "overdueCount": 0
+          }
+        ],
+        "total": {
+          "paid": 0,
+          "awaiting": 0,
+          "overdue": 0,
+          "paidCount": 0,
+          "awaitingCount": 0,
+          "overdueCount": 0,
+          "grand": 0,
+          "grandCount": 0
+        }
+      },
+      "issuedThisMonth": {
+        "count": 0,
+        "amount": 0
+      },
+      "tracked": []
+    }
+  },
+  "contactsOverview": {
+    "newCustomersThisMonth": 0,
+    "returningCustomers": 0,
+    "topCustomersByPurchases": [],
+    "topOutstanding": [],
+    "topVendorsByPayments": []
+  },
+  "contactProfile": {
+    "contactId": "cmungk04y00a756kzcbwrrmaf",
+    "code": "C00019",
+    "name": "ปิยธิดา อินสุ่ม",
+    "kind": "CUSTOMER",
+    "outstandingSatang": 5820000,
+    "outstandingDocs": 2,
+    "overdueDocs": 1,
+    "aging": {
+      "notDue": 1980000,
+      "d1_30": 0,
+      "d31_60": 3840000,
+      "d61_90": 0,
+      "d90plus": 0
+    },
+    "agingNow": {
+      "notDue": 1980000,
+      "d1_30": 0,
+      "d31_60": 3840000,
+      "d61_90": 0,
+      "d90plus": 0
+    },
+    "paidThisYearSatang": 0,
+    "paidDocsThisYear": 0,
+    "year": 2026,
+    "docsCount": 3,
+    "filesCount": 0,
+    "recentDocIds": [
+      "cmungk80301y356kzuw08ej9k",
+      "cmungl8wb08jg56kzc6phobrk",
+      "cmungk43v010z56kzbr4v28vb"
+    ],
+    "recentDocNos": [
+      "IV-2026-09-0011",
+      "202609-0001",
+      "IV-2026-08-0001"
+    ]
+  },
+  "mergeDuplicate": {
+    "taxId": "3000000000000",
+    "primary": {
+      "id": "cmungjz5m008p56kz68mxon6n",
+      "code": "C00001",
+      "name": "บริษัท อันดามัน ทราเวล จำกัด",
+      "branchCode": "00000",
+      "docs": 2,
+      "docTypes": 1,
+      "journalLines": 0,
+      "groups": 1,
+      "recurringRules": 0
+    },
+    "secondary": {
+      "id": "cmungjzho009756kzkzsw20u6",
+      "code": "C00007",
+      "name": "บจก. อันดามัน ทราเวล",
+      "branchCode": "00002",
+      "docs": 14,
+      "docTypes": 4,
+      "journalLines": 1,
+      "groups": 2,
+      "recurringRules": 1
+    },
+    "sharedGroups": 1,
+    "totalDocsAfterMerge": 16
   }
 }
