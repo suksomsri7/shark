@@ -43,20 +43,24 @@ export function TemplateRowsEditor({ initial, labels, prefix, children }: { init
       </div>
       {js && (
         <>
+          <div className="flex gap-2 px-3 text-xs text-[color:var(--color-muted)]" aria-hidden="true">
+            <span className="flex-1">{labels.title}</span>
+            <span className="w-20">{labels.days}</span>
+            <span className="w-[9.5rem]" />
+          </div>
           <ul className="flex flex-col rounded-xl border border-[color:var(--color-line)]">
             {rows.map((r, i) => (
-              <li key={r.key} className="flex flex-wrap items-center gap-2 border-t border-[color:var(--color-line)] px-3 py-2 first:border-t-0">
+              <li key={r.key} className="flex flex-wrap items-center gap-2 border-t sm:flex-nowrap border-[color:var(--color-line)] px-3 py-2 first:border-t-0">
                 <input
                   aria-label={labels.title}
                   value={r.title}
                   maxLength={TITLE_MAX}
                   onChange={(e) => set(i, { title: e.target.value })}
-                  className="input min-h-[44px] min-w-0 flex-1 basis-40 text-sm"
+                  className="input min-h-[44px] min-w-0 flex-1 basis-32 text-sm"
                   data-testid={`hr-set-tpl-${prefix}-title-${i}`}
                 />
-                <label className="flex items-center gap-1 text-xs text-[color:var(--color-muted)]">
-                  {labels.days}
                   <input
+                    aria-label={labels.days}
                     type="number"
                     min={0}
                     max={DUE_MAX}
@@ -65,8 +69,7 @@ export function TemplateRowsEditor({ initial, labels, prefix, children }: { init
                     className="input min-h-[44px] w-20 text-sm"
                     data-testid={`hr-set-tpl-${prefix}-days-${i}`}
                   />
-                </label>
-                <span className="flex gap-1">
+                <span className="flex w-[9.5rem] shrink-0 justify-end gap-1">
                   {i > 0 && (
                     <button type="button" className={btn} aria-label={labels.up} title={labels.up} onClick={() => move(i, -1)} data-testid={`hr-set-tpl-${prefix}-up-${i}`}>
                       ↑

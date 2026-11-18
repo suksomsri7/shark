@@ -445,7 +445,7 @@ export async function FilingSettingsCard({ systemId, msg }: { systemId: string; 
         />
       ) : null}{/* HR VIS-5d ▸ §7.3: non-owner sees values as text + the reason (the form below renders for the owner only) ◂ */}
       {owner && (<>{/* HR VIS-5d ◂ */}
-      <form action={saveFilingProfileAction} className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <form action={saveFilingProfileAction} className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">{/* HR VIS-5d ▸ three columns on wide screens ◂ */}
         <input type="hidden" name="systemId" value={systemId} />
         {text("taxId", p?.taxId, { inputMode: "numeric", maxLength: 13 })}
         {text("branchNo", p?.branchNo ?? "000000", { inputMode: "numeric", maxLength: 6 })}
@@ -498,8 +498,8 @@ export async function FilingSettingsCard({ systemId, msg }: { systemId: string; 
           <input type="checkbox" name="lto" defaultChecked={!!p?.lto} disabled={!owner} data-testid="hr-filing-profile-lto" />
           {t("lto")}
         </label>
-        <p className={`${muted} sm:col-span-2`}>{tx.wageU}</p>
-        <p className={`${muted} sm:col-span-2`}>{tx.slashNote}</p>
+        <p className={`${muted} sm:col-span-full`}>{tx.wageU}</p>{/* HR VIS-5d ◂ */}
+        <p className={`${muted} sm:col-span-full`}>{tx.slashNote}</p>{/* HR VIS-5d ◂ */}
         {owner ? (
           <button type="submit" className={btn} data-testid="hr-filing-profile-save">
             {t("save")}

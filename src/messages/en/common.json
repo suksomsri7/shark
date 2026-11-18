@@ -414,8 +414,10 @@
         "titleNote": "(with effective dates · view only for shops)",
         "effective": "Effective {day}",
         "status": "Status",
-        "otTitle": "OT and minimum wage"
-      }
+        "otTitle": "OT and minimum wage",
+        "moreRows": "Other effective dates ({n})"
+      },
+      "bankPresetAdd": "Add a column set"
     },
     "kiosk": {
       "prompt": "Enter your 4–6 digit PIN, then tap Clock or Start break",

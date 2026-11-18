@@ -16038,6 +16038,32 @@
    "wo": "VIS-5d",
    "oracle": "qc-hr-vis-5d",
    "note": "บันทึกค่าตั้งวงจรพนักงาน → ?life= (มติผู้คุม 5: testid สำหรับ press probe)"
+  },
+  {
+   "page": "/app/sys/[id]/hr/settings",
+   "testid": "hr-set-bank-preset-open",
+   "kind": "button",
+   "interactive": true,
+   "file": "src/lib/modules/hr/bank-files/ui.tsx",
+   "conditional": "ผู้ผ่านด่านไฟล์โอน (canUseBankFiles) · แท็บรอบจ่าย",
+   "roles": [
+    "owner",
+    "payroll"
+   ],
+   "hiddenFor": [
+    "manager",
+    "manager-branch",
+    "kiosk",
+    "member",
+    "staff",
+    "payrollSelf"
+   ],
+   "expect": {
+    "type": "ui"
+   },
+   "wo": "VIS-5d",
+   "oracle": "qc-hr-vis-5d",
+   "note": "เปิดฟอร์มเพิ่มชุดคอลัมน์ CSV/Excel (พับไว้)"
   }
  ]
 }

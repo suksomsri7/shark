@@ -70,7 +70,10 @@ const fld = "flex min-w-0 flex-col gap-1 text-xs"; // HR VIS-5d ▸ form field (
 const chk = "flex min-h-[44px] items-center gap-2 text-xs"; // HR VIS-5d ▸ checkbox row ≥ 44 px ◂
 const box = "h-5 w-5 shrink-0"; // HR VIS-5d ▸ checkbox 20 px (was 13 px) ◂
 const addArea = "flex flex-col gap-3 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-5 py-4"; // HR VIS-5d ▸ add-form strip at the foot of a card ◂
-const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[color:var(--color-line)] px-5 py-3 first:border-t-0"; // HR VIS-5d ▸ list row ◂
+const row = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[color:var(--color-line)] px-5 py-3 first:border-t-0 sm:grid sm:grid-cols-[minmax(0,1.3fr)_minmax(0,1fr)_minmax(0,0.9fr)_auto]"; // HR VIS-5d ▸ list row (columns from sm) ◂
+const row2 = "flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-[color:var(--color-line)] px-5 py-3 first:border-t-0 sm:grid sm:grid-cols-[minmax(0,1fr)_auto]"; // HR VIS-5d ▸ leave row: text | button · warnings under ◂
+const grid3 = "grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3"; // HR VIS-5d ▸ add-form fields ◂
+const grid4 = "grid grid-cols-2 items-end gap-x-3 gap-y-2 lg:grid-cols-4"; // HR VIS-5d ▸ number fields of the rule forms ◂
 // HR H1.2 R13 ▸ R13.3: ผลการกดส่งทาง URL เป็น "รหัสสั้น" เท่านั้น แล้วแปลงกลับจากรายการข้อความคงที่ (allowlist) —
 //   ไม่แสดงข้อความอิสระจาก ?msg= · รหัสที่ไม่รู้จัก = ไม่แสดงอะไร · ข้อความที่ไม่อยู่ในรายการ = "บันทึกไม่สำเร็จ" ◂
 const MSG_TEXTS: Record<string, string> = {
@@ -274,9 +277,11 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
       <ModuleTabs items={await hrTabsFor(id)} wrap />{/* HR VIS-5d ▸ wrap (VIS-5b prop) ◂ */}
       <SettingsFrame nav={<SettingsNav systemId={id} current={tab} tabs={tabs} owner={owner} lawItem={lawItem} />} aside={<ConnectionsMini ctx={ctx} />}>{/* HR VIS-5d ◂ */}
       {!tabs.includes(tab) && (
+        <div className="flex min-w-0 flex-col gap-5" data-testid={`hr-set-panel-${tab}`}>{/* HR VIS-5d ▸ the requested tab's panel holds only the note ◂ */}
         <p role="note" className={`card p-4 text-sm ${muted}`} data-testid="hr-set-empty">
           {tv("empty")}
         </p>
+        </div>
       )}{/* HR VIS-5d ▸ r4 B2: a tab the viewer lacks = menu + note, never a blank page ◂ */}
       {tabs.includes(tab) && (
       <div className="flex min-w-0 flex-col gap-5" data-testid={`hr-set-panel-${tab}`}>{/* HR VIS-5d ▸ one panel per tab ◂ */}
@@ -290,12 +295,12 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
           <ul className="flex flex-col" data-testid="hr-settings-shift-list">{/* HR VIS-5d ◂ */}
             {shifts.map((s) => (
               <li key={s.id} className={row} data-testid={`hr-settings-shift-${s.id}`}>
-                <b className="min-w-0 flex-1 text-sm">{s.name}</b>{/* HR VIS-5d ▸ name · time · branch as columns ◂ */}
-                <span className="text-sm tabular-nums sm:w-36">
+                <b className="min-w-[7rem] flex-1 text-sm">{s.name}</b>{/* HR VIS-5d ▸ name · time · branch as columns ◂ */}
+                <span className="text-sm tabular-nums">
                   {hm(s.startMin)}–{hm(s.endMin)}
                   {s.crossesMidnight ? ` (${t("shifts.overnight")})` : ""}
                 </span>
-                <span className={`text-sm sm:w-32 ${muted}`}>{where(s.unitId)}</span>{/* HR VIS-5d ◂ */}
+                <span className={`text-sm ${muted}`}>{where(s.unitId)}</span>{/* HR VIS-5d ◂ */}
                 {(all || s.unitId) && (
                   <form action={onArchiveShift}>
                     <input type="hidden" name="systemId" value={id} />
@@ -312,7 +317,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
         <form action={onCreateShift} className={addArea} data-testid="hr-settings-shift-form">{/* HR VIS-5d ◂ */}
           <input type="hidden" name="systemId" value={id} />
           <b className="text-sm">{tv("addShift")}</b>{/* HR VIS-5d ◂ */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(0,1.4fr)_repeat(3,minmax(0,1fr))_minmax(0,1.2fr)]">{/* HR VIS-5d ◂ */}
+          <div className={grid3}>{/* HR VIS-5d ◂ */}
           <label className={fld}>
             {t("shifts.name")}
             <input name="name" required maxLength={60} className="input min-h-[44px]" data-testid="hr-settings-shift-name" />
@@ -358,7 +363,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
         ) : (
           <ul className="flex flex-col" data-testid="hr-settings-policy-list">{/* HR VIS-5d ◂ */}
             {policies.map((p) => (
-              <li key={p.id} className={row} data-testid={`hr-settings-policy-${p.id}`}>
+              <li key={p.id} className={row2} data-testid={`hr-settings-policy-${p.id}`}>
                 <span className="min-w-0 flex-1 text-sm">
                   <b>{p.name}</b> · {t(`categories.${p.category}`)} · {p.quotaDays === null ? t("policies.noQuota") : `${p.quotaDays.toString()}`} ·{" "}
                   {p.paid ? t("policies.paid") : t("policies.unpaid")} · <span className={muted}>{where(p.unitId)}</span>{/* HR VIS-5d ◂ */}
@@ -387,7 +392,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
         <form action={onCreatePolicy} className={addArea} data-testid="hr-settings-policy-form">{/* HR VIS-5d ◂ */}
           <input type="hidden" name="systemId" value={id} />
           <b className="text-sm">{tv("addPolicy")}</b>{/* HR VIS-5d ◂ */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{/* HR VIS-5d ◂ */}
+          <div className={grid3}>{/* HR VIS-5d ◂ */}
           <label className={fld}>
             {t("policies.name")}
             <input name="name" required maxLength={60} className="input min-h-[44px]" data-testid="hr-settings-policy-name" />
@@ -500,8 +505,8 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
           <ul className="flex flex-col" data-testid="hr-settings-holiday-list">{/* HR VIS-5d ◂ */}
             {holidays.map((h) => (
               <li key={h.id} className={row} data-testid={`hr-settings-holiday-${h.id}`}>
-                <span className="text-sm tabular-nums sm:w-36">{formatThaiDate(h.date)}</span>{/* HR VIS-5d ▸ date · name · kind · branch as columns ◂ */}
-                <b className="min-w-0 flex-1 text-sm">{h.name}</b>
+                <span className="text-sm tabular-nums">{formatThaiDate(h.date)}</span>{/* HR VIS-5d ▸ date · name · kind · branch as columns ◂ */}
+                <b className="min-w-[7rem] flex-1 text-sm">{h.name}</b>
                 <span className={`text-sm ${muted}`}>
                   {t(`kinds.${h.kind}`)}
                   {h.shopOpen ? ` · ${t("holidays.shopOpen")}` : ""} · {where(h.unitId)}
@@ -522,7 +527,7 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
         <form action={onAddHoliday} className={addArea} data-testid="hr-settings-holiday-form">{/* HR VIS-5d ◂ */}
           <input type="hidden" name="systemId" value={id} />
           <b className="text-sm">{tv("addHoliday")}</b>{/* HR VIS-5d ◂ */}
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">{/* HR VIS-5d ◂ */}
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">{/* HR VIS-5d ◂ */}
           <label className={fld}>
             {t("holidays.date")}
             <input name="date" type="date" required className="input min-h-[44px]" data-testid="hr-settings-holiday-date" />
@@ -560,15 +565,15 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
           <div className="flex flex-col gap-3 px-5 py-4">{/* HR VIS-5d ◂ */}
           <p className={`text-xs ${muted}`}>{t("clock.desc")}</p>
           {all && (
-            <form action={onSaveClockPolicy} className="flex flex-wrap items-end gap-2" data-testid="hr-settings-clock-policy">
+            <form action={onSaveClockPolicy} className={grid4} data-testid="hr-settings-clock-policy">{/* HR VIS-5d ◂ */}
               <input type="hidden" name="systemId" value={id} />
               <label className={fld}>{/* HR VIS-5d ◂ */}
                 {t("clock.earlyInMin")}
-                <input name="earlyInMin" type="number" min={0} max={240} step={1} defaultValue={clockPolicy.earlyInMin} className="input min-h-[44px] w-28" data-testid="hr-settings-clock-early" />
+                <input name="earlyInMin" type="number" min={0} max={240} step={1} defaultValue={clockPolicy.earlyInMin} className="input min-h-[44px] w-full" data-testid="hr-settings-clock-early" />{/* HR VIS-5d ◂ */}
               </label>
               <label className={fld}>{/* HR VIS-5d ◂ */}
                 {t("clock.closeGraceMin")}
-                <input name="closeGraceMin" type="number" min={30} max={720} step={1} defaultValue={clockPolicy.closeGraceMin} className="input min-h-[44px] w-28" data-testid="hr-settings-clock-grace" />
+                <input name="closeGraceMin" type="number" min={30} max={720} step={1} defaultValue={clockPolicy.closeGraceMin} className="input min-h-[44px] w-full" data-testid="hr-settings-clock-grace" />{/* HR VIS-5d ◂ */}
               </label>
               <button type="submit" className={btn} data-testid="hr-settings-clock-policy-save">
                 {t("clock.savePolicy")}
@@ -582,22 +587,22 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
               <input type="hidden" name="systemId" value={id} />
               <h3 className="text-sm font-semibold">{t("attendance.title")}</h3>{/* HR VIS-5d ◂ */}
               <p className={`text-xs ${muted}`}>{t("attendance.desc")}</p>
-              <div className="flex flex-wrap items-end gap-2">
+              <div className={grid4}>{/* HR VIS-5d ◂ */}
                 <label className={fld}>{/* HR VIS-5d ◂ */}
                   {t("attendance.notInAlertMin")}
-                  <input name="notInAlertMin" type="number" min={0} max={240} step={1} defaultValue={attPolicy.notInAlertMin} className="input min-h-[44px] w-28" />
+                  <input name="notInAlertMin" type="number" min={0} max={240} step={1} defaultValue={attPolicy.notInAlertMin} className="input min-h-[44px] w-full" />{/* HR VIS-5d ◂ */}
                 </label>
                 <label className={fld}>{/* HR VIS-5d ◂ */}
                   {t("attendance.absentAfterMin")}
-                  <input name="absentAfterMin" type="number" min={30} max={720} step={1} defaultValue={attPolicy.absentAfterMin ?? ""} className="input min-h-[44px] w-28" />
+                  <input name="absentAfterMin" type="number" min={30} max={720} step={1} defaultValue={attPolicy.absentAfterMin ?? ""} className="input min-h-[44px] w-full" />{/* HR VIS-5d ◂ */}
                 </label>
                 <label className={fld}>{/* HR VIS-5d ◂ */}
                   {t("attendance.earlyOutGraceMin")}
-                  <input name="earlyOutGraceMin" type="number" min={0} max={60} step={1} defaultValue={attPolicy.earlyOutGraceMin} className="input min-h-[44px] w-28" />
+                  <input name="earlyOutGraceMin" type="number" min={0} max={60} step={1} defaultValue={attPolicy.earlyOutGraceMin} className="input min-h-[44px] w-full" />{/* HR VIS-5d ◂ */}
                 </label>
                 <label className={fld}>{/* HR VIS-5d ◂ */}
                   {t("attendance.otStepMin")}
-                  <select name="otStepMin" defaultValue={String(attPolicy.otStepMin)} className="input min-h-[44px] w-28">
+                  <select name="otStepMin" defaultValue={String(attPolicy.otStepMin)} className="input min-h-[44px] w-full">{/* HR VIS-5d ◂ */}
                     {[1, 5, 10, 15, 30].map((n) => (
                       <option key={n} value={n}>
                         {n}
@@ -630,35 +635,35 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
                     {u.name} · {cur?.mobileEnabled ? t("clock.on") : t("clock.off")}
                     {cur?.noticeAcceptedAt ? ` · ${t("clock.noticeAccepted")}` : ""}
                   </span>
-                  <form action={onSaveClockSite} className="flex flex-wrap items-end gap-2">
+                  <form action={onSaveClockSite} className={grid4}>{/* HR VIS-5d ◂ */}
                     <input type="hidden" name="systemId" value={id} />
                     <input type="hidden" name="unitId" value={key === "all" ? "" : key} />
-                    <label className={chk}>
+                    <label className={`${chk} col-span-2`}>
                       <input name="mobileEnabled" type="checkbox" defaultChecked={cur?.mobileEnabled ?? false} className={box} data-testid={`hr-clock-site-${key}-enabled`} />{/* HR VIS-5d ◂ */}
                       {t("clock.mobileEnabled")}
                     </label>
-                    <label className={chk}>
+                    <label className={`${chk} col-span-2`}>
                       <input name="gpsRequired" type="checkbox" defaultChecked={cur?.gpsRequired ?? true} className={box} data-testid={`hr-clock-site-${key}-gps`} />{/* HR VIS-5d ◂ */}
                       {t("clock.gpsRequired")}
                     </label>
                     <label className={fld}>{/* HR VIS-5d ◂ */}
                       {t("clock.centerLat")}
-                      <input name="centerLat" inputMode="decimal" defaultValue={cur?.centerLat ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-latitude`} />
+                      <input name="centerLat" inputMode="decimal" defaultValue={cur?.centerLat ?? ""} className="input min-h-[44px] w-full" data-testid={`hr-clock-site-${key}-center-latitude`} />{/* HR VIS-5d ◂ */}
                     </label>
                     <label className={fld}>{/* HR VIS-5d ◂ */}
                       {t("clock.centerLng")}
-                      <input name="centerLng" inputMode="decimal" defaultValue={cur?.centerLng ?? ""} className="input min-h-[44px] w-32" data-testid={`hr-clock-site-${key}-center-longitude`} />
+                      <input name="centerLng" inputMode="decimal" defaultValue={cur?.centerLng ?? ""} className="input min-h-[44px] w-full" data-testid={`hr-clock-site-${key}-center-longitude`} />{/* HR VIS-5d ◂ */}
                     </label>
                     <label className={fld}>{/* HR VIS-5d ◂ */}
                       {t("clock.radiusM")}
-                      <input name="radiusM" type="number" min={30} max={2000} defaultValue={cur?.radiusM ?? 150} className="input min-h-[44px] w-24" data-testid={`hr-clock-site-${key}-radius`} />
+                      <input name="radiusM" type="number" min={30} max={2000} defaultValue={cur?.radiusM ?? 150} className="input min-h-[44px] w-full" data-testid={`hr-clock-site-${key}-radius`} />{/* HR VIS-5d ◂ */}
                     </label>
                     <label className={fld}>{/* HR VIS-5d ◂ */}
                       {t("clock.minAccuracyM")}
-                      <input name="minAccuracyM" type="number" min={10} max={500} defaultValue={cur?.minAccuracyM ?? 100} className="input min-h-[44px] w-24" data-testid={`hr-clock-site-${key}-accuracy`} />
+                      <input name="minAccuracyM" type="number" min={10} max={500} defaultValue={cur?.minAccuracyM ?? 100} className="input min-h-[44px] w-full" data-testid={`hr-clock-site-${key}-accuracy`} />{/* HR VIS-5d ◂ */}
                     </label>
                     {!cur?.noticeAcceptedAt && (
-                      <label className={chk}>
+                      <label className={`${chk} col-span-2 lg:col-span-3`}>
                         <input name="acceptPdpaNotice" type="checkbox" className={box} data-testid={`hr-clock-site-${key}-notice`} />{/* HR VIS-5d ◂ */}
                         {t("clock.acceptPdpaNotice")}
                       </label>
@@ -679,18 +684,18 @@ export default async function HrSettingsPage({ params, searchParams }: { params:
           <form action={onSaveOtPolicy} className="flex flex-col gap-2 px-5 py-4" data-testid="hr-settings-ot-policy">{/* HR VIS-5d ◂ */}
             <input type="hidden" name="systemId" value={id} />
             <p className={`text-xs ${muted}`}>{tOt("policyDesc")}</p>{/* HR VIS-5d ◂ */}
-            <div className="flex flex-wrap items-end gap-2">
+            <div className={grid4}>{/* HR VIS-5d ◂ */}
               <label className={fld}>{/* HR VIS-5d ◂ */}
                 {tOt("afterHours")}
-                <input name="afterHours" type="number" min={0} max={72} step={1} defaultValue={otPolicy.afterHours} className="input min-h-[44px] w-28" />
+                <input name="afterHours" type="number" min={0} max={72} step={1} defaultValue={otPolicy.afterHours} className="input min-h-[44px] w-full" />{/* HR VIS-5d ◂ */}
               </label>
               <label className={fld}>{/* HR VIS-5d ◂ */}
                 {tOt("maxAheadDays")}
-                <input name="maxAheadDays" type="number" min={1} max={90} step={1} defaultValue={otPolicy.maxAheadDays} className="input min-h-[44px] w-28" />
+                <input name="maxAheadDays" type="number" min={1} max={90} step={1} defaultValue={otPolicy.maxAheadDays} className="input min-h-[44px] w-full" />{/* HR VIS-5d ◂ */}
               </label>
               <label className={fld}>{/* HR VIS-5d ◂ */}
                 {tOt("otRoundMin")}
-                <select name="otRoundMin" defaultValue={String(otPolicy.otRoundMin)} className="input min-h-[44px] w-28">
+                <select name="otRoundMin" defaultValue={String(otPolicy.otRoundMin)} className="input min-h-[44px] w-full">{/* HR VIS-5d ◂ */}
                   {[1, 15, 30].map((n) => (
                     <option key={n} value={n}>
                       {n}

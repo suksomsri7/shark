@@ -1,6 +1,6 @@
 // HR VIS-5d ▸ settings page + law page frame (mockup 08): left menu · main column · connections mini card — server components, read-only ◂
 //   no action / form here · the law menu item is built by each page (its testid literal stays in page.tsx — older suites read it there)
-//   ≥1280: 250 px menu | content | 380 px right card · 1024: 220 px menu | content (right card under the content) · <1024: menu = one scrolling row above the content
+//   ≥1536: 250 px menu | content | 380 px right card (mockup 08) · 1024–1535: menu + right card | content · <1024: menu = one scrolling row above the content
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { getTranslations } from "next-intl/server";
@@ -50,7 +50,7 @@ export async function SettingsNav({ systemId, current, tabs, owner, lawItem }: {
       </li>
     ) : null;
   return (
-    <nav aria-label={t("navLabel")} data-testid="hr-set-nav" className="flex min-w-0 flex-col gap-3 lg:sticky lg:top-4 lg:rounded-2xl lg:border lg:border-[color:var(--color-line)] lg:bg-[color:var(--color-surface-2)] lg:px-3 lg:py-5">
+    <nav aria-label={t("navLabel")} data-testid="hr-set-nav" className="flex min-w-0 flex-col gap-3 lg:rounded-2xl lg:border lg:border-[color:var(--color-line)] lg:bg-[color:var(--color-surface-2)] lg:px-3 lg:py-5">
       <p className={`hidden px-3 text-[13px] font-semibold lg:block ${muted}`}>{t("heading")}</p>
       <ul data-scroll="x" className="-mx-1 flex gap-1 overflow-x-auto px-1 pb-1 lg:mx-0 lg:flex-col lg:overflow-visible lg:px-0 lg:pb-0">
         {item("shifts")}
@@ -75,13 +75,14 @@ export async function SettingsNav({ systemId, current, tabs, owner, lawItem }: {
   );
 }
 
-/** page frame below the HR tabs: menu | main | right card */
+/** page frame below the HR tabs: menu | main | right card ·
+ *  ≥1536: three columns as mockup 08 · 1024–1535: the right card sits under the menu (the app keeps its own ~290 px sidebar, so a third column would squeeze the forms) · <1024: one column */
 export function SettingsFrame({ nav, aside, children }: { nav: ReactNode; aside: ReactNode; children: ReactNode }) {
   return (
-    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_minmax(0,1fr)] xl:grid-cols-[250px_minmax(0,1fr)_380px] xl:gap-6">
-      <div className="min-w-0 lg:row-span-2 xl:row-span-1">{nav}</div>
-      <div className="flex min-w-0 flex-col gap-5">{children}</div>
-      <div className="min-w-0 lg:col-start-2 xl:col-start-3 xl:row-start-1">{aside}</div>
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[220px_minmax(0,1fr)] lg:grid-rows-[auto_1fr] xl:grid-cols-[240px_minmax(0,1fr)] xl:gap-6 2xl:grid-cols-[250px_minmax(0,1fr)_380px] 2xl:grid-rows-[auto]">
+      <div className="min-w-0 lg:col-start-1 lg:row-start-1">{nav}</div>
+      <div className="flex min-w-0 flex-col gap-5 lg:col-start-2 lg:row-span-2 lg:row-start-1 2xl:row-span-1">{children}</div>
+      <div className="min-w-0 lg:col-start-1 lg:row-start-2 lg:self-start 2xl:col-start-3 2xl:row-start-1">{aside}</div>
     </div>
   );
 }

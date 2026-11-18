@@ -1,0 +1,166 @@
+// VIS-5d real presses (builder verification) — owner · th · 1440 · requests ALLOWED · creates then removes its own rows
+import { existsSync, mkdirSync, readFileSync, appendFileSync, writeFileSync } from "node:fs";
+type Any = any;
+const T = "/root/projects/shark-hr-l3";
+const BASE = process.argv[2] ?? "http://127.0.0.1:3263";
+const OUT = "/root/qc/hr-vis5d-r1/press";
+mkdirSync(OUT, { recursive: true });
+const envMod: Any = await import(`${T}/scripts/hr-qc-env.mjs`);
+await envMod.loadHrQcEnv("vis5d-press");
+const E = JSON.parse(readFileSync(envMod.HQC.expectedPath, "utf8"));
+const { prisma } = (await import("@/lib/core/db" as string)) as Any;
+const { sha256 } = (await import("@/lib/core/hash" as string)) as Any;
+const pptr: Any = await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js");
+const HR = E.systems.HR as string, OWNER = E.users.owner.userId as string;
+const token = "v5dp" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+const ttl = new Date(Date.now() + 3 * 3600 * 1000);
+const sess = await prisma.session.create({ data: { userId: OWNER, tokenHash: sha256(token), userAgent: "qc-vis5d-press", idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
+const SECURE = (process.env.APP_ENV ?? "") !== "development";
+const host = new URL(BASE).hostname;
+const ck = SECURE
+  ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: E.tenant.id, url: BASE, path: "/", secure: true }, { name: "LOCALE", value: "th", url: BASE, path: "/" }]
+  : [{ name: "shark_session", value: token, domain: host, path: "/" }, { name: "shark_tenant", value: E.tenant.id, domain: host, path: "/" }, { name: "LOCALE", value: "th", domain: host, path: "/" }];
+const browser = await pptr.default.launch({ executablePath: "/usr/bin/chromium-browser", headless: true, args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=/tmp/chr-v5d-press-${process.pid}`] });
+const page = await browser.newPage();
+await page.setViewport({ width: 1440, height: 900 });
+await page.setCookie(...ck);
+const errors: string[] = [];
+page.on("pageerror", (e: Any) => errors.push(`pageerror ${String(e?.message ?? e).slice(0, 160)}`));
+page.on("console", (m: Any) => { if (m.type() === "error") errors.push(`console ${m.text().slice(0, 160)}`); });
+const S = `${BASE}/app/sys/${HR}/hr/settings`;
+const CRASH = /This page couldn[’']t load|A server error occurred|Application error|Internal Server Error/;
+const results: Any[] = [];
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const go = async (url: string) => { await page.goto(url, { waitUntil: "networkidle2", timeout: 60_000 }); await sleep(300); };
+const txt = async (sel: string) => (await page.$(sel)) ? ((await page.$eval(sel, (e: Any) => e.innerText)) as string).trim().replace(/\s+/g, " ").slice(0, 140) : "";
+let n = 0;
+async function press(name: string, sel: string, opts: { tab: string; flash: string; before?: () => Promise<void>; nav?: boolean } ) {
+  n += 1;
+  const e0 = errors.length;
+  try {
+    if (opts.before) await opts.before();
+    const el = await page.$(sel);
+    if (!el) { results.push({ name, sel, ok: false, why: "button absent" }); return; }
+    await el.evaluate((x: Any) => x.scrollIntoView({ block: "center" }));
+    const nav = opts.nav === false ? null : page.waitForNavigation({ waitUntil: "networkidle2", timeout: 30_000 }).catch(() => null);
+    await el.click();
+    if (nav) await nav;
+    await page.waitForNetworkIdle({ idleTime: 500, timeout: 15_000 }).catch(() => {});
+    await sleep(600);
+    const body = (await page.evaluate("document.body.innerText")) as string;
+    const crash = CRASH.test(body);
+    const url = page.url().replace(BASE, "");
+    const tab = new URL(page.url()).searchParams.get("tab");
+    const inPanel = opts.flash ? await page.$(`[data-testid="hr-set-panel-${opts.tab}"] ${opts.flash}`) : null;
+    const flash = opts.flash ? await txt(`[data-testid="hr-set-panel-${opts.tab}"] ${opts.flash}`) : "";
+    const png = `${OUT}/${String(n).padStart(2, "0")}-${name}.png`;
+    await page.screenshot({ path: png, fullPage: false });
+    results.push({ name, ok: !crash && (!opts.flash || !!inPanel), crash, url, tab, flash, errors: errors.slice(e0), png });
+  } catch (e) {
+    results.push({ name, ok: false, why: String((e as Error).message).slice(0, 200), errors: errors.slice(e0) });
+  }
+}
+const fill = async (sel: string, v: string) => { await page.$eval(sel, (e: Any) => { e.value = ""; }); await page.type(sel, v); };
+const setVal = async (sel: string, v: string) => page.$eval(sel, (e: Any, val: string) => { e.value = val; e.dispatchEvent(new Event("input", { bubbles: true })); e.dispatchEvent(new Event("change", { bubbles: true })); }, v);
+const idsOf = async (prefix: string) => (await page.$$eval(`[data-testid^="${prefix}"]`, (els: Any[]) => els.map((e) => e.getAttribute("data-testid")))) as string[];
+const MSG = '[data-testid="hr-settings-message"]';
+const TAG = "QCV5dPress";
+
+// ── shifts tab ──
+await go(`${S}?tab=shifts`);
+await press("onCreateShift", '[data-testid="hr-settings-shift-add"]', { tab: "shifts", flash: MSG, before: async () => { await fill('[data-testid="hr-settings-shift-name"]', `${TAG} กะ`); await setVal('[data-testid="hr-settings-shift-start"]', "09:00"); await setVal('[data-testid="hr-settings-shift-end"]', "17:00"); } });
+{
+  const id = (await page.$$eval('[data-testid="hr-settings-shift-list"] > li', (els: Any[], tag: string) => els.filter((e) => e.innerText.includes(tag)).map((e) => e.getAttribute("data-testid")), TAG))[0];
+  await press("onArchiveShift", `[data-testid="${String(id).replace("hr-settings-shift-", "hr-settings-shift-archive-")}"]`, { tab: "shifts", flash: MSG });
+}
+await go(`${S}?tab=shifts`);
+await press("onSaveNormalMinutes", '[data-testid="hr-we-normal-save"]', { tab: "shifts", flash: MSG });
+await go(`${S}?tab=shifts`);
+await press("onSaveLabor", '[data-testid="hr-labor-save"]', { tab: "shifts", flash: MSG });
+// ── leave tab ──
+await go(`${S}?tab=leave`);
+await press("onCreatePolicy", '[data-testid="hr-settings-policy-add"]', { tab: "leave", flash: MSG, before: async () => { await fill('[data-testid="hr-settings-policy-name"]', `${TAG} ลา`); } });
+{
+  const id = (await page.$$eval('[data-testid="hr-settings-policy-list"] > li', (els: Any[], tag: string) => els.filter((e) => e.innerText.includes(tag)).map((e) => e.getAttribute("data-testid")), TAG))[0];
+  await press("onArchivePolicy", `[data-testid="${String(id).replace("hr-settings-policy-", "hr-settings-policy-archive-")}"]`, { tab: "leave", flash: MSG });
+}
+await go(`${S}?tab=leave`);
+const polBefore = await idsOf("hr-settings-policy-archive-");
+const presetBtn = (await idsOf("hr-settings-law-preset-add-"))[0];
+await press("onAddLeavePreset", `[data-testid="${presetBtn}"]`, { tab: "leave", flash: MSG, before: async () => { await page.click('[data-testid="hr-settings-law-presets-open"]'); await sleep(300); } });
+{
+  const added = (await idsOf("hr-settings-policy-archive-")).filter((x) => !polBefore.includes(x));
+  for (const a of added) await press("cleanup-archive-preset-policy", `[data-testid="${a}"]`, { tab: "leave", flash: MSG });
+}
+// ── holidays tab ──
+const Y = new Date().getFullYear();
+await go(`${S}?tab=holidays&year=${Y}`);
+await press("onAddHoliday", '[data-testid="hr-settings-holiday-add"]', { tab: "holidays", flash: MSG, before: async () => { await setVal('[data-testid="hr-settings-holiday-date"]', `${Y}-12-29`); await fill('[data-testid="hr-settings-holiday-name"]', `${TAG} หยุด`); } });
+{
+  const id = (await page.$$eval('[data-testid="hr-settings-holiday-list"] > li', (els: Any[], tag: string) => els.filter((e) => e.innerText.includes(tag)).map((e) => e.getAttribute("data-testid")), TAG))[0];
+  await press("onDeleteHoliday", `[data-testid="${String(id).replace("hr-settings-holiday-", "hr-settings-holiday-delete-")}"]`, { tab: "holidays", flash: MSG });
+}
+await go(`${S}?tab=holidays&year=${Y}`);
+const holBefore = await idsOf("hr-settings-holiday-delete-");
+await press("onApplyPreset", '[data-testid="hr-holiday-preset"]', { tab: "holidays", flash: MSG });
+{
+  const added = (await idsOf("hr-settings-holiday-delete-")).filter((x) => !holBefore.includes(x));
+  results.push({ name: "preset-added-count", n: added.length });
+  for (const a of added) { await go(`${S}?tab=holidays&year=${Y}`); await press("cleanup-delete-preset-holiday", `[data-testid="${a}"]`, { tab: "holidays", flash: MSG }); }
+}
+// ── rules tab ──
+for (const [nm, sel] of [["onSaveClockPolicy", "hr-settings-clock-policy-save"], ["onSaveClockSite", "hr-clock-site-all-save"], ["onSaveAttendancePolicy", "hr-settings-attendance-save"], ["onSaveOtPolicy", "hr-settings-ot-policy-save"], ["onSaveAttPay", "hr-attpay-save"]]) {
+  await go(`${S}?tab=rules`);
+  await press(nm!, `[data-testid="${sel}"]`, { tab: "rules", flash: MSG });
+}
+// ── pay tab ──
+await go(`${S}?tab=pay`);
+await press("onSaveEngine", '[data-testid="hr-run2-engine-save"]', { tab: "pay", flash: '[data-testid="hr-run2-engine"] [role="status"], [data-testid="hr-run2-engine"] [role="alert"]' });
+await go(`${S}?tab=pay`);
+await press("onSavePayBook", '[data-testid="hr-pay-book-save"]', { tab: "pay", flash: '[data-testid="hr-pay-accounting-flash"]' });
+await go(`${S}?tab=pay`);
+await press("onSavePayAccount", '[data-testid="hr-pay-account-save"]', { tab: "pay", flash: '[data-testid="hr-pay-accounting-flash"]' });
+await go(`${S}?tab=pay`);
+await press("onSavePosting(1 off)", '[data-testid="hr-pay-posting"]', { tab: "pay", flash: '[data-testid="hr-pay-accounting-flash"]' });
+await go(`${S}?tab=pay`);
+await press("onSavePosting(2 back on)", '[data-testid="hr-pay-posting"]', { tab: "pay", flash: '[data-testid="hr-pay-accounting-flash"]' });
+await go(`${S}?tab=pay`);
+await press("onSaveBankProfile", '[data-testid="hr-bank-profile-save"]', { tab: "pay", flash: MSG });
+await go(`${S}?tab=pay`);
+const presetDelBefore = await idsOf("hr-bank-preset-del-");
+await press("onSaveBankPreset", '[data-testid="hr-bank-preset-save"]', { tab: "pay", flash: MSG, before: async () => {
+  await page.click('[data-testid="hr-set-bank-preset-open"]'); await sleep(300);
+  await fill('input[name="name"][maxlength="60"]', `${TAG} ชุด`);
+  const opts = (await page.$$eval('select[name="f0"] option', (os: Any[]) => os.map((o) => o.value))) as string[];
+  await page.select('select[name="f0"]', opts.find((v) => v && v !== "const") ?? "");
+} });
+{
+  const added = (await idsOf("hr-bank-preset-del-")).filter((x) => !presetDelBefore.includes(x));
+  for (const a of added) { await go(`${S}?tab=pay`); await press("onDeleteBankPreset", `[data-testid="${a}"]`, { tab: "pay", flash: MSG }); }
+  if (!added.length) results.push({ name: "onDeleteBankPreset", ok: false, why: "no preset was created to delete" });
+}
+await go(`${S}?tab=pay`);
+await press("filing-profile-save", '[data-testid="hr-filing-profile-save"]', { tab: "pay", flash: '[data-testid="hr-filing-profile"] [role="status"], [data-testid="hr-filing-profile"] [role="alert"]' });
+// ── connect tab ──
+await go(`${S}?tab=connect`);
+await press("line-settings-save", '[data-testid="hr-line-settings-save"]', { tab: "connect", flash: '[data-testid="hr-line-settings-card"] [role="status"], [data-testid="hr-line-settings-card"] [role="alert"]', nav: false });
+await go(`${S}?tab=connect`);
+await press("apikeys-issue", '[data-testid="hr-apikeys-issue"]', { tab: "connect", flash: '[data-testid="hr-apikeys-raw"]', nav: false, before: async () => { await page.waitForSelector('[data-testid="hr-apikeys-list"], [data-testid="hr-apikeys-empty"]', { timeout: 15_000 }); await page.type('[data-testid="hr-apikeys-name"]', `${TAG} key`); } });
+{
+  const rows = await page.$$eval('[data-testid="hr-apikeys-row"]', (els: Any[], tag: string) => els.map((e, i) => (e.innerText.includes(tag) && !/เพิกถอนแล้ว|Revoked/.test(e.innerText) ? i : -1)).filter((i) => i >= 0), TAG);
+  if (rows.length) {
+    const btns = await page.$$('[data-testid="hr-apikeys-row"]');
+    const rv = await btns[rows[0]!]!.$('[data-testid="hr-apikeys-revoke"]');
+    await rv?.click(); await sleep(300);
+    await press("apikeys-revoke-confirm", '[data-testid="hr-apikeys-revoke-confirm"]', { tab: "connect", flash: "", nav: false });
+  } else results.push({ name: "apikeys-revoke", ok: false, why: "issued key row not found" });
+}
+// ── life tab ──
+await go(`${S}?tab=life`);
+await press("lifecycle-save", '[data-testid="hr-life-save"]', { tab: "life", flash: '[role="status"], [role="alert"]' });
+
+writeFileSync(`${OUT}/press.json`, JSON.stringify(results, null, 1));
+for (const r of results) console.log(`${r.ok === false ? "❌" : "✅"} ${r.name} ${r.n ?? ""} ${r.why ?? ""} url=${r.url ?? ""} flash="${r.flash ?? ""}" crash=${r.crash ?? ""} errs=${(r.errors ?? []).length}`);
+await browser.close();
+await prisma.session.deleteMany({ where: { id: sess.id } });
+await prisma.$disconnect?.();

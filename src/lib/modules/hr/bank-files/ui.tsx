@@ -353,6 +353,7 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
   const viewer = hrViewerOf(auth);
   if (!(await canUseBankFiles(ctx, viewer))) return null;
   const t = await getTranslations("hr.bank");
+  const tv = await getTranslations("hr.setview"); // HR VIS-5d ◂
   const tx = bankTextFor(await getLocale());
   const [prof, presets] = await Promise.all([getBankProfile(ctx, viewer), listBankPresets(ctx, viewer)]);
   const owner = auth.active.role === "OWNER" && !!onSaveProfile;
@@ -367,7 +368,7 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
         {tx.legal}
       </p>
       {owner ? (
-        <form action={onSaveProfile!} className="flex flex-col gap-2" data-testid="hr-bank-profile">
+        <form action={onSaveProfile!} className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3" data-testid="hr-bank-profile">{/* HR VIS-5d ▸ two columns ◂ */}
           <input type="hidden" name="systemId" value={systemId} />
           <label className={label}>
             {t("debitBank")}
@@ -396,7 +397,7 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
             {t("ktbCompanyId")}
             <input name="ktbCompanyId" maxLength={16} defaultValue={p?.ktbCompanyId ?? ""} className={input} />
           </label>
-          <fieldset className="flex flex-col gap-1">
+          <fieldset className="flex flex-col gap-1 sm:col-span-2 xl:col-span-3">{/* HR VIS-5d ◂ */}
             <legend className="text-sm font-semibold">{t("formats")}</legend>
             {(["KBANK_PCT", "KTB_IPAY"] as const).map((f) => (
               <label key={f} className={check}>
@@ -410,7 +411,7 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
               {t("ackUntested")}
             </label>
           </fieldset>
-          <div>
+          <div className="sm:col-span-2 xl:col-span-3">{/* HR VIS-5d ◂ */}
             <button type="submit" className={btn} data-testid="hr-bank-profile-save">
               {t("save")}
             </button>
@@ -443,7 +444,9 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
           <p className={muted}>{t("noPresets")}</p>
         )}
         {onSavePreset ? (
-          <form action={onSavePreset} className="flex flex-col gap-2">
+          <details className="rounded-xl border border-[color:var(--color-line)]">{/* HR VIS-5d ▸ the 10-row column-set form folds away (page height · same form inside) ◂ */}
+          <summary className="flex min-h-[44px] cursor-pointer list-none items-center px-4 text-sm font-medium" data-testid="hr-set-bank-preset-open">{tv("bankPresetAdd")}</summary>{/* HR VIS-5d ◂ */}
+          <form action={onSavePreset} className="flex flex-col gap-2 border-t border-[color:var(--color-line)] p-4">{/* HR VIS-5d ◂ */}
             <input type="hidden" name="systemId" value={systemId} />
             <div className="flex flex-wrap gap-3">
               <label className={label}>
@@ -460,7 +463,7 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
             </div>
             <ol className="flex flex-col gap-2">
               {Array.from({ length: PRESET_ROWS }, (_, i) => (
-                <li key={i} className="flex flex-wrap items-end gap-2">
+                <li key={i} className="grid grid-cols-1 items-end gap-2 sm:grid-cols-3">{/* HR VIS-5d ▸ one line per column ◂ */}
                   <label className={label}>
                     {t("colN", { n: i + 1 })}
                     <select name={`f${i}`} defaultValue="" className={input}>
@@ -524,7 +527,8 @@ export async function BankSettingsCard({ systemId, onSaveProfile, onSavePreset, 
               </button>
             </div>
           </form>
-        ) : null}
+          </details>
+        ) : null}{/* HR VIS-5d ◂ */}
       </div>
     </section>
   );

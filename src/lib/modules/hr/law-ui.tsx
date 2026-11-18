@@ -51,8 +51,8 @@ function ssoCells(values: Record<string, unknown>): string[] | null {
 const lt = "min-w-0 overflow-hidden rounded-[18px] border border-[color:var(--color-line)] bg-[color:var(--color-surface)]";
 const lh = "flex flex-wrap items-center gap-2.5 border-b border-[color:var(--color-line)] px-5 py-4";
 const lf = `flex flex-wrap items-center gap-2.5 border-t border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-5 py-3 text-[13px] ${muted}`;
-const th = `whitespace-nowrap border-b border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-3.5 py-2.5 text-left text-xs font-bold ${muted}`;
-const td = "whitespace-nowrap border-b border-[color:var(--color-line)] px-3.5 py-3 tabular-nums";
+const th = `whitespace-nowrap border-b border-[color:var(--color-line)] bg-[color:var(--color-surface-2)] px-3 py-2.5 text-left text-xs font-bold ${muted}`;
+const td = "whitespace-nowrap border-b border-[color:var(--color-line)] px-3 py-2.5 tabular-nums";
 const dayText = (t: T, day: string) => (day === "1970-01-01" ? t("defaultSet") : formatThaiDate(`${day}T00:00:00+07:00`));
 const lead = (rows: LawViewRow[]) => rows.find((r) => r.inForce) ?? rows[rows.length - 1] ?? null;
 const ordered = (rows: LawViewRow[]) => { const l = lead(rows); return l ? [l, ...rows.filter((r) => r !== l)] : rows; };
@@ -107,8 +107,8 @@ function Kv({ rows }: { rows: [string, string][] }) {
     <dl className="flex flex-col px-5 py-1.5">
       {rows.map(([k, v]) => (
         <div key={k} className="flex items-baseline gap-2.5 border-t border-[color:var(--color-line)] py-2.5 text-sm first:border-t-0">
-          <dt className="flex-1">{k}</dt>
-          <dd className="whitespace-nowrap text-right font-bold tabular-nums">{v}</dd>
+          <dt className="min-w-0 flex-1">{k}</dt>
+          <dd className="max-w-[60%] text-right font-bold tabular-nums">{v}</dd>
         </div>
       ))}
     </dl>
@@ -153,23 +153,28 @@ function RowValues({ t, kind, values }: { t: T; kind: string; values: Record<str
 // HR VIS-5d ▸ one card per kind (mockup 08): SSO table · tax bands · deductions + OT/minimum wage side by side ·
 //   a kind with several rows (draft · later · replaced) lists every row under the in-force one with its date + status (all rows all statuses, as before) ◂
 type G = LawView["groups"][number];
-function KindRows({ t, g, onDay, first }: { t: T; g: G; onDay: string; first?: boolean }) {
+function KindRows({ t, tv, g, onDay }: { t: T; tv: T; g: G; onDay: string }) {
   if (g.rows.length === 0) return <p className={`px-5 py-4 text-sm ${muted}`}>{g.kind === "MIN_WAGE" ? t("minWageEmpty") : t("empty")}</p>;
+  const [l, ...more] = ordered(g.rows);
   return (
     <>
-      {ordered(g.rows).map((r, i) => (
-        <div key={r.key} className={i > 0 || !first ? "border-t border-[color:var(--color-line)]" : ""}>
-          {(i > 0 || !first) && (
-            <div className="flex flex-wrap items-center gap-2 px-5 pt-3 text-xs">
-              <span className={muted}>{t("effectiveFrom")}</span>
-              <b>{dayText(t, r.effectiveFrom)}</b>
-              <StatusChip t={t} r={r} onDay={onDay} />
-              <span className={muted}><Approved t={t} r={r} /></span>
+      <RowValues t={t} kind={g.kind} values={l!.values} />
+      {more.length > 0 && (
+        <details className="border-t border-[color:var(--color-line)]">{/* HR VIS-5d ▸ the other effective dates (draft · later · replaced) fold under the in-force row — every row still shown ◂ */}
+          <summary className={`flex min-h-11 cursor-pointer list-none items-center px-5 text-xs font-semibold ${muted}`}>{tv("law.moreRows", { n: more.length })}</summary>
+          {more.map((r) => (
+            <div key={r.key} className="border-t border-[color:var(--color-line)]">
+              <div className="flex flex-wrap items-center gap-2 px-5 pt-3 text-xs">
+                <span className={muted}>{t("effectiveFrom")}</span>
+                <b>{dayText(t, r.effectiveFrom)}</b>
+                <StatusChip t={t} r={r} onDay={onDay} />
+                <span className={muted}><Approved t={t} r={r} /></span>
+              </div>
+              <RowValues t={t} kind={g.kind} values={r.values} />
             </div>
-          )}
-          <RowValues t={t} kind={g.kind} values={r.values} />
-        </div>
-      ))}
+          ))}
+        </details>
+      )}
     </>
   );
 }
@@ -182,7 +187,7 @@ function KindCard({ t, tv, g, onDay, title, foot, children }: { t: T; tv: T; g: 
         {l && <Chip text={tv("law.effective", { day: dayText(t, l.effectiveFrom) })} />}
         {l && !l.inForce && <StatusChip t={t} r={l} onDay={onDay} />}
       </div>
-      <KindRows t={t} g={g} onDay={onDay} first />
+      <KindRows t={t} tv={tv} g={g} onDay={onDay} />
       {children}
       {foot && <div className={lf}>{foot}</div>}
     </section>
@@ -224,7 +229,7 @@ export async function LawTableView({ view }: { view: LawView }) {
                       const c = ssoCells(r.values);
                       return (
                         <tr key={r.key} className={r.inForce ? "" : muted}>
-                          <td className={`${td} font-bold`}>{dayText(t, r.effectiveFrom)}</td>
+                          <td className={`${td} min-w-[7rem] whitespace-normal font-bold`}>{dayText(t, r.effectiveFrom)}</td>
                           {c ? c.map((v, i) => (
                             <td key={i} className={`${td} text-right`}>
                               {v}
@@ -285,7 +290,7 @@ export async function LawTableView({ view }: { view: LawView }) {
               {mw && (
                 <div className="border-t border-[color:var(--color-line)]" data-testid="hr-law-row-MIN_WAGE">
                   <p className="px-5 pt-3 text-sm font-semibold">{t("kinds.MIN_WAGE")}</p>
-                  <KindRows t={t} g={mw} onDay={view.onDay} first />
+                  <KindRows t={t} tv={tv} g={mw} onDay={view.onDay} />
                 </div>
               )}
             </KindCard>
