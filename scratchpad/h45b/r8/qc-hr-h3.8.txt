@@ -1,0 +1,97 @@
+[env] qc-hr-h3.8 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h3.8] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h3.8] rules=loaded · service=loaded · pdf=loaded · route=loaded · base=292bc5b7e
+── [static] base 292bc5b7e (H3.8 in base) ──
+  ✅ [H3.8-S1.1] [static] migration 20270110000000_hr_payslip*: CREATE TABLE HrSalaryCertificate · CHECK status/purpose/ISSUED completeness · UNIQUE (systemId, docNo) · partial unique open request · FK HrEmployee RESTRICT · additive only
+  ✅ [H3.8-S1.2] [static] payroll.prisma model HrSalaryCertificate (HrPayrollRun/HrPayrollItem blocks unchanged) · hr.prisma back-relation · core/scope.ts sys() · hr-qc-env entry
+  ✅ [H3.8-S1.3] [static] pure payslip-rules.ts: value imports ⊆ account/totals · account/doc-numbering · ./filings/figures · no db/clock/random/fetch · exports 10 names
+  ✅ [H3.8-S1.4] [static] no recompute: payslip*.ts(x) import no payroll-rules*/payroll-run-rules (value)/law/ot-rules · no ssoContribution/ssoV2/whtYtdV2/monthlyWhtSatang/computeRunItemV2/computeItem · no HrSalaryProfile/ytdJson/lawRowIds/filingJson/hrLawTable
+  ✅ [H3.8-S1.5] [static] PDF reuses the existing path: payslip-pdf.tsx imports @react-pdf/renderer + Sarabun from public/fonts/sarabun + wrapPdf (account/public-doc-pdf) · package.json dependencies identical to base (no new library)
+  ✅ [H3.8-S1.6] [static] [control] payroll-rules sha · frozen files/dirs unchanged vs base (payroll*.ts, law, service, filings, bank-files, account, approval, rbac, seed, qc-hr-lib, privacy suite, gate lock, package.json)
+  ✅ [H3.8-S1.7] [static] marked hunks "HR H3.8": ≥ 1 hunk in each of privacy.ts · self.ts · self-ui.tsx · me/hr/pay page · slip page · payroll page · payroll.prisma · hr.prisma · core/scope.ts · hr-qc-env · inbox.ts · inbox-shared.ts · visual-hr.mts — every hunk marked
+  ✅ [H3.8-S1.8] [static] 4 routes: GET → payslip-route helper · HEAD exported = 405 · rsc/prefetch answered before requireTenant · runtime nodejs · no prisma/tenantDb/nationalId in route files
+  ✅ [H3.8-S1.9] [static] self surfaces never take an employeeId: me/hr pages + routes have no employeeId · every exported my*/requestSalaryCertificate/cancelMySalaryCertRequest calls resolveSelf and reads no input employeeId
+  ✅ [H3.8-S1.13] [static] ORACLE-EDIT (H3.8 merge round · review M3): privacy.ts + self.ts sha256 pinned at the H3.8 tip (later tickets re-take consciously, like h0.1 S4.2)
+  ✅ [H3.8-S1.10] [static] client boundary: payslip-ui.tsx is a server module · no "use client" file under hr/ imports payslip(.ts)/payslip-pdf/payslip-route/payslip-rules (value) · new client files name no nationalId/bankAccountNo/contentJson
+  ✅ [H3.8-S1.11] [static] payslip.ts gate reads membership from DB · does not import hrViewerOf · 7 audit action names · payslip-actions.ts "use server" wrappers calling requireTenant()
+  ✅ [H3.8-S1.12] [static] UI testids (mockup 07c regions + certificate cards) · inventory rows wo H3.8 both ways · messages hr.slip / hr.slipLine (20 codes) / hr.salaryCert th = en · visual-hr SPECS["3.8"] · tokens only
+  ✅ [H3.8-S5.3] [static] pages link with a highlighted <a download> to the PDF routes · no action redirects to a PDF/certificate route
+── [pure] payslip-rules loaded ──
+  ✅ [H3.8-S2.1] [pure] SLIP_TEXT / SLIP_TEXT_EN: 19 keys both · th Thai, en ASCII · slipTextFor(locale) · no law-as-fact wording (เพดาน · ไม่ถึงเกณฑ์ · ตามกฎหมาย · 5 %)
+  ✅ [H3.8-S2.2] [pure] V1 plain monthly: earnings 16,000 · deductions 750 (SSO) + 0 (WHT) · net 15,250 — exact view
+  ✅ [H3.8-S2.3] [pure] V2 mockup 07c: BASE 16,000 · OT 600 · COMMISSION 1,200 (count 2) 
+  ✅ [H3.8-S2.4] [pure] V3 mid-month starter: PRORATION −14,000 stays inside earnings (qty 16) ⇒ 16,000 − 750 = 15,250
+  ✅ [H3.8-S2.5] [pure] V4 refund + advance: REFUND 500 earnings · ADVANCE 3,000 deduction ⇒ 20,500 − 3,750 = 16,750
+  ✅ [H3.8-S2.6] [pure] V5 SSO cap + WHT: ssoBase = stored 17,500 · SSO 875 · WHT 2,708.33 ⇒ net 46,416.67 (no rate/cap computed)
+  ✅ [H3.8-S2.7] [pure] V6 bonus with one-off WHT: 40,000 − 2,125 = 37,875
+  ✅ [H3.8-S2.8] [pure] V7 legacy v1 (adjustment notes never in the view) · V8 v1 without detail ⇒ balancing V1_OTHER 500 + flag
+  ✅ [H3.8-S2.9] [pure] broken stored data B1–B10 ⇒ {ok:false, code:"SLIP_DATA"} (Σ lines ≠ gross · net ≠ gross − SSO − WHT · negative · non-integer · unknown code · engine 3 · null)
+  ✅ [H3.8-S2.10] [pure] properties ×60 seeded v2 items: earnings − deductions = net exactly · Σ lines per section = section total · sections by code · deterministic · input not mutated
+  ✅ [H3.8-S2.11] [pure] slipState: 10-row table (v1 APPROVED/PAID issued · v2 needs stepsJson.finalized · REVERSED ⇒ WITHDRAWN · DRAFT)
+  ✅ [H3.8-S2.12] [pure] taxYearOf = Bangkok year of payDate (31 Dec 17:30Z ⇒ next year) · yearTotals sums count/gross/income/tax/sso/net per year, newest first · income = 40(1) income (H3.6 itemFigures)
+  ✅ [H3.8-S2.13] [pure] salaryCertContent exact (MONTHLY_BASE · bahtText words · disclaimer = certNote · no ID) · salaryCertDocNo(1
+  ✅ [H3.8-S2.14] [pure] renderPayslipPdf(V2 slip): %PDF · 1 page · 16,900.00 / 17,800.00 / 900.00 · name · bank •••4321 only · renderSalaryCertPdf: %PDF · docNo · 18,000.00
+(node:2182694) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H3.8-S3.0] [db] [control] fixture: 8 runs in system A (v1 PAID · v2 APPROVED/PAID finalized · REVERSED · DRAFT · APPROVED unfinalized · Dec run paid in Jan) + system B · Σ items = run totals
+  ✅ [H3.8-S3.1] [db] slipForViewer (owner) = vectors on stored rows: e1 RA2 = V2 · e2 RA3 = V3 · e3 RA7 = V5 · e4 RA1 = V7 · full DTO incl. payDate/taxYear/state/bankMasked "KBank •••4321"
+  ✅ [H3.8-S3.2] [db] snapshot only: a new HrSalaryProfile (99,999) changes nothing · tampered stored net ⇒ SLIP_DATA (in-app + PDF), never repaired · restored ⇒ ok
+  ✅ [H3.8-S3.3] [db] states: gate in-app DRAFT / NOT_FINAL / WITHDRAWN shown with state · PDF refuses NOT_ISSUED / NOT_FINAL / WITHDRAWN with fixed texts · self gets NO for all three
+  ✅ [H3.8-S3.4] [db] mySlips (self e4): own ISSUED slips only grouped by tax year · 2031 count 2 · gross 31,400 · income 31,600 · SSO 1,500 · net 29,900 · rows newest first · href /app/me/hr/pay/<runId>
+  ✅ [H3.8-S3.5] [db] mySlip: own RA1/RA2 ok (= V7 / V1) · RA3 (not in run) · RA4 reversed · RA6 unfinalized · unknown id · unlinked member ⇒ NO (identical bytes)
+  ✅ [H3.8-S3.6] [db] slipHistory e1: 2031 = 4 slips · gross 105,150 · income 107,650 · tax 1,750 · SSO 3,125 · net 100,275 · 2032 = Dec run paid 5 Jan 2032 (1 slip · 18,000)
+  ✅ [H3.8-S3.7] [db] reconcile with H3.6: issueTaxCertificate ANNUAL 2031 for e1 (real H3.6 service) ⇒ contentJson total 107,650 · tax 1,750 · SSO fund 3,125 = slipHistory 2031 income/tax/SSO
+  ✅ [H3.8-S3.8] [db] gate PDF: %PDF bytes · fileName payslip-<period>[-code].pdf without name/ID · audit hr.payslip.download after keys exact {runId, employeeId, periodKey, by:GATE} · no outbox · no stored bytes
+  ✅ [H3.8-S3.9] [db] self PDF: own RA2 ok + audit by SELF · RA3 / RA6 / unknown / member ⇒ NO (identical) · nothing audited on refusal
+  ✅ [H3.8-S3.10] [db] matrix 12 viewers × (in-app · PDF · history) for e1: owner / payroll all-branch / read-only payroll / branch payroll ok · managers · HR staff · member · self · other tenant · 2 forged ⇒ NO · branch payroll ⇒ NO for e5 (home u2) and e6 (borrowed into u1)
+  ✅ [H3.8-S3.11] [db] forged claims ignored: passed role OWNER over a STAFF membership · passed hr.payroll.read · self actor carrying employeeId/systemId of e1 ⇒ still only e4 / NO
+  ✅ [H3.8-S3.22] [db] ORACLE-EDIT (H3.8 merge round · controller ruling 2): gate slip page reads payroll viewers through slipForViewer (+ loadPayslipForViewer kept) · branch payroll viewer ⇒ e6 (borrowed into u1) / e5 (home u2) refused {ok,code,reason} although the hotfix loader alone opens e6
+  ✅ [H3.8-S3.12] [db] every refusal = exactly {ok:false, code, reason} with the fixed text · unknown run · other tenant · no right · other branch · other's slip ⇒ identical bytes
+  ✅ [H3.8-S3.13] [db] DTO keys exact (slip · employee · line · mine · year · row · history · certificate rows) · no HR_FORBIDDEN_DTO_KEYS · no national ID / full bank number in any DTO
+  ✅ [H3.8-S3.14] [db] salary-cert request (self): REQUESTED row + audit · cancel ⇒ CANCELLED · second open ⇒ certReqOpen · bad purpose ⇒ purpose · ended ⇒ inactive · unlinked ⇒ NO · self cannot issue (gate fn ⇒ NO)
+  ✅ [H3.8-S3.16] [db] owner issues e1 (no request) ⇒ HRSC-2032-0001 · content salary = BASE 18,000 of the latest issued slip (2031-12) · contentSha256 = sha(canon(content)) · no 13-digit ID · audit keys · counter (HR system, WHT_CERT, HRSC:2032) · no AccountDocument
+  ✅ [H3.8-S3.15] [db] inbox (default Q3): owner's listInbox type CERT lists e4's request without any ฿ key · MANAGER without gate does not see it · decideInbox APPROVED ⇒ ISSUED HRSC-2032-0002
+  ✅ [H3.8-S3.17] [db] issue refusals consume no number: no slip ⇒ certNoSlip · daily payer ⇒ certNoBase · system without profile ⇒ profile · gate holder for own employee ⇒ own · read-only / manager ⇒ NO · reject ⇒ REJECTED then notDecidable
+  ✅ [H3.8-S3.18] [db] frozen certificate: renamed employee ⇒ PDF still shows issued name · tampered content ⇒ certChanged · void owner only (certVoidOwner) · reason 1–200 · voided ⇒ voided · reissue ⇒ HRSC-2032-0003 (no reuse)
+  ✅ [H3.8-S3.19] [db] self certificates: own live ISSUED listed + PDF (audit by SELF) · e1's certId ⇒ NO · voided ⇒ hidden + NO
+  ✅ [H3.8-S3.21] [db] H2.10 myDocuments keeps its keys but lists ISSUED slips only (RA2, RA1 — not RA6 unfinalized / RA4 reversed) with href /app/me/hr/pay/<runId>
+  ✅ [H3.8-S6.1] [db] [control] loadPayslipForViewer (HF-HR-0): self opens own APPROVED v1 slip · member null · owner opens a DRAFT
+  ✅ [H3.8-S6.2] [db] loadPayslipForViewer (marked hunk): self + v2 APPROVED unfinalized ⇒ null · self + REVERSED ⇒ null
+  ✅ [H3.8-S5.1] [db] route helpers: rsc / prefetch ⇒ 204, nothing audited · GET ⇒ 200 application/pdf attachment no-store nosniff safe file name · refusal ⇒ 404/409 fixed text (th/en) no bytes · self + certificate helpers
+  ✅ [H3.8-S5.2] [db] HEAD / POST to the 4 helpers ⇒ 405 Allow GET before any read · no audit row
+  ✅ [H3.8-S6.3] [db] audit rows of H3.8 actions carry no national ID / name / ฿ key · no outbox event from any H3.8 call
+  ✅ [H3.8-S6.4] [db] PDFs: slip shows no national ID, no full account (•••4321 only), no colleague's name · certificate shows no national ID
+  ✅ [H3.8-S4.1] [db] hold RA7 row FOR UPDATE ⇒ gate PDF read waits on the lock (seen in pg_stat_activity) · holder flips RA7 to REVERSED and commits ⇒ the read answers WITHDRAWN (no stale slip)
+  ✅ [H3.8-S3.20] [db] reversed run (after S4.1): history 2031 for e1 = 3 slips · gate PDF ⇒ withdrawn · certificate source skips it
+  ✅ [H3.8-S4.2] [db] 5 parallel self requests ⇒ 1 REQUESTED + 4 certReqOpen · 4 parallel issues of that request ⇒ 1 ISSUED HRSC-2032-0005 + 3 notDecidable (0004 = S5.1) · counter lastNo 5 · numbers 0001–0005 contiguous
+  ✅ [H3.8-S3.25] [db] ORACLE-EDIT (H3.8 merge round · controller ruling): certificate whose source run is reversed after issue ⇒ gate list sourceWithdrawn (no runId) · owner voids it · gate PDF voided · number kept
+  ✅ [H3.8-S3.23] [db] ORACLE-EDIT (H3.8 merge round · review m1): certificate source = latest ISSUED slip with payDate ≤ today (BKK) — e2 with a future-paid run cites RA3 (BASE 30,000) ⇒ HRSC-2032-0006
+  ✅ [H3.8-S4.3] [db] ORACLE-EDIT (H3.8 merge round · review): issue racing a reversal — hold RA8 FOR UPDATE ⇒ issue waits (pg_stat_activity) · holder reverses ⇒ certificate cites the next latest issued slip (RA3), never a reversed run ⇒ HRSC-2032-0007
+  ✅ [H3.8-S3.24] [db] ORACLE-EDIT (H3.8 merge round · review m2): DRAFT run with negative net ⇒ gate in-app state DRAFT with figures (not SLIP_DATA) · PDF notIssued
+  ✅ [H3.8-S7.2] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): 3 parallel direct issues (same employee · purpose · cited run, hunter P3b) ⇒ one certificate, one number · other purpose ⇒ new number · after void ⇒ new number
+  ✅ [H3.8-S7.3] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): direct issue while the employee's request is open (hunter P3c) ⇒ the request is fulfilled in the same tx (no REQUESTED left) · approving it ⇒ notDecidable, no 2nd number · request matching a live certificate ⇒ approve returns that certificate, request closed, no number
+  ✅ [H3.8-S7.11] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling 2): request closed by an existing live certificate ⇒ employee + HR lists show FULFILLED with that docNo (no "cancelled"), CANCELLED filter excludes it, its id downloads that certificate, not in the inbox
+  ✅ [H3.8-S7.12] [db] ORACLE-EDIT (H3.8 fix round 3 · controller ruling): direct issue with another purpose ⇒ own certificate with the issuer's purpose · the open request stays REQUESTED with its purpose · approving it later ⇒ its own certificate
+  ✅ [H3.8-S7.13] [db] ORACLE-EDIT (H3.8 fix round 3 · controller ruling): void ∥ direct issue (live certificate row held FOR UPDATE, holder voids + commits) ⇒ the issue waits (pg_blocking_pids) and never returns the voided certificate
+  ✅ [H3.8-S7.1] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): void ∥ download (hunter P3a) — certificate row held FOR UPDATE · download blocked (pg_blocking_pids) · holder voids + commits ⇒ self NO / gate VOIDED · no bytes · downloads 0 · no download audit row
+  ✅ [H3.8-S7.5] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): bidi / line-separator / C0 / C1 controls in name + position are stripped from the frozen certificate content (hunter P4)
+  ✅ [H3.8-S7.10] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): run states (self view/PDF NO · gate PDF WITHDRAWN/NOT_ISSUED/NOT_FINAL · gate state) · only future-paid + reversed ⇒ certNoSlip · corrupt latest issued ⇒ slipData, no number
+  ✅ [H3.8-S7.4] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): one corrupt ISSUED item (hunter P2) ⇒ mySlips + gate history keep the healthy slips and totals · bad period = one row with netSatang null (no amounts) · row keys unchanged
+  ✅ [H3.8-S7.6] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): DRAFT run rows of the employee held FOR UPDATE ⇒ mySlips + gate history answer while held, never blocked by the holder (pg_blocking_pids)
+  ✅ [H3.8-S7.7] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): failed audit insert ⇒ no certificate file, downloads counter unchanged · no slip PDF bytes
+  ✅ [H3.8-S7.9] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): cancel ∥ approve ×4 on the same request ⇒ never both, never neither · system A numbers contiguous from 1
+  ✅ [H3.8-S7.8] [db] ORACLE-EDIT (H3.8 fix round 2 · controller ruling): myDocuments issued predicate in the query — 36 newer unfinalized runs do not push the issued slip out of the list
+  ✅ [H3.8-X12.1] [run] fitness + fitness-hr without env ⇒ exit 0
+RESIDUE none (tenants=2 users=12)
+  ✅ [H3.8-Z1] no residue (HrSalaryCertificate · HrTaxCertificate · HrFilingPerson/Profile · AccountDocSequence of the QC tenants)
+BASE-EXPECTATION 5/78 as registered (RED-by-design 73 · GREEN controls 5) · off: H3.8-S1.1(RED→pass) H3.8-S1.2(RED→pass) H3.8-S1.3(RED→pass) H3.8-S1.4(RED→pass) H3.8-S1.5(RED→pass) H3.8-S1.7(RED→pass) H3.8-S1.8(RED→pass) H3.8-S1.9(RED→pass) H3.8-S1.13(RED→pass) H3.8-S1.10(RED→pass) H3.8-S1.11(RED→pass) H3.8-S1.12(RED→pass) H3.8-S5.3(RED→pass) H3.8-S2.1(RED→pass) H3.8-S2.2(RED→pass) H3.8-S2.3(RED→pass) H3.8-S2.4(RED→pass) H3.8-S2.5(RED→pass) H3.8-S2.6(RED→pass) H3.8-S2.7(RED→pass) H3.8-S2.8(RED→pass) H3.8-S2.9(RED→pass) H3.8-S2.10(RED→pass) H3.8-S2.11(RED→pass) H3.8-S2.12(RED→pass) H3.8-S2.13(RED→pass) H3.8-S2.14(RED→pass) H3.8-S3.1(RED→pass) H3.8-S3.2(RED→pass) H3.8-S3.3(RED→pass) H3.8-S3.4(RED→pass) H3.8-S3.5(RED→pass) H3.8-S3.6(RED→pass) H3.8-S3.7(RED→pass) H3.8-S3.8(RED→pass) H3.8-S3.9(RED→pass) H3.8-S3.10(RED→pass) H3.8-S3.11(RED→pass) H3.8-S3.22(RED→pass) H3.8-S3.12(RED→pass) H3.8-S3.13(RED→pass) H3.8-S3.14(RED→pass) H3.8-S3.16(RED→pass) H3.8-S3.15(RED→pass) H3.8-S3.17(RED→pass) H3.8-S3.18(RED→pass) H3.8-S3.19(RED→pass) H3.8-S3.21(RED→pass) H3.8-S6.2(RED→pass) H3.8-S5.1(RED→pass) H3.8-S5.2(RED→pass) H3.8-S6.3(RED→pass) H3.8-S6.4(RED→pass) H3.8-S4.1(RED→pass) H3.8-S3.20(RED→pass) H3.8-S4.2(RED→pass) H3.8-S3.25(RED→pass) H3.8-S3.23(RED→pass) H3.8-S4.3(RED→pass) H3.8-S3.24(RED→pass) H3.8-S7.2(RED→pass) H3.8-S7.3(RED→pass) H3.8-S7.11(RED→pass) H3.8-S7.12(RED→pass) H3.8-S7.13(RED→pass) H3.8-S7.1(RED→pass) H3.8-S7.5(RED→pass) H3.8-S7.10(RED→pass) H3.8-S7.4(RED→pass) H3.8-S7.6(RED→pass) H3.8-S7.7(RED→pass) H3.8-S7.9(RED→pass) H3.8-S7.8(RED→pass)
+
+===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h3.8","total":78,"passed":78,"failed":[],"findings":[],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":73,"baseGreen":5,"offBase":["H3.8-S1.1(RED→pass)","H3.8-S1.2(RED→pass)","H3.8-S1.3(RED→pass)","H3.8-S1.4(RED→pass)","H3.8-S1.5(RED→pass)","H3.8-S1.7(RED→pass)","H3.8-S1.8(RED→pass)","H3.8-S1.9(RED→pass)","H3.8-S1.13(RED→pass)","H3.8-S1.10(RED→pass)","H3.8-S1.11(RED→pass)","H3.8-S1.12(RED→pass)","H3.8-S5.3(RED→pass)","H3.8-S2.1(RED→pass)","H3.8-S2.2(RED→pass)","H3.8-S2.3(RED→pass)","H3.8-S2.4(RED→pass)","H3.8-S2.5(RED→pass)","H3.8-S2.6(RED→pass)","H3.8-S2.7(RED→pass)","H3.8-S2.8(RED→pass)","H3.8-S2.9(RED→pass)","H3.8-S2.10(RED→pass)","H3.8-S2.11(RED→pass)","H3.8-S2.12(RED→pass)","H3.8-S2.13(RED→pass)","H3.8-S2.14(RED→pass)","H3.8-S3.1(RED→pass)","H3.8-S3.2(RED→pass)","H3.8-S3.3(RED→pass)","H3.8-S3.4(RED→pass)","H3.8-S3.5(RED→pass)","H3.8-S3.6(RED→pass)","H3.8-S3.7(RED→pass)","H3.8-S3.8(RED→pass)","H3.8-S3.9(RED→pass)","H3.8-S3.10(RED→pass)","H3.8-S3.11(RED→pass)","H3.8-S3.22(RED→pass)","H3.8-S3.12(RED→pass)","H3.8-S3.13(RED→pass)","H3.8-S3.14(RED→pass)","H3.8-S3.16(RED→pass)","H3.8-S3.15(RED→pass)","H3.8-S3.17(RED→pass)","H3.8-S3.18(RED→pass)","H3.8-S3.19(RED→pass)","H3.8-S3.21(RED→pass)","H3.8-S6.2(RED→pass)","H3.8-S5.1(RED→pass)","H3.8-S5.2(RED→pass)","H3.8-S6.3(RED→pass)","H3.8-S6.4(RED→pass)","H3.8-S4.1(RED→pass)","H3.8-S3.20(RED→pass)","H3.8-S4.2(RED→pass)","H3.8-S3.25(RED→pass)","H3.8-S3.23(RED→pass)","H3.8-S4.3(RED→pass)","H3.8-S3.24(RED→pass)","H3.8-S7.2(RED→pass)","H3.8-S7.3(RED→pass)","H3.8-S7.11(RED→pass)","H3.8-S7.12(RED→pass)","H3.8-S7.13(RED→pass)","H3.8-S7.1(RED→pass)","H3.8-S7.5(RED→pass)","H3.8-S7.10(RED→pass)","H3.8-S7.4(RED→pass)","H3.8-S7.6(RED→pass)","H3.8-S7.7(RED→pass)","H3.8-S7.9(RED→pass)","H3.8-S7.8(RED→pass)"]}

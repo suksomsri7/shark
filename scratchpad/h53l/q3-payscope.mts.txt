@@ -1,0 +1,49 @@
+// H5.3l hunter (PREPROD-1 R4 extras) — money paths NOT in the ticket: OT-by-hours filing for a borrowed employee (salary in the reply)
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scratchpad/h53l/q3-payscope.mts
+import { type Any, setupPP1, dd, nextScope } from "./kit.mjs";
+import { errText } from "../../scripts/qc-hr-lib.mjs";
+import { short } from "./common.mjs";
+
+const { AsyncLocalStorage } = await import("node:async_hooks");
+(globalThis as Any).AsyncLocalStorage ??= AsyncLocalStorage; // before next/*
+const S = await setupPP1("h53l-q3");
+const { P, kit, rows, safe } = S;
+const out = (k: string, v: unknown) => console.log(`${k} ${typeof v === "string" ? v : short(v, 1600)}`);
+let crashed = "";
+try {
+  const ACT = (await import("@/lib/modules/hr/payroll-actions")) as Any;
+  const inS = await nextScope();
+  const K = await kit("q3", "R4 extras");
+  const s = await K.sys("ขอบเขตค่าจ้าง");
+  const from = new Date(Date.now() - 10 * 86_400_000).toISOString().slice(0, 10);
+  const eB = await K.emp(s, "BORROWED", { unit: K.u2, salary: 4_560_000 }); // home u2 · borrowed into u1 (lim's branch)
+  const eO = await K.emp(s, "OTHER", { unit: K.u2, salary: 4_560_000 }); // home u2 · not borrowed
+  const eN = await K.emp(s, "NOSAL", { unit: K.u2 }); // home u2 · borrowed · salary profile removed
+  const eA = await K.emp(s, "HOME", { unit: K.u1, salary: 3_000_000 }); // in pay scope (control)
+  await P.hrSalaryProfile.deleteMany({ where: { employeeId: eN } });
+  for (const e of [eB, eN]) await P.hrEmployeeUnit.create({ data: { tenantId: K.TT, systemId: s, employeeId: e, unitId: K.u1, fromDate: dd(from), toDate: null } });
+  const file = (e: string, hours: string) => {
+    const f = new FormData();
+    for (const [k, v] of Object.entries({ employeeId: e, periodKey: "2031-05", kind: "OT", hours, note: "qc" })) f.set(k, v);
+    return inS(K.U.lim.cookie, `/app/sys/${s}/hr/payroll`, () => ACT.requestAdjustmentAction(s, { status: "idle" }, f)).catch((x: unknown) => ({ __throw: errText(x) }));
+  };
+  const n0 = Number((await rows(`SELECT count(*)::int AS n FROM "HrPayAdjustment" WHERE "systemId" = $1`, s))[0]?.n);
+  out("Q3.lim.perms", { role: K.U.lim.role, unitAccess: K.U.lim.unitAccess });
+  out("Q3.OT1h.borrowed(home u2)", await file(eB, "1"));
+  out("Q3.OT1h.otherBranch(home u2)", await file(eO, "1"));
+  out("Q3.OT1h.borrowedNoSalary", await file(eN, "1"));
+  out("Q3.OT1h.home(control)", await file(eA, "1"));
+  const made = await rows(`SELECT e.code, a.status::text AS s, a."amountSatang" AS amt, a.hours::text AS h FROM "HrPayAdjustment" a JOIN "HrEmployee" e ON e.id = a."employeeId" WHERE a."systemId" = $1 ORDER BY e.code`, s);
+  out("Q3.rowsWritten", { before: n0, rows: made });
+  out("Q3.expected", { borrowedHourly: 4_560_000 / 30 / 8, ot1h_x1_5: (4_560_000 / 30 / 8) * 1.5 });
+  // what the same viewer is refused when asking to READ this employee's pay (payroll page list) — the PRIV-2 rule
+  const PAY = S.PAY;
+  const list = await safe(() => PAY.listAdjustments?.(K.c(s), { role: "STAFF", unitAccess: [K.u1], permissions: K.U.lim.permissions, userId: K.U.lim.id }, { periodKey: "2031-05" }));
+  out("Q3.listForLim", typeof PAY.listAdjustments === "function" ? short(list, 400) : "n/a (no listAdjustments export)");
+} catch (x) {
+  crashed = errText(x);
+  console.log(`CRASH ${crashed} ${(x as Error)?.stack?.split("\n").slice(1, 5).join(" | ")}`);
+} finally {
+  await S.cleanup();
+}
+process.exit(crashed ? 1 : 0);

@@ -1,0 +1,52 @@
+[env] qc-chat-notify · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:1895118) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[seed] tenant cmwfr0ti90000a6kzsufl4lnr · system cmwfr0tn10003a6kzhcyjrvwl · webchat conn OK
+
+A) inbound ใหม่ → แจ้งเตือน 1 อัน:
+  ✅ รับ inbound สำเร็จ
+  ✅ AppNotification เพิ่ม 1 อัน
+  ✅ conversation staffUnreadCount = 1
+  ✅ outbox chat.message.received ถูก emit
+  ✅ แจ้งเตือนมีชื่อลูกค้า + ช่องทาง
+  ✅ แจ้งเตือนมีลิงก์ห้องแชท (/app/sys/.../chat?c=)
+
+B) de-dup — พิมพ์รัวยังไม่อ่าน = ไม่แจ้งซ้ำ:
+  ✅ 2 ข้อความติดกัน → AppNotification ไม่เพิ่ม (ยัง 1)
+  ✅ staffUnreadCount สะสม = 3
+  ✅ outbox emit ต่อข้อความ (>=3)
+
+C) พนักงานอ่านแล้ว → ทักใหม่ = แจ้งเตือนอีก 1:
+  ✅ markRead → staffUnreadCount = 0
+  ✅ อ่านครบแล้วทักใหม่ → แจ้งเตือน +1
+  ✅ staffUnreadCount = 1
+
+D) duplicate webhook (externalMessageId ซ้ำ) → ไม่แจ้ง/ไม่นับซ้ำ:
+  ✅ LINE inbound แรกสำเร็จ
+  ✅ LINE inbound ซ้ำ ตรวจจับเป็น duplicate
+  ✅ duplicate → AppNotification ไม่เพิ่ม
+  ✅ duplicate → staffUnreadCount ไม่เพิ่ม
+
+E) AI tool chat_unread_conversations:
+  ✅ tool คืนห้อง unread ครบ (2 ห้อง)
+  ✅ tool มีทั้ง LINE + แชทหน้าเว็บ
+  ✅ tool คืนจำนวนข้อความค้าง > 0
+
+F) cross-tenant isolation:
+  ✅ tenant2 ได้ notification ของตัวเอง
+  ✅ tenant1 notification ไม่โดนผลจาก tenant2
+  ✅ tool ของ tenant1 ไม่เห็นห้องของ tenant2
+  ✅ tool ของ tenant2 เห็นแค่ห้องของตัวเอง (1)
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== Wave4-A Chat notify =====
+ผ่าน 23 ข้อ · FINDINGS 0
+JSON_SUMMARY {"passed":23,"findings":[]}

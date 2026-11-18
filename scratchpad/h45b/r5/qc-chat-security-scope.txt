@@ -1,0 +1,33 @@
+[env] qc-chat-security-scope · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+CS-1 getConnection (B1 — ข้ามร้าน):
+  ✅ [CS-1.1] signature = (tenantId, systemId, connectionId)
+  ✅ [CS-1.2] ร้านตัวเอง → เจอแถว (positive control)
+  ✅ [CS-1.3] query ที่ยิงจริงมี tenantId + systemId ใน where
+  ✅ [CS-1.4] ร้านอื่นถือ id ของเรา → null (ห้ามข้ามร้าน)
+  ✅ [CS-1.5] ระบบอื่นใน tenant เดียวกัน → null
+  ✅ [CS-1.6] service ไม่ export ทางลัดที่ไม่ scope
+
+CS-2 assign (B5 — assignee นอก tenant):
+  ✅ [CS-2.1] assign คนนอก tenant → ok:false + เหตุผลไทย
+  ✅ [CS-2.2] assign คนนอก → ห้ามเขียน DB (ไม่ update/ไม่ log)
+  ✅ [CS-2.3] ตรวจสมาชิกด้วย tenantId ของเธรด (ไม่ใช่ค่าอื่น)
+  ✅ [CS-2.4] assign สมาชิกจริง → ok:true + เขียนจริง (positive control)
+  ✅ [CS-2.5] ปล่อยว่าง (null) → ยังทำได้
+
+CS-3 linkCustomer (B6 — ข้าม unit):
+  ✅ [CS-3.1] unit เอ ผูกลูกค้าของเธรด unit บี → ok:false + ไทย
+  ✅ [CS-3.2] ถูกปฏิเสธแล้วห้ามเขียน contact
+  ✅ [CS-3.3] ขาถอด (customerId:null) ข้าม unit ก็ต้องถูกปฏิเสธ
+  ✅ [CS-3.4] unit เดียวกัน → ผูกได้ (positive control)
+  ✅ [CS-3.5] unitAccess "*" → ผูกได้ (positive control)
+  ✅ [CS-3.6] actions.ts ส่ง auth.active.unitAccess เข้า linkCustomer จริง
+
+CS-4 line.ts header (B10 — fallback ที่ตายแล้ว):
+  ✅ [CS-4.1] อ่าน header ตัวพิมพ์เล็กครั้งเดียว ไม่มี key ซ้ำ/ตัวพิมพ์ใหญ่ที่ตายแล้ว
+  ✅ [CS-4.2] ยังตรวจ signature อยู่ (ไม่ได้ลบทั้งด่าน)
+  ✅ [CS-9.9] ไม่มี query หลุดออก DB จริง (fake prisma รับทุกครั้ง)
+
+===== QC CHAT SECURITY =====
+ผ่าน 20/20
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":20,"passed":20,"findings":[]}

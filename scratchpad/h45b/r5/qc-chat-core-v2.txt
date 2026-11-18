@@ -1,0 +1,62 @@
+[env] qc-chat-core-v2 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+XC-1 publicThread (B3 — type/attachments/senderName + โน้ตภายใน):
+  ✅ [XC-1.1] ทุกข้อความมีฟิลด์ครบตาม §3.2 (มี type + attachments + senderName)
+  ✅ [XC-1.2] ข้อความรูปคืน attachments พร้อม url/name/mimeType/sizeBytes (ไม่ใช่ฟองว่าง)
+  ✅ [XC-1.3] 🔴 โน้ตภายในไม่หลุดถึงลูกค้า (ผลลัพธ์ไม่มี + where กรอง isInternal:false)
+  ✅ [XC-1.4] OUT ที่ไม่ระบุชื่อ ใช้ senderAlias ของร้าน (ไม่ใช่ชื่อพนักงานจริง)
+  ✅ [XC-1.5] IN (ลูกค้าเอง) ไม่มี senderName
+  ✅ [XC-1.6] getWebchatThread ห่อ publicThread ตัวเดียวกัน (ผลลัพธ์เท่ากัน)
+  ✅ [XC-1.7] logic กรองโน้ตภายในมีที่เดียวใน service (ไม่เขียนซ้ำ 2 ที่)
+  ✅ [XC-1.8] ChatWidget เรนเดอร์ไฟล์แนบจริง (ไม่ใช่ {m.body} เปล่า)
+  ✅ [XC-1.9] publicThread คืน conversationId + status ตาม §3.2
+
+XC-2 receiveExternalInbound (ทางเข้า s2s — ห้าม fork logic):
+  ✅ [XC-2.1] รับข้อความสำเร็จ (positive control)
+  ✅ [XC-2.2] เดินผ่าน getOrOpenConversation เดิม (advisory lock ในทรานแซกชัน)
+  ✅ [XC-2.3] เดินผ่าน announceInbound เดิม (outbox chat.message.received + แจ้งเตือน + unread)
+  ✅ [XC-2.4] ใช้เพดาน contact ใหม่/ชม. เหมือน webchat (findOrCreateContact capNewPerHour)
+  ✅ [XC-2.5] lang / verifiedEmail / externalRef ลง ChatContact (M2)
+  ✅ [XC-2.6] context ลง ChatConversation.meta (M3 · §3.3)
+  ✅ [XC-2.7] attachments → ChatAttachment + kind IMAGE/FILE ตาม mimeType
+  ✅ [XC-2.8] อ่านกลับผ่าน publicThread เห็นไฟล์แนบครบ (end-to-end)
+  ✅ [XC-2.9] clientMessageId ซ้ำ → duplicate + ไม่แจ้งเตือน/ไม่ยิง event ซ้ำ
+  ✅ [XC-2.10] ไม่ fork logic: advisory lock เขียนไว้ที่เดียวในทั้งไฟล์
+  ✅ [XC-2.11] ไม่มีทั้งข้อความและไฟล์ → ปฏิเสธพร้อมเหตุผลไทย
+
+XC-V เสียงขาเข้าจากลูกค้า (additive · D21/D29):
+  ✅ [XC-V.1] เสียง+durationMs → ChatMessage.type = AUDIO (ฟองทีมถึงจะเป็นฟองเสียง)
+  ✅ [XC-V.2] ChatAttachment ได้ kind=AUDIO + durationMs ตามจริง
+  ✅ [XC-V.3] preview ของห้องบอกว่าเป็นข้อความเสียง (ไม่ใช่ค่าว่าง)
+  ✅ [XC-V.4] 🔴 durationMs เกินเพดาน 120000 → ปฏิเสธ ไม่บันทึก
+  ✅ [XC-V.5] durationMs ติดลบ → ปฏิเสธ
+  ✅ [XC-V.6] 🟢 คู่ลบ: ไฟล์เสียงที่ไม่มี durationMs = ไฟล์แนบธรรมดา (พฤติกรรมเดิมไม่เปลี่ยน)
+
+XC-3 outbox ขาออก (B4 — chat.message.sent / chat.conversation.status):
+  ✅ [XC-3.1] แอดมินตอบ → ยิง chat.message.sent 1 event
+  ✅ [XC-3.2] payload ครบตาม §3.4 (7 ฟิลด์บังคับ ค่าถูก — body = ข้อความเต็ม ไม่ใช่ preview ที่ถูกตัด · เพิ่มฟิลด์ได้)
+  ✅ [XC-3.3] idempotencyKey คนละ namespace กับขาเข้า (chat.msg.*)
+  ✅ [XC-3.4] emitOutbox อยู่ทรานแซกชันเดียวกับการเขียนข้อความ
+  ✅ [XC-3.5] 🔴 โน้ตภายใน → ห้ามยิง chat.message.sent (แต่ต้องเขียนข้อความจริง)
+  ✅ [XC-3.6] โน้ตภายในไม่ทับ preview / ไม่ล้าง unread ของทีม
+  ✅ [XC-3.7] การส่งออกช่องทางภายนอกเกิดนอกทรานแซกชัน (ไม่ขัง network ไว้ใน tx)
+  ✅ [XC-3.8] ยิง event ให้แล้วแม้ช่องทางภายนอกส่งไม่ผ่าน (ข้อความรอด = event รอด)
+  ✅ [XC-3.9] ปิดเธรด → ยิง chat.conversation.status พร้อม payload §3.4
+  ✅ [XC-3.10] event ของ setStatus อยู่ tx เดียวกับการเปลี่ยนสถานะ
+  ✅ [XC-3.11] สถานะไม่เปลี่ยนจริง → ไม่ยิง event (กัน webhook รัว)
+  ✅ [XC-3.12] ลงทะเบียน consumer ทั้ง 2 type (ไม่งั้น event ค้าง PENDING ตลอดกาล)
+
+XC-4 หลายภาษา (B8 — resolveLocale ห้ามกลืนสตริงว่างที่ตั้งใจ):
+  ✅ [XC-4.1] ภาษาที่ขอมีอยู่ → คืนของภาษานั้น
+  ✅ [XC-4.2] ไม่มีภาษาที่ขอ → ตกไป fallback
+  ✅ [XC-4.3] 🔴 สตริงว่างที่ร้านตั้งใจตั้ง ต้องคืน "" ไม่ใช่ไหลไป fallback
+  ✅ [XC-4.4] 🔴 fallback ที่ตั้งใจว่าง ก็ต้องคืน "" ไม่ใช่ข้ามไปภาษาอื่น
+  ✅ [XC-4.5] ไม่มีภาษาไหนเลย → null (ผู้เรียกซ่อนเอง)
+  ✅ [XC-4.6] โลแคลยาว (th-TH) ตกมาใช้ภาษาฐาน th
+  ✅ [XC-4.7] getSetting คืน greeting/offline เป็น map ภาษา (และคงฟิลด์เดิมให้ผู้เรียกไม่พัง)
+  ✅ [XC-4.8] หน้า widget เลิกฮาร์ดโค้ด .th แล้วใช้ resolveLocale
+  ✅ [XC-9.9] ไม่มี query หลุดออก DB จริง (fake prisma รับทุกครั้ง · ไม่มี HTTP ออก)
+
+===== QC CHAT CORE V2 =====
+ผ่าน 47/47
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":47,"passed":47,"findings":[]}

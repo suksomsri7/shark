@@ -1,0 +1,188 @@
+// H5.3l hunter — (A) multi-step leave approval chains under concurrency
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scratchpad/h53l/p1-chain.mts
+import { type Any, setup, short, errText, dd, underLock, dist } from "./common.mjs";
+
+const N = Number(process.env.H53L_N ?? 20);
+const S = await setup("h53l-p1");
+const { P, tag, TT, U, V, c, rows, safe, sys, fx } = S;
+const out = (k: string, v: unknown) => console.log(`${k} ${typeof v === "string" ? v : short(v, 1200)}`);
+let crashed = "";
+try {
+  const AP = (await import("@/lib/modules/approval/service")) as Any;
+  const SV = (await import("@/lib/modules/hr/service")) as Any;
+  const LV = (await import("@/lib/modules/hr/leave")) as Any;
+  const ctxA = { tenantId: TT };
+  let dayN = 0;
+  const nextDay = () => {
+    const d = new Date(Date.UTC(2031, 0, 6) + dayN++ * 86_400_000);
+    return d.toISOString().slice(0, 10);
+  };
+  /** one HR system + leave policy (quota 300) + employee (unlinked; filed by staff) + chain with `steps` */
+  const world = async (name: string, steps: Any[]) => {
+    const s = await sys(name);
+    const pol = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "VACATION", name: `พักร้อน ${tag}`, quotaDays: 300, paid: true } })).id as string;
+    const e = await fx.mkEmp(TT, s, `พนง ${name} ${tag}`, { startDate: "2030-01-01", unitId: S.u1 });
+    const ap = await AP.createPolicy(ctxA, { name: `สาย ${name}`, entityType: "HrLeave", systemId: s, steps });
+    return { s, pol, e, apId: ap.id as string };
+  };
+  const file = async (w: Any) => {
+    const d = nextDay();
+    const r = await SV.requestLeave(c(w.s), { employeeId: w.e, type: "VACATION", policyId: w.pol, fromDate: d, toDate: d, actorUserId: U.staff.id });
+    const req = (await rows(`SELECT id FROM "ApprovalRequest" WHERE "entityId" = $1`, r.id))[0]?.id as string;
+    return { leaveId: r.id as string, reqId: req, day: d };
+  };
+  const reqRow = async (id: string) => (await rows(`SELECT status::text AS s, "currentStepOrder" AS o FROM "ApprovalRequest" WHERE id = $1`, id))[0];
+  const decisions = async (id: string) => rows(`SELECT "stepOrder" AS o, "decidedById" AS by, decision::text AS d FROM "ApprovalDecision" WHERE "requestId" = $1 ORDER BY "createdAt", id`, id);
+  const leaveSt = async (id: string) => (await rows(`SELECT status::text AS s, "decidedById" AS by FROM "HrLeave" WHERE id = $1`, id))[0];
+  const useRows = async (id: string) => rows(`SELECT kind::text AS k, days::text AS d, "sourceKey" AS sk FROM "HrLeaveBalanceTxn" WHERE "leaveId" = $1 ORDER BY "createdAt"`, id);
+  const decide = (who: keyof typeof V, reqId: string, decision: "APPROVED" | "REJECTED") => safe(() => AP.decide(V[who], ctxA, reqId, { decision }));
+  const apply = (w: Any, f: Any) => async () => {
+    const r = await reqRow(f.reqId);
+    return safe(() => LV.applyLeaveDecision({ tenantId: TT, systemId: w.s, leaveId: f.leaveId, requestId: f.reqId, approved: r.s === "APPROVED" }));
+  };
+
+  // ── A1: decision replay — same OWNER sends "approve" twice, sequentially (2-step chain MANAGER → OWNER) ──
+  {
+    const w = await world("A1", [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }]);
+    const o: string[] = [];
+    let ex: Any = null;
+    for (let i = 0; i < N; i++) {
+      const f = await file(w);
+      const r1 = await decide("owner", f.reqId, "APPROVED");
+      const r2 = await decide("owner", f.reqId, "APPROVED");
+      const rr = await reqRow(f.reqId);
+      const ds = await decisions(f.reqId);
+      o.push(`${r1.ok}/${r2.ok}→${rr.s}·dec=${ds.length}·distinctDeciders=${new Set(ds.map((x: Any) => x.by)).size}`);
+      if (i === 0) ex = { r1, r2, rr, ds };
+    }
+    out("A1.replay.owner.MANAGER>OWNER", dist(o));
+    out("A1.example", ex);
+  }
+  // ── A2: one MANAGER holds both MANAGER steps (2-step MANAGER → MANAGER) ──
+  {
+    const w = await world("A2", [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "MANAGER" }]);
+    const o: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const f = await file(w);
+      const r1 = await decide("mgr", f.reqId, "APPROVED");
+      const r2 = await decide("mgr", f.reqId, "APPROVED");
+      await apply(w, f)();
+      const ds = await decisions(f.reqId);
+      o.push(`${r1.ok}/${r2.ok}→req=${(await reqRow(f.reqId)).s}·leave=${(await leaveSt(f.leaveId)).s}·distinct=${new Set(ds.map((x: Any) => x.by)).size}`);
+    }
+    out("A2.sameManagerBothSteps", dist(o));
+  }
+  // ── A3: double-click — same OWNER, two decide() in parallel (Promise.all, no ordering) ──
+  {
+    const w = await world("A3", [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }]);
+    const o: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const f = await file(w);
+      const [a, b] = await Promise.all([decide("owner", f.reqId, "APPROVED"), decide("owner", f.reqId, "APPROVED")]);
+      o.push(`${[a.ok, b.ok].sort().join("/")}→${(await reqRow(f.reqId)).s}`);
+    }
+    out("A3.doubleClick.parallel", dist(o));
+  }
+  // ── A4: two approvers, same final step, same instant (row lock on ApprovalRequest orders the race deterministically) ──
+  for (const [label, d2] of [["approve+approve", "APPROVED"], ["approve+reject", "REJECTED"]] as const) {
+    const w = await world(`A4${d2}`, [{ order: 1, approverRole: "OWNER" }]);
+    const o: string[] = [];
+    let blockedAll = 0;
+    for (let i = 0; i < N; i++) {
+      const f = await file(w);
+      const calls = [() => decide("owner", f.reqId, "APPROVED"), () => decide("owner2", f.reqId, d2)];
+      const { res, blocked } = await underLock(P, { rowSql: `SELECT id FROM "ApprovalRequest" WHERE id = $1 FOR UPDATE`, args: [f.reqId] }, i % 2 ? calls.reverse() : calls);
+      if (blocked.every(Boolean)) blockedAll++;
+      // effect delivered twice concurrently (outbox redelivery)
+      const [e1, e2] = await Promise.all([apply(w, f)(), apply(w, f)()]);
+      const rr = await reqRow(f.reqId);
+      const lv = await leaveSt(f.leaveId);
+      const ur = await useRows(f.leaveId);
+      const aud = Number((await rows(`SELECT count(*)::int AS n FROM "AuditLog" WHERE "targetId" = $1 AND action = 'hr.leave.decide'`, f.leaveId))[0]?.n);
+      const evt = Number((await rows(`SELECT count(*)::int AS n FROM "OutboxEvent" WHERE type = 'hr.leave.decided' AND payload->>'leaveId' = $1`, f.leaveId))[0]?.n);
+      const ds = await decisions(f.reqId);
+      const consistent = (rr.s === "APPROVED" && lv.s === "APPROVED" && ur.length === 1) || (rr.s === "REJECTED" && lv.s === "REJECTED" && ur.length === 0);
+      o.push(`ok=${res.map((r: Any) => r.ok).join("/")}·req=${rr.s}·leave=${lv.s}·dec=${ds.length}·use=${ur.length}·audit=${aud}·evt=${evt}·applied=${[e1.applied, e2.applied].filter(Boolean).length}·${consistent ? "OK" : "BAD"}`);
+    }
+    out(`A4.${label} (both blocked in ${blockedAll}/${N})`, dist(o));
+  }
+  // ── A5: chain edited mid-flight — request sits at step 2, policy edited down to 1 step ──
+  {
+    const w = await world("A5", [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }]);
+    const f = await file(w);
+    const s1 = await decide("mgr", f.reqId, "APPROVED");
+    const balBefore = await safe(() => LV.leaveBalances(c(w.s), V.owner, { employeeId: w.e, year: 2031 }));
+    await AP.updatePolicy(ctxA, w.apId, { name: "สาย A5 (แก้)", systemId: w.s, steps: [{ order: 1, approverRole: "OWNER" }] });
+    const ownerTry = await decide("owner", f.reqId, "APPROVED");
+    const ownerRej = await decide("owner", f.reqId, "REJECTED");
+    const direct = await safe(() => SV.decideLeave(c(w.s), f.leaveId, "APPROVED", U.owner.id, { from: "PENDING" }).then(() => ({ ok: true })));
+    const pend = await safe(() => AP.listPending(ctxA, V.owner));
+    out("A5.chainEdit", { s1: s1.ok, req: await reqRow(f.reqId), ownerApprove: ownerTry, ownerReject: ownerRej, directDecide: direct, leave: await leaveSt(f.leaveId), inOwnerPendingList: (pend as Any[]).some?.((x: Any) => x.id === f.reqId), balAvailBefore: balBefore?.items?.[0]?.available, pendingDays: balBefore?.items?.[0]?.pending });
+    // also: step orders re-numbered [1,3] while request at 2
+    const f2 = await file(w);
+    await AP.updatePolicy(ctxA, w.apId, { name: "สาย A5b", systemId: w.s, steps: [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }] });
+    await decide("mgr", f2.reqId, "APPROVED");
+    await AP.updatePolicy(ctxA, w.apId, { name: "สาย A5c", systemId: w.s, steps: [{ order: 1, approverRole: "MANAGER" }, { order: 3, approverRole: "OWNER" }] });
+    out("A5b.renumber", { ownerApprove: await decide("owner", f2.reqId, "APPROVED"), req: await reqRow(f2.reqId), leave: await leaveSt(f2.leaveId) });
+  }
+  // ── A6: requester withdraws the chain request on the approvals page (cancelMyRequestAction → cancelRequest) — leave stays, direct path opens ──
+  {
+    const w = await world("A6", [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }]);
+    const f = await file(w);
+    const s1 = await decide("mgr", f.reqId, "APPROVED"); // step 1 by manager — step 2 needs OWNER
+    const cancelled = await AP.cancelRequest(ctxA, f.reqId); // same call as approval/actions.ts cancelMyRequestAction (requester = staff)
+    const leaveAfterCancel = await leaveSt(f.leaveId);
+    const viaInbox = await safe(() => LV.decideLeaveAs(c(w.s), V.mgr2, f.leaveId, "APPROVED"));
+    out("A6.withdrawThenDirect", { s1: s1.ok, cancelRequest: cancelled, leaveAfterCancel, inboxDecideByOtherManager: viaInbox, req: await reqRow(f.reqId), leave: await leaveSt(f.leaveId), use: await useRows(f.leaveId), decisions: await decisions(f.reqId) });
+  }
+  // ── A7: requester cancels the leave while the last step approves (Promise.all) ──
+  {
+    const w = await world("A7", [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }]);
+    const o: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const f = await file(w);
+      await decide("mgr", f.reqId, "APPROVED");
+      const [d, x] = await Promise.all([decide("owner", f.reqId, "APPROVED"), safe(() => SV.cancelLeave(c(w.s), f.leaveId, { actorUserId: U.staff.id }))]);
+      await apply(w, f)();
+      const rr = await reqRow(f.reqId);
+      const lv = await leaveSt(f.leaveId);
+      const ur = await useRows(f.leaveId);
+      const consistent = (rr.s === "APPROVED" && lv.s === "APPROVED" && ur.length === 1) || (rr.s === "CANCELLED" && lv.s === "CANCELLED" && ur.length === 0);
+      o.push(`decide=${d.ok}·cancel=${x.ok}·req=${rr.s}·leave=${lv.s}·use=${ur.length}·${consistent ? "OK" : "BAD"}`);
+    }
+    out("A7.cancelVsFinalApprove", dist(o));
+    // A7b: deterministic — row lock on the request; cancelLeave enters first (blocks on cancelRequest), then the final approve (blocks on claim)
+    const o2: string[] = [];
+    for (let i = 0; i < N; i++) {
+      const f = await file(w);
+      await decide("mgr", f.reqId, "APPROVED");
+      const calls = [() => safe(() => SV.cancelLeave(c(w.s), f.leaveId, { actorUserId: U.staff.id })), () => decide("owner", f.reqId, "APPROVED")];
+      const { res } = await underLock(P, { rowSql: `SELECT id FROM "ApprovalRequest" WHERE id = $1 FOR UPDATE`, args: [f.reqId] }, i % 2 ? calls.reverse() : calls);
+      await apply(w, f)();
+      const rr = await reqRow(f.reqId);
+      const lv = await leaveSt(f.leaveId);
+      const ur = await useRows(f.leaveId);
+      const consistent = (rr.s === "APPROVED" && lv.s === "APPROVED" && ur.length === 1) || (rr.s === "CANCELLED" && lv.s === "CANCELLED" && ur.length === 0);
+      o2.push(`${i % 2 ? "approveFirst" : "cancelFirst"}·ok=${res.map((r: Any) => r.ok).join("/")}·req=${rr.s}·leave=${lv.s}·use=${ur.length}·${consistent ? "OK" : "BAD"}`);
+    }
+    out("A7b.cancelVsFinalApprove.locked", dist(o2));
+  }
+  // ── A8: approve effect refused (BALANCE) — request APPROVED, leave CANCELLED (documented Q4) — control for "final status vs step rows" ──
+  {
+    const s = await sys("A8");
+    const pol = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "VACATION", name: `พักร้อน ${tag}`, quotaDays: 1, paid: true } })).id as string;
+    const e = await fx.mkEmp(TT, s, `พนง A8 ${tag}`, { startDate: "2030-01-01", unitId: S.u1 });
+    await AP.createPolicy(ctxA, { name: "สาย A8", entityType: "HrLeave", systemId: s, steps: [{ order: 1, approverRole: "OWNER" }] });
+    const w = { s, pol, e };
+    const a = await file(w);
+    const b = await safe(() => file(w));
+    out("A8.secondFilingBeyondQuota", b?.reason ?? "filed");
+    void a;
+  }
+} catch (x) {
+  crashed = errText(x);
+  console.log(`CRASH ${crashed} ${(x as Error)?.stack?.split("\n").slice(1, 5).join(" | ")}`);
+} finally {
+  await S.cleanup();
+}
+process.exit(crashed ? 1 : 0);

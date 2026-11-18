@@ -1,0 +1,65 @@
+[env] qc-chat-security · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+(node:2064723) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[seed] tenant cmwfthf4l00005fkzxkb5lace · system cmwfthf9r00055fkz6g9w8c0v · unitA/B + webchat conn OK
+
+M12 race (advisory lock):
+  ✅ 10 ข้อความพร้อมกันสำเร็จหมด
+  ✅ สร้าง conversation เดียว (ไม่ race ซ้ำ)
+  ✅ ข้อความครบ 10 ไม่หาย
+
+M11 unit RBAC (IDOR):
+  ✅ list: unitA เห็น convA
+  ✅ list: unitA ไม่เห็น convB (ปิด IDOR)
+  ✅ list: unitA เห็น conv ไม่ผูก unit (null)
+  ✅ list: "*" เห็นทั้ง convA+convB
+  ✅ getThread: unitA เปิด convB ไม่ได้ (null)
+  ✅ getThread: "*" เปิด convB ได้
+  ✅ sendReply: unitA ตอบ convB ไม่ได้
+  ✅ setStatus: unitA ปิด convB ไม่ได้
+  ✅ assign: unitA มอบหมาย convB ไม่ได้
+  ✅ sendReply: unitA ตอบ convA ได้
+
+M9 rate limit + contact cap:
+  ✅ rateLimit: 20 ครั้งแรกผ่าน
+  ✅ rateLimit: ครั้งที่ 21 โดนบล็อก
+  ✅ rateLimit: คนละ key ไม่โดนบล็อก
+  ✅ contact cap: contact ใหม่เกิน 60/ชม. ถูกปฏิเสธ
+  ✅ contact cap: contact เดิมยังส่งได้
+
+M10 CSPRNG token + httpOnly cookie (static source check):
+  ✅ route: ใช้ randomUUID (CSPRNG) gen token
+  ✅ route: set httpOnly cookie
+  ✅ route: token มาจาก cookie ไม่ใช่ request body
+  ✅ widget: ไม่มี localStorage guest token
+  ✅ widget: ไม่ gen guest token ด้วย Math.random
+
+SEC-U ไฟล์แนบ/บริบทขาเข้า (WO-CV15):
+  ✅ inbound: ปฏิเสธ javascript: พร้อมเหตุผลไทย
+  ✅ inbound: ปฏิเสธ http:// (ไม่เข้ารหัส · รั่ว IP ทีม) พร้อมเหตุผลไทย
+  ✅ inbound: ปฏิเสธ https://127.0.0.1 (loopback) พร้อมเหตุผลไทย
+  ✅ inbound: ปฏิเสธ https://10.0.0.1 (IP ภายใน) พร้อมเหตุผลไทย
+  ✅ inbound: ปฏิเสธ https://foo.local (โฮสต์ในเครือข่าย) พร้อมเหตุผลไทย
+  ✅ inbound: 🟢 https โดเมนสาธารณะ (คนละ CDN กับ SHARK) ยังผ่านตามเดิม
+  ✅ sendReply: ปฏิเสธไฟล์แนบ javascript: พร้อมเหตุผลไทย
+  ✅ sendReply: 🟢 https ปกติยังส่งได้ (ไม่กันเกินจนของจริงพัง)
+  ✅ receiveExternalReply: ถ้ารับไฟล์แนบเมื่อไหร่ ต้องผ่านตัวกรองตัวเดียวกัน
+  ✅ bubble: มีตัวกรอง https ก่อนวาด href/src
+  ✅ bubble: ไม่มี href/src ที่รับ url ดิบจากแถวข้อมูลตรง ๆ
+  ✅ context: คีย์ที่ SiamDive ใช้จริงยังผ่าน (pageUrl/country)
+  ✅ 🔴 context: คีย์ภายในที่ widget ยัดมาเองถูกทิ้ง (autoTranslate/tags — บังคับให้ร้านจ่ายค่าแปลไม่ได้)
+  ✅ context: คีย์นอกบัญชีขาวถูกทิ้งเงียบ (ผู้เรียกเดิมไม่พัง)
+  ✅ context: ค่ายาวเกินถูกจำกัด ≤512 ตัวอักษร (กัน row bloat)
+
+[cleanup] ลบ test tenant เรียบร้อย
+
+===== QC7 Chat security =====
+ผ่าน 38 ข้อ · FINDINGS 0
+JSON_SUMMARY {"total":38,"passed":38,"findings":[]}

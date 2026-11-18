@@ -1,0 +1,34 @@
+[env] h53l-q1 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h53l-q1] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:3965486) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+Q1.A.race a-first:a-split/b-split·paid=2·unpaid=4·Σ=0·OK×10 | b-first:a-split/b-split·paid=2·unpaid=4·Σ=0·OK×10 · bad=0
+Q1.B.approveSplit {"dec":{"ok":true},"use":{"d":"-2.0","note":"unpaid:3.0;from:2031-03-12"},"sum":0}
+Q1.B.revokeEarlier {"dec":{"ok":true},"sumAfter":28,"splitOfLater":{"paidDays":2,"unpaidDays":3,"unpaidFrom":"2031-03-12"}}
+Q1.C.revokeSplitThenNew {"first":{"use":{"d":"-2.0","note":"unpaid:1.0;from:2031-03-05"},"sum":0},"revoke":{"ok":true},"sumAfterRevoke":2,"second":{"dec":{"ok":true},"use":{"d":"-2.0","note":null}},"sumEnd":0}
+Q1.E.halfNoBalance {"dec":{"ok":true},"use":{"d":"0.0","note":"unpaid:0.5;from:2031-03-18"}}
+Q1.E.half0.3left {"dec":{"ok":true},"use":{"d":"0.0","note":"unpaid:0.5;from:2031-03-19"},"sumAfter":0.3}
+Q1.H.malformed {"goodNote":"unpaid:2.0;from:2031-03-26","readerAfter":{"paidDays":0,"unpaidDays":0,"unpaidFrom":null}}
+Q1.build {"ok":true}
+Q1.workDays.flags [{"code":"FROZEN","d":"2031-03-12","pl":0,"ul":480,"ab":0,"review":[]},{"code":"FROZEN","d":"2031-03-13","pl":0,"ul":480,"ab":0,"review":[]},{"code":"FROZEN","d":"2031-03-14","pl":0,"ul":480,"ab":0,"review":[]},{"code":"HALF","d":"2031-03-18","pl":0,"ul":240,"ab":240,"review":[]},{"code":"POINT3","d":"2031-03-19","pl":0,"ul":240,"ab":240,"review":[]}]
+Q1.run true
+Q1.lines.FROZEN {"unpaid":["UNPAID_LEAVE:-100000@2031-03-12","UNPAID_LEAVE:-100000@2031-03-13","UNPAID_LEAVE:-100000@2031-03-14"],"total":-300000,"gross":2700000}
+Q1.lines.REVOKE {"unpaid":[],"total":0,"gross":3000000}
+Q1.lines.HALF {"unpaid":["UNPAID_LEAVE:-50000@2031-03-18"],"total":-50000,"gross":2950000}
+Q1.lines.POINT3 {"unpaid":["UNPAID_LEAVE:-50000@2031-03-19"],"total":-50000,"gross":2950000}
+Q1.lines.MALF {"unpaid":[],"total":0,"gross":3000000}
+Q1.approve true
+Q1.labor.ACTUAL {"basis":"ACTUAL","cost":15037500,"keys":["ok","unitId","sales","targetTenths","periodKey","basis","costSatang","salesSatang","pctTenths","throughDay","excludedHeadcount","partial"]}
+Q1.run.sumGross 14600000
+Q1.report.leave {"ok":false,"code":"INPUT","reason":"ช่วงเวลาหรือรูปแบบไฟล์ไม่ถูกต้อง"}
+Q1.dto [{"id":"MALF"},{"id":"POINT3","paidDays":0,"unpaidDays":0.5},{"id":"HALF","paidDays":0,"unpaidDays":0.5},{"id":"FROZEN","paidDays":2,"unpaidDays":3}]
+Q1.D.spanPaidFeb {"febApproved":true,"G1(2 left)":{"file":"ok","dec":true,"use":{"d":"-2.0","note":"unpaid:3.0;from:2031-03-01"},"st":"APPROVED"},"G2(0.5 left)":{"file":"ok","dec":false,"st":"PENDING"},"G3(0 left)":{"file":"ok","dec":false,"st":"PENDING"}}
+Q1.F.split+F1 {"am":{"ok":true},"pm":{"ok":true},"useAm":{"d":"-0.5","note":null},"usePm":{"d":"0.0","note":"unpaid:0.5;from:2031-03-11"},"day":[{"st":"ABSENT","pl":240,"ul":0,"ab":240,"review":["LEAVE_MISMATCH"]}],"run":"WORK_ENTRIES"}
+RESIDUE none (tenants=1 users=4 activeLaw=0->0)

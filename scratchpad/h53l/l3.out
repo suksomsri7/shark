@@ -1,0 +1,17 @@
+[env] h53l-l3 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h53l-l3] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:117809) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+N1.editVsAdvance edit=ok·req=PENDING@2·steps=[1]·ownerAfter=false·STRANDED×20
+N3.withdrawViaAction {"step1":{"withdraw":"void","req":{"s":"CANCELLED","o":1},"leave":"CANCELLED","audit":[{"action":"hr.leave.cancel"}],"directMgr":false,"directOwner":false},"step2":{"withdraw":"void","req":{"s":"CANCELLED","o":2},"leave":"CANCELLED","audit":[{"action":"hr.leave.cancel"}],"directMgr":false,"directOwner":false}}
+N2.d.secondHalfAfterJudged {"storedBefore":[{"st":"ABSENT","h":"AM","fr":"0.5","version":1}],"needsRecompute":0,"buildBefore":true,"workDayBeforeRecompute":[{"st":"ABSENT","pl":0,"ul":240,"ab":240,"review":["LEAVE_MISMATCH","STALE"]}],"after":[{"st":"LEAVE","h":"AM","fr":"1.0","version":2}],"workDayAfter":[{"st":"LEAVE","pl":240,"ul":240,"ab":0,"review":[]}]}
+N2.att [{"d":"2031-08-04","dayslot":false,"st":540,"s":"LEAVE","h":"AM","fr":"1.0","w":240},{"d":"2031-08-05","dayslot":false,"st":540,"s":"LEAVE","h":"AM","fr":"1.0","w":0},{"d":"2031-08-05","dayslot":false,"st":1020,"s":"LEAVE","h":"PM","fr":"0.0","w":0},{"d":"2031-08-06","dayslot":false,"st":1200,"s":"LEAVE","h":"AM","fr":"1.0","w":0},{"d":"2031-08-07","dayslot":false,"st":540,"s":"LEAVE","h":"AM","fr":"1.0","w":0}]
+N2.workDays [{"d":"2031-08-01","st":"UNSCHEDULED","pm":0,"pl":0,"ul":0,"ab":0,"w":0,"un":0,"review":[]},{"d":"2031-08-02","st":"UNSCHEDULED","pm":0,"pl":0,"ul":0,"ab":0,"w":0,"un":0,"review":[]},{"d":"2031-08-03","st":"UNSCHEDULED","pm":0,"pl":0,"ul":0,"ab":0,"w":0,"un":0,"review":[]},{"d":"2031-08-04","st":"LEAVE","pm":480,"pl":480,"ul":0,"ab":0,"w":0,"un":0,"review":["WORKED_ON_LEAVE"]},{"d":"2031-08-05","st":"LEAVE","pm":480,"pl":240,"ul":240,"ab":0,"w":0,"un":0,"review":[]},{"d":"2031-08-06","st":"LEAVE","pm":480,"pl":240,"ul":240,"ab":0,"w":0,"un":0,"review":[]},{"d":"2031-08-07","st":"LEAVE","pm":480,"pl":240,"ul":240,"ab":0,"w":0,"un":0,"review":[]}]
+RESIDUE none (tenants=1 users=5)

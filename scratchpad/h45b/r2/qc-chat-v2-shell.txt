@@ -1,0 +1,39 @@
+SH-1 หน้าแชทไม่มีชื่อหน้า/คำอธิบาย/แท็บ:
+  ✅ [SH-1.1] หน้า overview ยังมีสาขา CHAT (กล่องแชทเต็มจอ)
+  ✅ [SH-1.2] 🔴 สาขา CHAT ไม่เรนเดอร์ ModuleTabs (แท็บ ภาพรวม/เชื่อมช่องทาง)
+  ✅ [SH-1.3] 🔴 PageHeader ในหน้า overview ถูกกันไม่ให้แสดงเมื่อเป็น CHAT (ระบบอื่นยังมี)
+  ✅ [SH-1.4] ไม่มีคำว่า "ระบบรวม" หลุดไปแสดงในสาขา CHAT
+  ✅ [SH-1.5] ลิงก์ "จัดการการเชื่อมระบบ" (หลายสาขา) ไม่ถูกทิ้ง — ยังมีในหน้า หรือย้ายเข้าเมนู ⋮ ของแชท
+SH-2 แถบบนของแอปซ่อนบนมือถือเฉพาะหน้าแชท:
+  ✅ [SH-2.1] AppShell ตัดสิน "หน้าแชทเต็มจอ" จาก chatSystemIds + pathname
+  ✅ [SH-2.2] Topbar รับสัญญาณซ่อนบนมือถือ (prop) และใช้ `hidden`+`lg:` (เดสก์ท็อปยังมี)
+  ✅ [SH-2.3] ไม่ hardcode systemId/ชื่อร้าน ในเงื่อนไข
+SH-3 ระยะขอบบนหดตามแถบที่หาย:
+  ✅ [SH-3.1] AppMain รู้ว่าเป็นหน้าแชทเต็มจอ (ผ่าน prop/pathname เดียวกับ shell)
+  ✅ [SH-3.2] มี padding-top 2 แบบ (มีแถบ/ไม่มีแถบ) ในระดับ <lg
+  ✅ [SH-3.3] layout ส่ง chatSystemIds ให้ AppMain ด้วย (ไม่ใช่แค่ AppShell)
+SH-4 ปุ่ม ☰ ในหัวรายการเปิด drawer ของแอปได้จริง:
+  ✅ [SH-4.1] หัวรายการมีปุ่ม ☰ = Icon name="menu" + data-qc="app-menu"
+  ✅ [SH-4.2] ปุ่ม ☰ ซ่อนบน lg (มี sidebar อยู่แล้ว)
+  ✅ [SH-4.3] 🔴 สัญญา event `app:drawer-open` — โมดูลยิง
+  ✅ [SH-4.4] 🔴 สัญญา event `app:drawer-open` — shell ฟังแล้วเปิด drawer
+  ✅ [SH-4.5] โมดูลแชทไม่ import จาก app-shell (คุยผ่าน event เท่านั้น)
+  ✅ [SH-4.6] drawer มีจุดจับ data-qc="app-drawer" ให้ visual QC กดจริง
+SH-5 เมนู ⋮ รับทางเข้าที่หายไปพร้อมแท็บ:
+  ✅ [SH-5.1] รายการ "เชื่อมช่องทาง" ลิงก์ไป /chat/channels
+  ✅ [SH-5.2] รายการ "คำตอบสำเร็จรูป" (ทางเข้าคลังของสาย D)
+  ✅ [SH-5.3] รายการ "ห้องที่ปิดแล้ว" (กรอง ไม่ใช่ลิงก์)
+SH-6/7 ทะเบียนแท็บและลิงก์เก่าต้องไม่ถดถอย:
+  ✅ [SH-6.1] chatTabs() ยังอยู่ใน chat/ui.tsx (เมนูซ้ายใช้ · qc-nav-functions เฝ้า)
+  ✅ [SH-7.1] /chat/page.tsx ยัง redirect พา ?c= และ ?err=
+SH-9 ไม่มี emoji ใหม่ในไฟล์ที่แตะ:
+  ✅ [SH-9.page.tsx] ไม่มี emoji ใน page.tsx
+  ✅ [SH-9.AppShell] ไม่มี emoji ใน AppShell
+  ✅ [SH-9.AppMain] ไม่มี emoji ใน AppMain
+  ✅ [SH-9.inbox-client] ไม่มี emoji ใน inbox-client
+
+===== QC: chat V2 — หน้าแชทแบบตัด (shell) =====
+ผ่าน 26/26
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":26,"passed":26,"findings":[]}

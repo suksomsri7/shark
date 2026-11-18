@@ -1,0 +1,44 @@
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-h4.5 exit=0 ===== qc-hr-h4.5 ===== passed 83/83 (QC_FORCE)
+qc-hr-h4.5 exit=0 ===== qc-hr-h4.5 ===== passed 83/83 (QC_FORCE)
+qc-hr-h4.5 exit=0 ===== qc-hr-h4.5 ===== passed 83/83 (QC_FORCE)
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-hr-h2.10 exit=0 ===== qc-hr-h2.10 ===== passed 57/57 (QC_FORCE)
+qc-hr-h2.3 exit=0 ===== qc-hr-h2.3 ===== passed 79/79 (QC_FORCE)
+qc-hr-h2.7 exit=0 ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+qc-hr-h2.9 exit=0 ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE)
+qc-hr-h3.8 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-h4.2 exit=1 ===== qc-hr-h4.2 ===== passed 52/53
+qc-hr-set-1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+qc-hf-hr-privacy exit=0 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-audit-trail exit=0 
+qc-chat-ai-suggest exit=0 ===== QC CHAT AI SUGGEST =====
+qc-chat-api-v1 exit=0 ===== QC CHAT API V1 =====
+qc-chat-attachments exit=0 ===== QC CHAT ATTACHMENTS =====
+qc-chat-business-hours exit=0 ===== QC CHAT BUSINESS HOURS =====
+qc-chat-core-v2 exit=0 ===== QC CHAT CORE V2 =====
+qc-chat-inbox-ui exit=0 ===== QC CHAT INBOX UI =====
+qc-chat-learning exit=0 ===== QC CHAT LEARNING =====
+qc-chat-member-autolink exit=0 ===== QC: เชื่อมระบบสมาชิกอัตโนมัติ =====
+qc-chat-notify-v2 exit=0 ===== QC CHAT NOTIFY V2 =====
+qc-chat-notify exit=0 ===== Wave4-A Chat notify =====
+qc-chat-push-badge exit=0 ===== QC CHAT PUSH + BADGE =====
+qc-chat-replies exit=0 ===== QC CHAT REPLIES (WO-C3b) =====
+qc-chat-retention exit=0 ===== QC CHAT RETENTION (WO-C12 · PDPA) =====
+qc-chat-security-scope exit=0 ===== QC CHAT SECURITY =====
+qc-chat-security exit=0 ===== QC7 Chat security =====
+qc-chat-staff-perms exit=0 ===== QC CHAT STAFF PERMS =====
+qc-chat-translate exit=0 ===== QC CHAT TRANSLATE =====
+qc-chat-v2-composer exit=0 ===== QC CHAT V2 COMPOSER =====
+qc-chat-v2-context exit=0 ===== QC: chat V2 — คอลัมน์บริบท + G11 =====
+qc-chat-v2-icons exit=0 ===== QC CHAT V2 ICONS =====
+qc-chat-v2-list exit=0 ===== QC CHAT V2 LIST =====
+qc-chat-v2-quickreply exit=0 ===== QC CHAT V2 QUICKREPLY =====
+qc-chat-v2-realtime exit=0 ===== QC CHAT V2 REALTIME =====
+qc-chat-v2-room exit=0 ===== QC CHAT V2 ROOM =====
+qc-chat-v2-shell exit=0 ===== QC: chat V2 — หน้าแชทแบบตัด (shell) =====
+qc-chat-v2-voice exit=0 ===== QC CHAT V2 VOICE =====
+qc-svc-b.2 exit=0 ===== QC SVC B.2 ตัววางคิว planDay =====
+DONE

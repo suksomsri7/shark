@@ -1,0 +1,109 @@
+[env] qc-hr-h4.5 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[qc-hr-h4.5] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+[qc-hr-h4.5] rules=loaded · link=loaded · notify=loaded · glue=loaded · base=96fcd73ad
+── [static] base 96fcd73ad (H4.5 in base) ──
+  ✅ [H4.5-S1.1] [static] migration 20270111000000_hr_line_link: 2 CREATE TABLE · status/endReason/kind/line CHECK lists · ACTIVE completeness CHECK · partial UNIQUE ACTIVE + PENDING (systemId, employeeId) · (tenantId, chatContactId) ACTIVE · UNIQUE (tenantId, dedupeKey) · index (line, nextAttemptAt) · FK HrEmployee RESTRICT · additive
+  ✅ [H4.5-S1.2] [static] hr.prisma models HrLineLink/HrNotice (fields = R1 lists · no name/text/LINE id/money field) · core/scope.ts sys() ×2 · hr-qc-env entries
+  ✅ [H4.5-S1.3] [static] boundaries: no hr/** file imports chat or platform · platform/hr-line.ts imports chat + hr via facades only · no other platform file outside postback-routes/minute-jobs/consumers names hr-line
+  ✅ [H4.5-S1.4] [static] [control] frozen unchanged vs base: webhook route · chat/** except link-code.ts · notify-customer · approval · account · settings-lock · roster/leave/ot/swap/service/lifecycle · payroll*/payslip* · qc-hr-lib · package.json · lockfile · webhook labels · other oracles only "ORACLE-EDIT (H4.5" hunks
+  ✅ [H4.5-S1.5] [static] chat/link-code.ts: one marked hunk, LINK_PURPOSES = base + "HR_EMPLOYEE" only
+  ✅ [H4.5-S1.6] [static] marked hunks "HR H4.5" (opened + closed ◂, never removing another ticket's marker) in hr/index · hr.prisma · scope · hr-qc-env · link-code · postback-routes · consumers · minute-jobs · 3 pages · visual-hr
+  ✅ [H4.5-S1.7] [static] no new outbox type: consumer key set = base · new files emit nothing · 7 events wrapped with onHrEventForLine via bothMain (ORACLE-EDIT (H4.5 fix round · controller ruling I): title only)
+  ✅ [H4.5-S1.8] [static] minute job "hr.line" everyMinutes 5 → runHrLineJobs(now, {budgetMs, signal})
+  ✅ [H4.5-S1.9] [static] lineNotify written only via lockHrSettings(…"hr:linepolicy:"…) + writeHrSettingsKeys · no own appSystem update · audit hr.line.settings
+  ✅ [H4.5-S1.10] [static] self fns (myLineStatus · beginLineLink · unlinkMyLine · issueHrLineCode) call resolveSelf and read no input employeeId · issueMyLineCodeAction + line-actions "use server" → requireTenant()
+  ✅ [H4.5-S1.11] [static] hr-line.ts: issueLinkCode purpose "HR_EMPLOYEE" ttlMin 10 · no console/log near the code · route prefix "hr." resolveParty → null · postback handler never reads evt.params
+  ✅ [H4.5-S1.12] [static] audit action names ×5 present · audit writes carry no code/externalUserId/displayName/chatContactId
+  ✅ [H4.5-S1.13] [static] UI testids · inventory rows H4.5 · messages hr.line th = en + pilot label · visual-hr "4.5" · tokens only
+  ✅ [H4.5-F1.1] [static] HrLineLink.employee relation (onDelete Restrict) + HrEmployee back-relation · migration has the digestOf index · DB index present
+  ✅ [H4.5-S2.1] [pure] HR_LINE_TEXT / _EN: same keys · th Thai · en ASCII
+  ✅ [H4.5-S2.2] [pure] noticeMessage th: 10 kind×outcome bodies byte for byte (altText · sentence + footer · one uri button)
+  ✅ [H4.5-S2.3] [pure] noticeMessage en: 10 bodies byte for byte
+  ✅ [H4.5-S2.4] [pure] extra input (name · date · amount · branch · reason) never reaches a body · no digit in any non-DIGEST body
+  ✅ [H4.5-S2.5] [pure] hrefOf vectors (7 kinds) · no tenant/system/employee id · no query/token
+  ✅ [H4.5-S2.6] [pure] dedupeKeyOf = hr:<kind>:<refId>:<employeeId>[:<outcome>]
+  ✅ [H4.5-S2.7] [pure] nextAttemptAt(1..4) = +5 m · +30 m · +2 h · null
+  ✅ [H4.5-S2.8] [pure] lineNotifyPolicyOf: defaults (OFF · events on · IMMEDIATE · 17:30 · cap 200 · unit null) · bad values ⇒ defaults · cap 0..5000
+  ✅ [H4.5-S2.9] [pure] monthKeyBkk: 2032-01-31T17:00Z ⇒ 2032-02 · 16:59Z ⇒ 2032-01
+(node:2355866) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [H4.5-S3.0] [db] [control] fake LINE up · lineApiBase() = fake before any send · fixtures (2 tenants · 3 OAs · 27 employees · contacts)
+  ✅ [H4.5-S3.1] [db] shop default OFF (shopEnabled false) · begin refusals DISABLED · NO_EMPLOYEE · INACTIVE · NO_OA (codes) · nothing written
+  ✅ [H4.5-S3.2] [db] issueHrLineCode: code once · PENDING row (issuedForUserId · OA c1 · +10 min) · ChatLinkCode HR_EMPLOYEE refId = linkId · no raw code in DB/logs
+  ✅ [H4.5-S3.3] [db] signed webhook with the code ⇒ ACTIVE · exact reply · room shows LINK_CODE_MASK · audit hr.line.link {employeeId} · in-app note · contact partyId/customerId untouched · self status ACTIVE + own LINE name
+  ✅ [H4.5-S3.4] [db] expired · consumed code replayed · reissued (old CANCELLED/REISSUED) ⇒ LINK_FAILED_TEXT · no ACTIVE
+  ✅ [H4.5-S3.5] [db] code typed on another OA of the shop · on another shop's OA ⇒ LINK_FAILED_TEXT (same bytes) · no ACTIVE · nothing revealed
+  ✅ [H4.5-S3.6] [db] employee ENDED · linkedUserId changed · Membership gone after issue ⇒ refused · no ACTIVE
+  ✅ [H4.5-S3.7] [db] 11th guess within 15 min ⇒ refused although the code is valid
+  ✅ [H4.5-S3.8] [db] 5 codes/hour: 6th ⇒ RATE · reissues leave one PENDING
+  ✅ [H4.5-S3.9] [db] relink (phone change) ⇒ old ENDED/RELINK · same contact to employee B ⇒ A ENDED/CONTACT_REUSED · B ACTIVE
+  ✅ [H4.5-S3.10] [db] same signed body twice ⇒ 1 link · 1 reply · bad signature ⇒ 401 · no write · code still unused
+  ✅ [H4.5-S3.11] [db] unlink self (SELF) · admin (ADMIN) · LINE hr.unlink (LINE) · audit hr.line.unlink {employeeId, reason} · hr.unlink with param ids from an unlinked contact ends nothing
+  ✅ [H4.5-S3.12] [db] hr.menu: linked ⇒ flex with week · requests · pay links (no ids) · unlinked · other shop · param ids ⇒ identical notLinked
+  ✅ [H4.5-S4.1] [db] hr.roster.published ⇒ each listed employee: 1 notice ROSTER · 1 in-app · 1 push (th / en by contact lang · exact body · absolute href · retry key = lineRetryKeyOf)
+  ✅ [H4.5-S4.2] [db] hr.leave.decided APPROVED ⇒ LEAVE notice+in-app+push · REJECTED decided by own user ⇒ none · CANCELLED ⇒ none
+  ✅ [H4.5-S4.3] [db] hr.ot.decided ⇒ OT notice appNotified=false · no extra in-app (only the existing OT note) · 1 push
+  ✅ [H4.5-S4.4] [db] swap_requested ⇒ counterpart only (SWAP_ASK) · swap_approved ⇒ both (SWAP)
+  ✅ [H4.5-S4.5] [db] hr.payroll.paid ⇒ SLIP for items with slipState ISSUED (v1 PAID) · v2 unfinalized run ⇒ none
+  ✅ [H4.5-S4.6] [db] replay twice per consumer ⇒ no new notice/in-app/push
+  ✅ [H4.5-S4.7] [db] policy OFF ⇒ 0 pushes · in-app present · event toggle ROSTER off ⇒ no roster push
+  ✅ [H4.5-S5.1] [db] 503 ⇒ FAILED (attempt 1 · next = now+5 m) · in-app present · job at +6 m resends same key ⇒ SENT · 1 delivery · sentAt = now
+  ✅ [H4.5-S5.2] [db] always 500 ⇒ 4 attempts (5 m/30 m/2 h) ⇒ FAILED final (next null) · later job sends nothing
+  ✅ [H4.5-S5.3] [db] 429 ⇒ QUOTA final · two QUOTA the same day ⇒ 1 audit hr.line.quota {connectionId}
+  ✅ [H4.5-S5.4] [db] hung LINE ⇒ FAILED within 20 s
+  ✅ [H4.5-S5.5] [db] blocked contact ⇒ SKIPPED · link ENDED/BLOCKED · 0 requests
+  ✅ [H4.5-S5.6] [db] stale SENDING (crash after accepted push) ⇒ resend same key · fake 409 ⇒ SENT · 1 delivery
+  ✅ [H4.5-S5.7] [db] no APP_URL / NEXT_PUBLIC_APP_URL ⇒ SKIPPED NO_URL · 0 requests
+  ✅ [H4.5-S5.8] [db] quiet 21:00–08:00 of home unit: 22:00 ⇒ HELD until 08:00 · job 08:01 ⇒ 1 push SENT
+  ✅ [H4.5-S5.9] [db] DIGEST 17:30: 3 HELD ⇒ 1 DIGEST notice · 1 push "3" exact · members SENT digestOf · rerun ⇒ none
+  ✅ [H4.5-S5.10] [db] cap 2 ⇒ 2 SENT · 3rd + 4th CAP · 1 audit hr.line.cap_reached {monthKey} · in-app for all 4
+  ✅ [H4.5-S5.11] [db] job cancels expired PENDING links (CANCELLED)
+  ✅ [H4.5-S6.1] [db] offboard + consumer ⇒ link ENDED/OFFBOARD · pending SKIPPED · 0 pushes after
+  ✅ [H4.5-S6.2] [db] account unlinked from employee ⇒ precheck ENDED/ACCOUNT · notice SKIPPED · 0 pushes
+  ✅ [H4.5-S6.3] [db] membership removed ⇒ ENDED · SKIPPED · 0 pushes
+  ✅ [H4.5-S7.1] [db] 10× onHrEventForLine(same event) in parallel ⇒ 1 notice · 1 in-app · 1 push
+  ✅ [H4.5-S7.2] [db] notice row held: 2 drains blocked (pg_blocking_pids) or skip it while held · after release 1 push total
+  ✅ [H4.5-S7.3] [db] complete waits on hrline:<sys>:<emp> · 2 contacts × 2 codes of one employee ⇒ 1 ACTIVE · begin ∥ complete consistent
+  ✅ [H4.5-S7.4] [db] line policy save ∥ OT policy save under held hr:clockpolicy ⇒ blocked · both keys kept
+  ✅ [H4.5-S8.1] [db] status reader matrix: owner · all-branch key · [] key ok (keys exactly ok/state/linkedAt) · branch key own branch only · member · employee · other shop refused
+  ✅ [H4.5-S8.2] [db] refusals for out-of-branch · unknown · other shop's id identical bytes · Thai · no ids
+  ✅ [H4.5-S8.3] [db] adminUnlinkLine: branch key refused for other branch (same bytes as unknown) · member refused · link unchanged
+  ✅ [H4.5-S8.4] [db] myLineStatus keys exact · own LINE name · forged employeeId ignored
+  ✅ [H4.5-S8.5] [db] settings save: member refused · cap 5001 refused · owner ok + audit hr.line.settings
+  ✅ [H4.5-S9.1] [db] HrLineLink / HrNotice columns = R1 · rows hold no names / LINE ids / texts
+  ✅ [H4.5-S9.2] [db] audit after keys exact per action · no raw code / LINE id / LINE name / contact id in audits, notices, in-app rows or logs
+  ✅ [H4.5-F1.2] [run] prisma migrate diff (DB → schema) mentions neither HrLineLink nor HrNotice (other tickets' drift ignored)
+  ✅ [H4.5-F2.1] [db] staff revoke (membership off + linkedUserId cleared) ends the employee's ACTIVE link (ACCOUNT) in the same call · no send needed
+  ✅ [H4.5-F2.2] [db] staff grant to a new account ends a link issued for another user (ACCOUNT)
+  ✅ [H4.5-F2.3] [db] employee row re-linked to another account (no hook) ⇒ new account sees no ACTIVE/no LINE name · admin chip not ACTIVE · old LINE gets notLinked · link ENDED/ACCOUNT
+  ✅ [H4.5-F2.4] [db] membership removed (no hook) ⇒ chip not ACTIVE · hr.menu notLinked · link ENDED/ACCOUNT
+  ✅ [H4.5-F2.5] [db] re-hire / account back ⇒ the old link stays ENDED · status not ACTIVE
+  ✅ [H4.5-F3.1] [db] FAILED roster notice · ROSTER switched off · job retry ⇒ 0 pushes · SKIPPED/OFF
+  ✅ [H4.5-F3.2] [db] DIGEST HELD · LINE switched off ⇒ SKIPPED/OFF at save · job 0 pushes · re-enabled +41 d ⇒ 0 pushes
+  ✅ [H4.5-F3.3] [db] digest = own day window: a 3-day-old HELD row is not counted (digest "1") and ends SKIPPED
+  ✅ [H4.5-F3.4] [db] tenant SUSPENDED ⇒ retry 0 pushes (SKIPPED/TENANT) · hr.menu gets no answer
+  ✅ [H4.5-F3.5] [db] claim lost before the push (lease re-taken) ⇒ sender pushes nothing and leaves the row to its new owner · job budget checked before digests
+  ✅ [H4.5-F3.6] [db] planHrNotices failing ⇒ consumer throws (event retried) · retry ⇒ 1 notice + 1 in-app
+  ✅ [H4.5-F3.7] [db] re-link · admin unlink · LINE unlink ⇒ +1 in-app "บัญชี LINE ที่เชื่อมไว้ถูกเปลี่ยน/ยกเลิก" each · no LINE name in bodies
+  ✅ [H4.5-F3.8] [db] claim made by a run whose `now` is 10 min old still holds a fresh lease (wall clock) ⇒ not re-claimable now · an expired lease is re-claimable
+  ✅ [H4.5-F3.9] [db] planHrNotices in bounded chunks (seam chunk=2): failure in chunk 2 keeps chunk 1 · retry ⇒ exactly one notice + one in-app per recipient
+  ❌ [H4.5-F4.1] [db] ORACLE-EDIT (H4.5 gate fix · controller ruling): paid ⇒ SLIP HELD (digest) · hr.payroll.reversed ⇒ SKIPPED/REVERSED · 0 slip pushes · digest counts only the roster notice ("1") — expected SKIPPED/REVERSED · digest "1" | actual rev,one held=ROSTER:HELD,SLIP:HELD rev=ok slip=HELD/- pushes=1 alt=คุณมีแจ้งเตือนใหม่ 2 รายการ
+  ✅ [H4.5-F4.2] [db] ORACLE-EDIT (H4.5 gate fix · controller ruling): paid ⇒ SLIP SENT · reversed ⇒ row unchanged · no extra push
+  ❌ [H4.5-F4.3] [db] ORACLE-EDIT (H4.5 gate fix · controller ruling): reversed replayed ⇒ ok · nothing changes · no push — expected idempotent | actual same ok/ok SENT/SENT reqs+0
+  ❌ [H4.5-F4.4] [db] ORACLE-EDIT (H4.5 gate fix · controller ruling): SLIP claimed but not yet pushed · reversed ⇒ sender pushes nothing · SKIPPED/REVERSED — expected 0 pushes · SKIPPED/REVERSED | actual none,skipped claimed=1 pushes=1 SENT/-
+  ✅ [H4.5-X1] [run] [control] fitness + fitness-hr without env ⇒ exit 0
+RESIDUE hrEmployee=1,membership=1,appSystem=1,HrNotice=1,HrLineLink=1,user=1,session=1,tenant(qc-hr-h45-1794633043475afbrzwgitepz*)=1 (tenants=1 users=1)
+  ✅ [H4.5-Z2] [db] a QC tenant deleted the way qc-hr-lib does (cleanupFx) leaves 0 HrNotice / HrLineLink rows (no Tenant FK · explicit cleanup) · RESIDUE sees them
+RESIDUE none (tenants=2 users=54)
+  ✅ [H4.5-Z1] no residue (HR · chat · settings · rate buckets of the QC tenants)
+BASE-EXPECTATION 7/90 as registered (RED-by-design 86 · GREEN controls 4) · off: H4.5-S1.1(RED→pass) H4.5-S1.2(RED→pass) H4.5-S1.3(RED→pass) H4.5-S1.5(RED→pass) H4.5-S1.6(RED→pass) H4.5-S1.7(RED→pass) H4.5-S1.8(RED→pass) H4.5-S1.9(RED→pass) H4.5-S1.10(RED→pass) H4.5-S1.11(RED→pass) H4.5-S1.12(RED→pass) H4.5-S1.13(RED→pass) H4.5-F1.1(RED→pass) H4.5-S2.1(RED→pass) H4.5-S2.2(RED→pass) H4.5-S2.3(RED→pass) H4.5-S2.4(RED→pass) H4.5-S2.5(RED→pass) H4.5-S2.6(RED→pass) H4.5-S2.7(RED→pass) H4.5-S2.8(RED→pass) H4.5-S2.9(RED→pass) H4.5-S3.1(RED→pass) H4.5-S3.2(RED→pass) H4.5-S3.3(RED→pass) H4.5-S3.4(RED→pass) H4.5-S3.5(RED→pass) H4.5-S3.6(RED→pass) H4.5-S3.7(RED→pass) H4.5-S3.8(RED→pass) H4.5-S3.9(RED→pass) H4.5-S3.10(RED→pass) H4.5-S3.11(RED→pass) H4.5-S3.12(RED→pass) H4.5-S4.1(RED→pass) H4.5-S4.2(RED→pass) H4.5-S4.3(RED→pass) H4.5-S4.4(RED→pass) H4.5-S4.5(RED→pass) H4.5-S4.6(RED→pass) H4.5-S4.7(RED→pass) H4.5-S5.1(RED→pass) H4.5-S5.2(RED→pass) H4.5-S5.3(RED→pass) H4.5-S5.4(RED→pass) H4.5-S5.5(RED→pass) H4.5-S5.6(RED→pass) H4.5-S5.7(RED→pass) H4.5-S5.8(RED→pass) H4.5-S5.9(RED→pass) H4.5-S5.10(RED→pass) H4.5-S5.11(RED→pass) H4.5-S6.1(RED→pass) H4.5-S6.2(RED→pass) H4.5-S6.3(RED→pass) H4.5-S7.1(RED→pass) H4.5-S7.2(RED→pass) H4.5-S7.3(RED→pass) H4.5-S7.4(RED→pass) H4.5-S8.1(RED→pass) H4.5-S8.2(RED→pass) H4.5-S8.3(RED→pass) H4.5-S8.4(RED→pass) H4.5-S8.5(RED→pass) H4.5-S9.1(RED→pass) H4.5-S9.2(RED→pass) H4.5-F1.2(RED→pass) H4.5-F2.1(RED→pass) H4.5-F2.2(RED→pass) H4.5-F2.3(RED→pass) H4.5-F2.4(RED→pass) H4.5-F2.5(RED→pass) H4.5-F3.1(RED→pass) H4.5-F3.2(RED→pass) H4.5-F3.3(RED→pass) H4.5-F3.4(RED→pass) H4.5-F3.5(RED→pass) H4.5-F3.6(RED→pass) H4.5-F3.7(RED→pass) H4.5-F3.8(RED→pass) H4.5-F3.9(RED→pass) H4.5-F4.2(RED→pass) H4.5-Z2(RED→pass)
+
+===== qc-hr-h4.5 ===== passed 87/90 (QC_FORCE)
+JSON_SUMMARY {"suite":"qc-hr-h4.5","total":90,"passed":87,"failed":["H4.5-F4.1","H4.5-F4.3","H4.5-F4.4"],"findings":[{"id":"H4.5-F4.1","sev":"CRITICAL"},{"id":"H4.5-F4.3","sev":"CRITICAL"},{"id":"H4.5-F4.4","sev":"CRITICAL"}],"skipped":false,"forced":true,"crashed":false,"missing":[],"baseRed":86,"baseGreen":4,"offBase":["H4.5-S1.1(RED→pass)","H4.5-S1.2(RED→pass)","H4.5-S1.3(RED→pass)","H4.5-S1.5(RED→pass)","H4.5-S1.6(RED→pass)","H4.5-S1.7(RED→pass)","H4.5-S1.8(RED→pass)","H4.5-S1.9(RED→pass)","H4.5-S1.10(RED→pass)","H4.5-S1.11(RED→pass)","H4.5-S1.12(RED→pass)","H4.5-S1.13(RED→pass)","H4.5-F1.1(RED→pass)","H4.5-S2.1(RED→pass)","H4.5-S2.2(RED→pass)","H4.5-S2.3(RED→pass)","H4.5-S2.4(RED→pass)","H4.5-S2.5(RED→pass)","H4.5-S2.6(RED→pass)","H4.5-S2.7(RED→pass)","H4.5-S2.8(RED→pass)","H4.5-S2.9(RED→pass)","H4.5-S3.1(RED→pass)","H4.5-S3.2(RED→pass)","H4.5-S3.3(RED→pass)","H4.5-S3.4(RED→pass)","H4.5-S3.5(RED→pass)","H4.5-S3.6(RED→pass)","H4.5-S3.7(RED→pass)","H4.5-S3.8(RED→pass)","H4.5-S3.9(RED→pass)","H4.5-S3.10(RED→pass)","H4.5-S3.11(RED→pass)","H4.5-S3.12(RED→pass)","H4.5-S4.1(RED→pass)","H4.5-S4.2(RED→pass)","H4.5-S4.3(RED→pass)","H4.5-S4.4(RED→pass)","H4.5-S4.5(RED→pass)","H4.5-S4.6(RED→pass)","H4.5-S4.7(RED→pass)","H4.5-S5.1(RED→pass)","H4.5-S5.2(RED→pass)","H4.5-S5.3(RED→pass)","H4.5-S5.4(RED→pass)","H4.5-S5.5(RED→pass)","H4.5-S5.6(RED→pass)","H4.5-S5.7(RED→pass)","H4.5-S5.8(RED→pass)","H4.5-S5.9(RED→pass)","H4.5-S5.10(RED→pass)","H4.5-S5.11(RED→pass)","H4.5-S6.1(RED→pass)","H4.5-S6.2(RED→pass)","H4.5-S6.3(RED→pass)","H4.5-S7.1(RED→pass)","H4.5-S7.2(RED→pass)","H4.5-S7.3(RED→pass)","H4.5-S7.4(RED→pass)","H4.5-S8.1(RED→pass)","H4.5-S8.2(RED→pass)","H4.5-S8.3(RED→pass)","H4.5-S8.4(RED→pass)","H4.5-S8.5(RED→pass)","H4.5-S9.1(RED→pass)","H4.5-S9.2(RED→pass)","H4.5-F1.2(RED→pass)","H4.5-F2.1(RED→pass)","H4.5-F2.2(RED→pass)","H4.5-F2.3(RED→pass)","H4.5-F2.4(RED→pass)","H4.5-F2.5(RED→pass)","H4.5-F3.1(RED→pass)","H4.5-F3.2(RED→pass)","H4.5-F3.3(RED→pass)","H4.5-F3.4(RED→pass)","H4.5-F3.5(RED→pass)","H4.5-F3.6(RED→pass)","H4.5-F3.7(RED→pass)","H4.5-F3.8(RED→pass)","H4.5-F3.9(RED→pass)","H4.5-F4.2(RED→pass)","H4.5-Z2(RED→pass)"]}

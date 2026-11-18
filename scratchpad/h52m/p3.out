@@ -1,0 +1,30 @@
+[env] h52m-p3 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h52m-p3] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2637506) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+0.build true
+0.sync 1
+0.adj ["LATE_RULE:DEDUCTION:APPROVED:10416:2031-08:free"]
+R1.otFirst {"res":[{"ok":true,"status":"APPROVED","settled":true},{"ok":true,"id":"cmwg3gu2t004c42kzgnci1bjv","employees":1}],"blocked":[true,true],"adj":["LATE_RULE:DEDUCTION:APPROVED:10416:2031-08:1bjv","OT_REQUEST:OT:APPROVED:37500:2031-08:1bjv"],"runs":[{"id":"cmwg3gu2t004c42kzgnci1bjv","s":"DRAFT","n":2939584,"d":10416,"a":37500}]}
+R1b.createFirst {"res":[{"ok":true,"id":"cmwg3gvkb004k42kzci6t2th2","employees":1},{"ok":true,"status":"APPROVED","settled":true}],"blocked":[true,true],"adj":["LATE_RULE:DEDUCTION:APPROVED:10416:2031-08:2th2","OT_REQUEST:OT:APPROVED:37500:2031-08:2th2"],"runs":[{"id":"cmwg3gvkb004k42kzci6t2th2","s":"DRAFT","n":2939584,"d":10416,"a":37500}]}
+R2.twoCreates {"res":["ok","DUPLICATE"],"blocked":[true,true],"runs":1,"boundOnce":[{"runId":"cmwg3gx2r004q42kz4q4xc1si","n":2}]}
+R3.corrThenApprove {"res":[{"ok":true,"id":"cmwg3gxgs004t42kzbutpqmak","status":"APPROVED","requestId":null},{"ok":false,"note":"ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ","code":"WORK_ENTRIES"}],"blocked":[true,true],"run":{"id":"cmwg3gx2r004q42kz4q4xc1si","status":"DRAFT","book":null,"j":null,"g":3027084,"n":2939584,"w":0,"se":87500,"sr":87500,"a":37500,"d":10416,"fin":null},"adj":["LATE_RULE:DEDUCTION:APPROVED:10416:2031-08:c1si","OT_REQUEST:OT:APPROVED:37500:2031-08:c1si"]}
+R3b.sync 0
+R3b.recompute {"ok":true,"note":"ดึงข้อมูลใหม่ 2026-11-14 14:38 น."}
+R3b.sync2 {"ok":true,"periodKey":"2031-08","employees":1,"created":1,"rejected":1,"kept":0,"refunds":0,"wait":[],"skipped":[],"next":null}
+R3b.deleteDraft {"ok":true}
+R3b.man {"man":{"ok":true,"id":"cmwg3h0d7005842kzdpu1tke4","amountSatang":10000},"dec":{"ok":true}}
+R3b.recreate {"ok":true,"id":"cmwg3h138005942kz4uk5ich9","employees":1}
+R3b.before {"run":{"id":"cmwg3h138005942kz4uk5ich9","status":"DRAFT","book":null,"j":null,"g":3027500,"n":2940000,"w":0,"se":87500,"sr":87500,"a":37500,"d":10000,"fin":null},"adj":["LATE_RULE:DEDUCTION:REJECTED:10416:2031-08:free","OT_REQUEST:OT:APPROVED:37500:2031-08:ich9","LATE_RULE:DEDUCTION:APPROVED:4166:2031-09:free","-:DEDUCTION:APPROVED:10000:2031-08:ich9"]}
+R4.approve|cancel|corr {"res":[{"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"},{"ok":false,"reason":"รายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)"},{"ok":false,"reason":"เดือนนี้อนุมัติเงินเดือนแล้ว — แก้เวลาย้อนหลังไม่ได้"}],"blocked":[true,true,true],"run":{"id":"cmwg3h138005942kz4uk5ich9","status":"APPROVED","book":"cmwg3gpp5000j42kzocxsv07d","j":"cmwg3h2ed005c42kzpbnwfwp8","g":3027500,"n":2940000,"w":0,"se":87500,"sr":87500,"a":37500,"d":10000,"fin":"true"},"item":[{"e":"cmwg3gq6g003642kzlezz1s7t","g":3027500,"n":2940000,"w":0,"sb":1750000,"se":87500,"sr":87500,"a":37500,"d":10000,"inc":3037500,"sw":3000000}],"adj":["LATE_RULE:DEDUCTION:REJECTED:10416:2031-08:free","OT_REQUEST:OT:APPROVED:37500:2031-08:ich9","LATE_RULE:DEDUCTION:APPROVED:4166:2031-09:free","-:DEDUCTION:APPROVED:10000:2031-08:ich9"]}
+R4.consistent {"manBound":true,"itemDeductEqBound":false}
+R5.corr|job {"res":[{"ok":true,"id":"cmwg3h2tb005m42kz6hv7xcsr","status":"APPROVED","requestId":null},{"finalized":2,"late":0,"absent":0}],"blocked":[true,true],"day":[{"s":"ON_TIME","l":0,"version":1}],"dayAfterNextJob":[{"s":"ON_TIME","l":0,"version":1}]}
+deadlocks [{"deadlocks":0}]
+RESIDUE none (tenants=1 users=5 activeLaw=0->0)

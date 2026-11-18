@@ -1,0 +1,58 @@
+[env] h52m-p2 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h52m-p2] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2630369) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+a.create {"ok":true,"id":"cmwg3cvpb003fltkzkm5t84y3","employees":2}
+  item.e1 {"lines":["BASE:profile:3000000","ADVANCE:adv:-2912500/3500000"],"carry":[{"cls":"ADVANCE","amountSatang":587500}],"flags":["CARRY_FORWARD"]}
+  item.e2 {"lines":["BASE:profile:2000000","DEDUCTION:dA:-200000/300000","DEDUCTION:dB:0/100000"],"carry":[{"cls":"DAMAGES","amountSatang":200000}],"flags":["CARRY_FORWARD","CLAIM_CAPPED"]}
+  run {"st":"DRAFT","g":1887500,"n":1712500,"d":3112500,"a":0,"se":175000}
+b.cancelBoundDraft {"ok":true}
+  item.e1 {"lines":["BASE:profile:3000000","ADVANCE:adv:-2912500/3500000"],"carry":[{"cls":"ADVANCE","amountSatang":587500}],"flags":["CARRY_FORWARD"]}
+  item.e2 {"lines":["BASE:profile:2000000","DEDUCTION:dA:-200000/300000"],"carry":[{"cls":"DAMAGES","amountSatang":100000}],"flags":["CARRY_FORWARD","CLAIM_CAPPED"]}
+  run {"st":"DRAFT","g":1887500,"n":1712500,"d":3112500,"a":0,"se":175000}
+b.adj ["e1:adv:ADVANCE:APPROVED:3500000:2031-08:84y3","e2:dA:DEDUCTION:APPROVED:300000:2031-08:84y3"]
+c.approve {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+c.pay {"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"}
+c.adj ["e1:adv:ADVANCE:APPROVED:3500000:2031-08:84y3","e2:dA:DEDUCTION:APPROVED:300000:2031-08:84y3","e2:CARRY_FORWARD:DEDUCTION:APPROVED:100000:2031-09:free","e1:CARRY_FORWARD:ADVANCE:APPROVED:587500:2031-09:free"]
+d.giveBackPeriod 2031-09
+d.giveBack {"ok":true,"id":"rfc98dbbc057514535ae8516a75dde13bc"}
+d.approveRefund {"ok":true}
+d.giveBackOverCap(150,001 > 200,000-50,000) {"ok":false,"code":"AMOUNT","reason":"จำนวนเงินที่คืนต้องมากกว่า 0 และไม่เกินยอดที่หักไปของรายการนี้ (หักยอดที่คืนไปแล้วออกก่อน)"}
+e.createSep {"ok":true,"id":"cmwg3cxzw0043ltkzp48ri7jc","employees":2}
+  item.e1 {"lines":["BASE:profile:3000000","ADVANCE:carry:-587500/587500"],"carry":[],"flags":[]}
+  item.e2 {"lines":["BASE:profile:2000000","REFUND:refund:50000","DEDUCTION:carry:-100000/100000"],"carry":[],"flags":[]}
+  run {"st":"DRAFT","g":4362500,"n":4187500,"d":687500,"a":50000,"se":175000}
+e.reverseAug(withSepDraft) {"ok":false,"note":"ยอดหักที่ยกไปงวดถัดไปถูกดึงเข้ารอบจ่ายงวดถัดไปแล้ว — กลับรายการรอบงวดถัดไปก่อน","code":"CARRY_BOUND"}
+e.deleteSep {"ok":true}
+f.reverseAug {"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}
+f.run {"id":"cmwg3cvpb003fltkzkm5t84y3","status":"REVERSED","book":"cmwg3cu8i000jltkzqkou5cz2","j":"cmwg3cwuc003nltkzoqvcv952","g":1887500,"n":1712500,"w":0,"se":175000,"sr":175000,"a":0,"d":3112500,"fin":"true"}
+f.adj ["e1:adv:ADVANCE:APPROVED:3500000:2031-08:free","e2:dA:DEDUCTION:APPROVED:300000:2031-08:free","e2:CARRY_FORWARD:DEDUCTION:REJECTED:100000:2031-09:free","e1:CARRY_FORWARD:ADVANCE:REJECTED:587500:2031-09:free","e2:MANUAL:REFUND:APPROVED:50000:2031-09:free"]
+f.entries [["accrual","REVERSED",5175000],["pay","REVERSED",1712500],["REVERSAL:cmwg3cx3e003xltkz26ejw0b2","POSTED",1712500],["REVERSAL:cmwg3cwuc003nltkzoqvcv952","POSTED",5175000]]
+f.reversals [{"n":2}]
+g.cancelClaim {"ok":true}
+g.adj ["e1:adv:ADVANCE:APPROVED:3500000:2031-08:free","e2:CARRY_FORWARD:DEDUCTION:REJECTED:100000:2031-09:free","e1:CARRY_FORWARD:ADVANCE:REJECTED:587500:2031-09:free","e2:MANUAL:REFUND:APPROVED:50000:2031-09:free"]
+h.recreateAug {"ok":true,"id":"cmwg3cz3c004mltkzqhhdxgsp","employees":2}
+  item.e1 {"lines":["BASE:profile:3000000","ADVANCE:adv:-2912500/3500000"],"carry":[{"cls":"ADVANCE","amountSatang":587500}],"flags":["CARRY_FORWARD"]}
+  item.e2 {"lines":["BASE:profile:2000000"],"carry":[],"flags":[]}
+  run {"st":"DRAFT","g":2087500,"n":1912500,"d":2912500,"a":0,"se":175000}
+h.approveAug {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+h.adj ["e1:adv:ADVANCE:APPROVED:3500000:2031-08:xgsp","e2:CARRY_FORWARD:DEDUCTION:REJECTED:100000:2031-09:free","e1:CARRY_FORWARD:ADVANCE:REJECTED:587500:2031-09:free","e2:MANUAL:REFUND:APPROVED:50000:2031-09:free","e1:CARRY_FORWARD:ADVANCE:APPROVED:587500:2031-09:free"]
+h.createSep {"ok":true,"id":"cmwg3d0cm004yltkz3oqcn0pg","employees":2}
+  item.e1 {"lines":["BASE:profile:3000000","ADVANCE:carry:-587500/587500"],"carry":[],"flags":[]}
+  item.e2 {"lines":["BASE:profile:2000000","REFUND:refund:50000"],"carry":[],"flags":[]}
+  run {"st":"DRAFT","g":4462500,"n":4287500,"d":587500,"a":50000,"se":175000}
+h.approveSep {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+h.jv.accrual [{"code":"1140","dr":0,"cr":587500},{"code":"2120","dr":0,"cr":4287500},{"code":"2150","dr":0,"cr":350000},{"code":"4900","dr":50000,"cr":0},{"code":"6000","dr":5000000,"cr":0},{"code":"6010","dr":175000,"cr":0}]
+h.e2items [{"p":"2031-08","s":"REVERSED","n":1712500,"g":1800000},{"p":"2031-08","s":"APPROVED","n":1912500,"g":2000000},{"p":"2031-09","s":"APPROVED","n":1962500,"g":2050000}]
+h.liveCarryAdvance [{"a":587500,"s":"REJECTED","bound":false},{"a":587500,"s":"APPROVED","bound":true}]
+v1.create {"id":"cmwg3d1ck005hltkzuo1az3py"}
+v1.items [{"e":"v1a","g":1000000,"d":500000,"n":925000,"se":75000},{"e":"v1b","g":0,"d":2000000,"n":-75000,"se":75000}]
+v1.approve {"ok":false,"note":"มีพนักงาน 1 คนที่ยอดสุทธิติดลบ (รายการหักมากกว่าเงินได้) — แก้รายการหักแล้วกด 'คำนวณใหม่'","code":"NEGATIVE_NET"}
+RESIDUE none (tenants=1 users=5 activeLaw=0->0)

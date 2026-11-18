@@ -1,0 +1,69 @@
+CX-0 คู่บวก — อ่านซอร์ส + แบบร่างได้จริง:
+  ✅ [CX-0.1] 🟢 อ่านคอลัมน์ขวาจากแบบร่างได้ (หัวข้อหมวด ≥4)
+  ✅ [CX-0.2] 🟢 อ่านป้าย kv ในการ์ดบริบทได้ 4 ป้าย
+  ✅ [CX-0.3] 🟢 `context-panel.tsx` ไม่ใช่โครงชั่วคราวแล้ว (สาย F แทนที่ทั้งตัว)
+  ✅ [CX-0.4] 🟢 `ContextPanel` ยังถูก export ด้วยชื่อ+props เดิม (สัญญากับสาย E)
+CX-1 หัวคอลัมน์ (โปรไฟล์ + ผูกสมาชิก):
+  ✅ [CX-1.1] avatar 60px มุม 18px ตามแบบร่าง
+  ✅ [CX-1.2] แบดจ์ช่องทางบน avatar (ใช้คอมโพเนนต์แบดจ์จากทะเบียน channel-icon)
+  ✅ [CX-1.3] ชิป "ผูกกับสมาชิก" + ไอคอน userplus จากทะเบียน
+  ✅ [CX-1.4] 🔴 ผูกสมาชิกใช้ action ตัวเดิม (`linkCustomerAction` ใน chat/actions.ts) ไม่เขียนซ้ำ
+  ✅ [CX-1.5] บรรทัดสถานะสมาชิกมีคำว่า "ยังไม่ผูกสมาชิก" (สถานะเมื่อยังไม่ผูก)
+CX-2 การ์ด "บริบทตอนนี้" (มติ D1):
+  ✅ [CX-2.1] หัวหมวด "บริบทตอนนี้"
+  ✅ [CX-2.2] ป้าย "กำลังดูหน้า" อยู่ในการ์ด
+  ✅ [CX-2.3] ป้าย "เข้ามาจาก" อยู่ในการ์ด
+  ✅ [CX-2.4] ป้าย "ทักครั้งแรก" อยู่ในการ์ด
+  ✅ [CX-2.5] ป้าย "ตอบครั้งแรกใน" อยู่ในการ์ด
+  ✅ [CX-2.6] 🔴 D1: แปลง path ด้วยทะเบียน `pageLabelFromPath` (ไม่มีทะเบียนที่ 2 ในไฟล์นี้)
+  ✅ [CX-2.7] 🔴 D1: ห้ามพึ่ง `pageTitle` (ฝั่งลูกค้าไม่ได้ส่งมา)
+  ✅ [CX-2.8] ขาอ่านดึง firstCustomerMessageAt + firstResponseAt + meta มาให้คอลัมน์
+  ✅ [CX-2.9] "ตอบครั้งแรกใน" มีสีเขียวเมื่อเร็ว (โทเคน #15803d ตามแบบร่าง)
+  ✅ [CX-2.10] ยังไม่ได้ตอบต้องบอก ไม่ใช่โชว์ตัวเลขผิด
+  ✅ [CX-2.11] เวลาเขตเวลาไทย (Asia/Bangkok หรือ helper กลางของโมดูล) ไม่ใช่ getDay()/toDateString()
+CX-3 ป้ายกำกับ (ใช้ของสาย D):
+  ✅ [CX-3.1] หัวหมวด "ป้ายกำกับ" + ชิป tag + ปุ่ม "เพิ่ม" (Icon plus)
+  ✅ [CX-3.2] 🔴 ติด/ถอดป้ายผ่าน action ของ quick-reply-actions.ts (ห้ามเขียนซ้ำ)
+  ✅ [CX-3.3] ไม่มี action ติดป้ายตัวใหม่ใน inbox-actions.ts (ของสาย D มีแล้ว)
+CX-4 คำตอบที่ทีมใช้บ่อยกับคำถามนี้:
+  ✅ [CX-4.1] หัวหมวดตามแบบร่าง + Icon quick
+  ✅ [CX-4.2] ดึงจากคลัง ChatAnswerExample (ผ่าน learning.ts หรือ tenantDb) ฝั่ง server
+  ✅ [CX-4.3] กดแล้ววางลงกล่องพิมพ์ผ่าน onInsertText
+  ✅ [CX-4.4] ไม่มีรายการ = ซ่อนทั้งหมวด (ไม่โชว์หัวข้อเปล่า)
+CX-5 ประวัติการจอง:
+  ✅ [CX-5.1] หัวหมวด "ประวัติ" + Icon history
+  ✅ [CX-5.2] ข้อความเมื่อยังไม่เคยจอง ตามแบบร่าง
+  ✅ [CX-5.3] ฝั่ง server อ่านประวัติจากโมดูลจองจริง (appointment/hotel/rental/clinic/ticket) ผ่าน tenantDb
+CX-6 ด่านสิทธิ์ขาอ่านบริบท:
+  ✅ [CX-6.1] มี server action อ่านบริบทห้อง (ชื่อมีคำว่า Context)
+  ✅ [CX-6.getConversationContextAction] `getConversationContextAction` ผ่านด่าน chat.conversation.read ก่อนอ่าน (requireChatRead หรือ assertCan read)
+CX-7 สุขอนามัย (emoji · ไอคอน · วันที่):
+  ✅ [CX-7.emoji:context-panel.tsx] ไม่มี emoji ใน context-panel.tsx
+  ✅ [CX-7.date:context-panel.tsx] ไม่ฮาร์ดโค้ดวันที่ใน context-panel.tsx
+  ✅ [CX-7.emoji:page-label.ts] ไม่มี emoji ใน page-label.ts
+  ✅ [CX-7.date:page-label.ts] ไม่ฮาร์ดโค้ดวันที่ใน page-label.ts
+  ✅ [CX-7.1] ไอคอนทุกตัวมาจากทะเบียน (import Icon จาก ./icons · ไม่มี <svg เขียนสด)
+  ✅ [CX-7.2] ทั้งโมดูลแชทไม่มี emoji เหลือ (มติ V2 — ร่วมกับสาย E)
+CX-8 ทะเบียน pageLabelFromPath (pure · รันจริง):
+  ✅ [CX-8.1] มีไฟล์ page-label.ts และ export pageLabelFromPath
+  ✅ [CX-8.2] ไฟล์ทะเบียนไม่ import อะไร (pure · ใช้ได้ทั้ง server/client/ข้อสอบ)
+  ✅ [CX-8.3] null/undefined/ว่าง → null (ไม่มีค่า = ซ่อนบรรทัด)
+  ✅ [CX-8.4] path ที่ไม่รู้จัก → คืน path เดิม (D1: แปลงไม่ได้ก็แสดง path)
+  ✅ [CX-8.5] `/new` (ค่าจริงที่พบบน prod 10/13 ห้อง) → ชื่อไทยที่อ่านออก ไม่ใช่ path
+  ✅ [CX-8.6] ค่าขยะ (เช่น 'qc') ไม่ทำให้พัง
+G11 AppNotification ต้องมีผู้รับ (ปิดหนี้ PDPA 31 ส.ค.):
+  ✅ [G11.1] สคีมา AppNotification มีช่องผู้รับ (nullable = ประกาศทั้งร้านยังทำได้)
+  ✅ [G11.2] มี index ที่ครอบ recipientUserId (ขาอ่านกรองรายคน)
+  ✅ [G11.3] มี migration เพิ่มช่องผู้รับ และเป็น additive (ไม่มี DROP / NOT NULL)
+  ✅ [G11.4] announceInbound เลือกผู้รับด้วยสิทธิ์จริง (selectChatNotifyRecipients — กติกาเดียวกับ push)
+  ✅ [G11.5] announceInbound เขียน AppNotification รายผู้รับ (recipientUserId)
+  ✅ [G11.6] 🔴 คืน previewText (ตัวอย่างข้อความลูกค้า) กลับมาใน body — เพราะกรองผู้รับได้แล้ว
+  ✅ [G11.7] listNotifications + countUnread กรองผู้รับด้วยเงื่อนไขเดียวกัน: recipientUserId = null (ทั้งร้าน) หรือ = ฉัน
+  ✅ [G11.8] หน้า /app/notifications ส่ง userId ของคนดูเข้า listNotifications
+  ✅ [G11.9] ทุกจุดที่สร้าง AppNotification นอกแชท (automation ฯลฯ) ยังทำงานได้ — ช่องผู้รับเป็น optional (ไม่บังคับ)
+
+===== QC: chat V2 — คอลัมน์บริบท + G11 =====
+ผ่าน 53/53
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":53,"passed":53,"findings":[]}

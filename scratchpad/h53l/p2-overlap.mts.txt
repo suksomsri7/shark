@@ -1,0 +1,129 @@
+// H5.3l hunter — (B) hourly / half-day leave overlapping full-day leave → judge → work entries → attendance deductions → payroll v2
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scratchpad/h53l/p2-overlap.mts
+import { type Any, setup, short, errText, dd, bk } from "./common.mjs";
+
+const S = await setup("h53l-p2");
+const { P, tag, TT, U, V, c, rows, safe, sys, fx } = S;
+const out = (k: string, v: unknown) => console.log(`${k} ${typeof v === "string" ? v : short(v, 2500)}`);
+let crashed = "";
+let lawCleanup: () => Promise<void> = async () => {};
+try {
+  const JG = (await import("@/lib/modules/hr/judge")) as Any;
+  const WE = (await import("@/lib/modules/hr/work-entries")) as Any;
+  const ATP = (await import("@/lib/modules/hr/attendance-pay")) as Any;
+  const PAY = (await import("@/lib/modules/hr/payroll")) as Any;
+  const SV = (await import("@/lib/modules/hr/service")) as Any;
+  const LV = (await import("@/lib/modules/hr/leave")) as Any;
+  const own = V.owner;
+  const { jsonOf } = (await import("../../scripts/qc-hr-lib.mjs")) as Any;
+  const LAWJ = (jsonOf("scripts/fixtures/hr-h3.4-vectors.json")?.law ?? {}) as Any;
+  const LAW_KEY = `qc-h53l-${tag}`;
+  for (const [k, kind, from, j] of [["sso", "SSO", "2031-01-01", "SSO"], ["tax", "TAX_BRACKET", "2031-01-01", "TAX_BRACKET"], ["ded", "DEDUCTION", "2031-01-01", "DEDUCTION"]] as const)
+    await P.$executeRawUnsafe(`INSERT INTO "HrLawTable" (id, kind, "effectiveFrom", json, status, "sourceKey", note, "approvedByName", "approvedAt") VALUES ($1, $2::"HrLawKind", $3::date, $4::jsonb, 'ACTIVE'::"HrLawStatus", $1, 'qc h5.3l hunter', 'QC', now())`, `${LAW_KEY}-${k}`, kind, from, JSON.stringify(LAWJ[j] ?? {}));
+  lawCleanup = async () => { await P.$executeRawUnsafe(`DELETE FROM "HrLawTable" WHERE "sourceKey" LIKE $1`, `${LAW_KEY}-%`); console.log(`LAW_RESIDUE ${Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "HrLawTable" WHERE "sourceKey" LIKE 'qc-h53l-%'`)) as Any[])[0]?.n)}`); };
+  const ownA = { userId: U.owner.id, isOwner: true };
+  const PK2 = { "hr.payroll.read": true, "hr.payroll.create": true, "hr.payroll.approve": true, "hr.payadjust.request": true };
+  await P.membership.updateMany({ where: { userId: U.mgr2.id, tenantId: TT }, data: { permissions: PK2, role: "STAFF", unitAccess: ["*"] } });
+  const VP = { ...V.mgr2, role: "STAFF", unitAccess: ["*"], permissions: PK2 };
+  const s = await sys("ทีมลาซ้อน");
+  await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hrPayroll}', COALESCE(settings->'hrPayroll', '{}'::jsonb) || '{"engineVersion": 2}'::jsonb) WHERE id = $1`, s);
+  const e = await fx.mkEmp(TT, s, `พนง ลาซ้อน ${tag}`, { startDate: "2030-01-01", unitId: S.u1 });
+  await P.hrSalaryProfile.create({ data: { tenantId: TT, systemId: s, employeeId: e, baseSalarySatang: 3_000_000, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+  const sh = (await P.hrShift.create({ data: { tenantId: TT, systemId: s, name: "เช้า", startMin: 540, endMin: 1020, crossesMidnight: false, graceMin: 5 } })).id as string;
+  const roster = async (day: string, io: [string, string] | null) => {
+    const re = (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: s, employeeId: e, date: dd(day), shiftId: sh, unitId: S.u1, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-07-01T00:00:00Z"), source: "MANUAL" } })).id as string;
+    if (io) {
+      await P.hrAttendance.create({ data: { tenantId: TT, systemId: s, employeeId: e, kind: "IN", at: bk(day, io[0]), rosterEntryId: re, source: "KIOSK" } });
+      await P.hrAttendance.create({ data: { tenantId: TT, systemId: s, employeeId: e, kind: "OUT", at: bk(day, io[1]), rosterEntryId: re, source: "KIOSK" } });
+    }
+  };
+  const e2 = await fx.mkEmp(TT, s, `พนง คุม ${tag}`, { startDate: "2030-01-01", unitId: S.u1 });
+  await P.hrSalaryProfile.create({ data: { tenantId: TT, systemId: s, employeeId: e2, baseSalarySatang: 3_000_000, ssoEligible: true, personalDeductionJson: { spouse: false, children: 0 } } });
+  for (const d of ["2031-08-05", "2031-08-06"]) await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: s, employeeId: e2, date: dd(d), shiftId: sh, unitId: S.u1, startMin: 540, endMin: 1020, breakMin: 0, crossesMidnight: false, published: true, publishedAt: new Date("2031-07-01T00:00:00Z"), source: "MANUAL" } });
+  const polP = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "SICK", name: `ป่วย ${tag}`, paid: true, quotaDays: 30, allowHalfDay: true, allowHours: true } })).id as string;
+  const polU = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "PERSONAL", name: `กิจไม่รับค่าจ้าง ${tag}`, paid: false, quotaDays: 30, allowHalfDay: true, allowHours: true } })).id as string;
+  const file = (day: string, pol: string, extra: Any = {}) =>
+    safe(() => SV.requestLeave(c(s), { employeeId: e, type: pol === polP ? "SICK" : "PERSONAL", policyId: pol, fromDate: day, toDate: extra.to ?? day, actorUserId: U.staff.id, ...extra, to: undefined }));
+  const approve = (id: string) => safe(() => SV.decideLeave(c(s), id, "APPROVED", U.owner.id, { from: "PENDING" }).then(() => ({ ok: true })));
+  const fileApprove = async (label: string, day: string, pol: string, extra: Any = {}) => {
+    const f = await file(day, pol, extra);
+    const a = f?.id ? await approve(f.id) : null;
+    out(`F.${label}`, { filed: f?.id ? "ok" : f?.reason, approved: a?.ok ?? a?.reason ?? null });
+    return f?.id as string | undefined;
+  };
+  // ── scenarios (Aug 2031 · shift 09:00–17:00 · planned 480 min/day · base 30,000 THB) ──
+  const D = { full: "2031-08-04", amPm: "2031-08-05", amUpmP: "2031-08-06", amWorkPm: "2031-08-07", hrUnpaidAbsent: "2031-08-08", hrPaidLate: "2031-08-11", hrOnHoliday: "2031-08-12", work: "2031-08-13" };
+  await roster(D.full, null);
+  await roster(D.amPm, null);
+  await roster(D.amUpmP, null);
+  await roster(D.amWorkPm, ["13:00", "17:00"]);
+  await roster(D.hrUnpaidAbsent, null);
+  await roster(D.hrPaidLate, ["16:00", "17:00"]);
+  await roster(D.work, ["09:00", "17:00"]);
+  // public holiday on 12 Aug (Queen's birthday) — no roster that day
+  await P.hrHoliday.create({ data: { tenantId: TT, systemId: s, date: dd(D.hrOnHoliday), name: `วันแม่ ${tag}`, kind: "PUBLIC" } }).catch((x: unknown) => out("holidayCreate", errText(x)));
+  await fileApprove("full.paid", D.full, polP);
+  await fileApprove("AM.paid", D.amPm, polP, { halfDay: "AM" });
+  await fileApprove("PM.paid", D.amPm, polP, { halfDay: "PM" });
+  await fileApprove("AM.unpaid", D.amUpmP, polU, { halfDay: "AM" });
+  await fileApprove("PM.paid", D.amUpmP, polP, { halfDay: "PM" });
+  await fileApprove("AM.paid+workPM", D.amWorkPm, polP, { halfDay: "AM" });
+  await fileApprove("4h.unpaid", D.hrUnpaidAbsent, polU, { hours: 4 });
+  await fileApprove("7h.paid", D.hrPaidLate, polP, { hours: 7 });
+  // overlap filings (expect refusal)
+  out("X.hourlyInsideFull", (await file(D.full, polU, { hours: 2 }))?.reason ?? "FILED");
+  out("X.fullOverAmPm", (await file(D.amPm, polU))?.reason ?? "FILED");
+  out("X.hourlyOverHalf", (await file(D.amWorkPm, polU, { hours: 2 }))?.reason ?? "FILED");
+  out("X.secondHourlySameDay", (await file(D.hrUnpaidAbsent, polP, { hours: 3 }))?.reason ?? "FILED");
+  out("X.hourlyOnHoliday", (await file(D.hrOnHoliday, polP, { hours: 3 }))?.reason ?? "FILED");
+  out("X.halfOnSunday", (await file("2031-08-10", polP, { halfDay: "PM" }))?.reason ?? "FILED");
+  out("X.hours8", (await file(D.work, polP, { hours: 8 }))?.reason ?? "FILED");
+  out("X.hours0.5", (await file(D.work, polP, { hours: "0.5" }))?.reason ?? "FILED");
+  out("leaves", await rows(`SELECT "fromDate"::text AS d, "halfDay"::text AS h, hours::text AS hr, days::text AS days, status::text AS s, "policyId" = $2 AS unpaid FROM "HrLeave" WHERE "systemId" = $1 ORDER BY "fromDate", "halfDay"`, s, polU));
+  out("balances", ((await safe(() => LV.leaveBalances(c(s), own, { employeeId: e, year: 2031 })))?.items ?? []).map((i: Any) => `${i.name.split(" ")[0]} used=${i.used} bal=${i.balance}`));
+  // ── judge → work entries → attendance deductions → payroll v2 ──
+  await ATP.saveAttendancePayPolicy(c(s), own, { enabled: true });
+  const NOW = bk("2031-09-05");
+  for (const d of ["2031-08-09", "2031-08-16", "2031-08-23", "2031-08-30", "2031-09-05"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT }));
+  out("att", await rows(`SELECT date::text AS d, status::text AS st, "lateMin" AS late, "leaveHalf"::text AS half, "leaveFraction"::text AS fr, ("leaveId" IS NOT NULL) AS hasLeave FROM "HrAttendanceDay" WHERE "systemId" = $1 ORDER BY date`, s));
+  const b = await safe(() => WE.buildWorkEntrySnapshot(c(s), own, { periodKey: "2031-08" }, { now: NOW }));
+  out("build", { ok: b?.ok, reason: b?.reason });
+  out("workDays", await rows(`SELECT date::text AS d, "dayStatus"::text AS st, "paidLeaveMin" AS pl, "unpaidLeaveMin" AS ul, "absentMin" AS ab, "lateMin" AS la, "workMin" AS w, "leaveDays"::text AS ld, review FROM "HrWorkDay" WHERE "systemId" = $1 AND ("dayStatus"::text NOT IN ('UNSCHEDULED','DAY_OFF') OR cardinality(review) > 0) ORDER BY "employeeId" = $2 DESC, date`, s, e));
+  const sy = await safe(() => ATP.syncAttendanceDeductions(c(s), own, { periodKey: "2031-08" }, { now: NOW }));
+  out("sync", sy);
+  out("attHeads", await rows(`SELECT "employeeId" = $2 AS e1, "linesJson" AS lines FROM "HrAttendanceDeduction" WHERE "systemId" = $1`, s, e).catch((x: unknown) => errText(x)));
+  for (const r of await rows(`SELECT id FROM "HrPayAdjustment" WHERE "systemId" = $1 AND status::text = 'PENDING'`, s)) await safe(() => PAY.decideAdjustment(c(s), r.id, "APPROVED", ownA));
+  const R = await safe(() => PAY.createPayrollRunV2(c(s), VP, { periodKey: "2031-08", payDate: bk("2031-08-31", "10:00") }, { now: NOW, actor: { userId: U.mgr2.id, isOwner: false } }));
+  out("run.create", R);
+  if (R?.id) {
+    out("run.lines", (await rows(`SELECT "employeeId" = $2 AS e1, "snapshotJson"->'lines' AS l, "grossSatang" AS g, "deductSatang" AS d FROM "HrPayrollItem" WHERE "runId" = $1`, R.id, e)).map((x: Any) => ({ e1: x.e1, g: x.g, d: x.d, lines: (x.l ?? []).map((l: Any) => `${l.code}:${l.day ?? "-"}:${l.minutes ?? "-"}:${l.amountSatang}`) })));
+    out("run.approve", await safe(() => PAY.approveRun(c(s), R.id, undefined, ownA)));
+  }
+  // ── workaround / positive control: revoke the two PM halves (APPROVED→REJECTED) ⇒ rebuild ⇒ payroll creates ──
+  for (const r of await rows(`SELECT id FROM "HrLeave" WHERE "systemId" = $1 AND "halfDay"::text = 'PM' AND "fromDate" IN ('2031-08-05','2031-08-06')`, s))
+    out("revokePM", await safe(() => SV.decideLeave(c(s), r.id, "REJECTED", U.owner.id, { from: "APPROVED" }).then(() => ({ ok: true }))));
+  for (const d of ["2031-09-05"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT }));
+  for (const r of await rows(`SELECT id FROM "HrAttendanceDay" WHERE "systemId" = $1 AND "employeeId" = $2 AND date IN ('2031-08-05','2031-08-06')`, s, e)) {
+    const rc = await safe(() => JG.recomputeAttendanceDay(c(s), own, { dayId: r.id, reason: "qc h53l ตรวจซ้ำหลังถอนใบลาครึ่งบ่าย" }, { now: NOW }));
+    out("recompute", { ok: rc?.ok, reason: rc?.reason, status: rc?.status });
+  }
+  const b2 = await safe(() => WE.buildWorkEntrySnapshot(c(s), own, { periodKey: "2031-08" }, { now: NOW }));
+  out("build2", { ok: b2?.ok, reason: b2?.reason });
+  out("workDays2", await rows(`SELECT date::text AS d, "dayStatus"::text AS st, "paidLeaveMin" AS pl, "unpaidLeaveMin" AS ul, "absentMin" AS ab, review FROM "HrWorkDay" WHERE "systemId" = $1 AND "employeeId" = $2 AND date IN ('2031-08-05','2031-08-06','2031-08-08') ORDER BY date`, s, e));
+  out("sync2", await safe(() => ATP.syncAttendanceDeductions(c(s), own, { periodKey: "2031-08" }, { now: NOW })));
+  for (const r of await rows(`SELECT id FROM "HrPayAdjustment" WHERE "systemId" = $1 AND status::text = 'PENDING'`, s)) await safe(() => PAY.decideAdjustment(c(s), r.id, "APPROVED", ownA));
+  const R2 = await safe(() => PAY.createPayrollRunV2(c(s), VP, { periodKey: "2031-08", payDate: bk("2031-08-31", "10:00") }, { now: NOW, actor: { userId: U.mgr2.id, isOwner: false } }));
+  out("run2.create", R2);
+  if (R2?.id) out("run2.lines", (await rows(`SELECT "employeeId" = $2 AS e1, "snapshotJson"->'lines' AS l, "grossSatang" AS g, "deductSatang" AS d FROM "HrPayrollItem" WHERE "runId" = $1`, R2.id, e)).map((x: Any) => ({ e1: x.e1, g: x.g, d: x.d, lines: (x.l ?? []).map((l: Any) => `${l.code}:${l.day ?? "-"}:${l.minutes ?? "-"}:${l.amountSatang}`) })));
+  // ── control: a second employee with ONE full-day paid leave on the same date ⇒ no flag, no deduction ──
+  out("note", "control = D.full (2031-08-04) row above");
+  // ── booking seam: hourly 4h leave ⇒ whole-day unavailable? ──
+  out("booking.onLeave", { hourly4h: [...(await SV.employeesOnLeave(c(s), [e], dd(D.hrUnpaidAbsent)))].length, halfAM: [...(await SV.employeesOnLeave(c(s), [e], dd(D.amWorkPm)))].length, workday: [...(await SV.employeesOnLeave(c(s), [e], dd(D.work)))].length });
+} catch (x) {
+  crashed = errText(x);
+  console.log(`CRASH ${crashed} ${(x as Error)?.stack?.split("\n").slice(1, 5).join(" | ")}`);
+} finally {
+  await lawCleanup().catch((x: unknown) => console.log(`LAW_CLEANUP_FAIL ${errText(x)}`));
+  await S.cleanup();
+}
+process.exit(crashed ? 1 : 0);

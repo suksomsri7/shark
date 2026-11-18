@@ -1,0 +1,39 @@
+── ร้านมีระบบสมาชิกชุดเดียว ──
+(node:2063105) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ [CM-1.1] เชื่อมให้อัตโนมัติ
+  ✅ [CM-1.2] ค่าลง DB จริง
+  ✅ [CM-1.3] ไม่ปักว่า 'เจ้าของเลือกเอง' (ยังเปลี่ยนได้ และไม่หลอกว่าเขาตั้ง)
+
+── ร้านมีระบบสมาชิกหลายชุด ──
+  ✅ [CM-2.1] 🔴 ไม่เชื่อมให้ — ต้องให้เจ้าของเลือกเอง
+
+── ยังไม่มีระบบสมาชิก ──
+  ✅ [CM-3.1] ไม่มีให้เชื่อม → null
+  ✅ [CM-3.2] สร้างระบบสมาชิกทีหลัง → เชื่อมย้อนให้เอง
+
+── เจ้าของตั้งใจไม่เชื่อม ──
+  ✅ [CM-4.1] 🔴 ระบบไม่ไปเชื่อมทับสิ่งที่เจ้าของปิดไว้
+  ✅ [CM-4.2] และของใน DB ยังเป็นไม่เชื่อมจริง
+
+── กันข้ามร้าน ──
+  ✅ [CM-5.1] ร้านอื่นสั่งเชื่อมระบบแชทของเราไม่ได้
+
+── ถูกเรียกในเส้นทางจริง ──
+  ✅ [CM-6.1] ลูกค้าทักเข้ามาแล้วเชื่อมได้เลย ไม่ต้องรอเจ้าของเปิดหน้าตั้งค่า
+  ✅ [CM-6.2] หน้าเชื่อมช่องทางเรียกก่อนแสดงค่า
+
+[cleanup] ลบร้านทดสอบ 4 ร้าน
+
+===== QC: เชื่อมระบบสมาชิกอัตโนมัติ =====
+ผ่าน 11/11
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+
+JSON_SUMMARY {"total":11,"passed":11,"findings":[]}

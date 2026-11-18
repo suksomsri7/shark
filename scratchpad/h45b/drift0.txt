@@ -1,0 +1,16 @@
+
+> shark-in-th@0.1.0 drift /root/projects/shark-hr
+> prisma migrate diff --from-config-datasource --to-schema prisma/schema --exit-code
+
+Loaded Prisma config from prisma.config.ts.
+
+
+[*] Changed the `DormUtilityRate` table
+  [-] Removed unique index on columns (unitId, buildingId, kind, periodKey)
+
+[*] Changed the `HrFilingProfile` table
+  [*] Altered column `rdFormFlag` (default changed from `Some(Value(Int(1)))` to `Some(Value(Int(2)))`)
+
+[*] Changed the `HrLineLink` table
+  [-] Removed foreign key on columns (employeeId)
+ ELIFECYCLE  Command failed with exit code 2.

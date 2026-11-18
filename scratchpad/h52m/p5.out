@@ -1,0 +1,29 @@
+[env] h52m-p5 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h52m-p5] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2649420) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+A.create300 {"ok":true,"employees":300,"ms":14994}
+A.approve {"ap":{"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"},"ms":2284}
+A.pay {"pd":{"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"},"ms":316}
+A.run {"id":"cmwg3n94000k7b0kzwtia9vjz","status":"PAID","book":"cmwg3mwyp000jb0kzmvkaei8v","j":"cmwg3nb2900slb0kz7xzuqle8","g":900000000,"n":873750000,"w":0,"se":26250000,"sr":26250000,"a":0,"d":0,"fin":"true"}
+A.expect {"g":900000000,"se":26250000,"n":873750000,"eq":true}
+A.bank {"ok":true,"items":300,"total":873750000,"eq":true,"ms":113}
+A.report {"ok":true,"rows":300,"net":"8737500.00","ms":196}
+A.reverse {"rv":{"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"},"ms":398}
+B.overInt4.v2 {"res":"{\"ok\":false,\"code\":\"THROW\",\"reason\":\"PrismaClientKnownRequestError: Invalid `tx.hrPayrollRun.create()` invocation in /root/projects/shark-hr/src/lib/modules/hr/payroll.ts:2633:33 2630 const totals = { totalGrossSatang\"}","runs":[{"n":0}]}
+B.overInt4.v1 {"res":"{\"ok\":false,\"code\":\"THROW\",\"reason\":\"PrismaClientKnownRequestError: Invalid `tx.hrPayrollRun.create()` invocation in /root/projects/shark-hr/src/lib/modules/hr/payroll.ts:755:39 752 throw new PayrollInputError(exclusi\"}","runs":[{"n":0}]}
+B2.bigSalary {"res":"{\"ok\":true,\"id\":\"cmwg3nek900wtb0kz8lq8wnjb\",\"employees\":1}","item":[{"g":2100000000,"w":724149375,"se":87500,"n":1375763125}]}
+B2.approve(no book) {"ok":true,"note":"อนุมัติแล้ว — ยังไม่ได้เลือกสมุดบัญชีสำหรับเงินเดือน จึงไม่ได้ลงบัญชี"}
+C.swap {"r1":{"ok":true,"id":"cmwg3nfg900xbb0kz7ny7sqk8"},"r2":{"ok":true,"status":"PENDING"},"r3":{"ok":true,"status":"APPROVED","warnings":[]},"d18":["eY"],"d19":["eX"]}
+C.build true
+C.days ["eY18:WORKED:w480:a0","eX19:WORKED:w480:a0"]
+C.sync {"ok":true,"periodKey":"2031-08","employees":2,"created":0,"rejected":0,"kept":0,"refunds":0,"wait":[],"skipped":[],"next":null}
+C.run ["eX:3000000:0","eY:3000000:0"]
+RESIDUE none (tenants=1 users=7 activeLaw=0->0)

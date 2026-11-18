@@ -1,0 +1,132 @@
+// H5.3l hunter — HR-LEAVE-3 fix hunt: R3 edit/decide race · R1 pair edge cases · R4 withdraw via the real action
+// Run: bash scripts/iso.sh bash scripts/qc-hr.sh bash scripts/with-gate-lock.sh env QC_FORCE=1 pnpm exec tsx scratchpad/h53l/l3-hunt.mts
+const { AsyncLocalStorage } = await import("node:async_hooks");
+(globalThis as any).AsyncLocalStorage ??= AsyncLocalStorage; // before next/*
+import { type Any, setup, short, errText, dd, bk, underLock, dist } from "./common.mjs";
+import { nextScope } from "./kit.mjs";
+
+const N = Number(process.env.H53L_N ?? 20);
+const S = await setup("h53l-l3");
+const { P, tag, TT, U, V, c, rows, safe, sys, fx } = S;
+const out = (k: string, v: unknown) => console.log(`${k} ${typeof v === "string" ? v : short(v, 1800)}`);
+let crashed = "";
+try {
+  const AP = (await import("@/lib/modules/approval/service")) as Any;
+  const AACT = (await import("@/lib/modules/approval/actions")) as Any;
+  const SV = (await import("@/lib/modules/hr/service")) as Any;
+  const JG = (await import("@/lib/modules/hr/judge")) as Any;
+  const WE = (await import("@/lib/modules/hr/work-entries")) as Any;
+  const inS = await nextScope();
+  const ctxA = { tenantId: TT };
+  let dayN = 0;
+  const nextDay = () => new Date(Date.UTC(2031, 0, 6) + dayN++ * 86_400_000).toISOString().slice(0, 10);
+  const world = async (name: string, steps: Any[]) => {
+    const s = await sys(name);
+    const pol = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "VACATION", name: `พักร้อน ${tag}`, quotaDays: 300, paid: true } })).id as string;
+    const e = await fx.mkEmp(TT, s, `พนง ${name} ${tag}`, { startDate: "2030-01-01", unitId: S.u1 });
+    const ap = await AP.createPolicy(ctxA, { name: `สาย ${name}`, entityType: "HrLeave", systemId: s, steps });
+    return { s, pol, e, apId: ap.id as string };
+  };
+  const file = async (w: Any) => {
+    const d = nextDay();
+    const r = await SV.requestLeave(c(w.s), { employeeId: w.e, type: "VACATION", policyId: w.pol, fromDate: d, toDate: d, actorUserId: U.staff.id });
+    return { leaveId: r.id as string, reqId: (await rows(`SELECT id FROM "ApprovalRequest" WHERE "entityId" = $1`, r.id))[0]?.id as string };
+  };
+  const reqRow = async (id: string) => (await rows(`SELECT status::text AS s, "currentStepOrder" AS o FROM "ApprovalRequest" WHERE id = $1`, id))[0];
+  const leaveSt = async (id: string) => (await rows(`SELECT status::text AS s FROM "HrLeave" WHERE id = $1`, id))[0]?.s;
+
+  // ── N1 (R3): step edit removing step 2 races a step-1 approval that advances into step 2 ──
+  {
+    const w = await world("N1", [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }]);
+    const o: string[] = [];
+    for (let i = 0; i < N; i++) {
+      await AP.updatePolicy(ctxA, w.apId, { name: "สาย N1", systemId: w.s, steps: [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }] }).catch(() => null);
+      const f = await file(w);
+      // decide reads policy steps [1,2] before its tx, then blocks on the claim (row lock held); the edit to [1] commits meanwhile
+      let edit: Any = null;
+      const { res } = await underLock(P, { rowSql: `SELECT id FROM "ApprovalRequest" WHERE id = $1 FOR UPDATE`, args: [f.reqId] }, [
+        () => safe(() => AP.decide(V.mgr, ctxA, f.reqId, { decision: "APPROVED", expectedStep: 1 })),
+        async () => (edit = await safe(() => AP.updatePolicy(ctxA, w.apId, { name: "สาย N1 ขั้นเดียว", systemId: w.s, steps: [{ order: 1, approverRole: "MANAGER" }] }))),
+      ]);
+      void res;
+      const rr = await reqRow(f.reqId);
+      const steps = (await rows(`SELECT "order" AS o FROM "ApprovalStep" WHERE "policyId" = $1 ORDER BY "order"`, w.apId)).map((x: Any) => x.o).join(",");
+      const own = await safe(() => AP.decide(V.owner, ctxA, f.reqId, { decision: "APPROVED" }));
+      const stuck = rr.s === "PENDING" && !steps.split(",").includes(String(rr.o));
+      o.push(`edit=${edit?.id ? "ok" : "refused"}·req=${rr.s}@${rr.o}·steps=[${steps}]·ownerAfter=${own.ok}·${stuck ? "STRANDED" : "ok"}`);
+      // clean: cancel the request so the next reset is allowed
+      await P.approvalRequest.updateMany({ where: { id: f.reqId, status: "PENDING" }, data: { status: "CANCELLED" } });
+    }
+    out("N1.editVsAdvance", dist(o));
+  }
+
+  // ── N3 (R4): withdraw through the real approvals action (requester = staff) at step 1 and step 2 ──
+  {
+    const w = await world("N3", [{ order: 1, approverRole: "MANAGER" }, { order: 2, approverRole: "OWNER" }]);
+    const withdraw = (reqId: string) => {
+      const f = new FormData();
+      f.set("requestId", reqId);
+      return inS(U.staff.cookie, "/app/approvals", () => AACT.cancelMyRequestAction(f)).catch((x: unknown) => ({ __throw: errText(x) }));
+    };
+    const r: Any = {};
+    for (const [k, adv] of [["step1", false], ["step2", true]] as const) {
+      const f = await file(w);
+      if (adv) await AP.decide(V.mgr, ctxA, f.reqId, { decision: "APPROVED", expectedStep: 1 });
+      const wd = await withdraw(f.reqId);
+      const direct = await safe(() => SV.decideLeave(c(w.s), f.leaveId, "APPROVED", U.mgr2.id, { from: "PENDING" }).then(() => ({ ok: true })));
+      const ownerDirect = await safe(() => SV.decideLeave(c(w.s), f.leaveId, "APPROVED", U.owner.id, { from: "PENDING" }).then(() => ({ ok: true })));
+      r[k] = { withdraw: wd ?? "void", req: await reqRow(f.reqId), leave: await leaveSt(f.leaveId), audit: await rows(`SELECT action FROM "AuditLog" WHERE "targetId" = $1 ORDER BY "createdAt"`, f.leaveId), directMgr: direct?.ok ?? direct?.reason, directOwner: ownerDirect?.ok ?? ownerDirect?.reason };
+    }
+    out("N3.withdrawViaAction", r);
+  }
+
+  // ── N2 (R1): pair edge cases (judge → work entries) ──
+  {
+    const s = await sys("คู่ครึ่งวัน");
+    await P.$executeRawUnsafe(`UPDATE "AppSystem" SET settings = jsonb_set(COALESCE(settings, '{}'::jsonb), '{hrPayroll}', COALESCE(settings->'hrPayroll', '{}'::jsonb) || '{"engineVersion": 2}'::jsonb) WHERE id = $1`, s);
+    const e = await fx.mkEmp(TT, s, `พนง คู่ ${tag}`, { startDate: "2030-01-01", unitId: S.u1 });
+    const polP = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "SICK", name: `ป่วย ${tag}`, paid: true, quotaDays: 30, allowHalfDay: true } })).id as string;
+    const polU = (await P.hrLeavePolicy.create({ data: { tenantId: TT, systemId: s, category: "PERSONAL", name: `กิจไม่รับ ${tag}`, paid: false, quotaDays: 30, allowHalfDay: true } })).id as string;
+    const mkShift = async (n: string, a: number, b: number, x = false) => (await P.hrShift.create({ data: { tenantId: TT, systemId: s, name: `${n} ${tag}`, startMin: a, endMin: b, crossesMidnight: x, graceMin: 5 } })).id as string;
+    const shDay = await mkShift("เช้า", 540, 1020);
+    const shA = await mkShift("กะเช้าสั้น", 540, 780);
+    const shB = await mkShift("กะเย็น", 1020, 1260);
+    const shN = await mkShift("กะดึก", 1200, 240, true);
+    const ros = async (day: string, sh: string, a: number, b: number, x = false) => (await P.hrRosterEntry.create({ data: { tenantId: TT, systemId: s, employeeId: e, date: dd(day), shiftId: sh, unitId: S.u1, startMin: a, endMin: b, breakMin: 0, crossesMidnight: x, published: true, publishedAt: new Date("2031-07-01T00:00:00Z"), source: "MANUAL" } })).id as string;
+    const punch = async (re: string, inAt: Date, outAt: Date) => { await P.hrAttendance.create({ data: { tenantId: TT, systemId: s, employeeId: e, kind: "IN", at: inAt, rosterEntryId: re, source: "KIOSK" } }); await P.hrAttendance.create({ data: { tenantId: TT, systemId: s, employeeId: e, kind: "OUT", at: outAt, rosterEntryId: re, source: "KIOSK" } }); };
+    const pair = async (day: string, am: string, pm: string, approvePm = true) => {
+      const a = await SV.requestLeave(c(s), { employeeId: e, type: "SICK", policyId: am, fromDate: day, toDate: day, halfDay: "AM", actorUserId: U.staff.id });
+      await SV.decideLeave(c(s), a.id, "APPROVED", U.owner.id, { from: "PENDING" });
+      const p = await SV.requestLeave(c(s), { employeeId: e, type: "SICK", policyId: pm, fromDate: day, toDate: day, halfDay: "PM", actorUserId: U.staff.id });
+      if (approvePm) await SV.decideLeave(c(s), p.id, "APPROVED", U.owner.id, { from: "PENDING" });
+      return { am: a.id as string, pm: p.id as string };
+    };
+    // a) pair + works the afternoon anyway (in 13:00 out 17:00)
+    const dA = "2031-08-04"; const rA = await ros(dA, shDay, 540, 1020); await pair(dA, polP, polP); await punch(rA, bk(dA, "13:00"), bk(dA, "17:00"));
+    // b) pair on a two-shift day (09–13 + 17–21)
+    const dB = "2031-08-05"; await ros(dB, shA, 540, 780); await ros(dB, shB, 1020, 1260); await pair(dB, polU, polP);
+    // c) pair on an overnight shift (20:00–04:00)
+    const dC = "2031-08-06"; await ros(dC, shN, 1200, 240, true); await pair(dC, polP, polU);
+    // d) second half approved AFTER the day was judged/stored
+    const dD = "2031-08-07"; await ros(dD, shDay, 540, 1020); const pD = await pair(dD, polU, polP, false);
+    for (const d of ["2031-08-09"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT }));
+    const before = await rows(`SELECT status::text AS st, "leaveHalf"::text AS h, "leaveFraction"::text AS fr, version FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND date = $2::date`, e, dD);
+    await SV.decideLeave(c(s), pD.pm, "APPROVED", U.owner.id, { from: "PENDING" });
+    for (const d of ["2031-08-16", "2031-09-05"]) await safe(() => JG.runAttendanceJobs({ now: bk(d), tenantId: TT }));
+    const needs = await safe(() => JG.attendanceNeedsRecompute(c(s), V.owner, { now: bk("2031-09-05") }));
+    const NOW = bk("2031-09-05");
+    const b1 = await safe(() => WE.buildWorkEntrySnapshot(c(s), V.owner, { periodKey: "2031-08" }, { now: NOW }));
+    const wdD1 = await rows(`SELECT "dayStatus"::text AS st, "paidLeaveMin" AS pl, "unpaidLeaveMin" AS ul, "absentMin" AS ab, review FROM "HrWorkDay" WHERE "employeeId" = $1 AND date = $2::date`, e, dD);
+    for (const r of await rows(`SELECT id FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND date = $2::date`, e, dD)) await safe(() => JG.recomputeAttendanceDay(c(s), V.owner, { dayId: r.id, reason: "qc h53l ใบครึ่งบ่ายอนุมัติหลังปิดวัน" }, { now: NOW }));
+    await safe(() => WE.buildWorkEntrySnapshot(c(s), V.owner, { periodKey: "2031-08" }, { now: NOW }));
+    out("N2.d.secondHalfAfterJudged", { storedBefore: before, needsRecompute: needs?.count, buildBefore: b1?.ok ?? b1?.reason, workDayBeforeRecompute: wdD1, after: await rows(`SELECT status::text AS st, "leaveHalf"::text AS h, "leaveFraction"::text AS fr, version FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND date = $2::date`, e, dD), workDayAfter: await rows(`SELECT "dayStatus"::text AS st, "paidLeaveMin" AS pl, "unpaidLeaveMin" AS ul, "absentMin" AS ab, review FROM "HrWorkDay" WHERE "employeeId" = $1 AND date = $2::date`, e, dD) });
+    out("N2.att", await rows(`SELECT date::text AS d, "slotKey" = 'DAY' AS dayslot, "startMin" AS st, status::text AS s, "leaveHalf"::text AS h, "leaveFraction"::text AS fr, "workedMin" AS w FROM "HrAttendanceDay" WHERE "employeeId" = $1 AND date <= '2031-08-07' ORDER BY date, "startMin"`, e));
+    out("N2.workDays", await rows(`SELECT date::text AS d, "dayStatus"::text AS st, "plannedMin" AS pm, "paidLeaveMin" AS pl, "unpaidLeaveMin" AS ul, "absentMin" AS ab, "workMin" AS w, "unplannedMin" AS un, review FROM "HrWorkDay" WHERE "employeeId" = $1 AND date <= '2031-08-07' ORDER BY date`, e));
+  }
+} catch (x) {
+  crashed = errText(x);
+  console.log(`CRASH ${crashed} ${(x as Error)?.stack?.split("\n").slice(1, 5).join(" | ")}`);
+} finally {
+  await S.cleanup();
+}
+process.exit(crashed ? 1 : 0);

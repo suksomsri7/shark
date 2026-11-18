@@ -1,0 +1,3 @@
+⏭️  SKIPPED — qc-hr-h4.5: not built
+   • src/lib/modules/hr/line-rules.ts absent (H4.5 not built)
+JSON_SUMMARY {"suite":"qc-hr-h4.5","total":0,"passed":0,"failed":[],"findings":[],"skipped":true,"reason":["src/lib/modules/hr/line-rules.ts absent (H4.5 not built)"],"registered":69}

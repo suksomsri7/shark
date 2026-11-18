@@ -1,0 +1,111 @@
+[env] qc-chat-api-v1 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+  ✅ [CA-0.1] มีครบทั้ง 8 เส้นตาม §3.2 (identities, messages, thread, read, unread, attachments, guest, config)
+  ✅ [CA-0.2] มี src/lib/modules/chat/public-auth.ts (ตัวตน 2 ระดับ §3.1)
+
+CA-1 ตัวตน 2 ระดับ (§3.1 — สลับช่องกันต้อง 401):
+  ✅ [CA-1.1] secret key ผ่าน Authorization → ผ่าน (positive control)
+  ✅ [CA-1.2] widget key + Origin ที่อนุญาต + guest → ผ่าน (positive control)
+  ✅ [CA-1.3] 🔴 secret key ผ่าน X-Shark-Widget → 401
+  ✅ [CA-1.4] 🔴 widget key ผ่าน Authorization: Bearer → 401
+  ✅ [CA-1.5] ส่งกุญแจมาทั้ง 2 แบบ → 401 (ไม่เดาให้)
+  ✅ [CA-1.6] ไม่ส่งกุญแจเลย → 401 + ข้อความไทย
+  ✅ [CA-1.7] คีย์ที่ถูกเพิกถอนแล้ว → 401
+  ✅ [CA-1.8] connection ถูกปิด → กุญแจ widget ใช้ไม่ได้ (401)
+  ✅ [CA-1.9] กุญแจ widget เก็บเป็น hash เท่านั้น (ไม่มีคอลัมน์เก็บ raw)
+
+CA-2 🔴 widget อ้าง externalUserId ของคนอื่นไม่ได้:
+  ✅ [CA-2.1] 🔴 widget อ่านเธรดของคนอื่นไม่ได้ → 403 และไม่มีข้อความหลุด
+  ✅ [CA-2.2] 🔴 widget ส่งข้อความในนามคนอื่นไม่ได้ → 403 และไม่มีแถวถูกเขียน
+  ✅ [CA-2.3] 🔴 widget ถามยอดยังไม่อ่านของคนอื่นไม่ได้ → 403
+  ✅ [CA-2.4] 🔴 widget ทำเครื่องหมายอ่านแทนคนอื่นไม่ได้ → 403
+  ✅ [CA-2.5] widget ที่ยังไม่มี guest → 401 (บอกให้เรียก /guest ก่อน)
+  ✅ [CA-2.6] 🔴 guest token ปลอม (ลายเซ็นไม่ตรง) → ใช้ไม่ได้
+  ✅ [CA-2.7] 🔴 guest token ของ connection อื่น ใช้ข้ามไม่ได้
+  ✅ [CA-2.8] widget ส่งในนามตัวเอง (ระบุ guest ของตัวเอง) → ผ่าน (positive control)
+  ✅ [CA-2.9] widget อ่านเฉพาะเธรดของตัวเอง (ไม่มีข้อความเหยื่อปน)
+  ✅ [CA-2.10] 🔴 widget ตั้ง verifiedEmail/email/externalRef เองไม่ได้ (เชื่อเฉพาะฝั่งเซิร์ฟเวอร์)
+  ✅ [CA-2.11] โค้ดของเส้น messages/thread/read/unread ไม่มีทางอ่าน externalUserId ตรง ๆ จาก body
+
+CA-3 CORS + origin allowlist:
+  ✅ [CA-3.1] origin ที่อนุญาต → 200 + Allow-Origin เป็น origin นั้น (ไม่ใช่ *)
+  ✅ [CA-3.2] มี Vary: Origin (กัน CDN เสิร์ฟคำตอบข้าม origin)
+  ✅ [CA-3.3] มี Allow-Credentials (คู่กับ ACAO เจาะจง)
+  ✅ [CA-3.4] 🔴 origin นอก allowlist → 403 และไม่มี Allow-Origin
+  ✅ [CA-3.5] คำตอบที่ปฏิเสธก็ยังต้องมี Vary: Origin
+  ✅ [CA-3.6] ไม่มี Origin เลยในโหมด widget → 403 (ตัดสินไม่ได้ = ไม่อนุญาต)
+  ✅ [CA-3.7] 🔴 allowlist ว่าง → ปฏิเสธทุก origin (ปลอดภัยโดยปริยาย)
+  ✅ [CA-3.8] ทุกเส้นมี OPTIONS handler
+  ✅ [CA-3.9] preflight origin ที่อนุญาต → 2xx + ACAO + allow-methods/headers
+  ✅ [CA-3.10] preflight origin นอก allowlist → ไม่มี ACAO
+  ✅ [CA-3.11] โหมด secret ไม่มี CORS header เลย (server-to-server ไม่ต้องมี)
+  ✅ [CA-3.12] 🔴 ไม่มีที่ไหนตั้ง Allow-Origin เป็น "*" (คู่กับ credentials = เปิดให้ทั้งโลก)
+
+CA-4 สัญญา messages[] §3.2 (เปลี่ยน = ลูกค้าที่ต่ออยู่พัง):
+  ✅ [CA-4.1] ส่งข้อความ+ไฟล์แนบผ่านเส้น secret → 200 (positive control)
+  ✅ [CA-4.2] messages[] มี 7 ฟิลด์ตาม §3.2 เป๊ะ
+  ✅ [CA-4.3] attachments[] มีฟิลด์บังคับครบ 7 (รวม width/height กันภาพกระตุก · durationMs สำหรับเสียง)
+  ✅ [CA-4.4] /thread คืน conversationId + status ตาม §3.2
+  ✅ [CA-4.5] 🔴 โน้ตภายในไม่หลุดออก API (end-to-end ผ่าน route)
+  ✅ [CA-4.6] ?after กรองข้อความเก่าออกจริง
+  ✅ [CA-4.7] after ที่ไม่ใช่ ISO → 400 + ข้อความไทย
+  ✅ [CA-4.8] /identities คืน contactId + เขียน lang/email/verifiedEmail (M2)
+  ✅ [CA-4.9] /identities ไม่สร้างเธรดเปล่าให้ทีมต้องมานั่งปิดเอง
+  ✅ [CA-4.10] /unread นับเฉพาะข้อความจากร้าน ไม่นับโน้ตภายใน
+  ✅ [CA-4.11] /read แล้ว /unread เป็น 0
+  ✅ [CA-4.11b] 🔴 /unread กรองโน้ตภายในที่ระดับ query จริง (ไม่ใช่กรองทีหลัง)
+  ✅ [CA-4.12] 🔴 ลูกค้าอ่านแล้ว ต้องไม่ล้างแบดจ์ 'รอตอบ' ของทีมงาน
+
+CA-5 tenantId/systemId มาจากกุญแจ + ชั้น route ไม่มี logic ธุรกิจ:
+  ✅ [CA-5.1] 🔴 ใส่ tenantId/systemId มาใน body → ไม่มีผล (เขียนลงร้านของกุญแจ)
+  ✅ [CA-5.2] 🔴 ระบุ X-Shark-System ของร้านอื่น → ปฏิเสธ (ไม่เขียนข้ามร้าน)
+  ✅ [CA-5.3] ร้านที่ยังไม่เปิดระบบแชท → 404 + ข้อความไทย
+  ✅ [CA-5.4] ไม่มี route ไหนอ่าน tenantId/systemId จาก body/query
+  ✅ [CA-5.5] ชั้น route ไม่แตะ prisma ตรง ๆ (เรียกชั้น 1 อย่างเดียว — กฎเหล็กข้อ 1)
+  ✅ [CA-5.6] ชั้น route ไม่ประกอบ query/where เอง
+  ✅ [CA-5.7] ทุกเส้นเรียก authenticateChatRequest (ไม่มีเส้นไหนเปิดโล่ง)
+
+CA-6 B2 — rate limit นับจากแถวใน DB (ไม่ใช่ memory ต่อ process):
+  ✅ [CA-6.1] 🔴 ตัวเลขที่นับอยู่บนแถวจริงใน ChatRateBucket (ไม่ใช่ Map ใน process)
+  ✅ [CA-6.2] ครบเพดานแล้วถูกปฏิเสธ + บอก retry-after
+  ✅ [CA-6.3] คนละ key คนละถัง
+  ✅ [CA-6.4] หน้าต่างหมดอายุ → รีเซ็ตตัวนับ (ไม่ใช่ล็อกตลอดกาล)
+  ✅ [CA-6.5] 🔴 1 คำขอ = เขียนถังครั้งเดียว (ห้ามซ้อนหลายชั้นโดยไม่จำเป็น)
+  ✅ [CA-6.6] widget ยิงถี่เกินเพดาน → 429 + retry-after (นับต่อ guest ไม่ใช่ต่อ IP — NAT ไม่พัง)
+  ✅ [CA-6.7] ถังของ widget ผูกกับ guest+connection (ไม่ใช่ IP)
+  ✅ [CA-6.8] ถังของ secret ผูกกับคีย์ (ไม่ใช่ IP ของ Vercel ที่ใช้ร่วมกัน)
+  ✅ [CA-6.9] chat/rate-limit.ts ไม่เหลือ Map ใน memory แล้ว
+  ✅ [CA-6.10] 🔴 ผู้เรียกเดิม (webchat route) await จริง — ลืม await = Promise truthy = ด่านเปิดโล่ง
+  ✅ [CA-6.11] __resetRateLimit ที่ไม่ระบุ key ต้องไม่ล้างทั้งตาราง (สคริปต์เดิมต่อ prod จริง)
+
+CA-7 WO-C5 — ไฟล์แนบ (ชนิด/ขนาด/นามสกุล):
+  ✅ [CA-7.1] รับชนิดไฟล์ครบที่ SiamDive ใช้อยู่ (ลดลง = ผู้ใช้เดิมส่งไม่ผ่าน)
+  ✅ [CA-7.2] 🔴 ตารางนามสกุลไม่มีตัวไหนตกเป็น .bin (ปัญหาเดียวกับ siamdive2/bunny.ts:46)
+  ✅ [CA-7.3] นามสกุลของชนิดใหม่ถูกต้อง (ไม่ใช่ลอกค่าเดียวกันทั้งแถว)
+  ✅ [CA-7.4] เพดานไฟล์แนบแชท = 10MB (SiamDive ใช้ 10MB อยู่แล้ว)
+  ✅ [CA-7.5] /attachments คืน { url,name,mimeType,sizeBytes,width,height } ตาม §3.2
+  ✅ [CA-7.6] width/height อ่านจากไฟล์จริง (widget เอาไปกันภาพกระตุก)
+  ✅ [CA-7.7] ชนิดไฟล์นอกรายการ → ปฏิเสธ + ข้อความไทย
+  ✅ [CA-7.8] เกิน 10MB → 413 + ข้อความไทย
+  ✅ [CA-7.9] 🔴 /attachments ไม่มีกุญแจ → 401 (บทเรียน S1: อัปโหลดที่ไม่มี auth)
+  ✅ [CA-7.10] ห่อ uploadFile เดิม (ขึ้น Bunny SG + AccessKey) ไม่ได้เขียนขาอัปโหลดใหม่
+  ✅ [CA-7.11] ไฟล์ถูกบันทึกเป็น FileAsset ของร้านที่ถือกุญแจ
+
+CA-8 /config หลายภาษา + สิทธิ์ต่อเส้น:
+  ✅ [CA-8.1] /config คืน greeting/offlineMessage/locales/theme/widgetEnabled + businessHours (WO-C16)
+  ✅ [CA-8.2] greeting ตามภาษาที่ขอ (ผ่าน resolveLocale)
+  ✅ [CA-8.3] ภาษาอื่นได้ข้อความของภาษานั้น
+  ✅ [CA-8.4] 🔴 สตริงว่างที่ร้านตั้งใจปิด ต้องคืน "" ไม่ใช่ไหลไปภาษาอื่น
+  ✅ [CA-8.5] ภาษาที่ไม่มี → ตกไปภาษาฐาน (th)
+  ✅ [CA-8.6] locales บอกภาษาที่ร้านตั้งไว้จริง
+  ✅ [CA-8.7] /guest ใช้ได้เฉพาะกุญแจ widget → secret ต้อง 403
+  ✅ [CA-8.8] 🔴 /identities ใช้ได้เฉพาะกุญแจเซิร์ฟเวอร์ → widget ต้อง 403
+  ✅ [CA-8.9] /config เรียกด้วยกุญแจเซิร์ฟเวอร์ได้ (s2s) และได้ค่าของร้านที่ถือกุญแจ
+  ✅ [CA-8.10] /guest ออก token ที่ผ่านการเซ็นของเราจริง + ตั้ง cookie httpOnly
+  ✅ [CA-8.11] token ที่ออกให้ connection นี้ ใช้กับ connection อื่นไม่ได้
+  ✅ [CA-8.12] ใช้ token จาก cookie ที่เซิร์ฟเวอร์ตั้งให้ได้ (ไม่ต้องพึ่ง body)
+  ✅ [CA-9.9] ไม่มี query หลุดออก DB จริง (fake prisma รับทุกครั้ง · ไม่มี HTTP ออก)
+
+===== QC CHAT API V1 =====
+ผ่าน 89/89
+FINDINGS: CRITICAL 0 · MAJOR 0 · MINOR 0
+JSON_SUMMARY {"total":89,"passed":89,"findings":[]}

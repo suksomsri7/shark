@@ -1,0 +1,57 @@
+[env] h52m-q6 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h52m-q6] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2906814) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+L.build true
+L.sync 1
+L.create {"ok":true,"id":"cmwg87kpf002fwukz83ttbb3s","employees":1}
+L.previewWithPending ["OUTDATED"]
+L1.race(leave∥approve) {"res":[{"ok":true,"status":"APPROVED"},{"ok":false,"note":"ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ","code":"WORK_ENTRIES"}],"blocked":[true,false],"leave":"APPROVED","run":"DRAFT"}
+L1.wdFrozen12 [{"ul":0,"w":480}]
+L1b.recompute {"ok":false,"reason":"ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ","code":"WORK_ENTRIES"}
+L1b.approve {"ok":false,"note":"ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ","code":"WORK_ENTRIES"}
+L1b.lines ["BASE:3000000","ABSENT_RULE:-100000"]
+L1b.revokeApprovedUnpaidInPaid undefined
+L1b.cancelApprovedUnpaidInPaid {"ok":false,"reason":"ยกเลิกได้เฉพาะใบลาที่คุณยื่นเอง"}
+L1b.leaveNow REJECTED
+L2.paidLeaveOnAbsentDay {"ok":true,"status":"APPROVED"}
+L2.sync {"created":0,"refunds":0,"ok":true}
+L2.absentRows [{"st":"ABSENT_RULE","k":"DEDUCTION","s":"APPROVED","a":100000,"p":"2031-08","bound":true}]
+L3.span31Aug-1Sep {"ok":true,"status":"APPROVED"}
+L3.sepOnly {"ok":true,"status":"APPROVED"}
+L3.revokeApprovedInPaid {"ok":false,"reason":"สถานะใบลาเปลี่ยนไปแล้ว กรุณาเปิดดูใหม่"}
+S.build true
+S.day [{"d":"2031-08-05","w":240,"home":true},{"d":"2031-08-06","w":480,"home":true}]
+S.approve {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+S.labor(expect 240 u1 / 480 u2 of 3,087,500 = 1,029,167 / 2,058,333) {"all":3087500,"u1":1029167,"u2":2058333}
+S.reverse {"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}
+S.laborAfterReverse(estimate) {"basis":"ESTIMATE"}
+R.v2.at {"ok":true,"g":2147483647,"items":2}
+R.v2.recomputeOver {"ok":false,"reason":"ยอดรวมของรอบจ่ายนี้เกิน 21,474,836.47 บาท ซึ่งเป็นยอดสูงสุดที่ระบบเงินเดือนรับได้ต่อรอบ — แยกพนักงานไปอีกระบบ HR แล้วสร้างรอบจ่ายแยกกัน","code":"RUN_LIMIT"}
+R.v2.draftKept {"run":{"id":"cmwg87sz0006xwukzuwzypipu","status":"DRAFT","book":null,"j":null,"g":2147483647,"n":1417504371,"w":729979276,"se":0,"sr":0,"a":0,"d":0,"fin":null},"items":2}
+R.v2.over {"ok":false,"code":"RUN_LIMIT","items":0}
+R.v1.at {"ok":true,"g":2147483647,"items":2}
+R.v1.over {"ok":false,"code":"THROW","items":0}
+R.v2.advanceAtLimit(gross<limit, expense=limit+0) {"ok":true,"id":"cmwg87vl1007rwukzidplw49v","employees":2}
+R.v2.advanceOver(gross=limit-999, expense=limit+1) recompute {"ok":false,"reason":"ยอดรวมของรอบจ่ายนี้เกิน 21,474,836.47 บาท ซึ่งเป็นยอดสูงสุดที่ระบบเงินเดือนรับได้ต่อรอบ — แยกพนักงานไปอีกระบบ HR แล้วสร้างรอบจ่ายแยกกัน","code":"RUN_LIMIT"}
+G1.giveBack∥reverse {"res":[{"ok":true,"id":"rf775ae31776a347778a2d6c0573027b72"},{"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}],"blocked":[true,true],"adj":["DEDUCTION:APPROVED:100000:2031-08:free","REFUND:REJECTED:30000:2031-09:free"]}
+G2.reverseAgain {"ok":false,"note":"รอบนี้กลับรายการไปแล้ว","code":"ALREADY_REVERSED"}
+G3.recreateAug {"A2":true,"ap":{"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}}
+G3.sepDraft {"S1":true,"adj":["DEDUCTION:APPROVED:100000:2031-08:v5vf","REFUND:REJECTED:30000:2031-09:free","REFUND:APPROVED:30000:2031-09:cjl2"]}
+G3.reverseAug(refund in draft) {"ok":false,"note":"การคืนเงินของรายการหักในรอบนี้อยู่ในรอบจ่ายงวดถัดไปแล้ว — ลบร่างหรือกลับรายการรอบงวดถัดไปก่อน แล้วจึงกลับรายการรอบนี้","code":"REFUND_BOUND"}
+G3.cancelClaim(bound approved) {"ok":false,"reason":"รายการนี้อยู่ในรอบจ่ายที่อนุมัติแล้ว ลบไม่ได้ (ใช้กลับรายการรอบจ่ายแทน)"}
+G3.approveSep {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+G3.reverseAug(after Sep approved) {"ok":false,"note":"มีรอบจ่ายงวดหลังที่อนุมัติหรือจ่ายแล้ว — กลับรายการรอบงวดหลังสุดก่อน แล้วจึงกลับรายการรอบนี้","code":"LATER_RUN"}
+G3.reverseSep {"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}
+G3.reverseAug {"ok":true,"note":"กลับรายการเงินเดือนเรียบร้อย — ลง JV กลับรายการในบัญชีแล้ว"}
+G3.adj ["DEDUCTION:APPROVED:100000:2031-08:free","REFUND:REJECTED:30000:2031-09:free","REFUND:REJECTED:30000:2031-09:free"]
+G3.liveLines ["2031-08:BASE:2000000,DEDUCTION:-100000","2031-09:BASE:2000000"]
+G3.adjEnd ["DEDUCTION:APPROVED:100000:2031-08:qnkw","REFUND:REJECTED:30000:2031-09:free","REFUND:REJECTED:30000:2031-09:free"]
+RESIDUE none (tenants=1 users=5 activeLaw=0->0)

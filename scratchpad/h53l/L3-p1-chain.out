@@ -1,0 +1,19 @@
+[env] h53l-p1 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h53l-p1] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:101115) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+A1.replay.owner.MANAGER>OWNER true/true→APPROVED·dec=2·distinctDeciders=1×20
+A1.example {"r1":{"ok":true,"status":"PENDING","note":null},"r2":{"ok":true,"status":"APPROVED","note":null},"rr":{"s":"APPROVED","o":2},"ds":[{"o":1,"by":"cmwgqscye00020rkzqkl19yyw","d":"APPROVED"},{"o":2,"by":"cmwgqscye00020rkzqkl19yyw","d":"APPROVED"}]}
+A2.sameManagerBothSteps true/false→req=PENDING·leave=PENDING·distinct=1×20
+A3.doubleClick.parallel false/true→PENDING×20
+A4.approve+approve (both blocked in 20/20) ok=true/false·req=APPROVED·leave=APPROVED·dec=1·use=1·audit=1·evt=1·applied=1·OK×20
+A4.approve+reject (both blocked in 20/20) ok=true/false·req=APPROVED·leave=APPROVED·dec=1·use=1·audit=1·evt=1·applied=1·OK×10 | ok=true/false·req=REJECTED·leave=REJECTED·dec=1·use=0·audit=1·evt=1·applied=1·OK×10
+CRASH Error: แก้ขั้นอนุมัติของสายนี้ไม่ได้ เพราะมีคำขอรอตัดสินอยู่ 1 รายการ — ตัดสินหรือยกเลิกคำขอเหล่านั้นก่อน หรือปิดสายนี้แล้วสร้างสายใหม่     at <anonymous> (/root/projects/shark-hr/src/lib/modules/approval/service.ts:114:29) |     at process.processTicksAndRejections (node:internal/process/task_queues:95:5) |     at async Proxy._transactionWithCallback (/root/projects/shark-hr/node_modules/.pnpm/@prisma+client@7.8.0_prisma@7.8.0_@types+react-dom@19.2.3_@types+react@19.2.17__@types+_12a6afd4e8168cdd815b06207f03ccf9/node_modules/@prisma/client/src/runtime/getPrismaClient.ts:810:18) |     at async Object.updatePolicy (/root/projects/shark-hr/src/lib/modules/approval/service.ts:109:3)
+RESIDUE none (tenants=1 users=5)

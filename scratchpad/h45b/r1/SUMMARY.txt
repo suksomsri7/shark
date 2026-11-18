@@ -1,0 +1,13 @@
+seed-hr-qc exit=0 ===== seed-hr-qc ===== ผ่าน 34/34
+qc-hr-h2.11 exit=0 ===== qc-hr-h2.11 ===== passed 70/70 (QC_FORCE)
+qc-hr-h2.10 exit=1 ===== qc-hr-h2.10 ===== passed 55/57 (QC_FORCE)
+qc-hr-h2.3 exit=0 ===== qc-hr-h2.3 ===== passed 79/79 (QC_FORCE)
+qc-hr-h2.7 exit=0 ===== qc-hr-h2.7 ===== passed 94/94 (QC_FORCE)
+qc-hr-h2.9 exit=0 ===== qc-hr-h2.9 ===== passed 58/58 (QC_FORCE)
+qc-hr-h3.8 exit=0 ===== qc-hr-h3.8 ===== passed 78/78 (QC_FORCE)
+qc-hr-set-1 exit=0 ===== qc-hr-set-1 ===== passed 25/25 (QC_FORCE)
+qc-hr-h1.1 exit=0 ===== qc-hr-h1.1 ===== passed 81/81 (QC_FORCE)
+qc-hr-h0.1 exit=0 ===== qc-hr-h0.1 ===== passed 67/67 (QC_FORCE)
+qc-hf-hr-privacy exit=1 ===== QC: HF-HR-0 ข้อมูลพนักงาน/สลิป/ใบลา =====
+qc-audit-trail exit=0 
+DONE

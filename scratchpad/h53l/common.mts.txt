@@ -1,0 +1,104 @@
+// scratch (hunter H5.3l) — own tenant slug qc-h53l-* · full cleanup + residue line (pattern: scratchpad/h52m/common.mts)
+import { type Any, qc4Env, makeFixtures, vOf, tagOf, errText } from "../../scripts/qc-hr-lib.mjs";
+
+export { vOf, errText };
+export type { Any };
+export const PREFIX = "qc-h53l-";
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const short = (v: unknown, n = 300) => {
+  const s = JSON.stringify(v, (_k, x) => (typeof x === "bigint" ? Number(x) : x));
+  return s && s.length > n ? `${s.slice(0, n)}…` : s;
+};
+export const dd = (day: string) => new Date(`${day}T00:00:00Z`);
+export const bk = (day: string, hm = "12:00") => new Date(`${day}T${hm}:00+07:00`);
+
+export async function setup(suite: string) {
+  const { P, coreHash } = await qc4Env(suite);
+  const tag = tagOf(String(Date.now())) + Math.random().toString(36).slice(2, 5).replace(/\d/g, "q");
+  const SLUG = `${PREFIX}${Date.now()}${tag}`;
+  const fx = makeFixtures(P, coreHash, SLUG);
+  const SYS = (await import("@/lib/modules/system/service")) as Any;
+  const TT = await fx.newTenant("", "QC hunter H5.3l");
+  const u1 = await fx.newUnit(TT, `สาขา ${tag}`, "u1");
+  const HRK = { "hr.leave.decide": true, "hr.leave.read": true, "hr.leave.request": true };
+  const mk = (t: string, r: "OWNER" | "MANAGER" | "STAFF", ua: string[], p: Record<string, boolean>) => fx.mkUser(TT, t, `Q53 ${t} ${tag}`, r as Any, ua, p);
+  const U = {
+    owner: await mk("owner", "OWNER", [], {}),
+    owner2: await mk("owner2", "OWNER", [], {}),
+    mgr: await mk("mgr", "MANAGER", [u1], HRK),
+    mgr2: await mk("mgr2", "MANAGER", [u1], HRK),
+    staff: await mk("staff", "STAFF", [u1], { "hr.leave.request": true }),
+  };
+  const V = Object.fromEntries(Object.entries(U).map(([k, w]) => [k, vOf(w as Any)])) as Record<keyof typeof U, Any>;
+  const sys = async (n: string) => (await SYS.createSystem(TT, "HR", `${n} ${tag}`)).id as string;
+  const rows = async (sql: string, ...p: unknown[]) => ((await P.$queryRawUnsafe(sql, ...p)) as Any[]) ?? [];
+  const safe = <R,>(f: () => Promise<R>) => f().catch((e: unknown) => ({ ok: false, code: "THROW", reason: errText(e) }) as Any);
+  const c = (s: string) => ({ tenantId: TT, systemId: s });
+  async function cleanup(): Promise<string[]> {
+    const left: string[] = [];
+    const inList = fx.tenants.filter((x: string) => /^[A-Za-z0-9_-]+$/.test(x)).map((x: string) => `'${x}'`).join(",");
+    if (inList) {
+      const tables = ((await P.$queryRawUnsafe(`select distinct table_name from information_schema.columns where table_schema = current_schema() and column_name='tenantId'`).catch(() => [])) as Any[])
+        .map((r) => String(r.table_name)).filter((t) => /^[A-Za-z_]+$/.test(t));
+      for (let pass = 0; pass < 4; pass += 1) {
+        await P.$executeRawUnsafe(`UPDATE "AccountJournalEntry" SET "reversalOfId" = NULL WHERE "tenantId" IN (${inList})`).catch(() => null);
+        for (const t of tables) await P.$executeRawUnsafe(`DELETE FROM "${t}" WHERE "tenantId" IN (${inList})`).catch(() => null);
+      }
+      for (const t of tables) {
+        const r = (await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "${t}" WHERE "tenantId" IN (${inList})`).catch(() => [{ n: -1 }])) as Any[];
+        if (Number(r?.[0]?.n ?? 0) !== 0) left.push(`${t}=${r?.[0]?.n}`);
+      }
+      await P.tenant.deleteMany({ where: { id: { in: fx.tenants } } }).catch(() => null);
+    }
+    const extra = ((await P.user.findMany({ where: { email: { startsWith: `${SLUG}-` } }, select: { id: true } }).catch(() => [])) as Any[]).map((u) => u.id as string);
+    for (const uid of [...new Set([...fx.users, ...extra])]) {
+      await P.session.deleteMany({ where: { userId: uid } }).catch(() => null);
+      await P.appNotification.deleteMany({ where: { recipientUserId: uid } }).catch(() => null);
+      await P.membership.deleteMany({ where: { userId: uid } }).catch(() => null);
+      await P.user.deleteMany({ where: { id: uid } }).catch(() => null);
+    }
+    const tLeft = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "Tenant" WHERE slug LIKE $1`, `${PREFIX}%`)) as Any[])[0]?.n ?? -1);
+    const uLeft = Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM "User" WHERE email LIKE $1`, `${PREFIX}%`)) as Any[])[0]?.n ?? -1);
+    if (tLeft !== 0) left.push(`tenant=${tLeft}`);
+    if (uLeft !== 0) left.push(`user=${uLeft}`);
+    console.log(`RESIDUE ${left.length ? left.join(",") : "none"} (tenants=${fx.tenants.length} users=${fx.users.length})`);
+    return left;
+  }
+  return { P, fx, tag, TT, u1, U, V, sys, rows, safe, c, cleanup };
+}
+
+/** Hold a lock in its own tx; start each call only after the previous is observed blocked; then release. */
+export async function underLock<R>(P: Any, lock: { key: string } | { rowSql: string; args: unknown[] }, calls: (() => Promise<R>)[]): Promise<{ res: R[]; blocked: boolean[] }> {
+  let release: () => void = () => {};
+  const gate = new Promise<void>((r) => (release = r));
+  let held: (pid: number) => void = () => {};
+  const heldP = new Promise<number>((r) => (held = r));
+  const holder = P.$transaction(async (tx: Any) => {
+    const pid = Number(((await tx.$queryRawUnsafe(`SELECT pg_backend_pid() AS p`)) as Any[])[0]?.p ?? -1);
+    if ("key" in lock) await tx.$queryRawUnsafe(`SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))::text AS x`, lock.key);
+    else await tx.$queryRawUnsafe(lock.rowSql, ...lock.args);
+    held(pid);
+    await gate;
+  }, { maxWait: 20_000, timeout: 120_000 }).catch(() => held(-1));
+  const pid = await heldP;
+  const running: Promise<R>[] = [];
+  const blocked: boolean[] = [];
+  const nWaiting = async () => Number(((await P.$queryRawUnsafe(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock' AND cardinality(pg_blocking_pids(pid)) > 0`).catch(() => [{ n: 0 }])) as Any[])[0]?.n ?? 0);
+  void pid;
+  for (const call of calls) {
+    const before = await nWaiting();
+    let done = false;
+    const p = call().finally(() => (done = true));
+    running.push(p);
+    let b = false;
+    for (let i = 0; i < 80 && !done; i++) {
+      await sleep(100);
+      if ((await nWaiting()) > before) { b = true; break; }
+    }
+    blocked.push(b);
+  }
+  release();
+  await holder;
+  return { res: await Promise.all(running), blocked };
+}
+export const dist = (xs: string[]) => Object.entries(xs.reduce<Record<string, number>>((a, x) => ((a[x] = (a[x] ?? 0) + 1), a), {})).map(([k, n]) => `${k}×${n}`).join(" | ");

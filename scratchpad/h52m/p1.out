@@ -1,0 +1,73 @@
+[env] h52m-p1 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h52m-p1] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:2625843) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+F.setBook {"ok":true}
+F.swap {"req":false,"resp":false,"decide":false,"r18":["eB"],"r19":["eC"]}
+F.adj {"adv":{"ok":true,"id":"cmwg39c80005a43kzpvt636p8","amountSatang":500000},"dmg":{"ok":true,"id":"cmwg39c99005b43kzglydiitc","amountSatang":300000},"a1":{"ok":true},"a2":{"ok":true}}
+F.attPolicy {"ok":true,"id":"cmwg39am7000i43kzead3yhm2"}
+F.otDecide [{"ok":true,"status":"APPROVED","settled":true},{"ok":true,"status":"APPROVED","settled":true}]
+F.settle {"scanned":0,"settled":0,"waiting":0,"failed":0}
+1.build0 {"ok":true,"periodKey":"2031-08","employees":3,"written":93,"unchanged":0,"removed":0,"blocking":1,"next":null}
+1.days0 ["eA04=WORKDAY:WORKED:l30:e0:a0:w450:pl0:ul0:hw0:ow0:oh0:u1","eA05=WORKDAY:WORKED:l0:e45:a0:w435:pl0:ul0:hw0:ow0:oh0:u1","eA06=WORKDAY:WORKED:l0:e0:a0:w0:pl0:ul0:hw0:ow0:oh0:u1:MISSING_OUT","eA07=WORKDAY:WORKED:l20:e0:a0:w460:pl0:ul0:hw0:ow120:oh0:u1:OT_VIA_ADJUSTMENT","eA08=HOLIDAY:WORKED:l0:e0:a0:w0:pl0:ul0:hw480:ow0:oh120:u1:OT_VIA_ADJUSTMENT","eA11=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eA12=WORKDAY:LEAVE:l0:e0:a0:w0:pl0:ul480:hw0:ow0:oh0:u1","eA13=WORKDAY:LEAVE:l0:e0:a0:w0:pl480:ul0:hw0:ow0:oh0:u1","eA14=WORKDAY:ABSENT:l0:e0:a480:w0:pl0:ul0:hw0:ow0:oh0:u1","eA15=WORKDAY:WORKED:l40:e0:a0:w440:pl0:ul0:hw0:ow0:oh0:u1","eB18=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u2","eC04=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC05=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC06=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC07=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC19=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC25=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC26=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC27=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC28=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC29=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1"]
+1.create0(missing OUT) {"ok":false,"code":"WORK_ENTRIES","reason":"ชั่วโมงทำงานของงวดนี้ยังไม่พร้อม — กด 'ดึงชั่วโมงทำงาน' และแก้รายการที่ต้องตรวจก่อนอนุมัติ"}
+1.corr06 {"ok":true,"id":"cmwg39knl007n43kz3xlgys96","status":"APPROVED","requestId":null}
+1.build1 {"ok":true,"periodKey":"2031-08","employees":3,"written":1,"unchanged":92,"removed":0,"blocking":0,"next":null}
+1.days1 ["eA04=WORKDAY:WORKED:l30:e0:a0:w450:pl0:ul0:hw0:ow0:oh0:u1","eA05=WORKDAY:WORKED:l0:e45:a0:w435:pl0:ul0:hw0:ow0:oh0:u1","eA06=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eA07=WORKDAY:WORKED:l20:e0:a0:w460:pl0:ul0:hw0:ow120:oh0:u1:OT_VIA_ADJUSTMENT","eA08=HOLIDAY:WORKED:l0:e0:a0:w0:pl0:ul0:hw480:ow0:oh120:u1:OT_VIA_ADJUSTMENT","eA11=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eA12=WORKDAY:LEAVE:l0:e0:a0:w0:pl0:ul480:hw0:ow0:oh0:u1","eA13=WORKDAY:LEAVE:l0:e0:a0:w0:pl480:ul0:hw0:ow0:oh0:u1","eA14=WORKDAY:ABSENT:l0:e0:a480:w0:pl0:ul0:hw0:ow0:oh0:u1","eA15=WORKDAY:WORKED:l40:e0:a0:w440:pl0:ul0:hw0:ow0:oh0:u1","eB18=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u2","eC04=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC05=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC06=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC07=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC19=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC25=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC26=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC27=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC28=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1","eC29=WORKDAY:WORKED:l0:e0:a0:w480:pl0:ul0:hw0:ow0:oh0:u1"]
+1.otRows [{"d":"2031-08-07","s":"APPROVED","pm":120,"a":37500,"seg":[{"cls":"OT_WORKDAY","minutes":120,"amountSatang":37500,"multiplierBp":15000}],"sc":null},{"d":"2031-08-08","s":"APPROVED","pm":120,"a":75000,"seg":[{"cls":"OT_HOLIDAY","minutes":120,"amountSatang":75000,"multiplierBp":30000}],"sc":null}]
+2.sync1 {"ok":true,"periodKey":"2031-08","employees":3,"created":2,"rejected":0,"kept":0,"refunds":0,"wait":[],"skipped":[],"next":null}
+2.adj1 ["eB:-:ADVANCE:APPROVED:500000:2031-08:free","eB:-:DEDUCTION:APPROVED:300000:2031-08:free","eA:OT_REQUEST:OT:APPROVED:37500:2031-08:free","eA:OT_REQUEST:OT:APPROVED:75000:2031-08:free","eA:ABSENT_RULE:DEDUCTION:PENDING:100000:2031-08:free","eA:LATE_RULE:DEDUCTION:PENDING:28124:2031-08:free"]
+2.adj1approved ["eB:-:ADVANCE:APPROVED:500000:2031-08:free","eB:-:DEDUCTION:APPROVED:300000:2031-08:free","eA:OT_REQUEST:OT:APPROVED:37500:2031-08:free","eA:OT_REQUEST:OT:APPROVED:75000:2031-08:free","eA:ABSENT_RULE:DEDUCTION:APPROVED:100000:2031-08:free","eA:LATE_RULE:DEDUCTION:APPROVED:28124:2031-08:free"]
+2.corr15 {"ok":true,"id":"cmwg39ma6008043kz8286wyqi","status":"APPROVED","requestId":null}
+2.build2 {"ok":true,"periodKey":"2031-08","employees":3,"written":1,"unchanged":92,"removed":0,"blocking":0,"next":null}
+2.create(stale) {"ok":false,"code":"ATTENDANCE_STALE","reason":"ข้อมูลเวลาทำงานของรายการนี้เปลี่ยนแล้ว — กด 'คำนวณรายการหักสาย/ขาด' ใหม่ก่อนอนุมัติ"}
+2.sync2 {"ok":true,"periodKey":"2031-08","employees":3,"created":1,"rejected":1,"kept":1,"refunds":0,"wait":[],"skipped":[],"next":null}
+2.adj2 ["eB:-:ADVANCE:APPROVED:500000:2031-08:free","eB:-:DEDUCTION:APPROVED:300000:2031-08:free","eA:OT_REQUEST:OT:APPROVED:37500:2031-08:free","eA:OT_REQUEST:OT:APPROVED:75000:2031-08:free","eA:ABSENT_RULE:DEDUCTION:APPROVED:100000:2031-08:free","eA:LATE_RULE:DEDUCTION:REJECTED:28124:2031-08:free","eA:LATE_RULE:DEDUCTION:APPROVED:19791:2031-08:free"]
+3.create {"ok":true,"id":"cmwg39oyq008b43kzh6mm39mj","employees":3}
+3.lines.eA {"lines":["BASE:profile:-:-:3000000","HOLIDAY_WORK:wd08:08:480:100000","UNPAID_LEAVE:wd12:12:480:-100000","OT:adj:OT_REQUEST:-:-:37500","OT:adj:OT_REQUEST:-:-:75000","ABSENT_RULE:adj:ABSENT_RULE:-:-:-100000/100000","LATE_RULE:adj:LATE_RULE:-:-:-19791/19791"],"flags":[],"carry":[]}
+3.lines.eB {"lines":["BASE:profile:-:-:2000000","ADVANCE:adj:ADVANCE:-:-:-500000/500000","DEDUCTION:adj:DEDUCTION:-:-:-200000/300000"],"flags":["CARRY_FORWARD","CLAIM_CAPPED","UNPLANNED"],"carry":[{"cls":"DAMAGES","amountSatang":100000}]}
+3.lines.eC {"lines":["BASE:profile:-:-:2500000"],"flags":["UNPLANNED"],"carry":[]}
+3.items {"got":{"eA":"2992709/87500/87500/0/2905209/112500/119791","eB":"1300000/87500/87500/0/1212500/0/700000","eC":"2500000/87500/87500/0/2412500/0/0"},"want":{"eA":"2992709/87500/87500/0/2905209/112500/119791","eB":"1300000/87500/87500/0/1212500/0/700000","eC":"2500000/87500/87500/0/2412500/0/0"},"eq":{"eA":true,"eB":true,"eC":true}}
+3.run {"id":"cmwg39oyq008b43kzh6mm39mj","status":"DRAFT","book":null,"j":null,"g":6792709,"n":6530209,"w":0,"se":262500,"sr":262500,"a":112500,"d":819791,"fin":null}
+3.trace {"boundN":6,"adjLines":6,"everyBoundOnce":true,"everyLineBound":true,"wdUnique":true,"sumLinesEqGross":true,"runTotals":true}
+4.settle {"scanned":0,"settled":0,"waiting":0,"failed":0}
+4.build {"ok":true,"periodKey":"2031-08","employees":3,"written":0,"unchanged":93,"removed":0,"blocking":0,"next":null}
+4.sync {"ok":true,"periodKey":"2031-08","employees":3,"created":0,"rejected":0,"kept":2,"refunds":0,"wait":[],"skipped":[],"next":null}
+4.recompute {"ok":true,"note":"ดึงข้อมูลใหม่ 2026-11-14 14:33 น."}
+4.same {"digest":true,"items":true,"adj":7,"ot":[{"n":2}]}
+5.approve {"ok":true,"note":"อนุมัติและลงบัญชีเรียบร้อย"}
+5.pay {"ok":true,"note":"บันทึกจ่ายเงินเดือนแล้ว"}
+5.run {"id":"cmwg39oyq008b43kzh6mm39mj","status":"PAID","book":"cmwg39ani000j43kz5txkpuek","j":"cmwg39rio008k43kzfi0efz3j","g":6792709,"n":6530209,"w":0,"se":262500,"sr":262500,"a":112500,"d":819791,"fin":"true"}
+5.carry [{"e":"cmwg39beb003f43kzh67cw53m","k":"DEDUCTION","a":100000,"p":"2031-09","s":"APPROVED"}]
+6.sums {"g":6792709,"n":6530209,"w":0,"se":262500,"sr":262500,"sb":5250000,"inc":7492709,"a":112500,"d":819791}
+6.profile true
+6.bank {"ok":true,"total":6530209,"eq":true}
+6.pnd1 {"ok":true,"lines":3,"total":7492709,"tax":0,"eqInc":true,"eqTax":true}
+6.sso110 {"ok":true,"total":5250000,"tax":525000,"sb":5250000,"se":262500,"sr":262500}
+6.jv.accrual {"dr":7755209,"cr":7755209,"lines":[{"code":"1140","dr":0,"cr":500000},{"code":"2120","dr":0,"cr":6530209},{"code":"2150","dr":0,"cr":525000},{"code":"4900","dr":0,"cr":200000},{"code":"6000","dr":7492709,"cr":0},{"code":"6010","dr":262500,"cr":0}]}
+6.jv.pay {"dr":6530209,"cr":6530209,"lines":[{"code":"1010","dr":0,"cr":6530209},{"code":"2120","dr":6530209,"cr":0}]}
+6.jvCheck {"salaryExp":7492709,"erExp":262500,"wageCost":7755209,"cr2120":6530209,"eqNet":true}
+6.slips [{"ok":true,"net":2905209,"earn":3112500,"ded":207291,"eq":true},{"ok":true,"net":1212500,"earn":2000000,"ded":787500,"eq":true},{"ok":true,"net":2412500,"earn":2500000,"ded":87500,"eq":true}]
+6.payrollMonth {"totals":{"gross":"67927.09","add":"1125.00","deduct":"8197.91","ssoEmployee":"2625.00","ssoEmployer":"2625.00","wht":"0.00","net":"65302.09"},"g":true,"n":true,"d":true,"er":true}
+6.labor {"all":["ACTUAL",7055209,null],"u1":["ACTUAL",5667709],"u2":["ACTUAL",1387500],"sumUnits":7055209,"runGrossPlusEr":7055209,"journalWageCost":7755209}
+6.ai {"mode":"json","raw":{"mode":"json","body":{"error":"ไม่พบข้อมูลที่ขอ หรือคุณไม่มีสิทธิ์ดูข้อมูลส่วนนี้"}}}
+6.api {"totals":{"gross":"67927.09","add":"1125.00","deduct":"8197.91","ssoEmployee":"2625.00","ssoEmployer":"2625.00","wht":"0.00","net":"65302.09"},"eqNet":true}
+7.correctionAfterPaid {"ok":false,"reason":"เดือนนี้อนุมัติเงินเดือนแล้ว — แก้เวลาย้อนหลังไม่ได้"}
+7.backdatedUnpaidLeaveOnPaidMonth {"decide":{"ok":true,"status":"APPROVED"},"status":"APPROVED"}
+7.buildAfter {"ok":false,"reason":"งวดนี้อนุมัติเงินเดือนแล้ว — ชั่วโมงทำงานถูกล็อกไว้ แก้ไม่ได้"}
+7.syncAfter {"ok":true,"periodKey":"2031-08","employees":3,"created":0,"rejected":0,"kept":2,"refunds":0,"wait":[],"skipped":[{"employeeId":"cmwg39beb003f43kzh67cw53m","code":"NO_SNAPSHOT"},{"employeeId":"cmwg39bfd003h43kzu91gxhn0","code":"NO_SNAPSHOT"}],"next":null}
+7.preview {"ok":true,"states":["eA=FROZEN","eB=FROZEN","eC=FROZEN"]}
+7.adjAfter ["eB:-:ADVANCE:APPROVED:500000:2031-08:bound","eB:-:DEDUCTION:APPROVED:300000:2031-08:bound","eA:OT_REQUEST:OT:APPROVED:37500:2031-08:bound","eA:OT_REQUEST:OT:APPROVED:75000:2031-08:bound","eA:ABSENT_RULE:DEDUCTION:APPROVED:100000:2031-08:bound","eA:LATE_RULE:DEDUCTION:REJECTED:28124:2031-08:free","eA:LATE_RULE:DEDUCTION:APPROVED:19791:2031-08:bound","eB:CARRY_FORWARD:DEDUCTION:APPROVED:100000:2031-09:free"]
+7.runUnchanged true
+7.sepBuild {"ok":true,"periodKey":"2031-09","employees":3,"written":90,"unchanged":0,"removed":0,"blocking":0,"next":null}
+7.sepCreate {"ok":true,"id":"cmwg39v4f009h43kztc3s65sr","employees":3}
+7.sepLines.eA ["BASE:3000000"]
+7.sepLines.eB ["BASE:2000000","DEDUCTION:-100000/100000"]
+RESIDUE none (tenants=1 users=7 activeLaw=0->0)

@@ -1,0 +1,49 @@
+[env] h53l-p2 · ไฟล์ .env.qc-hr · DB ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech
+[h53l-p2] DB host = ep-nameless-sea-aokjm6d2-pooler.c-2.ap-southeast-1.aws.neon.tech (QC4 ✓)
+(node:105350) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+F.full.paid {"filed":"ok","approved":true}
+F.AM.paid {"filed":"ok","approved":true}
+F.PM.paid {"filed":"ok","approved":true}
+F.AM.unpaid {"filed":"ok","approved":true}
+F.PM.paid {"filed":"ok","approved":true}
+F.AM.paid+workPM {"filed":"ok","approved":true}
+F.4h.unpaid {"filed":"ok","approved":true}
+F.7h.paid {"filed":"ok","approved":true}
+X.hourlyInsideFull HrLeaveRequestError: ช่วงนี้มีใบลาที่รออนุมัติหรืออนุมัติแล้ว — ยกเลิกใบเดิมก่อน หรือเลือกวันอื่น
+X.fullOverAmPm HrLeaveRequestError: ช่วงนี้มีใบลาที่รออนุมัติหรืออนุมัติแล้ว — ยกเลิกใบเดิมก่อน หรือเลือกวันอื่น
+X.hourlyOverHalf HrLeaveRequestError: ช่วงนี้มีใบลาที่รออนุมัติหรืออนุมัติแล้ว — ยกเลิกใบเดิมก่อน หรือเลือกวันอื่น
+X.secondHourlySameDay HrLeaveRequestError: ช่วงนี้มีใบลาที่รออนุมัติหรืออนุมัติแล้ว — ยกเลิกใบเดิมก่อน หรือเลือกวันอื่น
+X.hourlyOnHoliday HrLeaveRequestError: ช่วงที่เลือกเป็นวันหยุดทั้งหมด — ไม่ต้องยื่นลา
+X.halfOnSunday HrLeaveRequestError: ช่วงที่เลือกเป็นวันหยุดทั้งหมด — ไม่ต้องยื่นลา
+X.hours8 HrLeaveRequestError: ลาเป็นชั่วโมงได้ครั้งละ 1 วัน จำนวน 1 ถึง 7 ชั่วโมงเต็ม
+X.hours0.5 HrLeaveRequestError: ลาเป็นชั่วโมงได้ครั้งละ 1 วัน จำนวน 1 ถึง 7 ชั่วโมงเต็ม
+leaves [{"d":"2031-08-04","h":null,"hr":null,"days":"1.0","s":"APPROVED","unpaid":false},{"d":"2031-08-05","h":"AM","hr":null,"days":"0.5","s":"APPROVED","unpaid":false},{"d":"2031-08-05","h":"PM","hr":null,"days":"0.5","s":"APPROVED","unpaid":false},{"d":"2031-08-06","h":"AM","hr":null,"days":"0.5","s":"APPROVED","unpaid":true},{"d":"2031-08-06","h":"PM","hr":null,"days":"0.5","s":"APPROVED","unpaid":false},{"d":"2031-08-07","h":"AM","hr":null,"days":"0.5","s":"APPROVED","unpaid":false},{"d":"2031-08-08","h":null,"hr":"4.0","days":"0.5","s":"APPROVED","unpaid":true},{"d":"2031-08-11","h":null,"hr":"7.0","days":"0.8","s":"APPROVED","unpaid":false}]
+balances ["ป่วย used=3.8 bal=26.2","กิจไม่รับค่าจ้าง used=1.0 bal=29.0"]
+att [{"d":"2031-08-04","st":"LEAVE","late":0,"half":null,"fr":"1.0","hasleave":true},{"d":"2031-08-04","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-05","st":"LEAVE","late":0,"half":"AM","fr":"1.0","hasleave":true},{"d":"2031-08-05","st":"ABSENT","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-06","st":"LEAVE","late":0,"half":"AM","fr":"1.0","hasleave":true},{"d":"2031-08-06","st":"ABSENT","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-07","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-07","st":"ON_TIME","late":0,"half":"AM","fr":"0.5","hasleave":true},{"d":"2031-08-08","st":"ABSENT","late":0,"half":null,"fr":"0.5","hasleave":true},{"d":"2031-08-08","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-09","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-09","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-10","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-10","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-11","st":"LATE","late":420,"half":null,"fr":"0.8","hasleave":true},{"d":"2031-08-12","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-13","st":"ON_TIME","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-14","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-15","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-16","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false},{"d":"2031-08-17","st":"DAY_OFF","late":0,"half":null,"fr":null,"hasleave":false}]
+build {"ok":true}
+workDays [{"d":"2031-08-04","st":"LEAVE","pl":480,"ul":0,"ab":0,"la":0,"w":0,"ld":"1.0","review":[]},{"d":"2031-08-05","st":"LEAVE","pl":480,"ul":0,"ab":0,"la":0,"w":0,"ld":"1.0","review":[]},{"d":"2031-08-06","st":"LEAVE","pl":240,"ul":240,"ab":0,"la":0,"w":0,"ld":"1.0","review":[]},{"d":"2031-08-07","st":"WORKED","pl":240,"ul":0,"ab":0,"la":0,"w":240,"ld":"0.5","review":[]},{"d":"2031-08-08","st":"ABSENT","pl":0,"ul":240,"ab":240,"la":0,"w":0,"ld":"0.5","review":[]},{"d":"2031-08-11","st":"WORKED","pl":420,"ul":0,"ab":0,"la":0,"w":60,"ld":"0.8","review":[]},{"d":"2031-08-12","st":"HOLIDAY","pl":0,"ul":0,"ab":0,"la":0,"w":0,"ld":"0.0","review":[]},{"d":"2031-08-13","st":"WORKED","pl":0,"ul":0,"ab":0,"la":0,"w":480,"ld":"0.0","review":[]},{"d":"2031-08-05","st":"ABSENT","pl":0,"ul":0,"ab":480,"la":0,"w":0,"ld":"0.0","review":[]},{"d":"2031-08-06","st":"ABSENT","pl":0,"ul":0,"ab":480,"la":0,"w":0,"ld":"0.0","review":[]},{"d":"2031-08-12","st":"HOLIDAY","pl":0,"ul":0,"ab":0,"la":0,"w":0,"ld":"0.0","review":[]}]
+sync {"ok":true,"periodKey":"2031-08","employees":2,"created":2,"rejected":0,"kept":0,"refunds":0,"wait":[],"skipped":[],"next":null}
+attHeads [{"e1":true,"lines":[{"day":"2031-08-08","minutes":240,"version":1,"workDayId":"f45f9b0c-1cc4-4200-ae3a-5639dfb84e84","amountSatang":50000}]},{"e1":false,"lines":[{"day":"2031-08-05","minutes":480,"version":1,"workDayId":"e8703fa9-5285-48d5-a348-04e7e84b5e50","amountSatang":100000},{"day":"2031-08-06","minutes":480,"version":1,"workDayId":"949d4d46-1971-4324-956e-a9aaf7428fdf","amountSatang":100000}]}]
+run.create {"ok":true,"id":"cmwgquhoz003waekzgldls262","employees":2}
+run.lines [{"e1":true,"g":2850000,"d":50000,"lines":["BASE:-:-:3000000","UNPAID_LEAVE:2031-08-06:240:-50000","UNPAID_LEAVE:2031-08-08:240:-50000","ABSENT_RULE:-:-:-50000"]},{"e1":false,"g":2800000,"d":200000,"lines":["BASE:-:-:3000000","ABSENT_RULE:-:-:-200000"]}]
+run.approve {"ok":true,"note":"อนุมัติแล้ว — ยังไม่ได้เลือกสมุดบัญชีสำหรับเงินเดือน จึงไม่ได้ลงบัญชี"}
+revokePM {"ok":false,"code":"THROW","reason":"HrLeaveDecisionError: เดือนนี้อนุมัติเงินเดือนแล้ว — แก้เวลาย้อนหลังไม่ได้"}
+revokePM {"ok":false,"code":"THROW","reason":"HrLeaveDecisionError: เดือนนี้อนุมัติเงินเดือนแล้ว — แก้เวลาย้อนหลังไม่ได้"}
+recompute {"ok":false,"reason":"เดือนนี้อนุมัติเงินเดือนแล้ว — คิดผลการลงเวลาย้อนหลังไม่ได้"}
+recompute {"ok":false,"reason":"เดือนนี้อนุมัติเงินเดือนแล้ว — คิดผลการลงเวลาย้อนหลังไม่ได้"}
+build2 {"ok":false,"reason":"งวดนี้อนุมัติเงินเดือนแล้ว — ชั่วโมงทำงานถูกล็อกไว้ แก้ไม่ได้"}
+workDays2 [{"d":"2031-08-05","st":"LEAVE","pl":480,"ul":0,"ab":0,"review":[]},{"d":"2031-08-06","st":"LEAVE","pl":240,"ul":240,"ab":0,"review":[]},{"d":"2031-08-08","st":"ABSENT","pl":0,"ul":240,"ab":240,"review":[]}]
+sync2 {"ok":true,"periodKey":"2031-08","employees":2,"created":0,"rejected":0,"kept":2,"refunds":0,"wait":[],"skipped":[],"next":null}
+run2.create {"ok":false,"code":"BUILD","reason":"งวดนี้อนุมัติเงินเดือนแล้ว — ชั่วโมงทำงานถูกล็อกไว้ แก้ไม่ได้"}
+note control = D.full (2031-08-04) row above
+booking.onLeave {"hourly4h":1,"halfAM":1,"workday":0}
+LAW_RESIDUE 0
+RESIDUE none (tenants=1 users=5)
