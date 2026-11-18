@@ -1,0 +1,39 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-trips-l1
+> tsc --noEmit
+
+src/lib/platform/trips-book-core.ts(213,57): error TS18046: 's.daysBefore' is of type 'unknown'.
+src/lib/platform/trips-book-core.ts(214,27): error TS18046: 's.daysBefore' is of type 'unknown'.
+src/lib/platform/trips-book-core.ts(216,81): error TS18046: 's.refundBp' is of type 'unknown'.
+src/lib/platform/trips-book.ts(331,41): error TS2345: Argument of type 'BookFlowOpts | undefined' is not assignable to parameter of type 'BookOpts | undefined'.
+  Type 'BookFlowOpts' is not assignable to type 'BookOpts'.
+    Types of property 'deps' are incompatible.
+      Type '{ query?: ((sql: unknown) => Promise<unknown>) | undefined; } | undefined' is not assignable to type 'BookGateDeps | undefined'.
+        Type '{ query?: ((sql: unknown) => Promise<unknown>) | undefined; }' is not assignable to type 'BookGateDeps'.
+          Types of property 'query' are incompatible.
+            Type '((sql: unknown) => Promise<unknown>) | undefined' is not assignable to type '((sql: unknown) => Promise<unknown[]>) | undefined'.
+              Type '(sql: unknown) => Promise<unknown>' is not assignable to type '(sql: unknown) => Promise<unknown[]>'.
+                Type 'Promise<unknown>' is not assignable to type 'Promise<unknown[]>'.
+                  Type 'unknown' is not assignable to type 'unknown[]'.
+src/lib/platform/trips-book.ts(656,41): error TS2345: Argument of type 'BookFlowOpts | undefined' is not assignable to parameter of type 'BookOpts | undefined'.
+  Type 'BookFlowOpts' is not assignable to type 'BookOpts'.
+    Types of property 'deps' are incompatible.
+      Type '{ query?: ((sql: unknown) => Promise<unknown>) | undefined; } | undefined' is not assignable to type 'BookGateDeps | undefined'.
+        Type '{ query?: ((sql: unknown) => Promise<unknown>) | undefined; }' is not assignable to type 'BookGateDeps'.
+          Types of property 'query' are incompatible.
+            Type '((sql: unknown) => Promise<unknown>) | undefined' is not assignable to type '((sql: unknown) => Promise<unknown[]>) | undefined'.
+              Type '(sql: unknown) => Promise<unknown>' is not assignable to type '(sql: unknown) => Promise<unknown[]>'.
+                Type 'Promise<unknown>' is not assignable to type 'Promise<unknown[]>'.
+                  Type 'unknown' is not assignable to type 'unknown[]'.
+src/lib/platform/trips-book.ts(658,38): error TS2345: Argument of type 'BookFlowOpts | undefined' is not assignable to parameter of type 'BookOpts | undefined'.
+  Type 'BookFlowOpts' is not assignable to type 'BookOpts'.
+    Types of property 'deps' are incompatible.
+      Type '{ query?: ((sql: unknown) => Promise<unknown>) | undefined; } | undefined' is not assignable to type 'BookGateDeps | undefined'.
+        Type '{ query?: ((sql: unknown) => Promise<unknown>) | undefined; }' is not assignable to type 'BookGateDeps'.
+          Types of property 'query' are incompatible.
+            Type '((sql: unknown) => Promise<unknown>) | undefined' is not assignable to type '((sql: unknown) => Promise<unknown[]>) | undefined'.
+              Type '(sql: unknown) => Promise<unknown>' is not assignable to type '(sql: unknown) => Promise<unknown[]>'.
+                Type 'Promise<unknown>' is not assignable to type 'Promise<unknown[]>'.
+                  Type 'unknown' is not assignable to type 'unknown[]'.
+ ELIFECYCLE  Command failed with exit code 2.
+EXIT 2

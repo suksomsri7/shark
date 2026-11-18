@@ -1,0 +1,6 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-trips-l1
+> tsc --noEmit
+
+scripts/qc-trips-w1.2.mts(2093,57): error TS2345: Argument of type '{}' is not assignable to parameter of type 'string'.
+ ELIFECYCLE  Command failed with exit code 2.

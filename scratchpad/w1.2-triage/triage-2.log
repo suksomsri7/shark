@@ -1,0 +1,16 @@
+[env] probe-w1.2-triage2 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+DIFF abc?sel=x @2928: ref«P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§?sel=§\"],\"q\":\"?sel=§\",\"i\":f» vs «P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§?sel=x\"],\"q\":\"?sel=x\",\"i\":f»
+DIFF abc?sel=x @3152: ref«,null],{\"children\":[\"__PAGE__?{\\\"sel\\\":\\\"§\\\"}\",{}» vs «,null],{\"children\":[\"__PAGE__?{\\\"sel\\\":\\\"x\\\"}\",{}»
+DIFF no sel @2923: ref«0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§?sel=§\"],\"q\":\"?sel=§\",\"i\":f» vs «0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§\"],\"q\":\"\",\"i\":f»
+DIFF no sel @3134: ref«sket\",\"§\",\"d\",null],{\"children\":[\"__PAGE__?{\\\"sel\\\":\\\"§\\\"}\",{}]}]}]» vs «sket\",\"§\",\"d\",null],{\"children\":[\"__PAGE__\",{}]}]}]»
+(node:813097) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  cleanup: removed 1 miss buckets of 1 probe IPs
+  cleanup: hunt tenants+users left = 0 · tenant buckets left = 0

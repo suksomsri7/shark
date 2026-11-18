@@ -1,0 +1,53 @@
+[env] probe-w1.2-hunt-2 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:774698) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+INFO  [money] select: 200/PRODUCT lines=[{"kind":"SEAT","satang":700000},{"kind":"SEAT","satang":245000},{"kind":"EXTRA","satang":50000},{"kind":"EXTRA","satang":450000},{"kind":"EXTRA","satang":120000},{"kind":"EXTRA","satang":30000},{"kind":"PICKUP","satang":60000},{"kind":"VAT","satang":105350}] total=1760350 seen=1760350
+HELD  [M-select-sum] expected: select page Σ lines = total = seen | got: Σ=1760350 total=1760350 seen=1760350
+HELD  [M-select-vatline] expected: VAT-added shop shows one VAT line + pickup + 2 extras + park | got: SEAT,SEAT,EXTRA,EXTRA,EXTRA,EXTRA,PICKUP,VAT
+HELD  [M-checkout-sum] expected: checkout Σ lines = total = select total | got: Σ=1760350 total=1760350 select=1760350
+INFO  [money] res: 200/RES lines=[{"kind":"SEAT","satang":700000},{"kind":"SEAT","satang":245000},{"kind":"EXTRA","satang":50000},{"kind":"EXTRA","satang":450000},{"kind":"EXTRA","satang":120000},{"kind":"EXTRA","satang":30000},{"kind":"PICKUP","satang":60000},{"kind":"VAT","satang":105350}] total=1760350 pay=1760350 snapshot=1760350 gross=1655000 vat=105350 pass=150000
+HELD  [M-res] expected: my/ Σ lines = res-total = pay-amount = snapshot payable = checkout total | got: Σ=1760350 total=1760350 pay=1760350 snap=1760350 c/=1760350
+HELD  [M-qr-bytes] expected: QR on page = tripPaymentIntent svgDataUrl byte-for-byte (direct call · src at run time) | got: page=2582B svc=2582B equal=true
+HELD  [M-qr-amount] expected: intent amount = page pay amount | got: intent=1760350 page=1760350
+HELD  [M-deposit] expected: deposit product: pay-now = 30% of trip (฿1,050) ≠ total (฿4,100) | got: now=105000 total=410000
+HELD  [PC-confirm] expected: price raised between c/ and confirm ⇒ back to c/ with e=PRICE_CHANGED, no booking | got: 303/OTHER→/book/trips-w12h-mwgyc88b9749-a/c/Tvni8WPvkMT1FWXEs80yaeJmut bookings +0
+HELD  [PC-page] expected: c/ then shows book-price-changed + book-rehold (old + new totals) | got: 200/CHECKOUT
+HELD  [X29-c] expected: c/ while booking off ⇒ UNAVAILABLE (no form) | got: 200/CHECKOUT code=UNAVAILABLE form=false
+HELD  [X29-confirm] expected: confirm while booking off ⇒ e=UNAVAILABLE, no booking | got: 303/OTHER→/book/trips-w12h-mwgyc88b9749-a/c/BtJU5Fz6idy4zyd6wTh115VXFD +0
+HELD  [X29-my] expected: existing reservation still opens while booking off | got: 200/RES
+HELD  [X29-select] expected: product page: book-closed, no hold form | got: closed=true form=false
+HELD  [SC-select] expected: SHOP_CONFIRMS product: book-closed, no hold form | got: closed=true form=false
+HELD  [SC-post] expected: direct POST hold on SHOP_CONFIRMS product ⇒ refused (e=UNAVAILABLE), no hold | got: 303/OTHER→/book/trips-w12h-mwgyc88b9749-a/t/w12h-sc-mwgyc88b9749?m=202 holds +0
+HELD  [G-closed] expected: confirm after closed ⇒ e=SLOT_CLOSED, no TripBooking | got: 303/OTHER→/book/trips-w12h-mwgyc88b9749-a/c/JwjOhUAcVdbhi4vVm8i_06M0c9 bookings=0
+HELD  [G-closed-counters] expected: held = Σ active holds · sold 0 (before/after) | got: before {"held":2,"holdSum":2,"sold":0,"bookings":0,"status":"OPEN"} after {"held":2,"holdSum":2,"sold":0,"bookings":0,"status":"CLOSED"}
+INFO  [gate-closed] c/ after closed: 200/CHECKOUT code=null form=true
+HELD  [G-stopsell] expected: confirm after stopsell ⇒ e=SLOT_CLOSED, no TripBooking | got: 303/OTHER→/book/trips-w12h-mwgyc88b9749-a/c/LqrFX3NJeZRO5bsnuXoopNnoQL bookings=0
+HELD  [G-stopsell-counters] expected: held = Σ active holds · sold 0 (before/after) | got: before {"held":2,"holdSum":2,"sold":0,"bookings":0,"status":"OPEN"} after {"held":2,"holdSum":2,"sold":0,"bookings":0,"status":"OPEN"}
+INFO  [gate-stopsell] c/ after stopsell: 200/CHECKOUT code=null form=true
+HELD  [G-cutoff] expected: confirm after cutoff ⇒ e=CUTOFF_PASSED, no TripBooking | got: 303/OTHER→/book/trips-w12h-mwgyc88b9749-a/c/vCSGEwkKtqqD34yh6YrlLj9gV6 bookings=0
+HELD  [G-cutoff-counters] expected: held = Σ active holds · sold 0 (before/after) | got: before {"held":2,"holdSum":2,"sold":0,"bookings":0,"status":"OPEN"} after {"held":2,"holdSum":2,"sold":0,"bookings":0,"status":"OPEN"}
+INFO  [gate-cutoff] c/ after cutoff: 200/CHECKOUT code=null form=true
+HELD  [RH-page] expected: c/ after price raise: book-price-changed + rehold form (POST) | got: 200/CHECKOUT form=true
+HELD  [RH-release] expected: rehold POST ⇒ redirect to the product page with the same selection · old basket's seats released (held 2 → 0) | got: 303/OTHER→/book/trips-w12h-mwgyc88b9749-a/t/w12h-a-mwgyc88b9749?lang=t held 2→0 active=0
+HELD  [RH-again] expected: hold again (same device) ⇒ held = the new hold only (2) | got: 303/OTHER→/book/trips-w12h-mwgyc88b9749-a/c/4A-WnplV1SvQjT-Udlh5n5YEYh held=2
+HELD  [RH-foreign] expected: rehold bound to another customer's basket (sel not matching) ⇒ 404, nothing released | got: 404/NOTFOUND held 3→3
+HELD  [TC-page] expected: c/ ⇒ book-price-changed with the terms message (เงื่อนไข) · no old/new totals · rehold form | got: 200/CHECKOUT terms=true oldNew=0 form=true
+HELD  [CM-agent] expected: agent-collected booking (collectMode AGENT · planted) ⇒ my/ has no PromptPay QR and not the 'no payment account' text | got: 200/RES qr=false noAccount=false
+HELD  [PD-page] expected: PENDING booking ⇒ its own notice (book-res-pending), not 'online booking unavailable' | got: 200/OTHER pending=true unavailable=false
+INFO  [staff] PAY_LATER: quote true hold true  confirm true status=CONFIRMED token=yes 
+INFO  [staff] PAY_LATER my/: 200/RES state-testids: book-voucher,book-voucher-qr code=null
+HELD  [STAFF-PAY_LATER] expected: staff COUNTER booking opened by its public token on my/ — page renders a state (shop-collected ⇒ QR allowed by W5) | got: 200/RES
+INFO  [staff] PAY_NOW: quote true hold true  confirm true status=HOLD token=yes 
+INFO  [staff] PAY_NOW my/: 200/RES state-testids: book-pay,book-pay-qr code=null
+HELD  [STAFF-PAY_NOW] expected: staff COUNTER booking opened by its public token on my/ — page renders a state (shop-collected ⇒ QR allowed by W5) | got: 200/RES
+  cleanup: removed 0 miss buckets of 17 probe IPs
+  cleanup: hunt tenants+users left = 0 · tenant buckets left = 0
+
+=== hunt-2: HELD 30 · FOUND 0 · KNOWN 0 ===

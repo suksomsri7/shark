@@ -1,0 +1,108 @@
+[env] qc-trips-w1.2 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:3975711) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม (positive control ผ่านบริการของโมดูลโดยตรง) ──
+  ✅ [PC-1] ฟิกซ์เจอร์: ราชา 3,500 / 2,450 · อุทยาน 600 / 300 · กล้อง 500 · นอกโซน 600 · ถือที่ 15 นาที · 2 ผู้ใหญ่ 1 เด็ก + กล้อง = ฿11,450.00 (BOOKING_TR_0142)
+  ✅ [PC-2] บริการที่ใบนี้ต่อสายมีใน facade (quoteTrips · holdTrips · confirmTrips · tripPaymentIntent · recordTripPayment · bookingPublicToken) + W1.1 (resolveBookShop · bookClientKey · openBookProduct) · SESSION_SECRET ≥ 32
+  ✅ [PC-3] positive control: ร้านชั่วคราว — โมดูลตรง PUBLIC: quote → hold (basketToken) → confirm ⇒ การจอง HOLD · tripPaymentIntent ด้วย token = ฿11,450.00 · QR ยอดล็อก (EMV 54 = 11450.00) ผู้รับ = PaymentProfile ของร้าน
+  ✅ [PC-4] positive control: เวลาเกิน 15 นาที ⇒ tripPaymentIntent HOLD_EXPIRED · รอบปิดรับแล้ว (1 มี.ค. 15:00) ⇒ quote ได้แต่ holdTrips CUTOFF_PASSED · รอบเต็ม ⇒ SOLD_OUT
+  ✅ [PC-5] positive control: เพดานถือที่ต่อผู้ติดต่อ (X10 ค่าเริ่ม 3) — ยืนยันด้วยเบอร์เดียวกัน 4 ตะกร้า ⇒ 3 ใบแรก ok · ใบที่ 4 HOLD_LIMIT (นับตอน rekey ใน confirmTrips)
+  ── สรุป PC: ผ่าน 5/5
+
+── S: ไฟล์และกติกาโค้ด (static) ──
+  ❌ [S-1] ไฟล์เจ้าของครบ: trips-book-core · trips-book · modules/trips/public-booking · app/book/[shop]/actions.ts · c/[basket]/page.tsx · my/[token]/page.tsx · ไม่มี loading/route/error ใต้ app/book — ไฟล์ของใบยังไม่ครบ: src/lib/platform/trips-book-core.ts, src/lib/platform/trips-book.ts, src/lib/modules/trips/public-booking.ts, src/app/book/[shop]/actions.ts, src/app/book/[shop]/c/[basket]/page.tsx, src/app/book/[shop]/my/[token]/page.tsx
+  ❌ [S-2] ชื่อที่ส่งออกครบ: core 14 ชื่อ · platform 8 ฟังก์ชัน · facade บล็อก "// TRIPS W1.2 ▸" ไม่มี export * · BOOK_ERROR_CODES / BOOK_RES_STATES ตรงใบสั่ง — ยังไม่มี BOOK_MAX_SEATS ใน trips-book-core (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [S-3] trips-book-core เป็น pure: import ได้เฉพาะ import type · ไม่มี process.env / Date.now / new Date() ไม่มีอาร์กิวเมนต์ / getDay…getFullYear / fetch / prisma / crypto — ไฟล์ของใบยังไม่ครบ: src/lib/platform/trips-book-core.ts, src/lib/platform/trips-book.ts, src/lib/modules/trips/public-booking.ts, src/app/book/[shop]/actions.ts, src/app/book/[shop]/c/[basket]/page.tsx, src/app/book/[shop]/my/[token]/page.tsx
+  ❌ [S-4] app/book import เฉพาะ next/react/platform trips-public(-core)/trips-book(-core)/components/book · 'use server' มีเฉพาะ actions.ts (บนสุดของไฟล์) · actions.ts เรียก platform เท่านั้น ไม่อ่าน/ส่งเวลา/deps — ไฟล์ของใบยังไม่ครบ: src/lib/platform/trips-book-core.ts, src/lib/platform/trips-book.ts, src/lib/modules/trips/public-booking.ts, src/app/book/[shop]/actions.ts, src/app/book/[shop]/c/[basket]/page.tsx, src/app/book/[shop]/my/[token]/page.tsx
+  ❌ [S-5] ไฟล์ฐานของใบ: ไม่มี $transaction · ไม่มี checkRateLimitDb( / checkRateLimitDbMany( · ไม่มี console.* · ไม่มีถัง "unknown" · ไม่อ่าน/เขียนตาราง Agent* · trips-book ใช้ rateBucketCte (ด่านคำสั่งเดียว) · public-booking ไม่มีคำสั่งเขียน — ไฟล์ของใบยังไม่ครบ: src/lib/platform/trips-book-core.ts, src/lib/platform/trips-book.ts, src/lib/modules/trips/public-booking.ts, src/app/book/[shop]/actions.ts, src/app/book/[shop]/c/[basket]/page.tsx, src/app/book/[shop]/my/[token]/page.tsx
+  ❌ [S-6] จอไม่คิดเงิน/ไม่จัดรูปเงินเอง (toFixed · toLocaleString · parseFloat · Intl.NumberFormat · Satang [*/+-] · reduce( กับเงิน) · ไม่มี dangerouslySetInnerHTML · ไม่มี new Date( / Date.now ในจอและหน้า — ไฟล์ของใบยังไม่ครบ: src/lib/platform/trips-book-core.ts, src/lib/platform/trips-book.ts, src/lib/modules/trips/public-booking.ts, src/app/book/[shop]/actions.ts, src/app/book/[shop]/c/[basket]/page.tsx, src/app/book/[shop]/my/[token]/page.tsx
+  ❌ [S-7] data-testid ของใบครบ 31 ตัว + แพตเทิร์น book-pax- book-zone- book-extra-pick- book-summary-line- book-todo- · ฟอร์มยืนยัน/ถือที่เป็น <form action={…}> (ไม่มี fetch/onClick ส่งเอง) · หน้า my/c ตั้ง referrer no-referrer + robots noindex — ไฟล์ของใบยังไม่ครบ: src/lib/platform/trips-book-core.ts, src/lib/platform/trips-book.ts, src/lib/modules/trips/public-booking.ts, src/app/book/[shop]/actions.ts, src/app/book/[shop]/c/[basket]/page.tsx, src/app/book/[shop]/my/[token]/page.tsx
+  ❌ [S-8] ฉากภาพ w1.2 ใน scripts/visual-trips.mts: book-select · book-select-en · book-checkout · book-pay · book-voucher · ทุกฉาก public · ฉากวอเชอร์ใช้ token ของการจอง seed (ไม่ฝัง token) — ไม่มีสเปก w1.2
+  ❌ [S-9] ไม่มี 'any' · ไม่มี @ts-ignore/@ts-expect-error/eslint-disable ในไฟล์ของใบ — ไฟล์ของใบยังไม่ครบ: src/lib/platform/trips-book-core.ts, src/lib/platform/trips-book.ts, src/lib/modules/trips/public-booking.ts, src/app/book/[shop]/actions.ts, src/app/book/[shop]/c/[basket]/page.tsx, src/app/book/[shop]/my/[token]/page.tsx
+  ✅ [S-10] ขอบเขต (เทียบ BASE 234d84eb9 · ไม่นับไฟล์ที่ตรงกับ session/trips): ไม่แตะ prisma/proxy/core/i18n/branding/payment/api/app/b/(store) · platform/modules นอกไฟล์ของใบ · ข้อสอบเดิม · seed · ไฟล์จำกัด: facade เพิ่ม ≤ 30 ไม่ลบ
+  ── สรุป S: ผ่าน 1/10
+
+── LG: ภาษา ──
+  ❌ [LG-1] book.json ไทย/อังกฤษ มีคีย์ของใบครบ 58 คีย์ ทั้งสองภาษา · ค่าอังกฤษไม่มีอักษรไทย · ไม่มีรหัสใบงาน/รหัสดิบในค่า · ไม่มี "ยืนยันเองภายใน 1 นาที" / "48" / "中文" — คีย์ขาด: select.title, select.pax, select.pickup, select.extras, select.update, select.continue, select.maxSeats, select.minus (+50)
+  ── สรุป LG: ผ่าน 0/1
+
+── P: ตัวช่วยบริสุทธิ์ (trips-book-core) ──
+  ❌ [P-1] ค่าคงที่: BOOK_MAX_SEATS 10..50 · BOOK_FORM_MIN_SEC 1..5 · BOOK_FORM_MAX_SEC 1800..86400 · BOOK_REF_RE = 12 ตัว a-z0-9 · BOOK_BASKET_TOKEN_RE = 43 ตัว base64url · BOOK_PAX_CODE_RE รับ ADULT ไม่รับ adult/<x> — ยังไม่มี BOOK_MAX_SEATS ใน trips-book-core (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [P-2] parseBookSelection: n.<CODE> / x.<ref> / z — เรียง code/ref · จำนวน 0 ถูกทิ้ง · คีย์อื่นถูกทิ้ง · ผิดรูป (ลบ · ทศนิยม · 1e3 · 01 · เกินเพดาน · code ตัวเล็ก/สคริปต์ · array · z ผิดรูป) ⇒ null ทั้งก้อน · ไม่ throw — ยังไม่มี parseBookSelection ใน trips-book-core (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [P-3] selectionSeatsOk(selection, seatCodes, max): ต้องมีที่นั่ง ≥ 1 และรวมคนทุกประเภท ≤ max · ทารกล้วน ⇒ false — ยังไม่มี selectionSeatsOk ใน trips-book-core (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [P-4] cancelDeadlinesOf(ladder, travelDate, today): วันสุดท้ายของแต่ละขั้น = วันเดินทาง − daysBefore (ปฏิทิน · ข้ามเดือน/ปีอธิกสุรทิน) · ขั้นที่เลยวันนี้แล้วไม่แสดง · ขั้น 0 วันไม่แสดง — ยังไม่มี cancelDeadlinesOf ใน trips-book-core (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [P-5] reservationStateOf({ status, holdExpiresAt, now }): HOLD ยังไม่หมด ⇒ PAY · HOLD หมด/ไม่มีเวลา ⇒ EXPIRED · PENDING ⇒ AWAIT_SHOP · CONFIRMED/PART_PAID/PAID ⇒ VOUCHER · CANCELLED · TRAVELLED/NO_SHOW ⇒ ENDED · ไม่รู้จัก ⇒ null — ยังไม่มี reservationStateOf ใน trips-book-core (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [P-6] bookTodoOf: PAY (ครบเมื่อยอดค้าง 0 และสถานะขายแล้ว) · PASSENGERS (ชื่อครบทุกคน รวมทารก) · WAIVER เฉพาะสินค้าที่ต้องเซ็น · ลำดับ PAY → PASSENGERS → WAIVER — ยังไม่มี bookTodoOf ใน trips-book-core (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ── สรุป P: ผ่าน 0/6
+
+── Q: เลือกคน/รับส่ง/เสริม + ยอด (ร้านชั่วคราว) ──
+  ❌ [Q-1] options ของรอบ 10 มี.ค.: ประเภทคน ADULT/CHILD/INFANT (ราคาคนเดียว 3,500 / 2,450 / 0 · ทารกไม่มีที่นั่ง) · รายการเสริมไม่บังคับ 2 (กล้อง · ดำน้ำลึก — ไม่มีค่าอุทยานที่บังคับ) · โซนรับส่งที่เปิด 4 (ไม่มีโซนปิด · ไม่มีโซนร้าน B) เรียงตาม sortOrder · ref ตรง BOOK_REF_RE · ที่ว่าง 24 — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [Q-2] ยอดภาพ 01ข/19: 2 ผู้ใหญ่ 1 เด็ก + กล้อง + รับในโซน ⇒ รวม ฿11,450.00 · เก็บแทน ฿1,500 · ทุกบรรทัด amount = qty × unit · ผลรวมบรรทัด = รวม · ที่นั่ง 3 · ถือ 15 นาที — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [Q-3] นอกโซน ⇒ บรรทัด PICKUP +฿600 ⇒ รวม ฿12,050.00 · ดำน้ำลึก 2 คน ⇒ +฿3,800 · ทารก 1 คน ⇒ ที่นั่งไม่เพิ่ม ยอดไม่เพิ่ม — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [Q-4] VM ไม่มีของภายใน: options/summary ไม่มีคีย์ id/quoteId/priceSource/warnings/fingerprint/itemRef ไม่มีค่า id ของสินค้า/รอบ/ประเภทคน/รายการเสริม/โซน — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [Q-5] เลือกผิด ⇒ INVALID พร้อม fields ไม่สะท้อนค่า: ไม่มีที่นั่ง (ทารกล้วน/ว่าง) ⇒ pax · เกิน BOOK_MAX_SEATS ⇒ pax · ref รายการเสริม/โซนที่ไม่มี ⇒ extras/zone · โซนร้าน B ⇒ zone · วันไม่มีรอบ ⇒ d — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [Q-6] โซน/รายการเสริมที่ปิดหลังเปิดหน้า: ref เดิม ⇒ INVALID (zone/extras) ไม่คิดราคาโซนปิด (หนี้ pricing.ts:184) · สินค้า Liveaboard/ร่าง/ร้านอื่นไม่มีสินค้านี้ ⇒ NOT_FOUND รูปเดียวกัน — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [Q-7] หน้าสินค้า (W1.1 openBookProduct) เปิดปุ่มหลักเมื่อวันที่เลือกขายได้: 10 มี.ค. ⇒ cta.enabled true · วันเต็ม/ไม่มีรอบ ⇒ selected null หรือ cta.enabled false · VM ยังไม่มี id ภายใน — วันขายได้: ได้ false ต้องเป็น true
+  ── สรุป Q: ผ่าน 0/7
+
+── H: ถือที่ (startBookHold) ──
+  ❌ [H-1] ถือที่สำเร็จ: basketToken ตรง BOOK_BASKET_TOKEN_RE · expiresAt = now + 15 นาที · รอบ held +3 sold 0 · ตะกร้า 1 ใบช่องทาง WEB · TripHold ACTIVE จำนวน 3 · ฐานไม่มีชื่อ/เบอร์ (ยังไม่ถามผู้จอง) — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [H-2] ยอดที่ลูกค้าเห็นต่างจากบริการราคา (ร้านขึ้นราคาระหว่างนั้น) ⇒ PRICE_CHANGED + totalSatang ใหม่ (2 ผู้ใหญ่ +฿100 ⇒ ฿11,650) · ไม่มีที่ถือเพิ่ม — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [H-3] รอบเต็ม ⇒ SOLD_OUT · ปิดรับแล้ว ⇒ CUTOFF_PASSED · รอบยกเลิก ⇒ SLOT_CLOSED หรือ INVALID(d) · ทุกกรณีไม่มีตะกร้า/ที่ถือใหม่ — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [H-4] ฟอร์ม: ไม่มี nonce/nonce ปลอม ⇒ INVALID(nonce) · ส่งเร็วกว่า BOOK_FORM_MIN_SEC ⇒ TOO_FAST · nonce เก่ากว่า BOOK_FORM_MAX_SEC ⇒ STALE_FORM · ไม่มี seen ⇒ INVALID(seen) · ไม่มีอะไรถูกถือ — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [H-5] ไม่พบแบบเดียวกัน: สินค้า Liveaboard · สินค้าร่าง · slug ร้าน B ใต้ร้าน A ที่ไม่มีในร้าน A · ร้านไม่มี ⇒ { ok:false, code:NOT_FOUND } เท่ากันทุกตัว · ไม่มีตะกร้าใหม่ — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ── สรุป H: ผ่าน 0/5
+
+── C: หน้ายืนยัน + ยืนยันการจอง ──
+  ❌ [C-1] loadBookCheckout: สรุปเดิม (รวม ฿11,450.00 · เก็บแทน ฿1,500) · ถือถึง 10:15 (เวลาร้าน) · ตารางยกเลิกขั้นบันได + บรรทัดสุดท้าย · ข้อกฎหมาย (เลขใบอนุญาต null เมื่อร้านไม่กรอก — ไม่บล็อก) · nonce ของฟอร์ม · ไม่มีของภายใน — H-1 ไม่ผ่าน
+  ❌ [C-2] ยืนยันไม่ผ่านด่านฟอร์ม ⇒ ไม่มีการจอง: ไม่ติ๊กยอมรับ ⇒ ACCEPT_REQUIRED · ชื่อว่าง ⇒ INVALID(name) · เบอร์ผิด ⇒ INVALID(phone) · อีเมลผิด ⇒ INVALID(email) · ผลไม่สะท้อนค่าที่ส่ง — H-1 ไม่ผ่าน
+  ❌ [C-3] ยืนยันสำเร็จ ⇒ { ok, token } · การจอง HOLD ช่องทาง WEB · PAY_NOW · รหัส TR-YYMM-NNNN · publicTokenHash = sha256(token) · ผู้จอง = Party ของร้าน A ชื่อ/เบอร์ตามฟอร์ม · ตะกร้า CHECKED_OUT — H-1 ไม่ผ่าน
+  ❌ [C-4] ส่งซ้ำ (X4): ยืนยันซ้ำด้วย nonce เดิม ⇒ ok token เดิม · nonce ใหม่ ⇒ DONE + token เดิม · เปิดหน้ายืนยันหลังเสร็จ ⇒ DONE + token เดิม · การจองของตะกร้ายังมี 1 — C-3 ไม่ผ่าน
+  ❌ [C-5] ถือหมดเวลาก่อนยืนยัน (now + 16 นาที) ⇒ หน้ายืนยัน EXPIRED · ยืนยัน HOLD_EXPIRED · ไม่มีการจอง — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [C-6] ตัวอ้างผิด ⇒ NOT_FOUND รูปเดียวกัน: basketToken สุ่ม · sel ถูกแก้ (สลับตัวอักษร) · sel ของตะกร้าอื่น · ตะกร้าของร้าน A ผ่าน URL ร้าน B (X1) — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [C-7] เพดานผู้ติดต่อผ่านหน้าจอง: เบอร์เดียวกันยืนยัน 4 ตะกร้า (คนละเครื่อง) ⇒ ใบที่ 4 HOLD_LIMIT · ที่ถือของตะกร้าที่ 4 ยังอยู่จนหมดเวลา (ไม่สร้างการจอง) — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ── สรุป C: ผ่าน 0/7
+
+── R: หน้าการจอง /book/[shop]/my/[token] ──
+  ❌ [R-1] สถานะ PAY: QR พร้อมเพย์ยอดล็อก ฿11,450.00 (svg data URL) ผู้รับ = ชื่อในโปรไฟล์ร้าน · ยอดค้าง 11,450 จ่ายแล้ว 0 · ถือถึง 10:15 · สินค้า/วัน/เวลา 08:00–16:30 · บรรทัดจาก snapshot · ไม่มีของภายใน/เบอร์/อีเมล/ชื่อผู้จอง/token — C-3 ไม่ผ่าน
+  ❌ [R-2] สิ่งที่ต้องทำก่อนจ่าย: PAY ยังไม่ครบ · PASSENGERS 0/3 · ตารางยกเลิกจาก snapshot · cancelUntil = [] (จองวันที่ 1 เดินทาง 10 มี.ค. — เลยทุกขั้น) — C-3 ไม่ผ่าน
+  ❌ [R-3] ร้านขึ้นราคาหลังจอง (ข้อบังคับ MP §5 ข) ⇒ หน้าการจองยังเป็นยอดเดิม ฿11,450.00 ทุกบรรทัด — C-3 ไม่ผ่าน
+  ❌ [R-4] เกินเวลาถือ (now + 16 นาที · ตัวกวาดยังไม่วิ่ง) ⇒ state EXPIRED · pay null · ไม่ออก QR — C-3 ไม่ผ่าน
+  ❌ [R-5] ร้านรับเงินผ่านบริการ T0.7 (STAFF · PROMPTPAY ฿11,450) ⇒ หน้าการจอง VOUCHER: วอเชอร์ QR (svg) · pay null · ยอดค้าง 0 · todo PAY ครบ · รหัสบนหน้า = รหัสการจอง — C-3 ไม่ผ่าน
+  ❌ [R-6] QR วอเชอร์: bookVoucherQrPayload(tenantId, code) มีรหัสการจอง · ไม่มี token/id/ชื่อ/เบอร์ · ตรวจกลับได้เฉพาะร้านเดียวกัน · แก้ 1 ตัวอักษร ⇒ null · ค่าเดิมทุกครั้ง — R-5 ไม่ผ่าน
+  ❌ [R-7] ร้านไม่มีผู้รับเงินพร้อมเพย์ (ร้าน B) ⇒ state PAY · pay = { unavailable: "NO_RECEIVER" } (ไม่ล้ม · ไม่มี QR) — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [R-8] ภาษาอังกฤษ: lang=en ⇒ locale en · ชื่อสินค้าอังกฤษ · ป้ายบรรทัดอังกฤษ (ไม่มีอักษรไทยในป้ายที่ร้านแปลแล้ว) · ตัวเลขเงินเท่ากับภาษาไทย — C-3 ไม่ผ่าน
+  ── สรุป R: ผ่าน 0/8
+
+── RL: ด่านอัตรา ──
+  ❌ [RL-1] ถือที่ต่อเครื่อง: เพดาน X8 = 10 ครั้ง/ชม. — ครั้งที่ 11 ⇒ RATE_LIMITED LIMIT (retryAfterSec 1..3600) · เครื่องอื่นยังถือได้ · ถังชื่อ trips:hold:<ร้าน>:<กุญแจเครื่อง> ไม่มี IP ดิบ — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [RL-2] ปิดเมื่อพัง: deps.query โยน ⇒ startBookHold RATE_LIMITED LIMITER_DOWN · ไม่มีตะกร้า/ที่ถือ · clientKey null/ผิดรูป ⇒ RATE_LIMITED NO_CLIENT ทุกฟังก์ชันสาธารณะของใบ (ไม่ถามฐาน) — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [RL-3] เดา token: เครื่องเดียวเปิด token สุ่ม 30 ครั้ง ⇒ NOT_FOUND ทุกครั้ง · ครั้งถัดไป (แม้ token จริง) ⇒ RATE_LIMITED · เครื่องอื่นเปิด token จริงได้ · ถังไม่มี token ดิบ — C-3 ไม่ผ่าน
+  ── สรุป RL: ผ่าน 0/3
+
+── X: ข้ามร้าน · ยิงพร้อมกัน · ส่งซ้ำ · อินพุตอันตราย · ข้อมูลบุคคล ──
+  ❌ [X-1] X1 ข้ามร้าน/ข้ามการจอง: token การจองร้าน A ผ่าน URL ร้าน B · token ร้าน B ผ่าน URL ร้าน A · token สุ่ม ⇒ NOT_FOUND รูปเดียวกัน (ไม่บอกว่ามีอยู่ที่ร้านอื่น) — C-3 ไม่ผ่าน
+  ❌ [X-2] X3 ขายเกินไม่ได้ (MP §5 ก): 50 เครื่องถือพร้อมกันคนละ 1 ที่ บนรอบ 12 ที่ ⇒ สำเร็จ 12 พอดี ที่เหลือ SOLD_OUT · รอบ held = 12 sold = 0 · ไม่มีผลอื่น (BUSY/throw) — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [X-3] X3/X4 ถือซ้ำ: 10 คำขอพร้อมกัน nonce เดียวกัน เครื่องเดียวกัน ⇒ ทุกตัว ok basketToken เดียวกัน · ตะกร้า 1 ใบ · ที่ถือเพิ่ม 2 ครั้งเดียว · nonce เดิมแต่จำนวนคนต่าง ⇒ STALE_FORM — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [X-4] X3 ยืนยันซ้ำพร้อมกัน: 10 คำขอ (nonce ต่างกัน) บนตะกร้าเดียว ⇒ การจอง 1 ใบ · ทุกผล ok หรือ DONE ด้วย token เดียวกัน — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [X-5] X3 จ่ายซ้ำ: ร้านกดรับเงิน 10 ครั้งพร้อมกันคีย์เดียวกันบนการจองสาธารณะ ⇒ เงินเข้า 1 ชุด · paidSatang = ยอดเดียว · หน้าการจอง VOUCHER ยอดค้าง 0 — ยังไม่มี quoteBookSelection ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [X-6] X6 อินพุตอันตราย: ฟอร์มถือที่/ยืนยัน/token ขยะ (ยาว 10k · อักขระควบคุม · array · object · SQL · %00 · ตัวเลขยักษ์) ⇒ ok:false รหัสในรายการ BOOK_ERROR_CODES ไม่ throw ไม่สะท้อนค่า · ไม่มีที่ถือเพิ่ม — ยังไม่มี startBookHold ใน platform/trips-book (W1.2a ยังไม่สร้าง · ยังไม่มีไฟล์)
+  ❌ [X-7] PII: หลังการจองสาธารณะทุกข้อ — AuditLog/OutboxEvent ของร้าน A/B · OpsEvent ทั้งตาราง (ค้นด้วยค่าเฉพาะ ไม่กรองเวลา) · คีย์ถัง ChatRateBucket · TripLinkStat ไม่มีชื่อ/เบอร์/อีเมลของผู้จอง และไม่มี token การจอง/ตะกร้า — C-3 ไม่ผ่าน
+  ❌ [X-8] ไม่บล็อกเพราะใบอนุญาต (MP §5 จ): ร้านที่ไม่กรอก trips.license.* ขายผ่านหน้าจองได้ครบ (ข้อ C-3 · R-5) · ฟังก์ชันบริการ T0.6/T0.7 ไม่นับข้อผิดพลาดที่ไม่คาดคิดระหว่างข้อสอบ (tripsUnexpectedCount = 0) — C-3/R-5 ไม่ผ่าน
+  ── สรุป X: ผ่าน 0/8
+
+เหลือให้ด่านภาพ + การเปิดจริง (ผู้คุม · scripts/visual-trips.mts w1.2 + parity 01/19): ฟอร์มส่งได้โดยไม่มี JS · ปุ่ม − + ≥ 44 px · แถบล่างยอดรวม 390 · แผงสรุปติดจอ 1440 · หน้า c/ และ my/ ไม่ติดดัชนี + no-referrer · ปุ่มย้อนกลับของเบราว์เซอร์หลังยืนยันไม่สร้างการจองซ้ำ
+
+===== QC TRIPS W1.2a · ทัวร์ 4 ขั้นฝั่งลูกค้า: เลือก → ถือที่ → ยืนยัน → จ่าย/วอเชอร์ =====
+ผ่าน 6/60 · ไม่ผ่าน 54 · ข้าม 0
+ต่อกลุ่ม: PC 5/5 · S 1/10 · LG 0/1 · P 0/6 · Q 0/7 · H 0/5 · C 0/7 · R 0/8 · RL 0/3 · X 0/8
+JSON_SUMMARY {"suite":"qc-trips-w1.2","total":60,"passed":6,"failed":["S-1","S-2","S-3","S-4","S-5","S-6","S-7","S-8","S-9","LG-1","P-1","P-2","P-3","P-4","P-5","P-6","Q-1","Q-2","Q-3","Q-4","Q-5","Q-6","Q-7","H-1","H-2","H-3","H-4","H-5","C-1","C-2","C-3","C-4","C-5","C-6","C-7","R-1","R-2","R-3","R-4","R-5","R-6","R-7","R-8","RL-1","RL-2","RL-3","X-1","X-2","X-3","X-4","X-5","X-6","X-7","X-8"],"skipped":[],"groups":{"PC":"5/5","S":"1/10","LG":"0/1","P":"0/6","Q":"0/7","H":"0/5","C":"0/7","R":"0/8","RL":"0/3","X":"0/8"}}
+rc=1

@@ -1,0 +1,192 @@
+[env] qc-trips-t0.6 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:65797) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุมบวก (ตารางของข้อสอบเอง) ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed andaman-dive อยู่ · สร้างตารางควบคุมได้
+  ✅ [PC-2] ฟิกซ์เจอร์/README: TR-6911-0142 = 2×3,500 + 2,450 + อุทยาน 1,500 + กล้อง 500 = 11,450 · VAT 650.93 · งวดเลขจอง = เดือนเดินทาง พ.ศ. (0142 → 6911 · LB-7002-0031 → 7002)
+  ✅ [PC-3] ตัวควบคุม: เลขแบบ max+1 (อ่านแล้วเขียน) ชนกันภายใต้ 30 คำขอพร้อมกัน (≤ 3 ครั้ง · ไม่ชน = control inconclusive)
+  ✅ [PC-4] ตัวควบคุม: คำสั่งเดียว INSERT … ON CONFLICT DO UPDATE SET seq = seq + 1 RETURNING (CC §K :995) 50 พร้อมกัน ⇒ 1..50 ไม่ซ้ำไม่ขาด
+  ✅ [PC-5] ตัวควบคุม: ล็อกสลับลำดับ (A: r1→r2 · B: r2→r1) ⇒ Postgres ตอบ 40P01
+  ✅ [PC-6] ตัวควบคุม: ผู้ถือ tx ที่ขอ connection ที่สองจาก pool เดียวกัน (max 3 · 3 tx ขนาน) ⇒ ค้างจนตัวจับเวลาของข้อสอบจับได้ (ตัวตรวจ NC มองเห็นอาการ pool ค้างจริง)
+  ✅ [PC-7] ตัวสุ่มอ่านจับค่าผิดได้: ตั้ง held > capacity ชั่วขณะ ⇒ viol > 0
+  ── สรุป PC: ผ่าน 7/7
+
+── S: ไฟล์และกติกาโค้ด ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: state · booking-core · numbering · booking · booking-actions · platform/basket
+  ✅ [S-2] facade ส่งออก 19 ฟังก์ชัน + 4 ค่าคงที่ · บล็อก "// TRIPS T0.6 ▸" · ไม่มี export *
+  ✅ [S-3] state.ts + booking-core.ts บริสุทธิ์ (import ได้แค่ zod / import type / ./state ./booking-core) · numbering.ts ไม่ import db/settings
+  ✅ [S-4] booking-actions.ts: "use server" · ส่งออกเฉพาะ async function · requireUnit + assertCan · ไม่รับ now
+  ✅ [S-5] ไม่มี any · console.* · DELETE / .delete( ในไฟล์ของใบ (ไม่ลบแถว Trip*)
+  ✅ [S-6] import ของ booking/numbering/basket: @/lib/core/* zod @prisma/client ./ node:crypto + facade party/approval เท่านั้น · ไม่มี prisma ดิบ (F5 +0) · ไม่แตะ pos/hotel/dorm/booking/queue
+  ✅ [S-7] ทุกคำสั่งเปลี่ยนสถานะการจอง = CAS: UPDATE "TripBooking" SET "status" … WHERE มี "status" + "version" + RETURNING · ไม่มี ORM tripBooking.update(Many) ที่แตะ status (ตัวควบคุม regex ต้องจับโค้ดผิดได้)
+  ✅ [S-8] OQ18: ไม่ส่ง object ของผู้เรียกเข้า Prisma data (data: input/req/args/body/raw/p.data · ...input ใน data) · zod strict ใน booking.ts + booking-core.ts
+  ✅ [S-9] เลขจอง = คำสั่งเดียว CC §K :995 (INSERT "SellCounter" … ON CONFLICT ("tenantId","series","period") DO UPDATE SET "seq" = "SellCounter"."seq" + 1 RETURNING) · ไม่มี max(/count( ทำเลข
+  ✅ [S-10] ไม่มีค่าธุรกิจตายตัว: prefix "TR"/"LB" · ชั่วโมงยืนยัน/นาทีถือ/เพดานถือ เป็นตัวเลข · ระดับกฎหมาย BLOCK
+  ✅ [S-11] ฟังก์ชัน *InTx ของ booking.ts ไม่เปิด connection เอง: ไม่มี quoteTrips/buildTripBookingSnapshot/capacityRowsOf/loadCapacityPolicies/resolveSettings/safeFindOrCreate/requestStatuses/tenantDb/runTx/$transaction ในตัวฟังก์ชัน
+  ✅ [S-12] event 4 ตัวลง 3 ทะเบียน (ป้ายไทย) · consumer trips.booking.expired เรียก onTripBookingExpired
+  ✅ [S-13] สิทธิ์ 5 คีย์ trips.booking.* ในโมดูล trips (ป้ายไทย)
+  ❌ [S-14] ไม่แตะไฟล์ต้องห้ามเทียบ BASE_SHA 2fd4c1509: prisma/ · core/settings · core/sellable · ไฟล์ T0.1–T0.5 (ยกเว้น index/sellable-impl/snapshot/pricing) · pos/hotel/rooms/booking/dorm/queue/ticket · ข้อสอบเดิม — แตะ: src/lib/core/settings/defs/trips.ts
+  ✅ [S-15] snapshot.ts + pricing.ts แก้ได้แบบเพิ่มอย่างเดียว (git diff --numstat เทียบ BASE_SHA: ลบ 0 บรรทัด)
+  ✅ [S-16] Sellable: sellableFor("TRIP") hold/confirm/cancel/finalizeInTx ไม่ใช่ตัวปิด NOT_IMPLEMENTED_YET แล้ว · platform/basket.ts ส่งออก basketHold + basketConfirm
+  ── สรุป S: ผ่าน 15/16
+
+── ST: ผังสถานะ (บริสุทธิ์) ──
+  ✅ [ST-1] BOOKING_STATUSES = CHECK TripBooking_status_check ตรงลำดับ CC · BOOKING_TERMINAL_STATUSES = EXPIRED CANCELLED TRAVELLED NO_SHOW
+  ✅ [ST-2] canTransitionBooking ตารางเต็ม 360 กรณี (NEW + 9 สถานะ × 9 × ผู้กระทำ 4) ตรง CC §G.1
+  ✅ [ST-3] สถานะไม่รู้จัก/ผู้กระทำไม่รู้จัก ⇒ false · สถานะจบไม่มีทางออก ยกเว้น NO_SHOW→TRAVELLED (STAFF) · ตาราง BOOKING_TRANSITIONS ครอบคู่ที่ยอมทุกคู่
+  ✅ [ST-4] initialBookingStatus ตาม G.0 (ใบสั่ง §3 ข้อ 1–4): PUBLIC PAY_NOW ค้างจ่าย ⇒ HOLD/KEEP · ไม่มียอดตอนจอง ⇒ CONFIRMED/CONVERT · STAFF PAY_LATER ⇒ CONFIRMED · SHOP_CONFIRMS (ไม่ใช่ STAFF) ⇒ PENDING/SHOP_CONFIRM
+  ✅ [ST-5] initialBookingStatus ปฏิเสธ: PUBLIC PAY_LATER ⇒ VALIDATION PAY_LATER_STAFF_ONLY (แม้ SHOP_CONFIRMS) · WALLET/CREDIT/ผู้กระทำ AGENT ⇒ FORBIDDEN AGENCY_NOT_ENABLED
+  ✅ [ST-6] contactKeyOf กติกาเดียว: เบอร์ไทยทุกรูป ⇒ tel:+66… · ไม่มีเบอร์ ⇒ line: · ไม่มี ⇒ mail:ตัวเล็ก · เบอร์มาก่อนอีเมล · ไม่มี ⇒ null · ไม่ใช้ partyId
+  ✅ [ST-7] ฟังก์ชันบริสุทธิ์ไม่แก้อินพุต (object แช่แข็งยังทำงาน) · ผลซ้ำได้ค่าเดิม
+  ── สรุป ST: ผ่าน 7/7
+
+── NU: เลขจอง (CC §K · L-15) ──
+  ✅ [NU-1] bookingPeriodOf = ปี พ.ศ. 2 หลัก + เดือนของวันเดินทาง: 2026-11-14 → 6911 · 2027-02-14 → 7002 · 2026-12-31 → 6912 · 2027-01-01 → 7001
+  ✅ [NU-2] formatBookingCode: TR-6911-0142 (README :31) · 0001 · 9999 · ครบ 10000 ⇒ 5 หลักไม่ล้ม · BOOKING_CODE_RE รับทุกตัว ไม่รับ tr-6911-1
+  ✅ [NU-3] nextSeqInTx: 50 tx พร้อมกัน (ร้านเดียว series/period เดียว) ⇒ 1..50 ไม่ซ้ำไม่ขาด
+  ✅ [NU-4] ตัวนับแยกต่อ (ร้าน, series, period): ร้าน B / งวดอื่น / series อื่น เริ่ม 1 · tx ล้มหลังจองเลข ⇒ เลขคืน (ครั้งถัดไปได้เลขเดิม)
+  ✅ [NU-5] เลขจองจริง = prefix ค่าตั้ง X3 (ค่าเริ่ม TR) + เดือนเดินทาง (ไม่ใช่เดือนที่จอง): จอง 1 มี.ค. 2570 สำหรับรอบ 10 เม.ย. 2570 ⇒ TR-7004-NNNN
+  ✅ [NU-6] เปลี่ยน prefix ของหน่วย (X3 = QT) ⇒ ชุดใหม่เริ่ม QT-<งวด>-0001 · หน่วยอื่นไม่เปลี่ยน
+  ✅ [NU-7] 50 การจองพร้อมกันบนรอบความจุ 60 ⇒ สำเร็จ 50 · เลข 50 ตัวไม่ซ้ำ ตรง BOOKING_CODE_RE และต่อเนื่อง (max − min = 49)
+  ✅ [NU-8] เลขไม่ซ้ำข้ามร้านไม่จำเป็น แต่ unique (tenantId, code) ต้องไม่ชน: ร้าน B จองรอบเดือนเดียวกันได้ TR-7003-0001 ของตัวเอง
+  ── สรุป NU: ผ่าน 8/8
+
+── H: ถือที่ผ่านตะกร้า ──
+  ✅ [H-1] PUBLIC holdTrips 2 ผู้ใหญ่ 1 เด็ก 1 ทารก ⇒ SellBasket OPEN (WEB · unitIds · publicTokenHash = sha256(token) · expiresAt) + TripHold ACTIVE qty 3 (ทารกไม่นับ) PAYMENT ผูก basketId · รอบ held +3
+  ✅ [H-2] quoteId ไม่ตรงราคาปัจจุบัน ⇒ PRICE_CHANGED + details.quote (quoteId ใหม่) · ไม่เขียน SellBasket/TripHold/ตัวนับ
+  ✅ [H-3] ใบเสนอราคาหมดอายุ (ctx.now > quoteExpiresAt) ⇒ PRICE_CHANGED reason QUOTE_EXPIRED · ไม่เขียน
+  ✅ [H-4] กันซ้ำ: คีย์เดิม + คำขอเดิม ยิง 5 พร้อมกัน ⇒ ตะกร้า/hold ชุดเดียว (held +3 ครั้งเดียว) · คีย์เดิม คำขอต่าง ⇒ IDEMPOTENCY_CONFLICT
+  ✅ [H-5] ตะกร้า 2 สินค้า 2 รอบ ⇒ ตะกร้าเดียว · hold 2 แถวเรียงตามบรรทัด · unitIds = [uA] · expiresAt = ช้าสุด
+  ✅ [H-6] PUBLIC ไม่มี basketToken ⇒ VALIDATION · ผู้กระทำ AGENT ⇒ FORBIDDEN AGENCY_NOT_ENABLED · ไม่เขียน
+  ✅ [H-7] เพดานถือ X10 (DS = 3) นับที่ชั้น 0: ตะกร้า PUBLIC 4 บรรทัด ⇒ HOLD_LIMIT · ไม่มีแถวใดถูกเขียน
+  ✅ [H-8] ที่ไม่พอ ⇒ SOLD_OUT · ตะกร้าไม่ถูกสร้าง (rollback ชั้น 0)
+  ✅ [H-9] token ตะกร้าใช้ได้ครั้งเดียว: token เดิมกับคีย์ใหม่ ⇒ VALIDATION BASKET_TOKEN_USED
+  ── สรุป H: ผ่าน 9/9
+
+── CF: ยืนยันการจอง ──
+  ✅ [CF-1] PUBLIC confirmTrips PAY_NOW (DS มัดจำ 100% ⇒ ค้างจ่ายตอนจอง) ⇒ BookingRef[1]: HOLD · เลข TR-7003-NNNN · publicToken ≥ 22 ตัว เก็บแค่ sha256 · dues Σ = 11,450
+  ✅ [CF-2] แถว TripBooking: ยอด = snapshot (gross 11,450 · เก็บแทน 1,500 · VAT 650.93 · ส่วนลด 0) · SHOP/PAY_NOW/DIRECT · THB · NONE · paid 0 · version 0 · travelDate · basketId · channel WEB · createdById null
+  ✅ [CF-3] TripBookingItem จาก snapshot: SEAT ผู้ใหญ่ 2×3,500 · เด็ก 1×2,450 · ทารก 1×0 · อุทยาน 1,200 + 300 (passThrough NONE) · กล้อง 500 VAT7 · Σ amountSatang = 11,450 · departureId ทุกแถว
+  ✅ [CF-4] policySnapshot = TripsBookingSnapshot v1 ของ buildTripBookingSnapshot: v 1 · refs.slotId · quote.fingerprint sha256 · totals.payableSatang 11,450 · policy.trips.values 35 คีย์ (CC §N.3)
+  ✅ [CF-5] หลังยืนยัน (HOLD): hold ยัง ACTIVE ผูก bookingId · purpose PAYMENT · รอบ held 3 sold 0 (HOLD ไม่นับ sold · L-24) · ตะกร้า CHECKED_OUT
+  ✅ [CF-6] rekey ก่อนแปลง (D.6 · r2 §d ข้อ 3): capKeyHash ของ hold = holdCapKeyHash("contact:" + contactKeyOf(ผู้จอง))
+  ✅ [CF-7] STAFF bookTripsNow PAY_LATER ⇒ CONFIRMED · hold CONVERTED ผูก bookingId · sold +3 held 0 · createdById = salesStaffId = พนักงาน · ตะกร้า CHECKED_OUT
+  ✅ [CF-8] ยืนยันซ้ำ: คีย์เดิม 6 ครั้งพร้อมกัน ⇒ สำเร็จทุกครั้ง bookingId/เลข/publicToken เดียวกัน · TripBooking ของตะกร้า 1 แถว · คีย์เดิมคำขอต่าง ⇒ IDEMPOTENCY_CONFLICT
+  ✅ [CF-9] ตะกร้า CHECKED_OUT + คีย์ใหม่ ⇒ STATE_CONFLICT BASKET_CHECKED_OUT · ไม่มีการจองเพิ่ม
+  ✅ [CF-10] PUBLIC ส่ง token ตะกร้าผิด ⇒ HOLD_NOT_FOUND · hold ยัง ACTIVE ไม่ผูกการจอง · ตะกร้า OPEN
+  ✅ [CF-11] บรรทัดตอนยืนยันไม่ตรง hold (3 ที่ → 2 ที่) ⇒ VALIDATION HOLD_MISMATCH · ไม่เขียน
+  ✅ [CF-12] ราคาเปลี่ยนหลังถือ (ราคารอบผู้ใหญ่ 3,600) ⇒ PRICE_CHANGED + details.quote ใหม่ · ไม่เขียน · ยืนยันด้วย quoteId ใหม่ ⇒ gross 11,720 (2×3,600 + 2,520 + 1,500 + 500)
+  ✅ [CF-13] บริบทต้องเหมือนตอนเสนอราคา: เสนอ/ถือที่ WEB แล้วยืนยันด้วย ctx LIFF + quoteId เดิม ⇒ PRICE_CHANGED · ไม่เขียน
+  ✅ [CF-14] PUBLIC เลือก PAY_LATER ⇒ VALIDATION PAY_LATER_STAFF_ONLY · ไม่เขียน
+  ✅ [CF-15] X1 = SHOP_CONFIRMS (ชั้นสินค้า A2) ⇒ PUBLIC ได้ PENDING · hold purpose SHOP_CONFIRM หมดเวลา = now + X2 (DS 12 ชม.) · ผูก bookingId · มี event created ไม่มี confirmed
+  ✅ [CF-16] อนุมัติ PENDING (STAFF) ⇒ HOLD · version 0→1 · hold CAS purpose PAYMENT หมดเวลา = now + T5 (DS 15 นาที)
+  ✅ [CF-17] อนุมัติด้วยเวอร์ชันเก่า ⇒ STATE_CONFLICT ไม่เปลี่ยน · ปฏิเสธ PENDING ⇒ CANCELLED · hold RELEASED · held ลด
+  ✅ [CF-18] hold หมดเวลาตอนยืนยัน (onExpired ค่าเริ่ม FAIL) ⇒ HOLD_EXPIRED · rollback ทั้งก้อน: ไม่มีการจอง · เลขไม่ถูกใช้ · ตะกร้า OPEN
+  ✅ [CF-19] onExpired REHOLD (STAFF) ในธุรกรรมใหม่ ⇒ CONFIRMED · hold เดิมไม่ ACTIVE แล้ว · hold ใหม่ CONVERTED ของการจอง · ค่าคงที่ D.3
+  ✅ [CF-20] REHOLD เมื่อที่ถูกขายไปแล้ว ⇒ SOLD_OUT ไม่เขียนอะไร (ความจุ 3 · hold เดิมถูกปล่อย · คนอื่นจองครบ)
+  ✅ [CF-21] ราคาแก้มือต่ำกว่า T11 (10%) ⇒ REQUIRES_APPROVAL (details.resolvedMinor) · คำอนุมัติไม่มี resolvedMinor ⇒ VALIDATION APPROVAL_RESOLVED_REQUIRED
+  ✅ [CF-22] คำอนุมัติที่ไม่มีจริง/ไม่ APPROVED (มี resolvedMinor) ⇒ FORBIDDEN APPROVAL_NOT_APPROVED · ไม่เขียน
+  ✅ [CF-23] คำอนุมัติ APPROVED จริง + resolvedMinor ⇒ CONFIRMED · ที่นั่งผู้ใหญ่ 2,000 priceSource MANUAL · audit trips.booking.price_override
+  ✅ [CF-24] แก้ราคามือโดยไม่มี canOverride (action ไม่ได้ assertCan) ⇒ FORBIDDEN · ไม่เขียน
+  ✅ [CF-25] ผู้เดินทาง: 2 คน ⇒ TripPassenger 2 แถว (ชื่อ · bookingId · itemId ของที่นั่ง) · 4 คนบน 3 ที่ ⇒ VALIDATION TOO_MANY_PASSENGERS ไม่เขียน
+  ✅ [CF-26] PUBLIC ไม่มีช่องติดต่อ (เบอร์/LINE/อีเมล) ⇒ VALIDATION CONTACT_REQUIRED · STAFF ไม่มีช่องติดต่อ (ไม่มีโค้ด) ⇒ จองได้
+  ✅ [CF-27] ผู้จอง = Party ของร้าน: bookerPartyId ตั้ง · เบอร์เดียวกันคนละรูป ⇒ Party เดียวกัน · STAFF ส่ง partyId ของร้านอื่น ⇒ NOT_FOUND ไม่เขียน
+  ✅ [CF-28] ค่าคงที่ D.3 ของทุกรอบที่ใช้ในกลุ่ม CF (sold = Σ ที่นั่งนับที่ของการจองที่ขายแล้ว · held = Σ hold ACTIVE)
+  ── สรุป CF: ผ่าน 28/28
+
+── PR: โค้ดส่วนลด (ตัดครั้งเดียว · ล้ม = rollback) ──
+  ✅ [PR-1] โค้ด 10% ⇒ ส่วนลด 99,500 สต. (ที่นั่ง 9,450 + กล้อง 500 = 9,950 × 10%) = snapshot.totals.discountSatang = redemption.discountSatang · usedCount 1 · event trips.promo.redeemed
+  ✅ [PR-2] maxUses 1 · ลูกค้า 2 คนยืนยันพร้อมกัน ⇒ ได้ส่วนลด 1 การจองพอดี · อีกคน PRICE_CHANGED (ไม่มีการจอง · hold ยัง ACTIVE) · usedCount 1 · redemption 1
+  ✅ [PR-3] perContact 1 · ผู้ติดต่อเดียว (0812345678 เว็บ → +66 81-234-5678 หน้าร้าน) ⇒ ครั้งที่ 2 PRICE_CHANGED (PROMO_PER_CONTACT) · usedCount 1 (contactKey กติกาเดียวทุกช่องทาง)
+  ✅ [PR-4] ยืนยันซ้ำคีย์เดิม 5 ครั้งพร้อมกันพร้อมโค้ด ⇒ usedCount +1 ครั้งเดียว · redemption 1 แถว
+  ✅ [PR-5] ตัดสิทธิ์ล้มในธุรกรรม (perContact ครบ) ⇒ PRICE_CHANGED reason PROMO_PER_CONTACT + details.quote · rollback: เลขไม่ถูกใช้ · ไม่มีการจอง · hold ACTIVE ไม่ผูก · held เท่าเดิม
+  ✅ [PR-6] STAFF ยกเลิกการจอง HOLD ที่มีโค้ด ⇒ CANCELLED · hold RELEASED (held −3) · redemption RELEASED · usedCount กลับ 0
+  ✅ [PR-7] ลำดับยกเลิก (r2 §d ข้อ 4): ในฟังก์ชันยกเลิก/ปฏิเสธ คืนที่นั่ง (releaseHoldInTx/returnSoldInTx) มาก่อน releasePromoInTx ในซอร์ส
+  ── สรุป PR: ผ่าน 7/7
+
+── CN: ยกเลิก (HOLD/PENDING เท่านั้น · หลังขาย = T0.7) ──
+  ✅ [CN-1] STAFF ยกเลิก HOLD ⇒ CANCELLED · cancelReason · cancelledAt · version +1 · event trips.booking.cancelled · audit trips.booking.cancel
+  ✅ [CN-2] STAFF ยกเลิก PENDING ⇒ CANCELLED · hold SHOP_CONFIRM ถูกปล่อย
+  ✅ [CN-3] ยกเลิกการจองที่ขายแล้ว (CONFIRMED) ⇒ STATE_CONFLICT REFUND_REQUIRED · ไม่เปลี่ยน (version · sold)
+  ✅ [CN-4] cancel mode QUOTE ⇒ computed จาก snapshot (source SNAPSHOT) ไม่เขียนอะไร
+  ✅ [CN-5] PUBLIC ยกเลิกเอง (ยังไม่มี OTP · W1.3) ⇒ FORBIDDEN OTP_REQUIRED · ไม่เปลี่ยน
+  ✅ [CN-6] ยกเลิกซ้ำคีย์เดิม 5 ครั้งพร้อมกัน ⇒ สำเร็จทุกครั้ง · เปลี่ยนสถานะครั้งเดียว (version 1) · event cancelled 1 · คีย์ใหม่หลังยกเลิก ⇒ STATE_CONFLICT
+  ── สรุป CN: ผ่าน 6/6
+
+── MV: แก้คน/เลื่อนวัน (หน่วย A2 · prefix QT) ──
+  ✅ [MV-1] เลื่อน CONFIRMED 3 คน D1→D2 ⇒ sold D1 −3 D2 +3 · เลขเดิม (L-15) · สถานะเดิม · version +1 · departureId/travelDate ใหม่ · รายการเดิม active=false (ไม่ลบ) + รายการใหม่บน D2
+  ✅ [MV-2] เลื่อนวันคงตารางยกเลิกของ snapshot เดิม (แก้ค่าตั้ง T20 หลังจอง) · useCurrentPolicy + เหตุผล ≥ 10 ตัว ⇒ ใช้ตารางปัจจุบัน · เหตุผลสั้น ⇒ VALIDATION
+  ✅ [MV-3] audit trips.booking.change (before/after มีรอบ · ไม่มีชื่อ/เบอร์) · event trips.booking.changed payload ตรงชุด · คีย์มี version
+  ✅ [MV-4] เลื่อนไปรอบที่เต็ม ⇒ SOLD_OUT · ไม่เปลี่ยนอะไร (version · รอบ · ตัวนับ)
+  ✅ [MV-5] expectedVersion เก่า ⇒ STATE_CONFLICT · quoteId ไม่ตรง ⇒ PRICE_CHANGED · ไม่เปลี่ยน
+  ✅ [MV-6] เพิ่มคน 3→4 รอบเดิม ⇒ sold +1 · gross ใหม่ · ลด 4→2 ⇒ sold −2 · เลขเดิม
+  ✅ [MV-7] แก้การจอง HOLD ⇒ STATE_CONFLICT CHANGE_BEFORE_CONFIRM · แก้โดย PUBLIC ⇒ FORBIDDEN
+  ✅ [MV-8] เลื่อนสลับทิศพร้อมกัน 8 คู่ (P: E1→E2 ∥ Q: E2→E1) ⇒ ไม่มี THROW/BUSY/deadlock · ค่าคงที่ D.3
+  ── สรุป MV: ผ่าน 8/8
+
+── BK: platform/basket.ts ──
+  ✅ [BK-1] basketHold + basketConfirm (ตะกร้า TRIP ชนิดเดียว) ⇒ ผลเดียวกับ tripSellable: การจอง HOLD ผูก basketId · hold ACTIVE ผูกการจอง
+  ✅ [BK-2] ตะกร้ามีบรรทัด TICKET (ยังไม่มี sellable · K1.1) ⇒ KIND_NOT_SUPPORTED ก่อนแตะฐาน: ไม่มี SellBasket/TripHold ใหม่ · ตัวนับเท่าเดิม
+  ✅ [BK-3] ตะกร้า 3 บรรทัด 2 สินค้า 2 รอบ (STAFF bookTripsNow) ⇒ การจอง 3 แถว basketId เดียวกัน · BookingRef เรียงตามบรรทัด · เลขไม่ซ้ำ
+  ✅ [BK-4] ตะกร้า 2 บรรทัด · hold บรรทัดที่ 2 หมดเวลาแล้ว ⇒ HOLD_EXPIRED ทั้งตะกร้า: ไม่มีการจอง · hold บรรทัดแรกยัง ACTIVE ไม่ผูก
+  ✅ [BK-5] ลำดับล็อกตะกร้าหลายสินค้า (r2 §d ข้อ 2): 16 ตะกร้าพร้อมกันสลับลำดับบรรทัด [A/D1, A2/D2] ∥ [A2/D2, A/D1] + ตัวเขียนแถวสินค้าแทรก ⇒ ไม่มี THROW/BUSY · ค่าคงที่ D.3
+  ── สรุป BK: ผ่าน 5/5
+
+── RC: ยิงพร้อมกัน (MP §5 ก) ──
+  ✅ [RC-1] ที่สุดท้าย: รอบความจุ 1 · STAFF bookTripsNow 12 ครั้งพร้อมกัน ⇒ สำเร็จ 1 พอดี · ที่เหลือ SOLD_OUT · sold 1 · ตัวสุ่มอ่านไม่เจอค่าเกิน
+  ✅ [RC-2] ที่สุดท้ายทางหน้าจอง: 12 ตะกร้า PUBLIC ถือ 1 ที่พร้อมกัน ⇒ ถือได้ 1 · แล้วยืนยันตะกร้านั้น 6 ครั้งพร้อมกันคีย์เดิม ⇒ การจอง 1 · held 1
+  ✅ [RC-3] ยกเลิก ∥ อนุมัติ บนการจอง PENDING เดียวกัน 6 คู่ ⇒ ไม่มี THROW/BUSY · สถานะสุดท้าย CANCELLED (hold RELEASED) หรือ HOLD (hold ACTIVE PAYMENT) · version = จำนวนครั้งที่สำเร็จ
+  ✅ [RC-4] ผสม 30 คำสั่งพร้อมกันบน 3 รอบ (จองหน้าร้าน · ถือ+ยืนยันเว็บ · ยกเลิก HOLD) ⇒ ไม่มี THROW/BUSY · ค่าคงที่ D.3 ทุกรอบ
+  ── สรุป RC: ผ่าน 4/4
+
+── NC: 14 ขนาน · pool 10 (r2 §d ข้อ 1 · N3) ──
+  ✅ [NC-1] 14 bookTripsNow พร้อมกัน (คนละรอบ) ⇒ สำเร็จทั้งหมดภายใน 90 วิ · ไม่มี BUSY/P2028/Transaction already closed
+  ✅ [NC-2] 14 confirmTrips (PUBLIC) พร้อมกัน ⇒ สำเร็จทั้งหมดภายใน 90 วิ · ไม่มี BUSY/P2028
+  ✅ [NC-3] transitionBookingInTx ใน tx ของผู้เรียก 14 พร้อมกัน (CONFIRMED→TRAVELLED · STAFF) ⇒ สำเร็จทั้งหมดภายใน 60 วิ · ไม่มี P2028 · version +1
+  ✅ [NC-4] transitionBookingInTx ปฏิเสธ: HOLD→TRAVELLED ⇒ STATE_CONFLICT TRANSITION_NOT_ALLOWED · เวอร์ชันเก่า ⇒ STATE_CONFLICT · PUBLIC CONFIRMED→CANCELLED ⇒ FORBIDDEN · ไม่เปลี่ยน
+  ── สรุป NC: ผ่าน 4/4
+
+── X1: แยกร้าน/หน่วย (MP §5 ง) ──
+  ✅ [X1-1] ร้าน B ยืนยันตะกร้า/hold ของร้าน A ⇒ HOLD_NOT_FOUND/NOT_FOUND · ไม่มีการจอง · hold ร้าน A ไม่เปลี่ยน
+  ✅ [X1-2] หน่วย A2 อ้าง id การจองของหน่วย A ⇒ NOT_FOUND ข้อความเดียวกันทุกคำสั่ง (get · cancel · approve · change) · ไม่เปลี่ยน
+  ✅ [X1-3] listTripBookings: หน่วย A2 ไม่เห็นการจองหน่วย A · ร้าน B ไม่เห็นร้าน A · DTO ไม่มี publicTokenHash/publicToken
+  ✅ [X1-4] PUBLIC อ่านการจองด้วย id ⇒ FORBIDDEN/NOT_FOUND (หน้า my/[token] = W1.3)
+  ✅ [X1-5] STAFF จองใส่สินค้า/รอบของหน่วยอื่น (บรรทัด unitId = A2 ใน ctx หน่วย A) ⇒ NOT_FOUND ไม่เขียน
+  ── สรุป X1: ผ่าน 5/5
+
+── PM: สิทธิ์ใน action ──
+  ✅ [PM-1] action ทุกตัวเรียก requireUnit + assertCan · ใช้คีย์ trips.booking.* ครบ 5 ตัวในไฟล์
+  ✅ [PM-2] canOverride: true ส่งได้เฉพาะหลัง assertCan("trips.price.override") ในฟังก์ชันเดียวกัน
+  ✅ [PM-3] action ไม่ส่ง actor อื่นนอกจาก STAFF ของ session (ไม่มี kind: "SYSTEM"/"PUBLIC" ใน actions) · ไม่ส่ง now
+  ── สรุป PM: ผ่าน 3/3
+
+── EV: event/audit (CC :904 · ไม่มีข้อมูลบุคคล) ──
+  ✅ [EV-1] trips.booking.created: payload ตรงชุด {amountSatang bookingId channel departureId status unitId} · amountSatang 11,450 · ไม่มีชื่อ/เบอร์/เลขจอง
+  ✅ [EV-2] คีย์ event = trips.booking.created:<bookingId> · ยืนยันซ้ำ (CF-8) มี created 1 ตัว
+  ✅ [EV-3] trips.booking.confirmed: การจอง STAFF CONFIRMED มี 1 ตัว (status CONFIRMED) · การจอง HOLD ไม่มี
+  ✅ [EV-4] audit trips.booking.create ของการจอง STAFF (ผู้กระทำ = พนักงาน) · after ไม่มีชื่อ/เบอร์ผู้จอง
+  ── สรุป EV: ผ่าน 4/4
+
+── SD: seed การจองตรงของจอ 18 (ร้าน andaman-dive) ──
+  ✅ [SD-1] seed: การจองตรง 3 รายการของราชา ส. 14 พ.ย. (0142 · 0155 · 0160) CONFIRMED · ของภัทรา (Party ฟิกซ์เจอร์) = 11,450 · เก็บแทน 1,500 · เลข TR-6911-NNNN
+  ✅ [SD-2] seed: ตัวนับรอบราชา ส. 14 = การจองจริง (sold 6 = 3 + 2 + 1 · held 0)
+  ✅ [SD-3] seed คงที่: ไม่มี hold ACTIVE และไม่มีการจอง HOLD/PENDING ในร้าน seed (ไม่ขึ้นกับนาฬิกาจริง)
+  ── สรุป SD: ผ่าน 3/3
+
+── LT: ยืนยัน ∥ ตัวกวาด · โค้ดของการจองหมดเวลา ──
+  ✅ [LT-1] ยืนยัน (ก่อนหมด 30 วิ) ∥ ตัวกวาด runExpireHolds (หลังหมด 30 วิ) บน 10 hold ⇒ แต่ละตัวจบ CONVERTED + CONFIRMED หรือ EXPIRED + ไม่มีการจอง · ไม่มี THROW/BUSY · ค่าคงที่ D.3
+  ✅ [LT-2] การจอง HOLD ที่มีโค้ดหมดเวลา (ตัวกวาด T0.4 ⇒ EXPIRED) แล้ว onTripBookingExpired ⇒ redemption RELEASED · usedCount กลับ · เรียกซ้ำไม่ลดอีก
+  ── สรุป LT: ผ่าน 2/2
+
+===== QC TRIPS T0.6 · การจอง · ตะกร้า · ผังสถานะ · เลขจอง · โค้ดครั้งเดียว · แก้ไข/เลื่อนวัน =====
+ผ่าน 125/126 · ไม่ผ่าน 1 · ข้าม 0
+ต่อกลุ่ม: PC 7/7 · S 15/16 · ST 7/7 · NU 8/8 · H 9/9 · CF 28/28 · PR 7/7 · CN 6/6 · MV 8/8 · BK 5/5 · RC 4/4 · NC 4/4 · X1 5/5 · PM 3/3 · EV 4/4 · SD 3/3 · LT 2/2
+JSON_SUMMARY {"suite":"qc-trips-t0.6","total":126,"passed":125,"failed":["S-14"],"skipped":[],"groups":{"PC":"7/7","S":"15/16","ST":"7/7","NU":"8/8","H":"9/9","CF":"28/28","PR":"7/7","CN":"6/6","MV":"8/8","BK":"5/5","RC":"4/4","NC":"4/4","X1":"5/5","PM":"3/3","EV":"4/4","SD":"3/3","LT":"2/2"}}

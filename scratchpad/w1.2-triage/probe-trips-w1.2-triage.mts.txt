@@ -1,0 +1,188 @@
+// probe-trips-w1.2-triage — คัดแยก FOUND 6 ข้อของนักล่า W1.2a (r1) ด้วยการยิง HTTP จริงกับเซิร์ฟเวอร์ QC (untracked · ไม่ใช่ oracle)
+// ร้านชั่วคราว `trips-w12h-*` (lib) · ลบใน finally · IP ปลอมต่างกันต่อผู้ใช้จำลอง
+import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
+const { info, req, submit, kindOf, loc, testid, freshIp, sleep } = L;
+
+L.boot("probe-w1.2-triage");
+type F = { attrs: string; fields: [string, string, string][] };
+const unesc = (s: string) => s.replace(/&quot;/g, '"').replace(/&#x27;/g, "'").replace(/&#39;/g, "'").replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&");
+function allForms(html: string): F[] {
+  const out: F[] = [];
+  for (const m of html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)) {
+    const fields: [string, string, string][] = [];
+    for (const i of (m[2] ?? "").matchAll(/<input\b([^>]*)\/?>/g)) {
+      const a = i[1] ?? "";
+      const name = /\bname="([^"]*)"/.exec(a)?.[1];
+      if (!name) continue;
+      fields.push([unesc(name), /\btype="([^"]*)"/.exec(a)?.[1] ?? "text", unesc(/\bvalue="([^"]*)"/.exec(a)?.[1] ?? "")]);
+    }
+    out.push({ attrs: (m[1] ?? "").replace(/\s+/g, " ").slice(0, 200), fields });
+  }
+  return out;
+}
+/** ช่องอาร์กิวเมนต์ bind จริง: ค่าที่เป็น JSON array ยาว 3 ขึ้นต้นด้วย slug ร้าน */
+const boundKey = (fields: [string, string][], slug: string): string | null => {
+  for (const [k, v] of fields) {
+    if (!/^\$ACTION_\d+:\d+$/.test(k)) continue;
+    try { const j = JSON.parse(v) as unknown; if (Array.isArray(j) && j.length === 3 && j[0] === slug) return k; } catch { /* not json */ }
+  }
+  return null;
+};
+const reenc = (o: unknown) => Buffer.from(JSON.stringify(o), "utf8").toString("base64url");
+const selOf = (location: string) => new URL(location, L.BASE).searchParams.get("sel") ?? "";
+const basketOf = (location: string) => decodeURIComponent(location.split("/c/")[1]?.split("?")[0] ?? "");
+const firstDiff = (a: string, b: string) => { let i = 0; while (i < a.length && a[i] === b[i]) i++; return i; };
+const ctx = (s: string, i: number) => s.slice(Math.max(0, i - 70), i + 70).replace(/\s+/g, " ");
+
+try {
+  await L.sweepStale();
+  const A = await L.mkShop("a", { contact: { phone: "076-999-111", line: "@w12tri", address: null } });
+  const B = await L.mkShop("b");
+  const PA = await L.mkProd(A, "A");
+  const PB = await L.mkProd(B, "B");
+  const today = L.ymdBkk(new Date());
+  const D1 = L.addDays(today, 20), D2 = L.addDays(today, 21), D3 = L.addDays(today, 22), D4 = L.addDays(today, 40);
+  const dA1 = await L.mkDep(PA, D1, { capacity: 40 });
+  const dA2 = await L.mkDep(PA, D2, { capacity: 40 });
+  const dA3 = await L.mkDep(PA, D3, { capacity: 40 });
+  const dSlot = await L.mkDep(PA, D4, { capacity: 40 });
+  await L.mkDep(PB, D1, { capacity: 40 });
+  void dA3; void dSlot;
+
+  // ═══ 1/2: confirm with a tampered bound sel — on the REAL bound field ═══
+  const ip1 = freshIp(), ip2 = freshIp(), ip3 = freshIp();
+  const h1 = await L.holdHttp(A, PA, { d: D1, n: { ADULT: 2, CHILD: 1 } }, ip1); // basket under attack
+  const h2 = await L.holdHttp(A, PA, { d: D2, n: { ADULT: 1 } }, ip2); // another customer's basket (A2)
+  const h3 = await L.holdHttp(A, PA, { d: D3, n: { ADULT: 1 } }, ip3); // basket for "token only, no sel" test
+  info("setup", `h1=${h1.location.slice(0, 70)} h2=${h2.location.slice(0, 40)} h3=${h3.location.slice(0, 40)}`);
+  const c1 = await L.openCheckout(h1.location, ip1);
+  const forms = allForms(c1.r.body);
+  info("c/-forms", `c/ page ${kindOf(c1.r)} has ${forms.length} <form>`);
+  forms.forEach((f, i) => info("c/-forms", `#${i} ${f.attrs} :: ${f.fields.map(([k, t, v]) => `${k}[${t}]${k.startsWith("$ACTION") ? `=${v.slice(0, 140)}` : ""}`).join(" | ")}`));
+  info("c/-forms", `probe hunt-1 looks for "$ACTION_0:1" in first POST form ⇒ ${L.fieldOf(c1.form ?? { action: "", fields: [] }, "$ACTION_0:1") === null ? "NOT PRESENT (bound=[] ⇒ no edit)" : "present"}`);
+  const fields1 = c1.form?.fields ?? [];
+  const bk = boundKey(fields1, A.slug);
+  info("c/-forms", `real bound field of the confirm form (postForm=first POST form) = ${bk} · value=${bk ? L.fieldOf(c1.form!, bk) : "-"}`);
+  const sel1 = selOf(h1.location), sel2 = selOf(h2.location), bas1 = basketOf(h1.location);
+  const [, part1, mac1] = sel1.split(".");
+  const p1 = JSON.parse(Buffer.from(part1 ?? "", "base64url").toString()) as Record<string, unknown>;
+  const dep1 = async () => JSON.stringify(await L.depRow(dA1));
+  const nBook = async () => (await L.bookingsOf(A.tenant)).length;
+  const withBound = (sel: string, bas = bas1): [string, string][] => fields1.map(([k, v]): [string, string] => (k === bk ? [k, JSON.stringify([A.slug, bas, sel])] : [k, v]));
+  await sleep(L.FORM_WAIT);
+  const tamper: [string, string, string?][] = [
+    ["qty ADULT=3 (CHILD dropped), MAC kept", `v1.${reenc({ ...p1, n: [["ADULT", 3]] })}.${mac1}`],
+    ["qty ADULT=3 CHILD=1, MAC kept", `v1.${reenc({ ...p1, n: [["ADULT", 3], ["CHILD", 1]] })}.${mac1}`],
+    ["sel of basket A2 (other customer)", sel2],
+    ["sel 20k", `${sel1}${"A".repeat(20_000)}`],
+    ["right sel, basket token of A2", sel1, basketOf(h2.location)],
+  ];
+  if (bk) {
+    for (const [name, sel, bas] of tamper) {
+      const before = await nBook(), dBefore = await dep1();
+      const r = await submit(h1.location, L.bookerFields({ action: "", fields: withBound(sel, bas) }), ip1);
+      const after = await nBook();
+      info("T1", `${name}: ${kindOf(r)} locLen=${loc(r).length} bookings +${after - before} · dep1 ${dBefore} → ${await dep1()}`);
+    }
+    // control: the untouched form confirms (proves the fields are otherwise valid)
+    const before = await nBook();
+    const ok = await submit(h1.location, L.bookerFields({ action: "", fields: fields1 }), ip1);
+    const bks = await L.bookingsOf(A.tenant);
+    info("T1", `control (untouched form): ${kindOf(ok)} bookings +${bks.length - before}`);
+    const last = bks[bks.length - 1];
+    if (last) {
+      const pax = await L.q(`SELECT * FROM "TripBooking" WHERE id = $1`, [last.id]);
+      const row = pax[0] ?? {};
+      info("T1", `booking from control: gross=${last.grossSatang} passThrough=${last.passThroughSatang} vat=${last.vatSatang} dep=${last.departureId === dA1 ? "dA1" : last.departureId} pax-cols=${Object.entries(row).filter(([k]) => /pax|qty|seat|count/i.test(k)).map(([k, v]) => `${k}=${JSON.stringify(v)}`).join(",")} · dep1 ${await dep1()}`);
+    }
+    // after DONE: tampered sel on the confirmed basket — does DONE come before the sel check?
+    for (const [name, sel] of [["DONE + qty-edited sel", `v1.${reenc({ ...p1, n: [["ADULT", 3]] })}.${mac1}`], ["DONE + 20k sel", `${sel1}${"A".repeat(20_000)}`], ["DONE + sel of A2", sel2], ["DONE + empty sel", ""], ["DONE + right sel (control)", sel1]] as const) {
+      const b0 = await nBook();
+      const r = await submit(h1.location, L.bookerFields({ action: "", fields: withBound(sel) }), ip1);
+      info("T2", `${name}: ${kindOf(r)} bookings +${(await nBook()) - b0}`);
+    }
+    // GET c/ of the confirmed basket with a wrong sel (token only)
+    for (const [name, sel] of [["GET c/ confirmed basket, sel of A2", sel2], ["GET c/ confirmed basket, no sel", ""], ["GET c/ confirmed basket, junk sel", "v1.x.y"]] as const) {
+      const r = await req(`/book/${A.slug}/c/${encodeURIComponent(bas1)}${sel ? `?sel=${encodeURIComponent(sel)}` : ""}`, { ip: freshIp() });
+      info("T2", `${name}: ${kindOf(r)}`);
+    }
+  }
+  // replay of hunt-1 exactly (looks for $ACTION_0:1 ⇒ none ⇒ untouched submit) on basket h3
+  if (h3.location) {
+    const c3 = await L.openCheckout(h3.location, ip3);
+    await sleep(L.FORM_WAIT);
+    const bound = JSON.parse(L.fieldOf(c3.form!, "$ACTION_0:1") ?? "[]") as string[];
+    const t = [bound[0], bound[1], "tampered"];
+    const mapped = c3.form!.fields.map(([k, v]): [string, string] => (k === "$ACTION_0:1" ? [k, JSON.stringify(t)] : [k, v]));
+    const changed = mapped.some(([k, v], i) => v !== c3.form!.fields[i]?.[1] || k !== c3.form!.fields[i]?.[0]);
+    const b0 = await nBook();
+    const r = await submit(h3.location, L.bookerFields({ action: "", fields: mapped }), ip3);
+    info("T3", `hunt-1 replay: bound=${JSON.stringify(bound)} fieldsChanged=${changed} ⇒ ${kindOf(r)} bookings +${(await nBook()) - b0}`);
+  }
+
+  // ═══ 3: 404 shapes (c/ + my/) — which case differs, and why ═══
+  const ipF = freshIp();
+  const bk3 = (await L.bookHttp(A, PA, { d: D2, n: { ADULT: 1 } }, ipF));
+  info("404", `resPath=${bk3.resPath}`);
+  const tokA = decodeURIComponent(bk3.resPath.split("/my/")[1]?.split("?")[0] ?? "");
+  const rnd = () => Buffer.from(L.hex(32), "hex").toString("base64url").slice(0, 43);
+  const ipN = freshIp();
+  const norm = (b: string, vals: string[]) => { let x = b; for (const e of [...vals].filter((v) => v.length >= 1).sort((p, q) => q.length - p.length)) x = x.split(e).join("§"); return x.replace(/[A-Za-z0-9_-]{30,}/g, "#"); };
+  const runShapes = async (label: string, cases: [string, string, string[]][]) => {
+    const res: [string, string, number, number][] = [];
+    for (const [n, path, vals] of cases) { const r = await req(path, { ip: ipN }); res.push([n, norm(r.body, vals), r.status, r.body.length]); }
+    const ref = res[0]?.[1] ?? "";
+    for (const [n, b, st, raw] of res) { const i = firstDiff(ref, b); info(label, `${n}: ${st} raw=${raw} norm=${b.length} same-as-first=${b === ref}${b === ref ? "" : ` diff@${i} «${ctx(ref, i)}» vs «${ctx(b, i)}»`}`); }
+  };
+  const randB = rnd(), randT = rnd();
+  await runShapes("404-c", [
+    ["c/ basket random", `/book/${A.slug}/c/${randB}?sel=${encodeURIComponent(sel1)}`, [A.slug, randB, sel1, encodeURIComponent(sel1)]],
+    ["c/ shop missing", `/book/${L.SLUG}nope-${L.STAMP}/c/${bas1}?sel=${encodeURIComponent(sel1)}`, [`${L.SLUG}nope-${L.STAMP}`, bas1, sel1, encodeURIComponent(sel1)]],
+    ["c/ basket of A on shop B", `/book/${B.slug}/c/${bas1}?sel=${encodeURIComponent(sel1)}`, [B.slug, bas1, sel1, encodeURIComponent(sel1)]],
+    ["c/ basket malformed (abc, sel=x) — probe did NOT strip abc/x", `/book/${A.slug}/c/abc?sel=x`, [A.slug]],
+    ["c/ basket malformed (abc, sel=x) — abc/x stripped", `/book/${A.slug}/c/abc?sel=x`, [A.slug, "abc", "sel=x"]],
+    ["c/ no sel (query absent)", `/book/${A.slug}/c/${bas1}`, [A.slug, bas1]],
+    ["c/ no sel vs random basket no sel", `/book/${A.slug}/c/${randB}`, [A.slug, randB]],
+  ]);
+  await runShapes("404-my", [
+    ["my/ token random", `/book/${A.slug}/my/${randT}`, [A.slug, randT]],
+    ["my/ shop missing", `/book/${L.SLUG}nope-${L.STAMP}/my/${tokA}`, [`${L.SLUG}nope-${L.STAMP}`, tokA]],
+    ["my/ REAL token of A on shop B", `/book/${B.slug}/my/${tokA}`, [B.slug, tokA]],
+    ["my/ REAL token of A on B + ?lang=th (hunt-4 path)", `/book/${B.slug}/my/${tokA}?lang=th`, [B.slug, tokA]],
+    ["my/ random token + ?lang=th", `/book/${A.slug}/my/${randT}?lang=th`, [A.slug, randT]],
+    ["my/ token malformed xyz — not stripped", `/book/${A.slug}/my/xyz`, [A.slug]],
+    ["my/ token malformed xyz — stripped", `/book/${A.slug}/my/xyz`, [A.slug, "xyz"]],
+  ]);
+
+  // ═══ 4: SB-msg — where does "รอสักครู่" come from on the rate-limited hold page? ═══
+  const ipS = freshIp();
+  let lastLoc = "";
+  const codes: string[] = [];
+  for (let i = 0; i < 4; i++) {
+    const g = await L.openSelect(A, PA, { d: D4, n: { ADULT: 1 } }, ipS);
+    if (!g.form) { codes.push(`noform:${kindOf(g.r)}`); continue; }
+    await sleep(L.FORM_WAIT);
+    const r = await submit(g.path, g.form.fields, ipS);
+    lastLoc = loc(r);
+    codes.push(lastLoc.includes("/c/") ? "OK" : /e=([A-Z_]+)/.exec(lastLoc)?.[1] ?? `${r.status}`);
+  }
+  info("SB", `4 holds same run/device: ${codes.join(",")} last=${lastLoc.slice(0, 100)}`);
+  if (lastLoc && !lastLoc.includes("/c/")) {
+    const p = await req(lastLoc, { ip: ipS });
+    const b = p.body;
+    const noScript = b.replace(/<script\b[\s\S]*?<\/script>/g, " ");
+    const visible = noScript.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+    info("SB", `page ${kindOf(p)} · "รอสักครู่" in raw=${(b.match(/รอสักครู่/g) ?? []).length} · in HTML outside <script>=${(noScript.match(/รอสักครู่/g) ?? []).length} · in visible text=${/รอสักครู่/.test(visible)}`);
+    for (const m of b.matchAll(/รอสักครู่/g)) {
+      const at = m.index ?? 0;
+      const inScript = b.lastIndexOf("<script", at) > b.lastIndexOf("</script>", at);
+      info("SB", `  occurrence @${at} inScript=${inScript}: «${b.slice(Math.max(0, at - 120), at + 40).replace(/\s+/g, " ")}»`);
+    }
+    const ei = b.indexOf('data-testid="book-error"');
+    info("SB", `book-error box: «${b.slice(ei, ei + 500).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, 300)}»`);
+  }
+} catch (e) {
+  console.log(`ERROR top: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await L.cleanup();
+}

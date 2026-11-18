@@ -1,0 +1,106 @@
+[env] probe-w1.2-hunt-1 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:261229) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+INFO  [flow] hold → /book/trips-w12h-mwgso17i81a5-a/c/ShwvRw5Z-9L1QRPo4XzNCG9IGwYqz4vS3dJQQ2zQLyg?sel=v1.eyJwI · checkout 200/CHECKOUT · confirm 303/OTHER→/book/trips-w12h-mwgso17i81a5-a/my/FXELWhaeeVsLTfgxXyqakaZ_G · 
+HELD  [flow-1] expected: HTTP no-JS: select → hold 303 → c/ 200 → confirm 303 → my/ | got: res=/book/trips-w12h-mwgso17i81a5-a/my/FXELWhaeeVsLTfg
+INFO  [flow] c/ form fields: $ACTION_REF_1 | $ACTION_1:0 | $ACTION_1:1 | nonce | seen | lang | name | phone | email
+INFO  [origin] HOLD same-origin (control): 303/OTHER→/book/trips-w12h-mwgso17i81a5-a/c/cyB9EGNpyLGj-QsPKYVutoSiW- · holds +1 · body 0B 
+HELD  [O-0] expected: same-origin hold works (control) | got: 303 +1
+INFO  [origin] HOLD Origin evil: 500/OTHER · holds +0 · body 21B Internal Server Error
+HELD  [O-Originevil] expected: cross-origin POST rejected, no hold created | got: 500 holds +0
+INFO  [origin] HOLD Origin null: 500/OTHER · holds +0 · body 21B Internal Server Error
+HELD  [O-Originnull] expected: cross-origin POST rejected, no hold created | got: 500 holds +0
+INFO  [origin] HOLD no Origin: 303/OTHER→/book/trips-w12h-mwgso17i81a5-a/c/0ZqrymnhM_sc3JBjhvxFyD3S9p · holds +1 · body 0B 
+KNOWN [O-nohdr] expected: POST without Origin header (non-browser / old browser) — Next skips the CSRF check; not exploitable cross-site (browsers always send Origin on cross-site POST) | got: 303 holds +1 | Next 16 accepts a server action without Origin (only warns)
+INFO  [origin] HOLD Host spoofed = Origin: 303/OTHER→/book/trips-w12h-mwgso17i81a5-a/c/jmX6FMIg_uhfjqjshwuRPC2QHh · holds +1 · body 0B 
+KNOWN [O-Host s] expected: spoofed Host/X-Forwarded-Host only matters if the edge passes it through (browser cannot set them cross-site) | got: 303 holds +1 | a non-browser client can always forge both; no CSRF impact
+INFO  [origin] HOLD X-Forwarded-Host spoofed = Origin: 303/OTHER→/book/trips-w12h-mwgso17i81a5-a/c/7pUX7K1OFuYGl5s9D4rW8g8ngL · holds +1 · body 0B 
+KNOWN [O-X-Forw] expected: spoofed Host/X-Forwarded-Host only matters if the edge passes it through (browser cannot set them cross-site) | got: 303 holds +1 | a non-browser client can always forge both; no CSRF impact
+INFO  [origin] HOLD Origin same host other port: 500/OTHER · holds +0 · body 21B Internal Server Error
+HELD  [O-Originsamehostotherport] expected: cross-origin POST rejected, no hold created | got: 500 holds +0
+INFO  [origin] CONFIRM Origin evil: 500/OTHER · bookings +0 · Internal Server Error
+HELD  [O-confirm-Originevil] expected: cross-origin confirm rejected, no booking | got: 500 +0
+INFO  [origin] CONFIRM Origin null: 500/OTHER · bookings +0 · Internal Server Error
+HELD  [O-confirm-Originnull] expected: cross-origin confirm rejected, no booking | got: 500 +0
+INFO  [origin] CONFIRM no Origin: 303/OTHER→/book/trips-w12h-mwgso17i81a5-a/my/w0gqIOml6nwyRyEQ5WyeR6iBX · bookings +1 · 
+KNOWN [O-confirm-nohdr] expected: no Origin ⇒ framework skips check | got: 303 +1 | Next 16 accepts actions without Origin
+INFO  [404] c/ shop missing: 404 len=258891 norm=256497 title="SHARK — ระบบบริหารจัดการร้านค้า" 71ms leak=[]
+HELD  [NF-c/ shop missing] expected: 404 · no shop name/slug/product in body | got: 404 leak=[]
+INFO  [404] c/ basket random: 404 len=258885 norm=256497 title="SHARK — ระบบบริหารจัดการร้านค้า" 90ms leak=[trips-w12h-mwgso17i81a5-a]
+FOUND [NF-c/ basket random] expected: 404 · no shop name/slug/product in body | got: 404 leak=[trips-w12h-mwgso17i81a5-a]
+INFO  [404] c/ basket of A on shop B: 404 len=258885 norm=256497 title="SHARK — ระบบบริหารจัดการร้านค้า" 122ms leak=[trips-w12h-mwgso17i81a5-b]
+FOUND [NF-c/ basket of A on shop B] expected: 404 · no shop name/slug/product in body | got: 404 leak=[trips-w12h-mwgso17i81a5-b]
+INFO  [404] c/ basket malformed: 404 len=258088 norm=256486 title="SHARK — ระบบบริหารจัดการร้านค้า" 74ms leak=[trips-w12h-mwgso17i81a5-a]
+FOUND [NF-c/ basket malformed] expected: 404 · no shop name/slug/product in body | got: 404 leak=[trips-w12h-mwgso17i81a5-a]
+INFO  [404] c/ no sel: 404 len=258132 norm=256446 title="SHARK — ระบบบริหารจัดการร้านค้า" 73ms leak=[trips-w12h-mwgso17i81a5-a]
+FOUND [NF-c/ no sel] expected: 404 · no shop name/slug/product in body | got: 404 leak=[trips-w12h-mwgso17i81a5-a]
+INFO  [404] my/ shop missing: 404 len=258139 norm=256447 title="SHARK — ระบบบริหารจัดการร้านค้า" 58ms leak=[]
+HELD  [NF-my/ shop missing] expected: 404 · no shop name/slug/product in body | got: 404 leak=[]
+INFO  [404] my/ token random: 404 len=258133 norm=256447 title="SHARK — ระบบบริหารจัดการร้านค้า" 109ms leak=[trips-w12h-mwgso17i81a5-a]
+FOUND [NF-my/ token random] expected: 404 · no shop name/slug/product in body | got: 404 leak=[trips-w12h-mwgso17i81a5-a]
+INFO  [404] my/ token of A on B: 404 len=258133 norm=256447 title="SHARK — ระบบบริหารจัดการร้านค้า" 110ms leak=[trips-w12h-mwgso17i81a5-b]
+FOUND [NF-my/ token of A on B] expected: 404 · no shop name/slug/product in body | got: 404 leak=[trips-w12h-mwgso17i81a5-b]
+INFO  [404] my/ token malformed: 404 len=258053 norm=256451 title="SHARK — ระบบบริหารจัดการร้านค้า" 83ms leak=[trips-w12h-mwgso17i81a5-a]
+FOUND [NF-my/ token malformed] expected: 404 · no shop name/slug/product in body | got: 404 leak=[trips-w12h-mwgso17i81a5-a]
+INFO  [404] my/ token uppercase-flip: 404 len=258133 norm=256447 title="SHARK — ระบบบริหารจัดการร้านค้า" 96ms leak=[trips-w12h-mwgso17i81a5-a]
+FOUND [NF-my/ token uppercase-flip] expected: 404 · no shop name/slug/product in body | got: 404 leak=[trips-w12h-mwgso17i81a5-a]
+FOUND [NF-shape] expected: one shape for all not-found cases | got: 404|SHARK — ระบบบริหารจัดการร้านค้า|?|len≈256500: 4 ; 404|SHARK — ระบบบริหารจัดการร้านค้า|?|len≈256450: 6
+INFO  [404] hold form bound args (plain text in HTML): ["trips-w12h-mwgso17i81a5-a","w12h-a-mwgso17i81a5"]
+HELD  [NF-action] expected: hold action with unknown bound shop ⇒ HTTP 404 (notFound in action), no leak | got: 404/NOTFOUND len=4846
+HELD  [NF-action-xshop] expected: hold action bound to shop B with A's product ⇒ 404, no hold in B | got: 404/NOTFOUND
+  EVIDENCE c/ 307 cache-control: private, no-cache, no-store, max-age=0, must-revalidate | x-frame-options: DENY | csp: - | referrer-policy: strict-origin-when-cross-origin | meta referrer: no-referrer | robots: noindex, nofollow | og/twitter: 0 | title: "ยืนยันการจอง" | x-robots-tag: undefined
+HELD  [H-c/-cache] expected: Cache-Control private + no-store | got: private, no-cache, no-store, max-age=0, must-revalidate
+HELD  [H-c/-frame] expected: X-Frame-Options DENY or CSP frame-ancestors 'none' | got: xfo=DENY fa=-
+HELD  [H-c/-meta] expected: meta referrer no-referrer + robots noindex,nofollow + no og/twitter | got: ref=no-referrer robots=noindex, nofollow og=0
+HELD  [H-c/-title] expected: <title> generic (no code/product/date/shop) | got: "ยืนยันการจอง"
+  EVIDENCE my/ 200 cache-control: private, no-cache, no-store, max-age=0, must-revalidate | x-frame-options: DENY | csp: - | referrer-policy: strict-origin-when-cross-origin | meta referrer: no-referrer | robots: noindex, nofollow | og/twitter: 0 | title: "การจองของฉัน" | x-robots-tag: undefined
+HELD  [H-my/-cache] expected: Cache-Control private + no-store | got: private, no-cache, no-store, max-age=0, must-revalidate
+HELD  [H-my/-frame] expected: X-Frame-Options DENY or CSP frame-ancestors 'none' | got: xfo=DENY fa=-
+HELD  [H-my/-meta] expected: meta referrer no-referrer + robots noindex,nofollow + no og/twitter | got: ref=no-referrer robots=noindex, nofollow og=0
+HELD  [H-my/-title] expected: <title> generic (no code/product/date/shop) | got: "การจองของฉัน"
+  EVIDENCE 404 c/ 404 cache-control: private, no-cache, no-store, max-age=0, must-revalidate | x-frame-options: DENY | csp: - | referrer-policy: strict-origin-when-cross-origin | meta referrer: null | robots: noindex | og/twitter: 0 | title: "SHARK — ระบบบริหารจัดการร้านค้า" | x-robots-tag: undefined
+  EVIDENCE hold-POST 303 location=/book/trips-w12h-mwgso17i81a5-a/c/gT_XxD1qAlvDpEnReKKBrDMbVi… cache-control: no-cache, no-store, max-age=0, must-revalidate | x-frame-options: DENY | referrer-policy: strict-origin-when-cross-origin
+INFO  [sel] sel len=240 payload={"p":"4zav5ztotaid","s":"0800","n":[["ADULT",2],["CHILD",1]],"x":[],"z":null,"q":"df1ed544dc313838aeabe343c3307a214da219e07e9afff074954aaadaebb742","t":1095000}
+HELD  [S-payload] expected: decoded sel payload has no internal id | got: leaks=0
+HELD  [S-qty edited, MAC kept] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-total edited, MAC kept] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-MAC cut 1] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-MAC +1] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-MAC flipped] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-sel of A2 on basket A] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-sel of A on basket A2] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-sel of shop A on shop B basket] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-sel of shop B on shop A basket] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-length 1025] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-length 8000] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-NUL] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-RLO + emoji] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-v2 prefix] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-empty] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-base64 padding] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+HELD  [S-percent junk] expected: NOT_FOUND (404) one shape, not 500, no checkout | got: 404/OTHER
+INFO  [sel] shapes: 404|404/OTHER=17
+FOUND [S-control] expected: legit c/ still 200 checkout | got: 307/OTHER→/book/trips-w12h-mwgso17i81a5-a/my/FXELWhaeeVsLTfgxXyqakaZ_G
+HELD  [S-confirm-tampered] expected: confirm with bound sel qty edited ⇒ 404, no booking | got: 404/NOTFOUND bookings +0
+HELD  [S-confirm-huge-bound] expected: confirm with 20k bound sel ⇒ 404, no 5xx / no 20k Location | got: 404/NOTFOUND locLen=0
+HELD  [T-open] expected: my/ PAY page opens | got: 200/RES
+HELD  [T-noids] expected: my/ HTML has no internal id | got: leaks=0 
+HELD  [T-nopii] expected: my/ HTML has no booker name/phone/email | got: found=[]
+HELD  [T-noraw] expected: no priceSource/quoteId/intent payload/other shop | got: found=[]
+HELD  [T-xshop] expected: token A on shop B ⇒ 404 + B guess bucket +1 | got: 404 bucket=1
+INFO  [token] 31 guesses: 444444444444444444444444444444R
+HELD  [T-cap-same] expected: after cap, real token from the same IP ⇒ closed (rate-limited) | got: 200/RATE
+HELD  [T-cap-other] expected: other IP still opens the real token | got: 200/RES
+INFO  [token] c/ after confirm: 307/OTHER→/book/trips-w12h-mwgso17i81a5-a/my/FXELWhaeeVsLTfgxXyqakaZ_G
+HELD  [T-c-done] expected: c/ of a confirmed basket ⇒ redirect to my/ (DONE), no ids | got: 307/OTHER→/book/trips-w12h-mwgso17i81a5-a/my/FXELWhaeeVsLTfgxXyqakaZ_G leaks=0
+  cleanup: removed 2 miss buckets of 23 probe IPs
+  cleanup: hunt tenants+users left = 0 · tenant buckets left = 0
+
+=== hunt-1: HELD 47 · FOUND 10 · KNOWN 4 ===

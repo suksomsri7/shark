@@ -1,0 +1,72 @@
+[env] probe-w1.2-hunt-3 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1161953) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+HELD  [R9a-same-nonce] expected: 10 concurrent confirms ⇒ exactly 1 booking, every answer → same my/ (or a coded error), no 5xx | got: bookings +1 · outcomes: /book/trips-w12h-mwh3267h1c38-a/my/7xjdoNbVy3gO1Pz5Ht9ga5SQl5lcvNJI-Yu
+HELD  [R9a-distinct-nonces] expected: 10 concurrent confirms ⇒ exactly 1 booking, every answer → same my/ (or a coded error), no 5xx | got: bookings +1 · outcomes: /book/trips-w12h-mwh3267h1c38-a/my/S8TDb28_dNv_daB6NdFl0igaPNQCg3-mvH8
+HELD  [R9b] expected: exactly 12 holds succeed, held = 12 = Σ active holds, rest SOLD_OUT, no 5xx | got: ok=12 held=12 Σ=12 codes={"OK":12,"SOLD_OUT":18}
+INFO  [expire] 3/3 holds ok=3 · 4th: 200/PRODUCT (expect SOLD_OUT)
+INFO  [expire] c/ after hold time moved 1 min into the past: 200/CHECKOUT code=HOLD_EXPIRED
+HELD  [R9c-c] expected: c/ of expired hold ⇒ HOLD_EXPIRED | got: code=HOLD_EXPIRED
+KNOWN [R9c-back] expected: after expiry a new device can hold all 3 seats again | got: 200/PRODUCT held=3 | QC server does not run the per-minute trips.expireHolds job (accepted debt in rulings) — seats return when the sweeper runs
+INFO  [slots] select t=ref(s2): 200/PRODUCT form=true t=a4acjgm3zcok · refs on page 3 (s2 listed=true)
+HELD  [SL-ref] expected: slot refs on the page are 12-char a-z2-7, distinct per run · the chosen run's ref is in the form | got: refs=3 formT=a4acjgm3zcok
+HELD  [SL-shift] expected: hold lands on the run the customer chose (option 2) even after another run was removed | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38-a/c/6ZaxjJqqgoq_vBmOE-VL26eP-7 held on s2 (option 2 = chosen)
+HELD  [SL-fallback] expected: stale slot ref (08:00 removed) ⇒ e=SLOT_CLOSED back to the product page, not silently held on 13:00 | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38-a/t/w12h-o-mwh3267h1c38?m=2026 holds on 13:00=0
+HELD  [SL-hhmm] expected: old HHMM t=1300 posted ⇒ e=SLOT_CLOSED, no hold | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38-a/t/w12h-o-mwh3267h1c38?m=2026 holds on 13:00=0
+HELD  [SL-get] expected: GET with a ref that no longer exists ⇒ 200 product page, first sellable run (13:00) selected | got: 200/PRODUCT formT=cqkghsfhfeko
+HELD  [SB-resend] expected: re-POST of the same hold form ×5 ⇒ same /c/ location every time, held stays 1 | got: held=1 same=true
+HELD  [SB-cap] expected: after the resends: 3 new holds ⇒ OK,OK,HOLD_LIMITED (held 3) — 4th new basket on the same run/device limited | got: OK,OK,HOLD_LIMITED held=3
+HELD  [SB-msg] expected: e=HOLD_LIMITED page: the 'held too often' message (data-hold-limited) + shop contact, not 'wait a moment' | got: 200/PRODUCT holdLimited=true contact=true later=true wait=false
+HELD  [SB-msg-neutral] expected: e=RATE_LIMITED ⇒ neutral 'cannot hold right now' message (data-hold-limited=false) + shop contact · different text from HOLD_LIMITED | got: holdLimited=false contact=true same=false
+HELD  [SB-msg-junk] expected: e outside the allow-list ⇒ no error box, value not reflected | got: error=false reflect=false
+HELD  [SB-otherrun] expected: same device still holds another run | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38-a/c/adVDPzJYdHtLAH94J56-SHx5O-
+HELD  [IN-name RLO] expected: INVALID f=name · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=name reflect=false
+HELD  [IN-name NUL] expected: INVALID f=name · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=name reflect=false
+HELD  [IN-name ZWSP] expected: INVALID f=name · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=name reflect=false
+HELD  [IN-name 5000] expected: INVALID f=name · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=name reflect=false
+HELD  [IN-name 101] expected: INVALID f=name · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=name reflect=false
+HELD  [IN-name blank] expected: INVALID f=name · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=name reflect=false
+HELD  [IN-phone 0066] expected: INVALID f=phone · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=phone reflect=false
+HELD  [IN-phone letters] expected: INVALID f=phone · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=phone reflect=false
+HELD  [IN-phone fullwidth] expected: INVALID f=phone · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=phone reflect=false
+HELD  [IN-phone short] expected: INVALID f=phone · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=phone reflect=false
+HELD  [IN-phone +16 digits] expected: INVALID f=phone · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=phone reflect=false
+HELD  [IN-email CRLF] expected: INVALID f=email · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=email reflect=false
+HELD  [IN-email 201] expected: INVALID f=email · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=email reflect=false
+HELD  [IN-email no tld] expected: INVALID f=email · no value in Location/body | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38- e=INVALID f=email reflect=false
+HELD  [IN-nobooking] expected: no booking from invalid input | got: +0
+INFO  [input] name <script>: booked party={"name":"<script>alert('ZQXc89dc7c5s')</script>","phone":"+66627270812","email":null}
+HELD  [IN-ok-name <script>] expected: accepted · not reflected in Location/my/ | got: booked=true reflect=false phone=+66627270812
+INFO  [input] name CSV: booked party={"name":"=HYPERLINK(\"http://x/ZQXc89dc7c5c\",\"x\")","phone":"+66609068613","email":null}
+HELD  [IN-ok-name CSV] expected: accepted · not reflected in Location/my/ | got: booked=true reflect=false phone=+66609068613
+INFO  [input] phone +66 0: booked party={"name":"ปกติ ZQXc89dc7c5","phone":"+66812345679","email":null}
+HELD  [IN-ok-phone +66 0] expected: accepted · not reflected in Location/my/ · Party.phone +66812345679 | got: booked=true reflect=false phone=+66812345679
+INFO  [input] phone +1: booked party={"name":"ปกติ ZQXc89dc7c5","phone":"+14155550100","email":null}
+HELD  [IN-ok-phone +1] expected: accepted · not reflected in Location/my/ · Party.phone +14155550100 | got: booked=true reflect=false phone=+14155550100
+INFO  [input] phone dashes: booked party={"name":"ปกติ ZQXc89dc7c5","phone":"+66812345670","email":null}
+HELD  [IN-ok-phone dashes] expected: accepted · not reflected in Location/my/ · Party.phone +66812345670 | got: booked=true reflect=false phone=+66812345670
+INFO  [input] email upper: booked party={"name":"ปกติ ZQXc89dc7c5","phone":"+66691533914","email":"upzqxc89dc7c5@example.com"}
+HELD  [IN-ok-email upper] expected: accepted · not reflected in Location/my/ | got: booked=true reflect=false phone=+66691533914
+HELD  [IN-logs] expected: booker marker absent from OpsEvent / AuditLog / OutboxEvent / bucket keys | got: ops=0 audit=0(null) outbox=0(null) buckets=0 phoneBuckets=0
+HELD  [RL-noip-product] expected: no IP header ⇒ closed (rate-limited page, no form) | got: 200/RATE form=false
+HELD  [RL-noip-c/] expected: no IP header ⇒ closed (rate-limited page, no form) | got: 200/RATE form=false
+HELD  [RL-noip-index] expected: no IP header ⇒ closed (rate-limited page, no form) | got: 200/RATE form=false
+HELD  [RL-noip-hold] expected: POST hold without IP header ⇒ no hold | got: 404/NOTFOUND +0
+HELD  [RL-noip-confirm] expected: POST confirm without IP header ⇒ no booking | got: 404/NOTFOUND +0
+HELD  [RL-hold-X8] expected: same device, 11 holds over 6 runs (≤2 per run) ⇒ 10 OK then HOLD_LIMITED (ถังถือต่อเครื่องเต็มจริง · มติ Y5) | got: OK,OK,OK,OK,OK,OK,OK,OK,OK,OK,HOLD_LIMITED
+HELD  [RL-hold-other] expected: another device still holds | got: 303/OTHER→/book/trips-w12h-mwh3267h1c38-a/c/0ytAmnKfjT_9hQpTduRu_2Plj5
+HELD  [RL-confirm-20] expected: 21 confirms from one device ⇒ 20 × ACCEPT_REQUIRED then RATE_LIMITED | got: ACCEPT_REQUIRED,ACCEPT_REQUIRED…ACCEPT_REQUIRED,RATE_LIMITED (1 limited)
+HELD  [RL-confirm-other] expected: other device unaffected | got: ACCEPT_REQUIRED
+HELD  [RL-read-120] expected: 121 reads/min from one device ⇒ first 120 served, 121st rate-limited | got: 1 limited · last=R first=200
+HELD  [RL-200] expected: 200 concurrent c/ ⇒ no 5xx (socket hang-ups reported apart) | got: {"200":200}
+  cleanup: removed 0 miss buckets of 291 probe IPs
+  cleanup: hunt tenants+users left = 0 · tenant buckets left = 0
+
+=== hunt-3: HELD 48 · FOUND 0 · KNOWN 1 ===

@@ -1,0 +1,21 @@
+
+> shark-in-th@0.1.0 typecheck /root/projects/shark-trips-l1
+> tsc --noEmit
+
+scratchpad/w1.2-hunt/trips-book-core.4da.ts(9,71): error TS2307: Cannot find module './trips-public-core' or its corresponding type declarations.
+scratchpad/w1.2-hunt/trips-book.4da.ts(41,106): error TS2307: Cannot find module './trips-public' or its corresponding type declarations.
+scratchpad/w1.2-hunt/trips-book.4da.ts(42,167): error TS2307: Cannot find module './trips-public-core' or its corresponding type declarations.
+scratchpad/w1.2-hunt/trips-book.4da.ts(78,8): error TS2307: Cannot find module './trips-book-core' or its corresponding type declarations.
+scratchpad/w1.2-hunt/trips-book.4da.ts(343,104): error TS7006: Parameter 'u' implicitly has an 'any' type.
+scratchpad/w1.2-hunt/trips-book.4da.ts(505,71): error TS7006: Parameter 'f' implicitly has an 'any' type.
+scratchpad/w1.2-hunt/trips-book.4da.ts(522,59): error TS7006: Parameter 't' implicitly has an 'any' type.
+scratchpad/w1.2-hunt/trips-book.4da.ts(554,18): error TS7006: Parameter 'p' implicitly has an 'any' type.
+scratchpad/w1.2-hunt/trips-book.4da.ts(616,124): error TS2345: Argument of type 'string | null' is not assignable to parameter of type 'string'.
+  Type 'null' is not assignable to type 'string'.
+scratchpad/w1.2-hunt/trips-book.4da.ts(628,132): error TS2322: Type 'string | null' is not assignable to type 'string'.
+  Type 'null' is not assignable to type 'string'.
+scratchpad/w1.2-hunt/trips-book.4da.ts(737,26): error TS7006: Parameter 'p' implicitly has an 'any' type.
+scratchpad/w1.2-hunt/trips-book.4da.ts(738,29): error TS7006: Parameter 'x' implicitly has an 'any' type.
+scratchpad/w1.2-hunt/trips-book.4da.ts(762,95): error TS7006: Parameter 'u' implicitly has an 'any' type.
+scratchpad/w1.2-hunt/trips-book.4da.ts(952,99): error TS7006: Parameter 'u' implicitly has an 'any' type.
+ ELIFECYCLE  Command failed with exit code 2.

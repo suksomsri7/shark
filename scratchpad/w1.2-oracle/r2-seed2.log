@@ -1,0 +1,18 @@
+[env] seed-trips-qc · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:960538) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+⚠️ ร้าน tripsqc-tenant-dive มี Party นอกฟิกซ์เจอร์ 1 แถว (ไม่ลบ — ข้อสอบใบอื่นอาจสร้าง)
+T0.3: รอบ 21 · ทรัพยากร 10
+T1.1: โซนรับส่ง 3 · ค่าตั้ง ตรงแล้ว
+อันดามันไดฟ์: {"units":2,"memberships":2,"parties":10,"ticketEvents":0,"ticketTypes":0}
+อควาเรียมอันดามัน: {"units":1,"memberships":2,"parties":1,"ticketEvents":1,"ticketTypes":3} · ผู้ใช้ TRIPS 4
+ไม่มีการเขียน (ตรงฟิกซ์เจอร์แล้ว) · เฉลย scripts/trips-expected.json · 2 วิ
+SEED_SUMMARY {"dive":{"units":2,"memberships":2,"parties":10,"ticketEvents":0,"ticketTypes":0},"aquarium":{"units":1,"memberships":2,"parties":1,"ticketEvents":1,"ticketTypes":3},"users":4,"tripsDive":{"products":4,"options":5,"paxTypes":12,"extras":4}}
+JSON_SUMMARY {"suite":"seed-trips-qc","ok":true,"created":{},"updated":{}}

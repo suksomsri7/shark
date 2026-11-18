@@ -1,0 +1,9 @@
+import pg from "pg";
+import { loadTripsQcEnv } from "../../scripts/trips-qc-env.mjs";
+loadTripsQcEnv("diag-party");
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 1 });
+const r = await pool.query(`SELECT p."createdAt", left(p.name, 3) AS n3, (SELECT count(*) FROM "TripBooking" b WHERE b."bookerPartyId" = p.id)::int AS bookings, (SELECT string_agg(b.channel || ':' || b.status, ',') FROM "TripBooking" b WHERE b."bookerPartyId" = p.id) AS bk FROM "Party" p JOIN "Tenant" t ON t.id = p."tenantId" WHERE t.slug = 'andaman-dive' ORDER BY p."createdAt"`);
+for (const x of r.rows) console.log(JSON.stringify(x));
+const s = await pool.query(`SELECT count(*)::int AS n FROM "Tenant" WHERE slug LIKE 'trips-w12%'`);
+console.log("stale w12 tenants", s.rows[0]);
+await pool.end();

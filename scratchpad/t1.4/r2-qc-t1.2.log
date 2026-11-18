@@ -1,0 +1,135 @@
+[env] qc-trips-t1.2 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:1376858) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed andaman-dive + หน่วย TRIPS andaman-dive-trips อยู่
+  ✅ [PC-2] seed สัปดาห์ 11–17 พ.ย.: ราชา/พีพี/ดำน้ำลึก 20 รอบ · ยกเลิก ศ. 13 = 3 · ตัวนับทั้งหมด 0 · สิมิลัน 14 ก.พ. 2570 · ราชา 31 ธ.ค. OPEN ขั้นต่ำ 8
+  ✅ [PC-3] ฟิกซ์เจอร์: TRIPS_AS_OF = พฤ. 12 พ.ย. 2569 18:00 · CALENDAR_WEEK_1111 7 วัน 11–17 · คำนวณถูก
+  ✅ [PC-4] ทะเบียนค่าตั้งมี trips.public.showLeftAtOrBelow · trips.sell.minToDepart · trips.sell.cutoff
+  ✅ [PC-5] บริการ T0.3/T0.4/T0.5 ที่ใบนี้เรียกมีใน facade (setDepartureStatus · cancelDeparture · setDepartureCapacity · assignResource · listSchedules · materializeSchedule · listDepartures · publicLeftOf · setPrice · removePrice)
+  ── สรุป PC: ผ่าน 5/5
+
+── S: ไฟล์และกติกาโค้ด (static) ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: departure-view-core · departure-screens · departure-desk · departure-screen-actions · คอมโพเนนต์ Departure*.tsx
+  ✅ [S-2] facade trips: บล็อก "// TRIPS T1.2 ▸" ส่งออก 12 ชื่อ · ไม่มี export *
+  ✅ [S-3] หน้า departures: ไม่ใช่ TripsNotYet · requireUnit + tripsPageGate(page "departures") + loadDepartureCalendarVM · ไม่ส่ง now · TRIPS_NAV.departures available
+  ✅ [S-4] ไม่มี prisma ในหน้า/คอมโพเนนต์ · ไฟล์โมดูลใหม่ไม่ import prisma ตรง (tenantDb ในโมดูลเท่านั้น)
+  ✅ [S-5] ไม่มี any ในไฟล์ของใบ (โมดูล · คอมโพเนนต์ Departure* · หน้า)
+  ✅ [S-6] 'use client' ไม่ import ของที่ลากถึง prisma (ตามเข้าไป 1 ชั้นใน src/lib/modules/trips)
+  ✅ [S-7] data-testid ครบในซอร์ส: ตายตัว 57 + แพตเทิร์น 12
+  ✅ [S-8] ทะเบียนปุ่ม: แถว wo T1.2 ครอบ testid ของใบ · page /app/u/[unitSlug]/trips/departures · roles ถูก · ไม่มีแถวผีทั้งไฟล์
+  ✅ [S-9] i18n: th/en คีย์ตรงกัน · คีย์ขั้นต่ำของใบครบ (สถานะช่องครบ 9 · ช่องทางครบ 12 · รหัสผิดพลาด) · ค่าอังกฤษใต้ departures ไม่มีอักษรไทย
+  ✅ [S-10] ไม่แสดงรหัสดิบบนจอ: คอมโพเนนต์ Departure* ไม่มี {x.status|state|code|kind|channel} เป็นข้อความ JSX (แอตทริบิวต์ได้)
+  ✅ [S-11] วันเวลา: ไฟล์ของใบไม่ใช้ getDay/getDate/getHours/getMinutes/getMonth/getFullYear (เวลาเครื่อง) หรือ toLocaleDateString/TimeString
+  ✅ [S-12] action ใหม่: "use server" · ส่งออก async function เท่านั้น · ทุกตัวผ่าน requireUnit · decideBelowMinAction มีอยู่
+  ✅ [S-13] ขอบเขต (เทียบ a26a41e2d): ไฟล์ T0.x ของโมดูลไม่เปลี่ยนเลย · index/permissions/seed/ฟิกซ์เจอร์ เพิ่มอย่างเดียว · settings กลาง/SettingsForm ไม่แตะ
+  ✅ [S-14] ไม่ลบ/ไม่เขียนตาราง Trip* ตรง ในไฟล์โมดูลของใบ (เขียนผ่านบริการ T0.3/T0.5 เท่านั้น)
+  ✅ [S-15] ไม่แตะการจอง/เงิน: ไฟล์ของใบไม่อ้าง TripBooking · TripPassenger · TripMoneyEvent · TripPaymentDue · TripRefundRequest · โมดูล account/pos · ไม่เรียก moveSold/returnSold/placeHold/convertHold
+  ✅ [S-16] ตัวโหลดมีเพดาน + ไม่ N+1: ใช้ listDepartures ช่วงเดียว · มี take · ไม่ await getDeparture/listDepartures/quoteTripLine ในลูป · อ่านค่าตั้ง trips.public.showLeftAtOrBelow
+  ✅ [S-17] กล่องโต้ตอบ: ไฟล์ Departure* ที่มี role=dialog ต้องจัดการ Escape · อย่างน้อยหนึ่งไฟล์ใช้ <Dialog ของ T1.1
+  ✅ [S-18] ปุ่มแผงกะทัดรัด (trips-dep-actions อยู่ในกริด 2 คอลัมน์) · มือถือ: มี trips-cal-daylist + ตารางสัปดาห์ซ่อนใต้ md · ไม่มี sr-only ในไฟล์ที่มี <table
+  ✅ [S-19] เครื่องมือภาพ: visual-trips มีสเปก t1.2 4 ฉาก (mockup 11 · racha1231) · parity-trips.sh รู้จัก 11
+  ✅ [S-20] pure: departure-view-core.ts import ได้เฉพาะ import type + ./departures-core + ./capacity-core · ไม่อ่าน new Date() / Date.now()
+  ✅ [S-21] ราคาในแผงจากตัวคิดราคาจริง (loadPricingInput + resolveTripPrice / quoteTripLine) · ไม่คูณ % เอง
+  ── สรุป S: ผ่าน 21/21
+
+── P: ตัวช่วยบริสุทธิ์ (สถานะช่อง · วัน) ──
+  ✅ [P-1] DEPARTURE_CELL_STATES ตามลำดับตัดสิน · DEPARTURE_DESK_ERROR_CODES = NOT_BELOW_MIN/MERGE_NEEDS_BOOKINGS/MERGE_TARGET_INVALID
+  ✅ [P-2] เต็มจากตัวนับ ไม่ใช่สถานะ: OPEN 20+4/24 ⇒ FULL · 10 ขาย + 4 ถือ + 10 โควตา/24 ⇒ FULL · สถานะ FULL แต่ 24/30 ⇒ ไม่ FULL (OPEN)
+  ✅ [P-3] ต่ำกว่าขั้นต่ำ: OPEN ขั้นต่ำ 8 ขาย 4 ⇒ BELOW_MIN · ขาย 8 ⇒ OPEN · GUARANTEED ขาย 0 ⇒ GUARANTEED · CLOSED ⇒ CLOSED · ไม่มีขั้นต่ำ ⇒ OPEN
+  ✅ [P-4] ลำดับ: ที่นั่งหมด (ถือ) ชนะต่ำกว่าขั้นต่ำ · cap 10 ขาย 2 ถือ 8 ขั้นต่ำ 5 ⇒ FULL · GUARANTEED เหลือ 3 ⇒ GUARANTEED (ไม่ใช่ LOW)
+  ✅ [P-5] เหลือ N จากค่าตั้ง: 21/24 (เหลือ 3) ⇒ LOW · เหลือ 5 ⇒ LOW · เหลือ 6 ⇒ OPEN · lowAtOrBelow null/0 ⇒ OPEN
+  ✅ [P-6] เวลา: เริ่มแล้ววันนี้ ⇒ DEPARTED_TODAY · วันก่อน ⇒ PAST · ยกเลิกที่ผ่านแล้ว ⇒ CANCELLED · CLOSED/เต็มที่ผ่านแล้ว ⇒ PAST · ยังไม่ถึงเวลาออกวันนี้ ⇒ ไม่ผ่าน
+  ✅ [P-7] startsAt รับได้ทั้ง Date และ ISO · ผลเหมือนกัน
+  ✅ [P-8] calendarWeekDays: 7 วันต่อกัน ข้ามปี (2026-12-29 → 2027-01-04) · วันที่ไม่มีจริง ⇒ []
+  ✅ [P-9] calendarMonthDays เริ่มวันจันทร์ ครบสัปดาห์: 2026-11 = 42 วัน (26 ต.ค.–6 ธ.ค.) · 2026-12 = 35 (30 พ.ย.–3 ม.ค.) · 2027-02 = 28 · 2026-13 ⇒ []
+  ✅ [P-10] defaultWeekStart = วันนี้ − 1 (ภาพ 11: ดู ณ 12 พ.ย. เริ่ม 11) · ข้ามปี 2027-01-01 ⇒ 2026-12-31
+  ── สรุป P: ผ่าน 10/10
+
+── CV: ปฏิทิน seed (ภาพ 11 · now = TRIPS_AS_OF) ──
+  ✅ [CV-1] สัปดาห์ start 2026-11-11: 7 วัน 11–17 · today 2026-11-12 · tz Asia/Bangkok
+  ✅ [CV-2] ไม่ส่ง start ⇒ ปริยาย today − 1 = 2026-11-11 (ภาพ :7 "11–17 พ.ย. 2569") · view ปริยาย week
+  ✅ [CV-3] แถวสินค้าเรียง ราชา · พีพี · ดำน้ำลึก · สิมิลัน (TOUR ก่อน LIVEABOARD · สร้างก่อนมาก่อน)
+  ✅ [CV-4] หัวแถว (:17 :25 :33): ราชา เรือราชา 1 · 24 · ขั้นต่ำ 8 · พีพี สปีดโบ๊ต 2 ลำ · 30 · 10 · ดำน้ำลึก เรือดำน้ำ 1 · 12 · 4 · หน่วยที่นั่ง SEAT
+  ✅ [CV-5] ช่องในสัปดาห์ = 20 รอบ seed · ทุกช่อง sold/held/reserved 0 · used 0 · seatsLeft = ความจุ · timeText ราชา 08:00–16:30
+  ✅ [CV-6] สถานะช่อง (:18–:24 :26–:39): 11 PAST · 12 DEPARTED_TODAY · 13 CANCELLED คลื่นลม · 14 ราชา/พีพี GUARANTEED · ดำน้ำลึก 14 + ที่เหลือ OPEN ⇒ BELOW_MIN
+  ✅ [CV-7] ดำน้ำลึก อ. 17 ไม่มีรอบ (:40) ⇒ emptyDays SKIPPED จากข้อยกเว้นของกฎ · ไม่มีช่อง
+  ✅ [CV-8] ต้องตัดสินใจ = 8 รอบ (ภาพ 3 — ขายแล้วจาก T0.6) เรียงเวลาตัดสินแล้วเวลาออก · ไม่มีรอบเลยเวลาตัดสิน ณ 12 พ.ย. 18:00
+  ✅ [CV-9] เวลาตัดสิน จ. 16 ราชา = อา. 15 18:00 (2026-11-15T11:00Z · ภาพ :62) · used 0 · shortBy 8
+  ✅ [CV-10] now = อา. 15 19:00: ราชา 15 ออกเรือแล้ว · ราชา 16 เลยเวลาตัดสิน (overdue) · ราชา 17 ยัง · start ปริยาย = 14
+  ✅ [CV-11] ชิปยกเลิก (:10): 3 รอบ · 0 คน (ยกเลิกได้เฉพาะรอบว่าง) · เหตุผล คลื่นลม × 3
+  ✅ [CV-12] สิมิลัน (:41–:42): ไม่มีช่องในสัปดาห์ · nextTrip 2027-02-14 ถึง 2027-02-18 · 0/20 · หน่วย BERTH
+  ✅ [CV-13] ตัวกรอง (:11): tour = ราชา พีพี · dive = ดำน้ำลึก สิมิลัน · ช่องตามแถว
+  ✅ [CV-14] เดือน 2026-11: 42 วัน 26 ต.ค.–6 ธ.ค. · ช่อง 20 · decisions เดียวกับสัปดาห์
+  ✅ [CV-15] เดือน 2026-12: ราชา 31 ธ.ค. BELOW_MIN · hasDeparturePrice (4,500 ราคารอบ) · ขั้นต่ำ 8
+  ✅ [CV-16] ทริปหลายวัน: มีสิมิลัน (multiDay) · ไม่มีเดย์ทริป
+  ✅ [CV-17] input ผิด ⇒ INVALID_INPUT: start 2026-02-30 · month 2026-13 · view year · คีย์แปลก tenantId
+  ✅ [CV-18] เจ้าของร้าน: flags canEdit/canStatus/canPrice/canSeePrices = true · ไม่ถูกตัด (truncated false · shown = total)
+  ✅ [CV-19] ปุ่มช่วงวัน: สัปดาห์ 11 พ.ย. ⇒ prev 4 · next 18 · วันนี้ 11 · เดือน 2026-11 ⇒ 2026-10 / 2026-12 / 2026-11
+  ── สรุป CV: ผ่าน 19/19
+
+── PV: แผงรอบ seed ──
+  ✅ [PV-1] ส. 14 ราชา (:48–:49): GUARANTEED · 08:00–16:30 · เรือราชา 1 · รถตู้ 2 · ไกด์ 2
+  ✅ [PV-2] ตัวเลข (:50 :55): ความจุ 24 · ขาย 0 · ถือ 0 · โควตา 0 · ว่าง 24 · รายการรอ 0/0
+  ✅ [PV-3] ปิดรับต่อช่องทาง: หน้าร้าน ส. 14 07:00 (00:00Z · ปรับที่หน่วย) · เว็บ ศ. 13 18:00 (11:00Z) · กลุ่มครบ 12 ช่องทาง
+  ✅ [PV-4] ปุ่มเจ้าของบนรอบ GUARANTEED อนาคต: ปิดรับ/ถอนยืนยัน/ยกเลิก/ความจุ/ทรัพยากร/ราคา/หยุดขาย · ไม่มี ยืนยัน/ออกขาดทุน/รวม · ใบรายชื่อ/จองให้ลูกค้า false
+  ✅ [PV-5] ไม่แต่งข้อมูลการจอง/เงิน: bookings = null · money = null (T1.3/T1.7)
+  ✅ [PV-6] ราคา ส. 14: ผู้ใหญ่ 3,500 · เด็ก 2,450 · ไม่ใช่ราคารอบ
+  ✅ [PV-7] ราคา 31 ธ.ค. (ราคาเฉพาะรอบ): ผู้ใหญ่ 4,500 source DEPARTURE + departurePriceId · เด็ก 3,150
+  ❌ [PV-8] รอบที่ผ่านแล้ว (พ. 11): state PAST · ไม่มีปุ่มทำรายการเลย — ผ่านแล้ว: ได้ ["PAST",{"close":false,"reopen":false,"guarantee":false,"unguarantee":false,"run":false,"merge":false,"cancel":false,"capacity":false,"resources":false,"price":false,"stopSell":false,"manifest":true,"book":false}] ต้องเป็น ["PAST",{"close":false,"reopen":false,"guarantee":false,"unguarantee":false,"run":false,"merge":false,"cancel":false,"capacity":false,"resources":false,"price":false,"stopSell":false,"manifest":false,"book":false}]
+  ❌ [PV-9] รอบยกเลิก (ศ. 13): เหตุผล คลื่นลม · ไม่มีปุ่มทำรายการเลย — ยกเลิก: ได้ ["คลื่นลม",{"close":false,"reopen":false,"guarantee":false,"unguarantee":false,"run":false,"merge":false,"cancel":false,"capacity":false,"resources":false,"price":false,"stopSell":false,"manifest":true,"book":false}] ต้องเป็น ["คลื่นลม",{"close":false,"reopen":false,"guarantee":false,"unguarantee":false,"run":false,"merge":false,"cancel":false,"capacity":false,"resources":false,"price":false,"stopSell":false,"manifest":false,"book":false}]
+  ✅ [PV-10] จ. 16 ราชา ต่ำกว่าขั้นต่ำ (:62): ออกขาดทุน/รวม/ยกเลิก · เป้ารวม = พีพี 16 + ดำน้ำลึก 16 (วันเดียวกัน · ไม่ใช่ตัวเอง)
+  ✅ [PV-11] รอบที่ไม่มี/ไม่ใช่ของหน่วย ⇒ NOT_FOUND · คีย์แปลก ⇒ INVALID_INPUT
+  ── สรุป PV: ผ่าน 9/11
+
+── DA: decideBelowMin (ร้านชั่วคราว) ──
+  ✅ [DA-1] RUN (ออกขาดทุน) โดยผู้มี departure.status ⇒ GUARANTEED · event status_changed · audit trips.departure.status
+  ✅ [DA-2] ไม่ใช่ต่ำกว่าขั้นต่ำ ⇒ NOT_BELOW_MIN ไม่เปลี่ยน: ขายถึงขั้นต่ำ · ไม่มีขั้นต่ำ · GUARANTEED · CLOSED
+  ✅ [DA-3] CANCEL + เหตุผล ⇒ CANCELLED · cancelReason · ปล่อยทรัพยากร · event trips.departure.cancelled
+  ✅ [DA-4] input ผิด ⇒ INVALID_INPUT ไม่เปลี่ยน: CANCEL ไม่มีเหตุผล · เหตุผล 2 ตัว · MERGE ไม่มีเป้า · RUN ส่งเป้า · decision แปลก · คีย์ tenantId
+  ✅ [DA-5] CANCEL รอบที่มีคนถือที่ (held 2) ⇒ HAS_BOOKINGS (บริการ T0.3) ไม่เปลี่ยน
+  ✅ [DA-6] MERGE รอบที่มีคน (held 1) ⇒ MERGE_NEEDS_BOOKINGS · ทั้งสองรอบไม่เปลี่ยน · ไม่มีแถว TripHold/TripBooking เกิด
+  ✅ [DA-7] MERGE รอบว่างเข้าพีพีวันเดียวกัน (ต่างสินค้า) ⇒ ต้นทางยกเลิก เหตุผลชี้ชื่อเป้า · เป้าไม่ถูกแตะ
+  ✅ [DA-8] เป้าผิด ⇒ MERGE_TARGET_INVALID: ต่างวัน · ยกเลิกแล้ว · ตัวเอง · เต็ม · ปิดรับ
+  ✅ [DA-9] เป้าของหน่วยอื่น (A2) ⇒ NOT_FOUND · รอบต้นทางของหน่วยอื่นผ่านหน่วย A ⇒ NOT_FOUND
+  ✅ [DA-10] สิทธิ์: view-only ⇒ FORBIDDEN · edit (ไม่มี status) ⇒ FORBIDDEN · ไม่มีสิทธิ์ ⇒ FORBIDDEN · ร้าน B ⇒ NOT_FOUND · ไม่เปลี่ยน
+  ✅ [DA-11] รอบที่เริ่มแล้ว (ต่ำกว่าขั้นต่ำ) ⇒ NOT_BELOW_MIN หรือ PAST_DEPARTURE ไม่เปลี่ยน
+  ✅ [DA-12] พร้อมกัน 10 คำขอ CANCEL รอบเดียว ⇒ สำเร็จ 1 · ที่เหลือ NOT_BELOW_MIN|FORBIDDEN_TRANSITION|BAD_STATE|BUSY · event ยกเลิก 1
+  ✅ [DA-13] พร้อมกัน RUN ×5 + MERGE ×5 ⇒ ไม่ throw · สถานะสุดท้าย GUARANTEED หรือ CANCELLED · ตัวนับ 0 · เป้าไม่ถูกแตะ
+  ✅ [DA-14] ไม่ลบแถว: จำนวน TripDeparture ของร้านชั่วคราว = ที่สร้าง (หลังตัดสินครบทุกแบบ)
+  ✅ [DA-15] ปฏิทินสะท้อนผลตัดสิน: รอบที่ออกขาดทุน ⇒ GUARANTEED ไม่อยู่ใน decisions · รอบที่ยกเลิก ⇒ CANCELLED เหตุผล "ไม่ถึงขั้นต่ำ"
+  ── สรุป DA: ผ่าน 15/15
+
+── CT: ปฏิทิน/แผง (ร้านชั่วคราว) ──
+  ✅ [CT-1] เต็มจากตัวนับ: OPEN 6 ขาย + 2 ถือ + 2 โควตา /10 ⇒ FULL ว่าง 0 used 8 · สถานะ FULL แต่ 5/10 ⇒ ไม่ FULL ว่าง 5
+  ✅ [CT-2] เหลือ N จากค่าตั้ง trips.public.showLeftAtOrBelow: ค่าเริ่ม ⇒ เหลือ 5 = LOW · ตั้งหน่วย = 2 ⇒ เหลือ 5 = OPEN · เหลือ 2 = LOW
+  ✅ [CT-3] รายการรอ: WAITING 2 + OFFERED 1 (+ CANCELLED 5 ไม่นับ) ⇒ ช่อง waitlist 3 · แผง waitlistWaiting 2 waitlistOffered 1
+  ✅ [CT-4] เขตเวลาหน่วย Asia/Tokyo: วันนี้/วันที่รอบ/เวลา ตาม tz (07:00 JST = 22:00Z วันก่อน) · today จาก tz
+  ✅ [CT-5] เพดานรอบ: หน่วยที่มี TRIPS_CALENDAR_DEPARTURE_CAP + 6 รอบในสัปดาห์ ⇒ truncated · shown ≤ cap · ช่อง = shown · total > cap · shownUntil อยู่ในช่วง
+  ✅ [CT-6] สินค้า ARCHIVED ไม่อยู่ในแถว และรอบของมันไม่อยู่ในช่อง
+  ✅ [CT-7] สิทธิ์ในจอ: view-only ⇒ flags false · แผงไม่มีปุ่ม · price null · product.view เห็นราคาแก้ไม่ได้ · price.edit แก้ได้
+  ✅ [CT-8] ไม่มีสิทธิ์รอบ (product.view อย่างเดียว / ไม่มีเลย) ⇒ ตัวโหลด 3 ตัว FORBIDDEN · tripsPageGate departures FORBIDDEN
+  ✅ [CT-9] แยกร้าน/หน่วย: ร้าน B ⇒ NOT_FOUND · ผู้ใช้ A2 เปิดหน่วย A ⇒ NOT_FOUND · รอบของ A2 ผ่านหน่วย A ⇒ NOT_FOUND · หน่วย BOOKING ⇒ UNIT_NOT_TRIPS|NOT_FOUND
+  ✅ [CT-10] ความจุผ่านบริการ: ลดต่ำกว่าที่ใช้ ⇒ CAPACITY_BELOW_USED · เพิ่มเป็น 12 ⇒ แผง capacity 12 ว่าง 2
+  ✅ [CT-11] ความจุเกินที่นั่งเรือ ⇒ warnings CAPACITY_OVER_SEATS (เรือ 8 ที่ · ความจุ 10) · ไม่บล็อก
+  ✅ [CT-12] เรือชนรอบอื่นเวลาเดียวกัน ⇒ RESOURCE_CLASH พร้อม conflict.departureId (ข้อมูลที่กล่องเปลี่ยนเรือแสดง)
+  ✅ [CT-13] ราคาเฉพาะรอบผ่าน setPrice/removePrice (T0.5): ตั้ง 1,234 ⇒ แผง ADULT source DEPARTURE · ลบ (เหตุผล) ⇒ ไม่ใช่ DEPARTURE
+  ✅ [CT-14] กฎซ้ำ: createSchedule WEEKLY [1,3] 08:00 ⇒ loadDepartureSchedulesVM มีแถว (timeText 08:00 · paused false) · pauseSchedule ⇒ paused true
+  ✅ [CT-15] แถบนำทาง: loadTripsNav เจ้าของร้าน seed ⇒ departures available true · visible true
+  ✅ [CT-16] หยุดขายบางช่องทาง (setDepartureStopSell ของ T0.3): ปิดเว็บ ⇒ แผง stopSellInfo WEB + เหตุผล · ช่อง stopSell true · ล้าง ⇒ null/false
+  ── สรุป CT: ผ่าน 16/16
+
+เหลือให้ด่านภาพ (ผู้คุม · scripts/visual-trips.mts t1.2 + parity-trips.sh 11): ตาราง+แผงที่ 1440 ในเปลือกแอปไม่อัด · ตัวเลข §10 · รูปทรงสถานะ 5 แบบ · ปุ่มแผง 2 คอลัมน์ · กล่องตัดสิน/ราคารอบ · 390 ไม่มีตาราง 7 คอลัมน์ ไม่ล้น · ตัวอักษร ≥ 14 · ปุ่ม ≥ 44 px · ไม่มีรหัสดิบ
+
+===== QC TRIPS T1.2 · ปฏิทินรอบและที่ว่าง · แผงรอบ · ต่ำกว่าขั้นต่ำ =====
+ผ่าน 95/97 · ไม่ผ่าน 2 · ข้าม 0
+ต่อกลุ่ม: PC 5/5 · S 21/21 · P 10/10 · CV 19/19 · PV 9/11 · DA 15/15 · CT 16/16
+JSON_SUMMARY {"suite":"qc-trips-t1.2","total":97,"passed":95,"failed":["PV-8","PV-9"],"skipped":[],"groups":{"PC":"5/5","S":"21/21","P":"10/10","CV":"19/19","PV":"9/11","DA":"15/15","CT":"16/16"}}

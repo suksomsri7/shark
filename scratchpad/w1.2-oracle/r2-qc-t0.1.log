@@ -1,0 +1,141 @@
+[env] qc-trips-t0.1 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:983154) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม (ต้องเขียวตั้งแต่ก่อนมีงาน) ──
+  ✅ [PC-1] ฐาน QC ต่อได้ + migration ฐาน 20261227100000_secretary_b ลงแล้ว
+  ✅ [PC-2] ทะเบียนค่าตั้งเดิมโหลดได้ (booking.deposit.method · rooms มี legal เดิม)
+  ✅ [PC-3] ตัวตรวจ qc: CHECK parser อ่าน CHECK ของตารางเดิมได้ (positive control)
+
+── M: migration ──
+  ✅ [M-1] migration ใหม่ = 2 โฟลเดอร์ `<ts>_trips_enum` + `<ts>_trips` · ts > ฐาน · enum มาก่อน
+  ✅ [M-2] ไฟล์ trips_enum = ADD VALUE 4 คำสั่งพอดี (UnitType TRIPS · AccountDocSource TRIPS/AGENCY/SUPPLIER) ไม่มีคำสั่งอื่น
+  ✅ [M-3] ไฟล์ trips add-only: ไม่มี DROP/RENAME/ALTER COLUMN/SET NOT NULL/UPDATE/DELETE/TRUNCATE/ALTER TYPE
+  ✅ [M-4] ตารางเดิมที่ไฟล์ trips แตะ = AccountDocument เท่านั้น (ADD COLUMN มี DEFAULT ถ้า NOT NULL) · ไม่ใช้ค่า enum ใหม่
+  ✅ [M-5] SQL มือในไฟล์ trips: NULLS NOT DISTINCT ×3 · partial unique TripCheckin · partial index TripHold · EXCLUDE TripResourceUse
+  ✅ [M-6] schema: trips.prisma + sellable.prisma ใหม่ · แตะไฟล์เดิมแค่ core.prisma + account.prisma · ไม่ประกาศ @@unique ซ้ำกับ SQL มือ + มีคอมเมนต์ SQL มือ
+  ✅ [M-7] migration เก่าไม่ถูกแก้ (diff ใต้โฟลเดอร์ฐาน = ว่าง)
+  ✅ [M-8] สองโฟลเดอร์ใหม่ลงฐานเลนแล้ว (_prisma_migrations finished · ไม่ rollback)
+
+── E: enum ในฐาน ──
+  ✅ [E-1] UnitType: ค่าเดิมครบตามลำดับ + TRIPS ท้ายสุด
+  ✅ [E-2] AccountDocSource: ค่าเดิมครบ + TRIPS AGENCY SUPPLIER ท้าย
+
+── T: ตาราง/คอลัมน์ ──
+  ✅ [T-1] ตารางใหม่ครบ 34 ตัว
+  ✅ [T-2] ทุกตาราง: id + tenantId NOT NULL · ตาราง unit มี unitId NOT NULL · createdAt
+  ✅ [T-3] คอลัมน์หลักตาม CC §B.1 ครบทุกตาราง
+  ✅ [T-4] เงิน/ตัวนับ = integer (`*Satang` `*Minor` `qty*` sold/held/reserved/capacity/seq/version)
+  ✅ [T-5] TripDeparture: sold/held/reserved/version NOT NULL default 0 · localDate = date · TripBooking.travelDate = date
+  ✅ [T-6] TripBooking.policySnapshot jsonb NOT NULL · ไม่มี holdExpiresAt · TripHold.expiresAt NOT NULL
+  ✅ [T-7] AccountDocument.passThroughSatang integer NOT NULL default 0
+  ✅ [T-8] ไม่มีคอลัมน์ Prisma enum (USER-DEFINED) ในตารางใหม่ · วันเดินทาง/วันธุรกิจ = date
+  ✅ [T-9] ไม่มี FK ใด ๆ เข้า/ออกตารางใหม่ (ทุก id = String หลวม · ใบสั่ง §2 ข้อ 2)
+
+── C: CHECK ──
+  ✅ [C-1] ชุดค่า CHECK กลุ่ม catalog (15 คอลัมน์) ตรงใบสั่ง §4.1
+  ✅ [C-2] ชุดค่า CHECK กลุ่ม booking (8 คอลัมน์) ตรงใบสั่ง §4.1
+  ✅ [C-3] ชุดค่า CHECK กลุ่ม money (8 คอลัมน์) ตรงใบสั่ง §4.1
+  ✅ [C-4] ชุดค่า CHECK กลุ่ม pax (6 คอลัมน์) ตรงใบสั่ง §4.1
+  ✅ [C-5] CHECK ปฏิเสธจริง (23514): สถานะนอกชุด · sold ติดลบ · เก็บแทนที่คิดคอมฯ · USD บนทัวร์ · ค่าถูกผ่าน
+
+── U: unique · partial · NULLS NOT DISTINCT · EXCLUDE ──
+  ✅ [U-1] pg_indexes: NND unique ของ TripDeparture/TripPrice/TripLinkStat ตรงคอลัมน์
+  ✅ [U-2] พฤติกรรม NND: รอบซ้ำ (productId, optionId=NULL, startsAt) ⇒ 23505
+  ✅ [U-3] TripCheckin: partial unique (passengerId) WHERE result='FIRST' ใน pg_indexes + FIRST ซ้ำ 23505 · DUPLICATE ซ้ำได้
+  ✅ [U-4] TripHold: partial index (expiresAt) WHERE status='ACTIVE' · unique (tenantId, idempotencyKey)
+  ✅ [U-5] TripResourceUse EXCLUDE: ทับเวลา active ⇒ 23P01 · ไม่ active ทับได้ · ต่อกันพอดี [) ได้
+  ✅ [U-6] unique อื่นตาม CC §B.1 (SellCounter · SellBasket · TripBooking code/token · TripMoneyEvent · TripCashClose · TripUnit · TripPaymentDue · TripPaxType · TripProduct slug)
+
+── X3: SellCounter คำสั่ง §K พร้อมกัน 50 ทาง ──
+  ✅ [X3-1] 50 ทางพร้อมกัน (คำสั่ง CC §K ตรงตัว · tx แยก) ⇒ seq 1..50 ไม่ซ้ำ · แถวเดียว seq=50 · ร้าน B ชุดเดียวกันเริ่มที่ 1
+
+── S: scope · client · ไฟล์ใหม่ · ขอบเขต ──
+  ✅ [S-1] scope.ts: 33 โมเดลลงทะเบียน · SellBasket/SellCounter = tenant · ที่เหลือ = unit
+  ✅ [S-2] Prisma client รู้จักโมเดลใหม่ทั้ง 33 + AccountDocument.passThroughSatang
+  ✅ [S-3] core/sellable.ts: ไม่มี import · PRODUCT_KINDS/SELL_CHANNELS/SELL_ERROR_CODES ตรง CC §C · isProductKind
+  ✅ [S-4] trips/json-schemas.ts (CC §N.2): ค่าถูกผ่าน · ค่าผิดตก (5 schema)
+  ✅ [S-5] trips/index.ts facade: มีบล็อก `// TRIPS T0.1 ▸` · ไม่มี `export *` · json-schemas บริสุทธิ์ (import แค่ zod + core/sellable)
+  ✅ [S-6] legal/th-tour-2569.ts บริสุทธิ์ (import type หรือไฟล์ในโฟลเดอร์ settings เท่านั้น · ไม่มี prisma/next/modules)
+  ✅ [S-7] ไม่มี `any` ในไฟล์ src ที่ใบนี้เพิ่ม/แก้
+  ✅ [S-8] เส้น import: โมดูล trips ไม่ import โมดูลอื่น (ใบนี้ไม่เพิ่ม ALLOWED_EDGES) · agency/supplier/ticket ไม่ import trips · fitness ไม่ถูกแก้
+  ✅ [S-9] permissions: trips.settings.edit + trips.settings.money ลงทะเบียนพร้อมป้ายไทย
+  ✅ [S-10] types: SCOPE_KINDS ต่อท้าย VESSEL PRODUCT DEPARTURE AGENT_TIER AGENT (ชั้นเดิมไม่เปลี่ยนตำแหน่ง)
+  ✅ [S-11] facade legal/index.ts รวมทะเบียน rental + tour · isTourRuleId
+  ✅ [S-12] ไม่แตะ POS · โรงแรม · หอ · จองคิว · defs/rooms · defs/booking · legal/th-rental-2568 · seed/ฟิกซ์เจอร์ P0.1
+
+── R: ทะเบียนค่าตั้ง trips ──
+  ✅ [R-1] doc-sync: ชุดคีย์ + ชั้น ที่ parse จาก TRIPS-DEFAULTS (§1 + ภาคผนวก ก · trips.*) = รายการฝังในข้อสอบ
+  ✅ [R-2] ทุกคีย์ที่คาด (106) ลงทะเบียน · domain trips · ไม่มีคีย์ trips เกิน
+  ✅ [R-3] ชนิด (type) ตรงใบสั่ง §4 ทุกคีย์ · คีย์ nullable รับ null
+  ✅ [R-4] ชั้น (chain) ตรง TRIPS-DEFAULTS ทุกคีย์ (SHOP = UNIT)
+  ✅ [R-5] ค่าเริ่มต่อแม่แบบ (DS/DT/LA/AT) ตรงรายการฝัง · _fallback = DIVE_SHOP
+  ✅ [R-6] ทุก def มีค่า 4 แม่แบบ + _fallback = DIVE_SHOP · ค่าผ่าน schema · รูปพิเศษ (T44 อุทยานเก็บแทน · T45 4 กลุ่ม · T29 · T69 14 ชนิด)
+  ✅ [R-7] แม่แบบ trips: DIVE_SHOP DAY_TOUR LIVEABOARD ATTRACTION · version 1 · ป้ายไทย
+  ✅ [R-8] unitTypes ['TRIPS'] ทุก def · group = ส่วนที่ 2 ของคีย์ · ป้ายกลุ่มไทยครบ
+  ✅ [R-9] sensitivity ตามกลุ่ม (tax/giftcard/consumer LEGAL · pay/price/cash MONEY · pdpa/waiver PRIVACY) · editPermission (เงิน = trips.settings.money)
+  ✅ [R-10] percentScale 100 · effectiveDated · ซ่อน PHASE_2 ตรงรายการ (ไม่มีเกิน)
+  ✅ [R-11] ข้อความ: trips.msg.enabled 14 ชนิด · 10 แม่แบบ trips.msg.<ชนิดลูกค้า> + templateVars 9 ตัว · ข้อความไทย
+  ✅ [R-12] snapshot "trips.booking" = CC §N.3 ตรงตัว (35 คีย์)
+  ✅ [R-13] ป้าย reviewHint: ACCOUNTANT 8 คีย์ · AUTHORITY 8 คีย์พร้อมชื่อหน่วยงาน · คีย์อื่นไม่มีป้าย
+  ✅ [R-14] legal ต่อคีย์ตรงใบสั่ง §4.4 (14 คีย์) · คีย์อื่นไม่มี legal
+  ✅ [R-15] defineSettings: def trips อ้าง rule ของหอ / rule ไม่รู้จัก ⇒ โยน · rule tour บน def ถูกรูป ⇒ ลงได้
+  ✅ [R-16] ค่าเริ่มทุกแม่แบบของคีย์ที่มี legal ⇒ evaluateTourRule = OK (ไม่มีค่าเริ่มที่เตือน)
+
+── L: ตัวตรวจกฎหมายทัวร์ (OK/WARN เท่านั้น) ──
+  ✅ [L-1] TH_TOUR_2569_RULES = W01–W46 ครบ · maxLevel WARN · ข้อความไทย · citation · checkpoint ตรงใบสั่ง
+  ✅ [L-2] severity: HIGH = W01 W02 W16 W24 W32 · HIGHEST = W22 · ที่เหลือ NORMAL · pendingReview ตามรายการ
+  ✅ [L-3] property: 46 rule × อินพุตสุ่ม/ผิดรูป ≥ 40 แบบ ⇒ ไม่ throw · level ∈ {OK, WARN} · ไม่มี BLOCK · severity ถูกชนิด
+  ✅ [L-4] rule ไม่รู้จัก / อินพุตผิดรูป ⇒ WARN `INVALID_INPUT_WARN` severity NORMAL (ไม่ใช่ BLOCK)
+  ✅ [L-5] rule RUNTIME (31 ข้อ): {hit:true} ⇒ WARN code = id · {hit:false} ⇒ OK · vars แทนในข้อความ
+  ✅ [L-6] W01 ตารางยกเลิก: ต่ำกว่าขั้นต่ำ (≥30 = 100 · 15–29 = 50) ⇒ เตือน · เท่าหรือดีกว่าลูกค้า ⇒ ไม่
+  ✅ [L-7] W02 ยกเลิกไม่ใช่ลูกค้า < 100% ⇒ เตือน
+  ✅ [L-8] W03 มัดจำริบได้: เงื่อนไข W01 + depositPct > 0
+  ✅ [L-9] W14 ผ่านเอเจนซี่ไม่ใช่ FULL_ONLY · W15 ออกใบลดหนี้ · W16 ปิดออกเอกสารทุกงวด · W17 ค่าเสียหายมี VAT
+  ✅ [L-10] W18 ยกเว้น VAT · W20 แหล่งอัตรา BANK_DAILY_BUY · W25 วงเงินประกันต่ำ · W26 อัตราผู้ควบคุมหลวม
+  ✅ [L-11] W29 ตารางอุทยานยืนยันเก่ากว่า 180 วัน (null = ไม่เตือน) · W30 ช่วงอายุต่างระเบียบ · W33 ไม่ลบ/ภาษี < 5 ปี
+  ✅ [L-12] W38 แม่แบบรับทราบความเสี่ยงมีถ้อยคำยกเว้นความรับผิด (th/en · ช่องว่าง/ตัวพิมพ์ไม่มีผล) · ค่าเริ่มไม่เตือน · WAIVER_FORBIDDEN_TERMS ส่งออก
+  ✅ [L-13] ผลมีรูปครบ {level, code, messageTh, citation, severity} · pendingReview เฉพาะ rule ที่ติด (W15 มี · W01 ไม่มี)
+
+── RS: แม่แบบ → ร้าน → สินค้า → รอบ (ฐานจริง) ──
+  ✅ [RS-1] applyTemplate LIVEABOARD ⇒ T15 = 60 · T5 = 30 (source TEMPLATE) · DIVE_SHOP ⇒ T5 15
+  ✅ [RS-2] ชั้นร้าน (UNIT) 45 ชนะแม่แบบ · ชั้นสินค้า 40 ชนะร้าน · สินค้าอื่นยังได้ 45 · ชั้นรอบ 30 ชนะสินค้า
+  ✅ [RS-3] ล้างค่า = ตามชั้นบน: ล้าง DEPARTURE ⇒ 40 PRODUCT · ล้าง PRODUCT ⇒ 45 UNIT · ล้าง UNIT ⇒ 60 TEMPLATE
+  ✅ [RS-4] refsFor PRODUCT/DEPARTURE ได้ refs ครบ · สินค้าร้านอื่น ⇒ null · entitiesOfUnit มีสินค้า+รอบของหน่วย
+  ✅ [RS-5] ชั้นที่ยังไม่รองรับ (AGENT · AGENT_TIER · VESSEL) ⇒ VALIDATION/SCOPE_UNSUPPORTED ไม่มีแถว
+  ✅ [RS-6] ไม่มีแม่แบบ (หน่วยไม่มี SettingProfile) ⇒ _fallback = DIVE_SHOP (source FALLBACK)
+  ✅ [RS-7] snapshotPolicy('trips.booking') ระดับรอบ: จด 35 คีย์ · ค่า T13 ของสินค้าที่ตั้งไว้ · แก้ทีหลัง snapshot เดิมไม่เปลี่ยน
+
+── WS: คำเตือน = รับทราบ ไม่บังคับเหตุผล · ไม่มี BLOCK ──
+  ✅ [WS-1] ไม่รับทราบ ⇒ NEEDS_APPROVAL · issue code W01 severity HIGH · approvalId null · ไม่มีแถวเขียน
+  ✅ [WS-2] รับทราบ ไม่มีเหตุผล ⇒ บันทึกได้ · SettingChange legalLevel WARN · legalCode W01 · reason null
+  ✅ [WS-3] รับทราบ + เหตุผลสั้น 3 ตัวอักษร ⇒ ได้ และเก็บเหตุผล · W03 ข้ามคีย์: ladder ไม่คืนช่วง ≥30 วัน + มัดจำ 30 ⇒ issue มีทั้ง W01 และ W03
+  ✅ [WS-4] ค่าเท่าแม่แบบ/ไม่เข้าเงื่อนไข ⇒ บันทึกได้โดยไม่ต้องรับทราบ (ไม่มี legalCode)
+  ✅ [WS-5] ไม่มีทาง LEGAL_BLOCK: ค่าเตือนของทุกคีย์ที่มี legal (13 คีย์) ไม่รับทราบ ⇒ NEEDS_APPROVAL ทุกตัว · รับทราบ ⇒ ok ทุกตัว
+  ✅ [WS-6] พนักงาน (STAFF trips.settings.edit) รับทราบ W01 ⇒ บันทึกได้ทันที ไม่ต้องอนุมัติเจ้าของ (ไม่มี approvalId)
+
+── X1: แยกร้าน · แยกหน่วย ──
+  ✅ [X1-1] ร้าน A ตั้งค่าที่สินค้า/รอบของร้าน B ⇒ NOT_FOUND ไม่มีแถว · ร้าน B resolve ด้วย productId ของ A ไม่เห็นค่าของ A
+  ✅ [X1-2] tenantDb ร้าน B มองไม่เห็นสินค้า/รอบของ A · ร้าน A หน่วย 2 มองไม่เห็นหน่วย 1 · หน่วยตัวเองเห็น
+  ✅ [X1-3] tenantDb ร้าน B แก้แถวของ A: updateMany = 0 · update(unique) โยน · ค่าเดิมไม่เปลี่ยน
+  ✅ [X1-4] tenantDb create (TripPdpaRequest) เติม tenantId/unitId เอง · SellCounter แกน tenant: ร้าน B มองไม่เห็นแถวร้าน A
+
+── F: ฟอร์มค่าตั้ง ──
+  ✅ [F-1] ฟอร์มหน่วย TRIPS: ป้าย reviewHint/reviewAuthorityTh ตามคีย์ · คีย์ไม่มีป้าย = null · ไม่มีคีย์ซ่อน
+  ✅ [F-2] ฟอร์มหน่วยชนิดอื่น (unitType BOOKING) ไม่มีคีย์ trips · ฟอร์มชั้น PRODUCT มีเฉพาะคีย์ที่ chain มี PRODUCT
+  ✅ [F-3] settings-shared: legalAckNeedsReason (trips/agency/ticket = false · rooms/booking = true) · severityRank HIGHEST > HIGH > NORMAL · SettingsForm ใช้ทั้งสอง + reviewHint
+
+── G: regression ──
+  ❌ [G-1] qc-trips-p0.1 (seed รันซ้ำ idempotent + ฟิกซ์เจอร์ + แยกร้าน) exit 0 หลัง migration — exit=1 · JSON_SUMMARY {"suite":"qc-trips-p0.1","total":56,"passed":55,"failed":["C-5"]}
+
+===== QC TRIPS T0.1 · migration + ค่าตั้ง trips + ตัวตรวจทัวร์ =====
+ผ่าน 95/96 · ไม่ผ่าน 1 · ข้าม 0
+ต่อกลุ่ม: PC 3/3 · M 8/8 · E 2/2 · T 9/9 · C 5/5 · U 6/6 · X3 1/1 · S 12/12 · R 16/16 · L 13/13 · RS 7/7 · WS 6/6 · X1 4/4 · F 3/3 · G 0/1
+JSON_SUMMARY {"suite":"qc-trips-t0.1","total":96,"passed":95,"failed":["G-1"],"skipped":[]}

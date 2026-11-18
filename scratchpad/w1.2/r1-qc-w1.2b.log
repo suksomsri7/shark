@@ -1,0 +1,128 @@
+[env] qc-trips-w1.2 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:332960) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม (positive control ผ่านบริการของโมดูลโดยตรง) ──
+  ✅ [PC-1] ฟิกซ์เจอร์: ราชา 3,500 / 2,450 · อุทยาน 600 / 300 · กล้อง 500 · นอกโซน 600 · ถือที่ 15 นาที · 2 ผู้ใหญ่ 1 เด็ก + กล้อง = ฿11,450.00 (BOOKING_TR_0142)
+  ✅ [PC-2] บริการที่ใบนี้ต่อสายมีใน facade (quoteTrips · holdTrips · confirmTrips · tripPaymentIntent · recordTripPayment · bookingPublicToken) + W1.1 (resolveBookShop · bookClientKey · openBookProduct) · SESSION_SECRET ≥ 32
+  ✅ [PC-3] positive control: ร้านชั่วคราว — โมดูลตรง PUBLIC: quote → hold (basketToken) → confirm ⇒ การจอง HOLD · tripPaymentIntent ด้วย token = ฿11,450.00 · QR ยอดล็อก (EMV 54 = 11450.00) ผู้รับ = PaymentProfile ของร้าน
+  ✅ [PC-4] positive control: เวลาเกิน 15 นาที ⇒ tripPaymentIntent HOLD_EXPIRED · รอบปิดรับแล้ว (1 มี.ค. 15:00) ⇒ quote ได้แต่ holdTrips CUTOFF_PASSED · รอบเต็ม ⇒ SOLD_OUT
+  ✅ [PC-5] positive control: เพดานถือที่ต่อผู้ติดต่อ (X10 ค่าเริ่ม 3) — ยืนยันด้วยเบอร์เดียวกัน 4 ตะกร้า ⇒ 3 ใบแรก ok · ใบที่ 4 HOLD_LIMIT (นับตอน rekey ใน confirmTrips)
+  ✅ [PC-6] R6 ตัวควบคุม (บริการตรง): ร้านขึ้นราคาผู้ใหญ่ +฿100 หลังถือ ⇒ quoteId ใหม่ ≠ เดิม · payable +฿100 · confirmTrips ด้วย quoteId ของตอนถือ ⇒ PRICE_CHANGED (details.quote.quoteId = ใหม่) · ไม่มีการจอง
+  ✅ [PC-7] R12 ตัวควบคุม (บริการตรง): สินค้ามัดจำ 30% ฐานค่าทริป งวดสอง 3 วันก่อนเดินทาง — 1 ผู้ใหญ่ ⇒ payable ฿4,100 · งวดแรก DEPOSIT ฿1,050 (30% ของ ฿3,500 ไม่รวมค่าอุทยาน) · ยืนยัน ⇒ HOLD · tripPaymentIntent = ฿1,050
+  ✅ [PC-8] R12 ตัวควบคุม (บริการตรง): ร้าน C ราคาไม่รวม VAT (จด VAT) — 1 ผู้ใหญ่ + กล้อง ⇒ บรรทัด ฿3,500 + ค่าอุทยาน ฿600 + ฿500 · VAT 7% ของ ฿4,000 = ฿280 · payable ฿4,880 = Σ บรรทัด + VAT (ใบเสนอราคาไม่มีบรรทัด VAT — แพลตฟอร์มต้องแสดงเอง §7)
+     ℹ️ PC-9 p9a: confirmTrips ตรงหลังปิด/เลยเวลา = ok HOLD (บริการไม่ตรวจ ⇒ แพลตฟอร์มต้องตรวจก่อน · C-14 C-15)
+     ℹ️ PC-9 p9b: confirmTrips ตรงหลังปิด/เลยเวลา = ok HOLD (บริการไม่ตรวจ ⇒ แพลตฟอร์มต้องตรวจก่อน · C-14 C-15)
+  ✅ [PC-9] R14 m7 ตัวควบคุม (บริการตรง · ฐานของด่านก่อนยืนยัน §4 ข้อ 8): ถือ 10:00 ได้ทั้งสองรอบ · ร้านปิดรอบ (setDepartureStatus CLOSED) ⇒ getAvailability WEB saleBlock STATUS · รอบปิดรับ 10:05 (ค่าตั้งระดับรอบ) ⇒ 10:00 saleBlock null · 10:06 saleBlock CUTOFF
+  ── สรุป PC: ผ่าน 9/9
+
+── S: ไฟล์และกติกาโค้ด (static) ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: trips-book-core · trips-book · modules/trips/public-booking · app/book/[shop]/actions.ts · c/[basket]/page.tsx · my/[token]/page.tsx · ไม่มี loading/route/error ใต้ app/book
+  ✅ [S-2] ชื่อที่ส่งออกครบ: core 18 ชื่อ · platform 8 ฟังก์ชัน · facade บล็อก "// TRIPS W1.2 ▸" ไม่มี export * · BOOK_ERROR_CODES / BOOK_RES_STATES ตรงใบสั่ง
+  ✅ [S-3] trips-book-core เป็น pure: import ได้เฉพาะ import type · ไม่มี process.env / Date.now / new Date() ไม่มีอาร์กิวเมนต์ / getDay…getFullYear / fetch / prisma / crypto
+  ✅ [S-4] app/book + components/book (ทุกไฟล์ · m7) import เฉพาะ next/react/platform trips-public(-core)/trips-book(-core)/components/book (+ จอ: trips-shared · branding/public · messages book) · 'use server' มีเฉพาะ actions.ts (บนสุดของไฟล์) · actions.ts เรียก platform เท่านั้น ไม่อ่าน/ส่งเวลา/deps · redirect ไม่ใช้ค่าจาก FormData (R14) · query ของ redirect มีแค่ e f sel (R11)
+  ✅ [S-5] ไฟล์ฐานของใบ: ไม่มี $transaction · ไม่มี checkRateLimitDb( / checkRateLimitDbMany( · ไม่มี console.* · ไม่มีถัง "unknown" · ไม่อ่าน/เขียนตาราง Agent* · trips-book ใช้ rateBucketCte (ด่านคำสั่งเดียว) · public-booking ไม่มีคำสั่งเขียน
+  ✅ [S-6] จอไม่คิดเงิน/ไม่จัดรูปเงินเอง (toFixed · toLocaleString · parseFloat · Intl.NumberFormat · Satang [*/+-] · reduce( กับเงิน) · ไม่มี dangerouslySetInnerHTML · ไม่มี new Date( / Date.now ในจอและหน้า
+  ✅ [S-7] data-testid ของใบครบ 39 ตัว + แพตเทิร์น book-pax- book-zone- book-extra-pick- book-summary-line- book-todo- · ฟอร์มยืนยัน/ถือที่เป็น <form action={…}> (ไม่มี fetch/onClick ส่งเอง) · หน้า my/c ตั้ง referrer no-referrer + robots noindex
+  ✅ [S-8] ฉากภาพ w1.2 ใน scripts/visual-trips.mts: book-select · book-select-en · book-checkout · book-pay · book-voucher · book-expired · ทุกฉาก public · ฉากวอเชอร์ใช้ token ของการจอง seed (ไม่ฝัง token)
+  ✅ [S-9] ไม่มี 'any' · ไม่มี @ts-ignore/@ts-expect-error/eslint-disable ในไฟล์ของใบ
+  ❌ [S-10] ขอบเขต (เทียบ BASE 234d84eb9 · ไม่นับไฟล์ที่ตรงกับ session/trips): ไม่แตะ prisma/proxy/core/i18n/branding/payment/api/app/b/(store) · platform/modules นอกไฟล์ของใบ · ข้อสอบเดิม · seed · ไฟล์จำกัด: facade เพิ่ม ≤ 30 ไม่ลบ — แตะไฟล์นอกขอบเขต: scripts/seed-trips-qc.mts, scripts/trips-fixture.mts
+  ── สรุป S: ผ่าน 9/10
+
+── LG: ภาษา ──
+  ❌ [LG-1] book.json ไทย/อังกฤษ มีคีย์ของใบครบ 75 คีย์ ทั้งสองภาษา · ค่าอังกฤษไม่มีอักษรไทย · ไม่มีรหัสใบงาน/รหัสดิบในค่า · ไม่มี "ยืนยันเองภายใน 1 นาที" / "48" / "中文" — คีย์ขาด: summary.noFeesLater
+  ── สรุป LG: ผ่าน 0/1
+
+── P: ตัวช่วยบริสุทธิ์ (trips-book-core) ──
+  ❌ [P-1] ค่าคงที่: BOOK_MAX_SEATS 2..10 (R7) · BOOK_FORM_MIN_SEC 1..5 · BOOK_FORM_MAX_SEC 1800..86400 · BOOK_PAY_MARGIN_SEC 180 (R8) · BOOK_SLOT_HOLD_PER_HOUR 2 (R7) · BOOK_CONFIRM_PER_HOUR 20 (R10) · BOOK_TERMS_VERSION สตริงสั้น (R14) · BOOK_REF_RE = 12 ตัว a-z0-9 · BOOK_BASKET_TOKEN_RE = 43 ตัว base64url · BOOK_PAX_CODE_RE รับ ADULT ไม่รับ adult/<x> — เพดาน/ระยะ: ได้ [180,3,20] ต้องเป็น [180,2,20]
+  ✅ [P-2] parseBookSelection: n.<CODE> / x.<ref> / z — เรียง code/ref · จำนวน 0 ถูกทิ้ง · คีย์อื่นถูกทิ้ง · ผิดรูป (ลบ · ทศนิยม · 1e3 · 01 · เกินเพดาน · code ตัวเล็ก/สคริปต์ · array · z ผิดรูป) ⇒ null ทั้งก้อน · ไม่ throw
+  ✅ [P-3] selectionSeatsOk(selection, seatCodes, max): ต้องมีที่นั่ง ≥ 1 และรวมคนทุกประเภท ≤ max · ทารกล้วน ⇒ false
+  ✅ [P-4] cancelDeadlinesOf(ladder, travelDate, today): วันสุดท้ายของแต่ละขั้น = วันเดินทาง − daysBefore (ปฏิทิน · ข้ามเดือน/ปีอธิกสุรทิน) · ขั้นที่เลยวันนี้แล้วไม่แสดง · ขั้น 0 วันไม่แสดง
+  ✅ [P-5] reservationStateOf({ status, holdExpiresAt, now }): HOLD ยังไม่หมด ⇒ PAY · HOLD หมด/ไม่มีเวลา ⇒ EXPIRED · PENDING ⇒ null (AWAIT_SHOP = W1.2b · R8) · CONFIRMED/PART_PAID/PAID ⇒ VOUCHER · CANCELLED · TRAVELLED/NO_SHOW ⇒ ENDED · ไม่รู้จัก ⇒ null
+  ✅ [P-6] bookTodoOf: PAY (ครบเมื่อยอดค้าง 0 และสถานะขายแล้ว) · PASSENGERS (ชื่อครบทุกคน รวมทารก) · WAIVER เฉพาะสินค้าที่ต้องเซ็น · ลำดับ PAY → PASSENGERS → WAIVER
+  ── สรุป P: ผ่าน 5/6
+
+── Q: เลือกคน/รับส่ง/เสริม + ยอด (ร้านชั่วคราว) ──
+  ✅ [Q-1] options ของรอบ 10 มี.ค.: ประเภทคน ADULT/CHILD/INFANT (ราคาคนเดียว 3,500 / 2,450 / 0 · ทารกไม่มีที่นั่ง) · รายการเสริมไม่บังคับ 2 (กล้อง · ดำน้ำลึก — ไม่มีค่าอุทยานที่บังคับ) · โซนรับส่งที่เปิด 4 (ไม่มีโซนปิด · ไม่มีโซนร้าน B) เรียงตาม sortOrder · ref ตรง BOOK_REF_RE · ที่ว่าง 24
+  ✅ [Q-2] ยอดภาพ 01ข/19: 2 ผู้ใหญ่ 1 เด็ก + กล้อง + รับในโซน ⇒ รวม ฿11,450.00 · เก็บแทน ฿1,500 · ทุกบรรทัด amount = qty × unit · ผลรวมบรรทัด = รวม · ที่นั่ง 3 · ถือ 15 นาที
+  ✅ [Q-3] นอกโซน ⇒ บรรทัด PICKUP +฿600 ⇒ รวม ฿12,050.00 · ดำน้ำลึก 2 คน ⇒ +฿3,800 · ทารก 1 คน ⇒ ที่นั่งไม่เพิ่ม ยอดไม่เพิ่ม
+  ✅ [Q-4] VM ไม่มีของภายใน: options/summary ไม่มีคีย์ id/quoteId/priceSource/warnings/fingerprint/itemRef ไม่มีค่า id ของสินค้า/รอบ/ประเภทคน/รายการเสริม/โซน
+  ✅ [Q-5] เลือกผิด ⇒ INVALID พร้อม fields ไม่สะท้อนค่า: ไม่มีที่นั่ง (ทารกล้วน/ว่าง) ⇒ pax · เกิน BOOK_MAX_SEATS ⇒ pax · ref รายการเสริม/โซนที่ไม่มี ⇒ extras/zone · โซนร้าน B ⇒ zone · วันไม่มีรอบ ⇒ d
+  ✅ [Q-6] โซน/รายการเสริมที่ปิดหลังเปิดหน้า: ref เดิม ⇒ INVALID (zone/extras) ไม่คิดราคาโซนปิด (หนี้ pricing.ts:184) · สินค้า Liveaboard/ร่าง/ร้านอื่นไม่มีสินค้านี้ ⇒ NOT_FOUND รูปเดียวกัน
+  ✅ [Q-7] หน้าสินค้า (W1.1 openBookProduct) เปิดปุ่มหลักเมื่อวันที่เลือกขายได้: 10 มี.ค. ⇒ cta.enabled true · วันเต็ม/ไม่มีรอบ ⇒ selected null หรือ cta.enabled false · VM ยังไม่มี id ภายใน
+  ✅ [Q-8] R8 สินค้าที่ร้านต้องยืนยันก่อน (trips.sell.confirmMode = SHOP_CONFIRMS ระดับสินค้า) ⇒ ปุ่มจองสาธารณะปิดใน a: หน้าสินค้า cta.enabled false · quoteBookSelection / startBookHold ⇒ UNAVAILABLE reason SHOP_CONFIRMS · ไม่มีที่ถือ/การจอง
+  ✅ [Q-9] R12 ยอดจอ = payable ของบริการ: ร้าน C ราคาไม่รวม VAT — 1 ผู้ใหญ่ + กล้อง ⇒ summary มีบรรทัด VAT ฿280 (ไม่ใช่เก็บแทน) · Σ บรรทัด = totalSatang = ฿4,880 (= payable ใน PC-8) · หน้ายืนยันหลังถือยอดเดียวกัน
+  ✅ [Q-10] R14 `a=` (รหัสลิงก์เอเจนซี่) ไม่เปลี่ยนราคา/ช่องทางใน a: summary เมื่อมี a = summary เมื่อไม่มี a ทุกช่อง · ถือที่ที่ส่ง a ⇒ ตะกร้าช่องทาง WEB · ไม่มีสถิติลิงก์ของร้าน
+  ── สรุป Q: ผ่าน 10/10
+
+── H: ถือที่ (startBookHold) ──
+  ✅ [H-1] ถือที่สำเร็จ (URL ร้านตัวใหญ่ ⇒ shopSlug ตัวเล็กของจริง · R14): basketToken ตรง BOOK_BASKET_TOKEN_RE · expiresAt = now + 15 นาที · รอบ held +3 sold 0 · ตะกร้า 1 ใบช่องทาง WEB · TripHold ACTIVE จำนวน 3 · ฐานไม่มีชื่อ/เบอร์ (ยังไม่ถามผู้จอง)
+  ✅ [H-2] ยอดที่ลูกค้าเห็นต่างจากบริการราคา (ร้านขึ้นราคาระหว่างนั้น) ⇒ PRICE_CHANGED + totalSatang ใหม่ (2 ผู้ใหญ่ +฿100 ⇒ ฿11,650) · ไม่มีที่ถือเพิ่ม
+  ✅ [H-3] รอบเต็ม ⇒ SOLD_OUT · ปิดรับแล้ว ⇒ CUTOFF_PASSED · รอบยกเลิก ⇒ SLOT_CLOSED หรือ INVALID(d) · ทุกกรณีไม่มีตะกร้า/ที่ถือใหม่
+  ✅ [H-4] ฟอร์ม: ไม่มี nonce/nonce ปลอม ⇒ INVALID(nonce) · ส่งเร็วกว่า BOOK_FORM_MIN_SEC ⇒ TOO_FAST · nonce เก่ากว่า BOOK_FORM_MAX_SEC ⇒ STALE_FORM · ไม่มี seen ⇒ INVALID(seen) · ไม่มีอะไรถูกถือ
+  ✅ [H-5] ไม่พบแบบเดียวกัน: สินค้า Liveaboard · สินค้าร่าง · slug ร้าน B ใต้ร้าน A ที่ไม่มีในร้าน A · ร้านไม่มี ⇒ { ok:false, code:NOT_FOUND } เท่ากันทุกตัว · ไม่มีตะกร้าใหม่
+  ── สรุป H: ผ่าน 5/5
+
+── C: หน้ายืนยัน + ยืนยันการจอง ──
+  ✅ [C-1] loadBookCheckout: สรุปเดิม (รวม ฿11,450.00 · เก็บแทน ฿1,500) · ถือถึง 10:15 (เวลาร้าน) · ตารางยกเลิกขั้นบันได + บรรทัดสุดท้าย · ข้อกฎหมาย (เลขใบอนุญาต null เมื่อร้านไม่กรอก — ไม่บล็อก · termsVersion) · nonce ของฟอร์ม · ไม่มีของภายใน · vm.shop = ชื่อ/เบอร์/LINE/ที่อยู่จากค่าตั้งร้าน (R13)
+  ✅ [C-2] ยืนยันไม่ผ่านด่านฟอร์ม ⇒ ไม่มีการจอง: ไม่ติ๊กยอมรับ ⇒ ACCEPT_REQUIRED · ชื่อว่าง ⇒ INVALID(name) · เบอร์ผิด ⇒ INVALID(phone) · อีเมลผิด ⇒ INVALID(email) · ผลไม่สะท้อนค่าที่ส่ง · ไม่มี Party ใหม่ (R10)
+  ✅ [C-3] ยืนยันสำเร็จ ⇒ { ok, token } · การจอง HOLD ช่องทาง WEB · PAY_NOW · รหัส TR-YYMM-NNNN · publicTokenHash = sha256(token) · ผู้จอง = Party ของร้าน A ชื่อ/เบอร์ตามฟอร์ม · ตะกร้า CHECKED_OUT
+  ✅ [C-4] ส่งซ้ำ (X4): ยืนยันซ้ำด้วย nonce เดิม ⇒ ok token เดิม · nonce ใหม่ ⇒ DONE + token เดิม · เปิดหน้ายืนยันหลังเสร็จ ⇒ DONE + token เดิม · การจองของตะกร้ายังมี 1
+  ✅ [C-5] ถือหมดเวลาก่อนยืนยัน (now + 16 นาที) ⇒ หน้ายืนยันและยืนยันได้รหัสเดียว HOLD_EXPIRED (R9) · ไม่มีการจอง
+  ✅ [C-6] ตัวอ้างผิด ⇒ NOT_FOUND รูปเดียวกัน (R9): basketToken สุ่ม · MAC ของ sel ถูกแก้ · sel ของตะกร้าอื่น · ตะกร้าร้าน A ผ่าน URL ร้าน B (X1) · แก้จำนวนคนใน payload คง MAC · sel = v1.<base64url JSON>.<MAC 22 ตัว> ยาว ≤ 1,024 · payload ไม่มี id ภายใน/token/ร้าน/หน่วย
+  ✅ [C-7] เพดานผู้ติดต่อผ่านหน้าจอง: เบอร์เดียวกันยืนยัน 4 ตะกร้า (คนละเครื่อง) ⇒ ใบที่ 4 HOLD_LIMIT · ที่ถือของตะกร้าที่ 4 ยังอยู่จนหมดเวลา (ไม่สร้างการจอง)
+  ✅ [C-8] R6 หน้ายืนยันเมื่อร้านขึ้นราคาหลังถือ ⇒ { ok:false, PRICE_CHANGED, heldTotalSatang ยอดเดิม ฿4,100 · totalSatang ยอดใหม่ ฿4,200 · rehold { productSlug, query } } (ไม่แสดงยอดใหม่เงียบ ๆ) · rehold ไม่มีของภายใน · ที่ถือเดิมไม่หาย · ไม่มีการจอง
+  ✅ [C-9] R6 ยืนยันเมื่อร้านขึ้นราคาหลังถือ (quote ใหม่ ≠ sel.quoteId) ⇒ PRICE_CHANGED + heldTotalSatang ฿4,100 + totalSatang ฿4,200 · ไม่มีการจอง · ไม่มี Party ใหม่
+  ✅ [C-10] R6 ยอดที่จอแสดง (seen) ในฟอร์มยืนยัน ≠ ยอดตอนถือใน sel ⇒ PRICE_CHANGED (ไม่มีการจอง) · ไม่มี seen ⇒ INVALID(seen) · seen ถูก ⇒ ok
+  ✅ [C-11] R11 ชื่อผู้จอง: trim + NFC (e+◌́ ⇒ é) เก็บเป็น Party.name · ว่าง · 101 ตัว · C0 (\u0007) · C1 (\u0085) · U+200B · U+202E · U+2066 ⇒ INVALID(name) ไม่สะท้อนค่า · ไม่มีการจอง
+  ❌ [C-12] R11 เบอร์: ตัดช่องว่าง/ขีด/วงเล็บ แล้ว 0 + 9–10 หลัก (ไทย) หรือ + 8–15 หลัก ⇒ ส่งบริการเป็น E.164 รูปเดียว (Party.phone = +66…) · 081-xxx กับ +66 81 xxx = ผู้จองคนเดียวกัน · รูปผิด (สั้น · ไม่ขึ้นต้น 0/+ · ยาวเกิน · มีตัวอักษร) ⇒ INVALID(phone) — E.164 · ผู้จองคนเดียวกัน: ได้ ["+66810483531",true] ต้องเป็น ["+66600547018",true]
+  ✅ [C-13] R11 อีเมล: trim + ตัวเล็ก ≤ 200 รูปพื้นฐาน (Party.email ตัวเล็ก) · ว่าง = ไม่มีอีเมล · 201 ตัว / ไม่มี @ / ไม่มีโดเมนจุด / มีช่องว่างกลาง ⇒ INVALID(email) · ไม่มีการจอง
+  ✅ [C-14] m7 ร้านปิดรอบหลังลูกค้าถือ (setDepartureStatus CLOSED · ยกเลิกรอบที่มีที่ถือทำไม่ได้ HAS_BOOKINGS) ⇒ ยืนยัน SLOT_CLOSED · ไม่มีการจอง (บริการไม่ตรวจ — PC-9 · แพลตฟอร์มตรวจด้วย getAvailability ก่อนเรียก)
+  ✅ [C-15] m7 เลยเวลาปิดรับระหว่างถือ (10:00) กับยืนยัน (10:06 · ปิดรับ 10:05) ⇒ CUTOFF_PASSED · ไม่มีการจอง · ไม่มี Party ใหม่
+  ── สรุป C: ผ่าน 14/15
+
+── R: หน้าการจอง /book/[shop]/my/[token] ──
+  ✅ [R-1] สถานะ PAY: QR พร้อมเพย์ยอดล็อก ฿11,450.00 (svg data URL) ผู้รับ = ชื่อในโปรไฟล์ร้าน · ยอดค้าง 11,450 จ่ายแล้ว 0 · ถือถึง 10:15 · โอนภายใน 10:12 (R8) · QR = tripPaymentIntent ทุกไบต์ (R12) · สินค้า/วัน/เวลา 08:00–16:30 · บรรทัดจาก snapshot · ไม่มีของภายใน/เบอร์/อีเมล/ชื่อผู้จอง/token
+  ✅ [R-2] สิ่งที่ต้องทำก่อนจ่าย: PAY ยังไม่ครบ · PASSENGERS 0/3 · ตารางยกเลิกจาก snapshot · cancelUntil = [] (จองวันที่ 1 เดินทาง 10 มี.ค. — เลยทุกขั้น)
+  ✅ [R-3] ร้านขึ้นราคาหลังจอง (ข้อบังคับ MP §5 ข) ⇒ หน้าการจองยังเป็นยอดเดิม ฿11,450.00 ทุกบรรทัด
+  ✅ [R-4] เกินเวลาถือ (now + 16 นาที · ตัวกวาดยังไม่วิ่ง) ⇒ state EXPIRED · pay null · ไม่ออก QR
+  ✅ [R-9] R8 จ่ายแล้วหมดเวลา: ถือถึง 10:15 ⇒ payByLocal 10:12 · 10:11 (เหลือ 4 นาที) ยังมี QR · 10:12:30 (เหลือ 2.5 นาที < 3) ⇒ state PAY แต่ pay = { unavailable: "TOO_LATE" } ไม่มี QR (ตัดสินในตัวโหลด) · 10:16 ⇒ EXPIRED
+  ✅ [R-10] R8 + R13 หน้า EXPIRED บอกทางติดต่อ: state EXPIRED · รหัสการจองบนหน้า (ให้ลูกค้าแจ้งร้าน) · vm.shop = { name, contact { phone, line }, address } จากค่าตั้งร้าน · ไม่มี QR
+  ✅ [R-5] ร้านรับเงินผ่านบริการ T0.7 (STAFF · PROMPTPAY ฿11,450 · นาฬิกา AFTER หลังการจองเกิด · m6) ⇒ รอบ sold +3 held −3 · หน้าการจอง VOUCHER: วอเชอร์ QR (svg) · pay null · ยอดค้าง 0 · todo PAY ครบ · รหัสบนหน้า = รหัสการจอง
+  ✅ [R-6] QR วอเชอร์: bookVoucherQrPayload(tenantId, code) มีรหัสการจอง · ไม่มี token/id/ชื่อ/เบอร์ · ตรวจกลับได้เฉพาะร้านเดียวกัน · แก้ 1 ตัวอักษร ⇒ null · ค่าเดิมทุกครั้ง
+  ✅ [R-7] ร้านไม่มีผู้รับเงินพร้อมเพย์ (ร้าน B) ⇒ state PAY · pay = { unavailable: "NO_RECEIVER" } (ไม่ล้ม · ไม่มี QR) · vm.shop ชื่อร้านอย่างเดียว (R13)
+  ✅ [R-8] ภาษาอังกฤษ: lang=en ⇒ locale en · ชื่อสินค้าอังกฤษ · ป้ายบรรทัดอังกฤษ (ไม่มีอักษรไทยในป้ายที่ร้านแปลแล้ว) · ตัวเลขเงินเท่ากับภาษาไทย
+  ✅ [R-11] R12 สินค้ามัดจำ 30%: หน้าการจอง PAY แยก "ยอดที่ต้องโอนตอนนี้" pay.amountSatang = งวดแรก ฿1,050 (= tripPaymentIntent · PC-7) ออกจากยอดรวม totalSatang ฿4,100 · ยอดค้างรวม ฿4,100 · QR ทุกไบต์ = บริการ
+  ── สรุป R: ผ่าน 11/11
+
+── RL: ด่านอัตรา ──
+  ✅ [RL-1] ถือที่ต่อเครื่อง: เพดาน X8 = 10 ครั้ง/ชม. (กระจาย 6 รอบ ไม่เกิน 2 ครั้ง/รอบ — ไม่ชนถังต่อรอบ R7) — ครั้งที่ 11 ⇒ RATE_LIMITED LIMIT (retryAfterSec 1..3600) · เครื่องอื่นยังถือได้ · ถังชื่อ trips:hold:<ร้าน>:<กุญแจเครื่อง> ไม่มี IP ดิบ
+  ✅ [RL-2] ปิดเมื่อพัง (R10 ครบทุกฟังก์ชัน): deps.query โยน ⇒ quoteBookSelection · startBookHold · loadBookCheckout · confirmBookHold · openBookReservation = RATE_LIMITED LIMITER_DOWN · ยืนยันตอนด่านล่ม ⇒ ไม่มี TripBooking ไม่มี Party ใหม่ · ถือตอนด่านล่ม ⇒ ไม่มีที่ถือ · clientKey null/ผิดรูป ⇒ RATE_LIMITED NO_CLIENT ทุกฟังก์ชัน (ไม่ถามฐาน)
+  ✅ [RL-3] เดา token: เครื่องเดียวเปิด token สุ่ม 30 ครั้ง ⇒ NOT_FOUND ทุกครั้ง · ครั้งถัดไป (แม้ token จริง) ⇒ RATE_LIMITED · เครื่องอื่นเปิด token จริงได้ · ถังไม่มี token ดิบ
+  ❌ [RL-4] R7 กั๊กที่: ถังต่อรอบต่อเครื่อง 2 ครั้ง/ชม. — เครื่องเดียวถือรอบเดียว 3 ครั้ง ⇒ ok ok RATE_LIMITED LIMIT (ที่ถือเพิ่มแค่ 2 ครั้ง) · รอบอื่นเครื่องเดิมยังถือได้ · ถัง trips:slot:<ร้าน>:<รอบ>:<เครื่อง> · ถือ 6+5 = 11 คน ⇒ INVALID(pax) · ค่าเริ่มปุ่มจอง = ปิด: คีย์ trips.public.bookingEnabled ชนิด bool ค่าเริ่ม false ทุกแม่แบบ · ร้าน D (ไม่ตั้ง) ⇒ หน้าสินค้า cta ปิด · quote/ถือ UNAVAILABLE BOOKING_OFF — ถังต่อรอบ: ได้ [[true,true,true],null,null,3] ต้องเป็น [[true,true,false],"RATE_LIMITED","LIMIT",2]
+  ── สรุป RL: ผ่าน 3/4
+
+── X: ข้ามร้าน · ยิงพร้อมกัน · ส่งซ้ำ · อินพุตอันตราย · ข้อมูลบุคคล ──
+  ✅ [X-1] X1 ข้ามร้าน/ข้ามการจอง: token การจองร้าน A ผ่าน URL ร้าน B · token ร้าน B ผ่าน URL ร้าน A · token สุ่ม ⇒ NOT_FOUND รูปเดียวกัน (ไม่บอกว่ามีอยู่ที่ร้านอื่น)
+  ✅ [X-2] X3 ขายเกินไม่ได้ (MP §5 ก): 50 เครื่องถือพร้อมกันคนละ 1 ที่ บนรอบ 12 ที่ ⇒ สำเร็จ 12 พอดี ที่เหลือ SOLD_OUT · รอบ held = 12 sold = 0 · ไม่มีผลอื่น (BUSY/throw)
+  ✅ [X-3] X3/X4 ถือซ้ำ: 10 คำขอพร้อมกัน nonce เดียวกัน เครื่องเดียวกัน ⇒ ผลมีแค่ ok (basketToken เดียวกันทุกตัว · อย่างน้อย 1) หรือ RATE_LIMITED (ถังต่อรอบ 2/ชม. · R7) · ตะกร้า 1 ใบ · ที่ถือเพิ่ม 2 ครั้งเดียว · nonce เดิมแต่จำนวนคนต่างจากเครื่องใหม่ (ไม่ติดถัง · R9) ⇒ STALE_FORM
+  ✅ [X-4] X3 ยืนยันซ้ำพร้อมกัน: 10 คำขอ (nonce ต่างกัน) บนตะกร้าเดียว ⇒ การจอง 1 ใบ · ทุกผล ok หรือ DONE ด้วย token เดียวกัน
+  ✅ [X-5] X3 จ่ายซ้ำ: ร้านกดรับเงิน 10 ครั้งพร้อมกันคีย์เดียวกันบนการจองสาธารณะ (นาฬิกา AFTER · m6) ⇒ รอบ sold +2 held −2 ครั้งเดียว · เงินเข้า 1 ชุด · paidSatang = ยอดเดียว · หน้าการจอง VOUCHER ยอดค้าง 0
+  ✅ [X-6] X6 อินพุตอันตราย: ฟอร์มถือที่/ยืนยัน/token ขยะ (ยาว 10k · อักขระควบคุม · array · object · SQL · %00 · ตัวเลขยักษ์) ⇒ ok:false รหัสในรายการ BOOK_ERROR_CODES ไม่ throw ไม่สะท้อนค่า · ไม่มีที่ถือเพิ่ม
+  ✅ [X-7] PII: หลังการจองสาธารณะทุกข้อ — AuditLog/OutboxEvent ของร้าน A/B · OpsEvent ทั้งตาราง (ค้นด้วยค่าเฉพาะ ไม่กรองเวลา) · คีย์ถัง ChatRateBucket · TripLinkStat ไม่มีชื่อ/เบอร์/อีเมลของผู้จอง และไม่มี token การจอง/ตะกร้า
+  ✅ [X-8] ไม่บล็อกเพราะใบอนุญาต (MP §5 จ): ร้านที่ไม่กรอก trips.license.* ขายผ่านหน้าจองได้ครบ (ข้อ C-3 · R-5) · ฟังก์ชันบริการ T0.6/T0.7 ไม่นับข้อผิดพลาดที่ไม่คาดคิดระหว่างข้อสอบ (tripsUnexpectedCount = 0)
+  ── สรุป X: ผ่าน 8/8
+
+เหลือให้ด่านภาพ + การเปิดจริง (ผู้คุม · scripts/visual-trips.mts w1.2 + parity 01/19): ฟอร์มส่งได้โดยไม่มี JS · ปุ่ม − + ≥ 44 px · แถบล่างยอดรวม 390 · แผงสรุปติดจอ 1440 · หน้า c/ และ my/ ไม่ติดดัชนี + no-referrer · ปุ่มย้อนกลับของเบราว์เซอร์หลังยืนยันไม่สร้างการจองซ้ำ
+
+===== QC TRIPS W1.2a · ทัวร์ 4 ขั้นฝั่งลูกค้า: เลือก → ถือที่ → ยืนยัน → จ่าย/วอเชอร์ =====
+ผ่าน 74/79 · ไม่ผ่าน 5 · ข้าม 0
+ต่อกลุ่ม: PC 9/9 · S 9/10 · LG 0/1 · P 5/6 · Q 10/10 · H 5/5 · C 14/15 · R 11/11 · RL 3/4 · X 8/8
+JSON_SUMMARY {"suite":"qc-trips-w1.2","total":79,"passed":74,"failed":["S-10","LG-1","P-1","C-12","RL-4"],"skipped":[],"groups":{"PC":"9/9","S":"9/10","LG":"0/1","P":"5/6","Q":"10/10","H":"5/5","C":"14/15","R":"11/11","RL":"3/4","X":"8/8"}}

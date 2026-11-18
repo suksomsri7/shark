@@ -1,0 +1,56 @@
+[env] probe-w1.2-triage · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:796630) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+INFO  [setup] h1=/book/trips-w12h-mwgynkj87d73-a/c/Su7tzcXq1aJAIxIgPZqnv1TclgG58PruYNs8 h2=/book/trips-w12h-mwgynkj87d73-a/c/OE_EEn h3=/book/trips-w12h-mwgynkj87d73-a/c/eflrSe
+INFO  [c/-forms] c/ page 200/CHECKOUT has 1 <form>
+INFO  [c/-forms] #0  class="flex flex-col gap-4 rounded-2xl border bg-[color:var(--color-surface)] p-5" action="" encType="multipart/form-data" method="POST" :: $ACTION_REF_1[hidden]= | $ACTION_1:0[hidden]={"id":"780639ebb5d7365d6f65a9f9181282f700d5942ecd","bound":"$@1"} | $ACTION_1:1[hidden]=["trips-w12h-mwgynkj87d73-a","Su7tzcXq1aJAIxIgPZqnv1TclgG58PruYNs8cwBEZVI","v1.eyJwIjoiNTMzNm9yemx0aTNjIiwicyI6InM3ZmN6bXlyZXFhMiIsIm4iOltbI | nonce[hidden] | seen[hidden] | lang[hidden] | name[text] | phone[tel] | email[email] | accept[checkbox]
+INFO  [c/-forms] probe hunt-1 looks for "$ACTION_0:1" in first POST form ⇒ NOT PRESENT (bound=[] ⇒ no edit)
+INFO  [c/-forms] real bound field of the confirm form (postForm=first POST form) = $ACTION_1:1 · value=["trips-w12h-mwgynkj87d73-a","Su7tzcXq1aJAIxIgPZqnv1TclgG58PruYNs8cwBEZVI","v1.eyJwIjoiNTMzNm9yemx0aTNjIiwicyI6InM3ZmN6bXlyZXFhMiIsIm4iOltbIkFEVUxUIiwyXSxbIkNISUxEIiwxXV0sIngiOltdLCJ6IjpudWxsLCJxIjoiYzc0MjhmMjVkNzk0YWYwOTg2MGE4MjMxNmY1NWM5ODczY2FiNzgwNWJlODhiNjNjOGYyYmQxODk0N2U3YjM3MyIsInQiOjEwOTUwMDB9.56C5SXVIzOPm9ZPFxXxHMv"]
+INFO  [T1] qty ADULT=3 (CHILD dropped), MAC kept: 404/NOTFOUND locLen=0 bookings +0 · dep1 {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"} → {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"}
+INFO  [T1] qty ADULT=3 CHILD=1, MAC kept: 404/NOTFOUND locLen=0 bookings +0 · dep1 {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"} → {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"}
+INFO  [T1] sel of basket A2 (other customer): 404/NOTFOUND locLen=0 bookings +0 · dep1 {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"} → {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"}
+INFO  [T1] sel 20k: 404/NOTFOUND locLen=0 bookings +0 · dep1 {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"} → {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"}
+INFO  [T1] right sel, basket token of A2: 404/NOTFOUND locLen=0 bookings +0 · dep1 {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"} → {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"}
+INFO  [T1] control (untouched form): 303/OTHER→/book/trips-w12h-mwgynkj87d73-a/my/Oryu4sR0DW-9t1_rMv89skSpC bookings +1
+INFO  [T1] booking from control: gross=1095000 passThrough=150000 vat=61822 dep=dA1 pax-cols=agentAccountId=null,discountSatang=0,agentDiscountSatang=0,accountingState="NONE" · dep1 {"capacity":40,"sold":0,"held":3,"reserved":0,"status":"OPEN"}
+INFO  [T2] DONE + qty-edited sel: 404/NOTFOUND bookings +0
+INFO  [T2] DONE + 20k sel: 404/NOTFOUND bookings +0
+INFO  [T2] DONE + sel of A2: 404/NOTFOUND bookings +0
+INFO  [T2] DONE + empty sel: 404/NOTFOUND bookings +0
+INFO  [T2] DONE + right sel (control): 303/OTHER→/book/trips-w12h-mwgynkj87d73-a/my/Oryu4sR0DW-9t1_rMv89skSpC bookings +0
+INFO  [T2] GET c/ confirmed basket, sel of A2: 404/OTHER
+INFO  [T2] GET c/ confirmed basket, no sel: 404/OTHER
+INFO  [T2] GET c/ confirmed basket, junk sel: 404/OTHER
+INFO  [T3] hunt-1 replay: bound=[] fieldsChanged=false ⇒ 303/OTHER→/book/trips-w12h-mwgynkj87d73-a/my/OoQfRLfThNSlV_NMb-Lo159kW bookings +1
+INFO  [404] resPath=/book/trips-w12h-mwgynkj87d73-a/my/_3TirhuVN8sLQaRiAdWrGfTLuiH1UWh2vncqVH07qEQ?lang=th
+INFO  [404-c] c/ basket random: 404 raw=258915 norm=257964 same-as-first=true
+INFO  [404-c] c/ shop missing: 404 raw=258921 norm=257964 same-as-first=true
+INFO  [404-c] c/ basket of A on shop B: 404 raw=258915 norm=257964 same-as-first=true
+INFO  [404-c] c/ basket malformed (abc, sel=x) — probe did NOT strip abc/x: 404 raw=258088 norm=257968 same-as-first=false diff@2886 «lf.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§?sel=§\"],\"q\":\"?sel=§\",\"i\":false,\"f\":[[[\"\",{\"children\":[\» vs «lf.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"abc?sel=x\"],\"q\":\"?sel=x\",\"i\":false,\"f\":[[[\"\",{\"children\":»
+INFO  [404-c] c/ basket malformed (abc, sel=x) — abc/x stripped: 404 raw=258088 norm=257956 same-as-first=false diff@2888 «.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§?sel=§\"],\"q\":\"?sel=§\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"b» vs «.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§?§\"],\"q\":\"?§\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\»
+INFO  [404-c] c/ no sel (query absent): 404 raw=258132 norm=257928 same-as-first=false diff@2887 «f.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§?sel=§\"],\"q\":\"?sel=§\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"» vs «f.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\"ch»
+INFO  [404-c] c/ no sel vs random basket no sel: 404 raw=258132 norm=257928 same-as-first=false diff@2887 «f.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§?sel=§\"],\"q\":\"?sel=§\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"» vs «f.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"c\",\"§\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\"ch»
+INFO  [404-my] my/ token random: 404 raw=258133 norm=257929 same-as-first=true
+INFO  [404-my] my/ shop missing: 404 raw=258139 norm=257929 same-as-first=true
+INFO  [404-my] my/ REAL token of A on shop B: 404 raw=258133 norm=257929 same-as-first=true
+INFO  [404-my] my/ REAL token of A on B + ?lang=th (hunt-4 path): 404 raw=258175 norm=257971 same-as-first=false diff@2888 «.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"my\",\"§\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\"ch» vs «.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"my\",\"§?lang=th\"],\"q\":\"?lang=th\",\"i\":false,\"f\":[[[\"\",{\"children\"»
+INFO  [404-my] my/ random token + ?lang=th: 404 raw=258175 norm=257971 same-as-first=false diff@2888 «.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"my\",\"§\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\"ch» vs «.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"my\",\"§?lang=th\"],\"q\":\"?lang=th\",\"i\":false,\"f\":[[[\"\",{\"children\"»
+INFO  [404-my] my/ token malformed xyz — not stripped: 404 raw=258053 norm=257933 same-as-first=false diff@2887 «f.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"my\",\"§\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\"c» vs «f.__next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"§\",\"my\",\"xyz\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\»
+INFO  [404-my] my/ token malformed xyz — stripped: 404 raw=258053 norm=257929 same-as-first=true
+INFO  [SB] 4 holds same run/device: OK,OK,OK,RATE_LIMITED last=/book/trips-w12h-mwgynkj87d73-a/t/w12h-a-mwgynkj87d73?m=2026-12&d=2026-12-25&t=vy6njwucf2i2&n.ADULT=
+INFO  [SB] page 200/PRODUCT · "รอสักครู่" in raw=5 · in HTML outside <script>=0 · in visible text=false
+INFO  [SB]   occurrence @195095 inScript=true: «ูกสมุดบัญชีที่จดภาษีมูลค่าเพิ่ม — ออกใบกำกับภาษีเต็มรูปไม่ได้\",\"accountPending\":\"ระบบบัญชียังบันทึกบิลนี้ไม่เสร็จ — รอสักครู่แล้วลองใหม่\",\"hasRefunds\":\"»
+INFO  [SB]   occurrence @195591 inScript=true: «,\"dbdUnavailable\":\"ตอนนี้ค้นข้อมูลนิติบุคคลไม่ได้ — กรอกข้อมูลผู้ซื้อเองไปก่อน\",\"rateLimited\":\"ค้นหาบ่อยเกินไป — รอสักครู่แล้วลองใหม่\",\"internal\":\"ระ»
+INFO  [SB]   occurrence @249935 inScript=true: «้ — ขอสิทธิ์จากเจ้าของร้าน\",\"notFound\":\"ไม่พบจอลูกค้าของเครื่องนี้ในสาขานี้\",\"rateLimited\":\"ลองรหัสบ่อยเกินไป — รอสักครู่แล้วลองใหม่\",\"validation\":\"»
+INFO  [SB]   occurrence @257382 inScript=true: «ิน\",\"accept\":\"ร้านรับ\",\"prepare\":\"กำลังเตรียม\",\"ready\":\"พร้อมรับ\"},\"payNoQr\":\"ร้านจะส่งช่องทางจ่ายให้ — รอสักครู่\",\"payWithin\":\"จ่ายภายใน {t»
+INFO  [SB]   occurrence @258482 inScript=true: « — โหลดหน้าใหม่ก่อนสั่ง\",\"tokenInvalid\":\"QR นี้ใช้ไม่ได้แล้ว — ขอ QR ใหม่จากร้าน\",\"rateLimited\":\"ส่งถี่เกินไป — รอสักครู่แล้วลองใหม่\",\"preorderExpired»
+INFO  [SB] book-error box: «data-testid="book-error" data-code="RATE_LIMITED" role="alert" class="rounded-xl border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-4 py-3 text-sm text-[color:var(--color-danger)]"> เครื่องนี้ถือที่รอบนี้หลายครั้งแล้ว ลองใหม่ได้ภายหลัง หรือติดต่อร้าน ร้านล่า W12 a mwgynkj87»
+  cleanup: removed 1 miss buckets of 9 probe IPs
+  cleanup: hunt tenants+users left = 0 · tenant buckets left = 0

@@ -1,0 +1,29 @@
+// probe-trips-w1.2-triage2 — ดูทุกจุดที่หน้า 404 ของ c/ ต่างกันหลังตัดค่าจาก URL (untracked · คัดแยก)
+import * as L from "./probe-trips-w1.2-hunt-lib.mjs";
+L.boot("probe-w1.2-triage2");
+try {
+  const ip = L.freshIp();
+  const shop = `${L.SLUG}nope-${L.STAMP}`;
+  const bas = Buffer.from(L.hex(32), "hex").toString("base64url").slice(0, 43);
+  const sel = `v1.${Buffer.from(L.hex(40), "hex").toString("base64url")}.${L.hex(8)}`;
+  const cases: [string, string, string[]][] = [
+    ["random+sel", `/book/${shop}/c/${bas}?sel=${encodeURIComponent(sel)}`, [shop, bas, sel]],
+    ["abc?sel=x", `/book/${shop}/c/abc?sel=x`, [shop, "abc"]],
+    ["no sel", `/book/${shop}/c/${bas}`, [shop, bas]],
+  ];
+  const bodies: [string, string][] = [];
+  for (const [n, p, vals] of cases) { const r = await L.req(p, { ip }); let x = r.body; for (const v of vals) x = x.split(v).join("§"); bodies.push([n, x]); }
+  const [, ref] = bodies[0]!;
+  for (const [n, b] of bodies.slice(1)) {
+    let i = 0, j = 0, shown = 0;
+    // walk both, print each differing window (simple resync on common 40-char anchor)
+    while (i < ref.length && j < b.length && shown < 8) {
+      if (ref[i] === b[j]) { i++; j++; continue; }
+      const anchorAt = (s: string, from: number, a: string) => s.indexOf(a, from);
+      let k = 1, ok = false;
+      for (; k < 400 && !ok; k++) { const a = ref.slice(i + k, i + k + 40); const jb = anchorAt(b, j, a); if (jb >= 0 && jb - j < 400) { console.log(`DIFF ${n} @${i}: ref«${ref.slice(Math.max(0, i - 50), i + k + 10)}» vs «${b.slice(Math.max(0, j - 50), jb + 10)}»`); i += k; j = jb; ok = true; } }
+      if (!ok) { console.log(`DIFF ${n} @${i}: no resync`); break; }
+      shown++;
+    }
+  }
+} finally { await L.cleanup(); }

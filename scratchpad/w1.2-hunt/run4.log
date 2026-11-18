@@ -1,0 +1,29 @@
+[env] probe-w1.2-hunt-4 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+
+
+INFO  [404-norm] shop missing: 404 raw=258133 norm=257929 59ms
+INFO  [404-norm] token random: 404 raw=258133 norm=257929 111ms
+INFO  [404-norm] token A on B: 404 raw=258133 norm=257929 99ms
+INFO  [404-norm] token malformed: 404 raw=258053 norm=257929 96ms
+HELD  [NF-norm] expected: after removing the echoed shop/token, all my/ 404 bodies are identical | got: identical=true firstDiff=257929,257929,257929,257929
+INFO  [404-norm] action 404: 404 4790B title="404: This page could not be found." content-type=text/html; charset=utf-8 leak=[trips-w12h-mwgt5la1c48e-a,w12h-a-mwgt5la1c48e] head=<script src="/_next/static/chunks/polyfills-42372ed130431b0a.js" noModule=""></script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, 
+KNOWN [NF-action-shape] expected: action notFound() answers 404 with the same not-found page as GET (one shape) | got: 404 4790B vs GET 404 ~258KB · leak=[trips-w12h-mwgt5la1c48e-a,w12h-a-mwgt5la1c48e] | different body from GET 404 (method differs; informational)
+HELD  [RP-toofast] expected: hold submitted < 2 s after page ⇒ e=TOO_FAST, no hold | got: TOO_FAST
+INFO  [replay] re-hold: 303/OTHER→/book/trips-w12h-mwgt5la1c48e-a/t/w12h-a-mwgt5la1c48e?m=2026 → - · re-confirm: 303/OTHER→/book/trips-w12h-mwgt5la1c48e-a/my/XWS5PD7jx7w10UZK5BRXODFun
+HELD  [RP-back] expected: re-POST of hold + confirm after booking ⇒ same my/ (DONE), no 2nd hold/booking, counters unchanged | got: bookings 2→2 held 3→3 sold 0→0 same=true
+INFO  [replay] counters after one 2-seat HOLD booking: {"capacity":20,"sold":0,"held":3,"reserved":0,"status":"OPEN"}
+INFO  [caps] 11 people: page 200/PRODUCT form=false
+HELD  [CAP-11 people] expected: refused (INVALID), no hold | got: INVALID +0
+INFO  [caps] infant only: page 200/PRODUCT form=false
+HELD  [CAP-infant only] expected: refused (INVALID), no hold | got: INVALID +0
+INFO  [caps] qty 999: page 200/PRODUCT form=false
+HELD  [CAP-qty 999] expected: refused (INVALID), no hold | got: INVALID +0
+INFO  [caps] unknown code: page 200/PRODUCT form=false
+HELD  [CAP-unknown code] expected: refused (INVALID), no hold | got: INVALID +0
+KNOWN [LATE-confirm] expected: W1: confirm with < margin left should be refused (ruled · fix in progress) | got: booked with 1-min hold | M1 already ruled (W1)
+HELD  [LATE-tooLate] expected: my/ with < 3 min left ⇒ book-pay-too-late, no QR | got: tooLate=true qr=false
+HELD  [LATE-expired] expected: after hold time ⇒ EXPIRED + shop contact, no QR (sweeper not run) | got: expired=true contact=[076-555-444,@w12x] qr=false
+  cleanup: removed 2 miss buckets of 10 probe IPs
+  cleanup: hunt tenants+users left = 0 · tenant buckets left = 0
+
+=== hunt-4: HELD 9 · FOUND 0 · KNOWN 2 ===

@@ -1,0 +1,131 @@
+[env] qc-trips-w1.1 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:297893) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── PC: ตัวควบคุม ──
+  ✅ [PC-1] ฐาน qc-trips ต่อได้ · ร้าน seed andaman-dive ACTIVE + หน่วย TRIPS andaman-dive-trips ACTIVE
+  ✅ [PC-2] seed สินค้า: ทัวร์ ACTIVE 3 ตัว (ราชา · พีพี · ดำน้ำลึก) + Liveaboard ACTIVE 1 ตัว · ราชา ส. 14 พ.ย. GUARANTEED 24 ที่
+  ✅ [PC-3] ฟิกซ์เจอร์: TRIPS_AS_OF = 12 พ.ย. 2569 18:00 · ราชา 3,500 / 2,450 · อุทยาน 600 / 300 · กล้อง 500 · ทดลองดำน้ำ 1,900 · 08:00–16:30
+  ✅ [PC-4] บริการที่ใบนี้เรียกมีใน facade trips (listAvailability · quoteTripLine · localize · utcToLocal · normalizeTimezone) · core มี rateBucketCte · resolveSettings · branding มี getPublicBranding · trips-shared มี formatBaht/formatYmd
+  ✅ [PC-5] TripLinkStat มีแล้ว (ไม่ต้อง migrate): คอลัมน์ครบ · ดัชนี unique (unitId, day, channel, linkId) NULLS NOT DISTINCT · CHECK channel/ตัวนับ ≥ 0 · ChatRateBucket.key unique
+  ✅ [PC-6] สภาพก่อนงาน: proxy ส่ง X-Frame-Options DENY ทุกเส้นยกเว้น /f (หน้า /book ฝังไม่ได้) · checkRateLimitDb เป็น fail-open (เหตุที่ใบนี้ห้ามใช้) · SESSION_SECRET ของฐาน QC ยาว ≥ 32
+  ── สรุป PC: ผ่าน 6/6
+
+── S: ไฟล์และกติกาโค้ด (static) ──
+  ✅ [S-1] ไฟล์เจ้าของครบ: trips-public-core · trips-public · public-catalog · หน้า [shop] · [shop]/t/[productSlug] · not-found · book-i18n · book.json ×2 · คอมโพเนนต์ src/components/book/Book*.tsx
+  ✅ [S-2] ชื่อที่ส่งออกครบ: core 20 ชื่อ · platform 9 ฟังก์ชัน · facade trips บล็อก "// TRIPS W1.1 ▸" มี loadPublicCatalog/loadPublicProduct · ไม่มี export *
+  ✅ [S-3] trips-public-core เป็น pure: import ได้เฉพาะ import type · ไม่มี process.env / Date.now / new Date() ไม่มีอาร์กิวเมนต์ / getDay…getFullYear / fetch / prisma
+  ❌ [S-4] src/app/book/** import เฉพาะ next/react/platform trips-public(-core)/components/book · ไม่มี prisma · ไม่มี @/lib/modules · ไม่มี @/lib/core · คอมโพเนนต์ book ไม่ import prisma/core/db/modules (ยกเว้น import type) — import ต้องห้ามใน app/book: actions.ts ← @/lib/platform/trips-book · actions.ts ← @/lib/platform/trips-book-core · page.tsx ← @/lib/platform/trips-book · page.tsx ← @/lib/platform/trips-book-core · page.tsx ← @/lib/platform/trips-book
+  ❌ [S-5] มติ X1 — หน้าไม่ส่งเวลา/ของภายในเข้าบริการ · ต่อไฟล์หน้า: open* ถูกห่อ cache() ของ React ตัวเดียว (อาร์กิวเมนต์เป็นค่าพื้นฐาน) และมีจุดเรียก openBook*( จุดเดียว · generateMetadata กับหน้าใช้ผลชุดเดียวกัน · ไม่มีตัวโหลด/ตัวแก้/ด่าน/ฐานนอก open* · ชื่อหน้าใช้ได้เฉพาะผลที่ ok · หน้าแจ้งไม่รับข้อมูลร้าน · ไม่มี loading/route/'use server' — app/book มี use server
+  ✅ [S-6] ไฟล์ฐานของใบ: ไม่มี $transaction · ไม่มี checkRateLimitDb( / checkRateLimitDbMany( · ไม่มี console.* · ไม่มีคำว่า "unknown" เป็นค่าถัง · public-catalog ไม่ import prisma ตรงและไม่มีคำสั่งเขียน
+  ✅ [S-7] จอ: ไม่คิดเงิน/ไม่จัดรูปเงินเอง (toFixed · toLocaleString · parseFloat · Intl.NumberFormat · Satang / 100) · ใช้ formatBaht · ไม่มี dangerouslySetInnerHTML · ไม่มี new Date( ในคอมโพเนนต์
+  ✅ [S-8] data-testid ครบ 34 ตัว + 7 แพตเทิร์น · ปุ่มหลัก book-cta เป็น disabled · ลิงก์ในจอสร้างด้วย bookHref
+  ✅ [S-9] ไม่มีรหัสดิบ/รหัสใบงานเป็นข้อความบนจอ: JSX ไม่มีตัวอักษร OPEN/LOW/NOT_RUNNING/PER_PAX/INCLUDED/RATE_LIMITED/NOT_FOUND เป็นเนื้อความ · ไม่มี W1.x/T0.x/OQn ในซอร์สจอและ book.json
+  ✅ [S-10] ฉากภาพ w1.1 ใน scripts/visual-trips.mts: book-index · book-product · book-product-en · book-not-found · มีธง public (ไม่ใส่คุกกี้) + expectStatus 404 + x-forwarded-for · parity-trips.sh รับ 19 และ 01
+  ✅ [S-11] ไม่มี 'any' · ไม่มี @ts-ignore/@ts-expect-error/eslint-disable ในไฟล์ของใบ
+  ❌ [S-12] ขอบเขต (เทียบ BASE 7cae2e5c3 · ไม่นับไฟล์ที่ตรงกับ session/trips): ไม่แตะ prisma/proxy/core/i18n/branding/payment/api/app อื่น/platform อื่น/โมดูลอื่น/trips.json/components/trips/ข้อสอบเดิม/seed · facade เพิ่มอย่างเดียว — แตะไฟล์ต้องห้าม: scripts/seed-trips-qc.mts, scripts/trips-fixture.mts, src/lib/core/settings/defs/trips.ts, src/lib/modules/trips/public-booking.ts, src/lib/platform/trips-book-core.ts, src/lib/platform/trips-book.ts
+  ── สรุป S: ผ่าน 9/12
+
+── P: ตัวช่วยบริสุทธิ์ (trips-public-core) ──
+  ✅ [P-1] ค่าคงที่: ภาษา th/en · สภาพวัน 7 ค่าตามลำดับ · ช่องทาง WEB/LIFF/EMBED · เพดานอ่าน 60..300 ต่อ 60 วิ · เพดานเดา 20..60 ต่อ 10 นาที · นับ 1 ครั้ง/เครื่อง/วัน · เพดานแถว 1e5..1e7 · การ์ด 20..100 · 12 เดือน
+  ✅ [P-2] bookLocaleOf: lang ตรงตัวชนะ · Accept-Language เรียง q · แท็กแรกที่เป็น th/en · มีหัวแต่ไม่มีทั้งคู่ ⇒ en · ไม่มีหัว ⇒ th · q=0 ทิ้ง
+  ✅ [P-3] canonicalClientIp: IPv4 (ตัดพอร์ต/ช่องว่าง) · IPv4-mapped · IPv6 รวม /64 (ตัวเล็ก ไม่มีศูนย์นำ · วงเล็บ/พอร์ต/zone) · ขยะ/unknown/ว่าง/มีจุลภาค/ไม่ใช่สตริง ⇒ null
+  ✅ [P-4] clientIpFromHeaders: ลำดับ x-real-ip → x-vercel-forwarded-for → x-forwarded-for · ใช้ตัวแรกก่อนจุลภาค · หัวแรกที่มีค่าเป็นตัวตัดสิน (ผิดรูป ⇒ null ไม่ไล่ต่อ) · ไม่มีหัว ⇒ null (ไม่มี unknown)
+  ✅ [P-5] parseBookQuery: lang th|en · a/s ตามรูป · d วันที่มีจริง · m YYYY-MM · array/ชนิดอื่น/ผิดรูป ⇒ null · ไม่ throw กับขยะ
+  ✅ [P-6] bookHref: path เข้ารหัส · query ลำดับ lang,a,m,d · ค่าว่างไม่ใส่ · ไม่มีค่า ⇒ ไม่มี ?
+  ✅ [P-7] monthGrid: อาทิตย์ก่อน · พ.ย. 2026 = 5 แถว เริ่ม 1 · ก.พ. 2026 = 4 แถว · ส.ค. 2026 = 6 แถว · ก.พ. 2028 มี 29 · เทียบกับการคำนวณ UTC อิสระทุกเดือนของปี 2027 · ผิดรูป ⇒ null
+  ✅ [P-8] clampMonth: ในช่วง [เดือนนี้, +12] ⇒ ค่าเดิม · ก่อน/เกิน/ผิดรูป/ไม่ใช่สตริง ⇒ เดือนของวันนี้ · ข้ามปีถูก
+  ✅ [P-9] dayCellOf (มติ X4 · X7): ผ่านแล้ว · ไม่มีรอบ · ว่าง · เหลือน้อย · เต็ม · ไม่ออกเดินทาง (ยกเลิกทุกรอบ) · ปิดรับ · หลายรอบ = เลขและ showLeft ของรอบที่ออกเร็วที่สุดที่ขายได้ (อาร์เรย์เรียงเวลาออก · ไม่ใช่รอบที่ว่างมากสุด · ไม่รวมข้ามรอบ) · รอบสถานะ FULL = เต็ม · เลขติดลบ = 0
+  ✅ [P-10] frameAncestorsOf: ว่าง/ขยะ ⇒ 'none' · โดเมนถูกรูป ⇒ https://… ตัวเล็ก ตัดซ้ำ · ทิ้งตัวที่มี scheme/path/ช่องว่าง/*/;/'self' · ไม่เกิน 20 · ผลไม่มี * http: ; เลย
+  ✅ [P-11] embedOriginAllowed: https + host ตรงตัวเท่านั้น · http / พอร์ต / โดเมนย่อย / ชื่อคล้าย / ต่อท้าย / มี path / userinfo / "null" / ไม่มี scheme ⇒ false
+  ── สรุป P: ผ่าน 11/11
+
+── LG: ภาษา (book.json ไทย + อังกฤษ) ──
+  ✅ [LG-1] book.json สองภาษาชุดคีย์เท่ากัน · ทุกค่าเป็นสตริงไม่ว่าง · ค่าอังกฤษไม่มีอักษรไทย (ยกเว้น shell.langTh) · ค่าไทยของข้อความหลักมีอักษรไทย
+  ✅ [LG-2] คีย์ขั้นต่ำครบทั้งสองภาษา (73 คีย์ + 8 คีย์ของมติ r2) · มติ X10: คีย์ที่ไม่ใช้ถูกลบ (slot.available · slot.left · pax.perPerson · pax.perBooking · price.currency) และทุกคีย์ใน book.json มีที่ใช้ในจอ
+  ✅ [LG-3] bookT: คืนข้อความจริงของทุกคีย์ขั้นต่ำทั้งสองภาษา · locale ไม่รู้จัก ⇒ ไทย · แทนตัวแปร {n} · bookDateNames ไทย พ.ศ. (543) อังกฤษ ค.ศ. (0) มี 7 วัน 12 เดือน
+  ── สรุป LG: ผ่าน 3/3
+
+── SD: ตัวโหลดบนร้าน seed (now = TRIPS_AS_OF · อ่านอย่างเดียว) ──
+  ✅ [SD-1] resolveBookShop: andaman-dive ⇒ ร้าน + หน่วย TRIPS ตัวเดียว (ไม่รวมหน่วย BOOKING) tz Asia/Bangkok · ตัวใหญ่/ช่องว่าง normalise · slug ผิดรูป/ไม่มี ⇒ NOT_FOUND เท่ากัน
+  ✅ [SD-2] รายการสินค้า (ไทย): ชื่อร้าน อันดามันไดฟ์ · ทัวร์ 3 ตัวเรียงตามเวลาเผยแพร่ · ไม่มี Liveaboard · ชื่อ/สรุปไทย ไม่ fallback · total 3 ไม่ถูกตัด
+  ✅ [SD-3] หน้าสินค้าอังกฤษ: ชื่อ "Racha Yai Island Day Trip" · กำหนดการยังไม่แปล ⇒ ข้อความไทย + fallback true (ภาพ 19 :78) · includes อังกฤษ · ภาษาจาก Accept-Language เมื่อไม่มี lang
+  ✅ [SD-4] ปฏิทิน พ.ย. 2569 (ภาพ 19 :43–:48): today 12 · 5 แถวเริ่มอาทิตย์ที่ 1 · 1–11 ผ่านแล้ว · 12 ปิดรับ · 13 ไม่ออกเดินทาง · 14 ว่าง = ความจุ − ขาย − ถือ − โควตา ของฐาน · ทุกวันตรงกับ listAvailability (PUBLIC/WEB) ผ่าน dayCellOf · tz GMT+7 · เดือนก่อนไม่มี
+  ❌ [SD-5] วันที่เลือกปริยาย = ส. 14 พ.ย. (วันแรกที่เลือกได้) · รอบ 08:00–16:30 · ร่วมกลุ่ม · ความจุ 24 · ยืนยันออกแล้ว · ปิดรับ 13 พ.ย. 18:00 (ภาพ 19 :51) · ปุ่มหลักยังปิด — รอบ: ได้ ["2026-11-14",1,"08:00–16:30",{"text":"ร่วมกลุ่ม","fallback":false},"OPEN",18,24,true,"2026-11-13 18:00",false,{"enabled":false,"reason":null},true,1] ต้องเป็น ["2026-11-14",1,"08:00–16:30",{"text":"ร่วมกลุ่ม","fallback":false},"OPEN",18,24,true,"2026-11-13 18:00",false,{"enabled":false},true,1]
+  ✅ [SD-6] ตารางราคา ส. 14 พ.ย. (ภาพ 19 :57–:72 · :101–:103): ผู้ใหญ่ 3,500 · เด็ก 2,450 · ทารก 0 ไม่มีที่นั่ง · ค่าอุทยาน 600/300 เก็บแทน · กล้อง 500 ต่อการจอง · ทดลองดำน้ำ 1,900 ต่อคน · VAT รวมแล้ว · ขั้นบันได 100/50/0 · เท่ากับ quoteTripLine ที่ข้อสอบเรียกเอง
+  ✅ [SD-7] พารามิเตอร์วัน/เดือน: d=16 ⇒ เลือก 16 · d=13 (ยกเลิก) ⇒ เลือกวันถัดไปที่ได้ + requestedUnavailable · d ผิดรูป ⇒ ปริยาย ไม่เตือน · เดือนอดีต/ไกลเกิน/ผิดรูป ⇒ เดือนนี้ · ธ.ค. เปิดได้ (prev = พ.ย.)
+  ✅ [SD-8] มองไม่เห็น ⇒ NOT_FOUND เท่ากันทุกสาเหตุ: Liveaboard ที่เผยแพร่ · slug ไม่มี · slug ตัวใหญ่ · ขยะ/ยาว/ชนิดผิด · ร้านไม่มี · ร้านตั๋ว — ตัวโหลดไม่ throw
+  ✅ [SD-9] VM หน้าสินค้าไม่มี id ภายใน/ของภายในของ quote · รูปคีย์ชั้นบนตรงใบสั่ง
+  ✅ [SD-10] ตัวโหลดไม่เขียนฐาน: TripLinkStat / ถังอัตรา / AuditLog / OutboxEvent ของร้าน seed เท่าเดิมหลังทุกข้อ SD
+  ── สรุป SD: ผ่าน 9/10
+
+── IS: แยกร้าน/หน่วย · การมองเห็น (ร้านชั่วคราว) ──
+  ✅ [IS-1] resolveBookShop ร้าน A: หน่วย TRIPS ที่ ACTIVE เท่านั้น (a · a2 · tokyo) — ไม่มีหน่วย PAUSED/BOOKING · tz ของ tokyo = Asia/Tokyo · ร้านระงับ/ร้านไม่มีหน่วย TRIPS ⇒ NOT_FOUND เท่ากับร้านที่ไม่มี
+  ✅ [IS-2] รายการร้าน A: เฉพาะทัวร์ ACTIVE ในหน่วย TRIPS ACTIVE ของ A (A · A2 · AT) เรียงตามเวลาเผยแพร่ — ไม่มี DRAFT/ARCHIVED/Liveaboard/หน่วยพัก/หน่วยผิดชนิด/ของร้าน B · ร้าน B เห็นเฉพาะของ B
+  ✅ [IS-3] หน้าสินค้า: slug เดียวกันสองร้านได้ของร้านตัวเอง · DRAFT/ARCHIVED/Liveaboard/หน่วยพัก/หน่วยผิดชนิด/slug ของร้าน B/ร้านระงับ ⇒ NOT_FOUND เท่ากันทุกตัว
+  ✅ [IS-4] สถานะเปลี่ยนมีผลทันที (ไม่แคชการมองเห็น): ถอนเผยแพร่ ⇒ NOT_FOUND + หายจากรายการ → เผยแพร่คืน ⇒ เห็น · พักหน่วย ⇒ NOT_FOUND · ระงับร้าน ⇒ NOT_FOUND ทั้งร้าน → คืน ⇒ เห็น
+  ❌ [IS-5] ปฏิทินร้านชั่วคราว มี.ค. 2570 (มติ X4): 10 ว่าง 35 · 11 เหลือ 2 · 12 เต็ม · 13 ไม่ออกเดินทาง · 14 (ตัวเลือกปิด) ไม่มี · 15 สองรอบ = 5 (รอบ 07:00 ที่ออกเร็วที่สุด ไม่ใช่ 30 ของรอบบ่าย) + departures 2 · 16 (รอบของสินค้าอื่น/ร่าง) ไม่มี · 1 มี.ค. = วันนี้ · เลือกปริยาย 10 · รอบที่เลือก/ตัวอ้างรอบ · เลขตรงฐาน — รอบที่เลือกปริยาย = รอบแรกที่ขายได้ · ตัวอ้างรอบ = เวลาออก: ได้ [[[true,"5z2aefkmnasv",true],[false,"zwpuomkyqfpj",true]],0] ต้องเป็น [[[true,"0700",true],[false,"1300",true]],0]
+  ✅ [IS-6] ราคาร้านชั่วคราวมาจากบริการราคา: ผู้ใหญ่ 1,234 · เด็ก 567 · ทารก 0 · ค่าอุทยานเก็บแทน · กล้อง · เท่ากับ quoteTripLine ที่ข้อสอบเรียกเอง · แก้ราคาในฐาน ⇒ หน้าเห็นราคาใหม่ทันที · มติ X7: ราคาของประเภทคนเดียวหาย ⇒ ซ่อนเฉพาะแถวนั้น · หายทุกประเภท ⇒ price null + priceError (ไม่ throw ไม่ปั้นเลข)
+  ✅ [IS-7] VM ร้านชั่วคราวไม่มี id ภายในใด ๆ (ร้าน/หน่วย/สินค้า/ตัวเลือก/ประเภทคน/รายการเสริม/รอบ) ทั้งรายการและหน้าสินค้า · เขตเวลาโตเกียว: today/เวลารอบ/offset ตามหน่วย
+  ✅ [IS-8] ตัวโหลดไม่เขียนฐานบนร้านชั่วคราว (TripLinkStat 0 แถว · ไม่มีถัง trips:book/trips:view ของร้าน A/B) หลังกลุ่ม IS
+  ── สรุป IS: ผ่าน 7/8
+
+── RL: ด่านอัตรา (เพดาน · ปิดเมื่อพัง · คำสั่งเดียว) ──
+  ✅ [RL-1] bookClientKey: รูป pc_ + hex 40 · คงที่ต่อ IP · IPv6 ใน /64 เดียวกันได้กุญแจเดียว · ต่าง /64 ต่างกุญแจ · ไม่มี IP ดิบในกุญแจ · IP อ่านไม่ได้ ⇒ null · ไม่มี/สั้น SESSION_SECRET ⇒ null (ไม่มีกุญแจสำรอง) · เปลี่ยนกุญแจเซิร์ฟเวอร์ ⇒ กุญแจเปลี่ยน
+  ✅ [RL-2] ไม่มีกุญแจเครื่อง ⇒ RATE_LIMITED NO_CLIENT โดยไม่ถามฐาน (ด่าน · openBookShop · openBookProduct) · ไม่มีแถว/ถังเกิดขึ้น
+  ✅ [RL-3] เพดานอ่านต่อ (ร้าน, เครื่อง): ผ่านครบ BOOK_READ_LIMIT ครั้ง (ยิงพร้อมกัน) → ครั้งถัดไป RATE_LIMITED LIMIT + retryAfterSec 1..60 · เครื่องอื่น/ร้านอื่นไม่โดน · พ้นหน้าต่าง 60 วิ ⇒ ผ่านใหม่ · ถังเป็น trips:book:<tenantId>:<กุญแจ> แถวเดียว
+  ✅ [RL-4] ปิดเมื่อพัง: ตัวรันคำสั่ง throw / คืน [] / คืนแถวไม่มีเลขนับ ⇒ RATE_LIMITED LIMITER_DOWN (ไม่ปล่อยผ่าน) · openBookProduct/openBookShop ไม่มี vm · ไม่มีแถวสถิติเพิ่ม · ไม่ throw ออกมา
+  ✅ [RL-5] คำสั่งเดียวต่อการเรียกด่าน (หน้ารายการ · ด่านที่ส่ง unit · คำขอไม่พบ) — ไม่มี read-then-write · มติ X6: openBookProduct = ด่าน 1 คำสั่ง (ไม่มี TripLinkStat) แล้วนับ 1 คำสั่งหลัง VM พร้อม · countView:false ⇒ ด่านอย่างเดียว · ไม่พบ ⇒ ถังเดาอย่างเดียว · open* ส่ง deps ถึงทั้งด่านและตัวนับ
+  ✅ [RL-6] คำขอไม่พบ (ร้าน/สินค้า/ร่าง/ร้านอื่น): ผล NOT_FOUND เท่ากัน · นับในถังเดียวต่อเครื่อง trips:book:none:<กุญแจ> (ไม่มีแถวต่อ slug ที่เดา) · เกิน BOOK_MISS_LIMIT ⇒ RATE_LIMITED · ไม่กินเพดานของร้านจริง
+  ✅ [RL-7] ไม่มีถัง/แถวที่มี unknown หรือ IP ดิบ: ChatRateBucket (trips:book · trips:view) และ TripLinkStat ของร้านชั่วคราว · OpsEvent ระหว่างรันไม่มี IP/กุญแจเครื่อง
+  ── สรุป RL: ผ่าน 7/7
+
+── TK: ตัวนับเปิดดู TripLinkStat (หน่วย uA2 · ล้างก่อนแต่ละข้อ) ──
+  ✅ [TK-1] 25 เครื่องเปิดพร้อมกัน ⇒ ทุกคำขอผ่าน counted · แถวเดียว (หน่วย, วันของร้าน 2027-03-01, WEB, linkId null) views = 25 พอดี · starts/paid = 0 · tenantId ถูก
+  ✅ [TK-2] เครื่องเดียวเปิด 25 ครั้งพร้อมกัน (+ ซ้ำอีก 5) ⇒ ผ่านทุกครั้งแต่ views +1 พอดี · counted จริงครั้งเดียว · วันถัดไปของร้านนับใหม่ได้ 1
+  ✅ [TK-3] เพดานแถวต่อวัน: views = BOOK_STAT_ROW_CAP − 1 แล้วอีก 4 เครื่องพร้อมกัน ⇒ views = เพดานพอดี ไม่เกิน · ทุกคำขอยังผ่าน
+  ✅ [TK-4] วันนับตามเขตเวลาของหน่วย: กรุงเทพ 23:59 = 1 มี.ค. · 00:00 = 2 มี.ค. · หน่วยโตเกียว ณ เวลาเดียวกัน (16:59Z) = 2 มี.ค. แล้ว · แถวแยกตามหน่วย ไม่ปนกัน
+  ✅ [TK-5] หน้ารายการและคำขอไม่พบไม่นับ views · หน่วยที่ไม่ใช่ของร้านนั้น/ไม่ใช่ TRIPS/พักอยู่ ⇒ ไม่มีแถว (ด่านไม่เชื่อ id ที่ส่งมาเกินร้านที่ resolve แล้ว) · counted false
+  ✅ [TK-6] ?a ผ่านช่องเสียบ: ยังไม่ลงทะเบียน ⇒ ไม่ผูก (linkId null) · ลงทะเบียนแล้ว: รหัสของร้านนี้ ⇒ แถว (linkId, agentAccountId) แยกจากแถว null · ตัวแก้ได้ tenantId ของร้านที่ resolve เสมอ · รหัสร้านอื่น/ปิด/ผูกสินค้าอื่น/ตัวแก้ throw ⇒ นับใต้ null หน้าไม่ล้ม · รหัสผิดรูปไม่ถูกส่งถึงตัวแก้
+  ✅ [TK-7] openBookProduct ครบเส้น: เปิดครั้งแรก ⇒ vm + views 1 · เครื่องเดิมเปิดซ้ำ/เปลี่ยนภาษา/เปลี่ยนวัน ⇒ ยังได้ vm แต่ไม่นับเพิ่ม · carry.lang ตาม ?lang · ?s ถูกทิ้ง (ไม่อยู่ใน carry/vm/แถว) · ?d/?m ไปถึงตัวโหลด
+  ✅ [TK-8] ผลของ openBookShop: vm รายการ + carry · ไม่มีแถวสถิติของทุกหน่วยในร้าน · เปิดร้านที่มีสินค้ามากกว่าเพดานการ์ดไม่ต้องทดสอบที่นี่ (เพดาน = take ในคิวรี) — ตรวจ shown ≤ BOOK_PRODUCT_CAP และ total ตรงฐาน
+  ✅ [TK-9] แถว TripLinkStat/ถังของร้านชั่วคราวไม่มีข้อมูลบุคคล: ไม่มี IP ดิบ/กุญแจเครื่องในคอลัมน์ใดของ TripLinkStat · channel ⊂ WEB/LIFF/EMBED · ตัวนับไม่ติดลบ ไม่เกินเพดาน
+  ── สรุป TK: ผ่าน 9/9
+
+── XR: มติผู้คุมหลังตรวจรอบ 1 — ผู้ใช้คือใคร · ราคาคนเดียว · วันเดียวหลายรอบ · นับเมื่อหน้าแสดงได้จริง · ธงยังไม่แปล · โลโก้/DST · VAT เพิ่ม (ร้านชั่วคราว x) ──
+  ✅ [XR-1] มติ X2 (core): ลำดับหัว IP = x-real-ip → x-vercel-forwarded-for → x-forwarded-for (ค่าคงที่ส่งออก ที่เดียว) · ที่อยู่ของเครื่องเซิร์ฟเวอร์เอง (127/8 · ::1 · ::ffff:127.x · 0.0.0.0 · มีพอร์ต/วงเล็บ) ⇒ null เป็นปริยาย ไม่ไล่หัวถัดไป · allowLoopback: true เท่านั้นจึงยอม · ไม่มีหัวเลย ⇒ null ทุกโหมด · IP จริงไม่กระทบ
+  ✅ [XR-2] มติ X2(ข) (ฝั่งเซิร์ฟเวอร์ · bookRequestFromHeaders): production + ไม่มีหัว IP / เป็นที่อยู่เครื่องเอง ⇒ clientKey null ⇒ หน้ารายการและหน้าสินค้าปิด (NO_CLIENT · ไม่ถามฐาน · ไม่มีถังของ 127.0.0.1) · production + IP จริง ⇒ กุญแจของหัวตามลำดับ (x-real-ip ชนะ) · นอก production ยอม loopback แต่ไม่มีหัวยังปิด · สลับ NODE_ENV มีผลทันที (ไม่จำค่า)
+  ✅ [XR-3] มติ X6 (core · bookViewCountable): นับเฉพาะ GET ของเบราว์เซอร์ที่คนเปิดเอง (รวมเบราว์เซอร์ในแอป LINE/Facebook) · ไม่นับ method อื่น · คำขอมีเนื้อความ · Sec-Purpose / Purpose / Next-Router-Prefetch · บอต/ตัวทำภาพตัวอย่างลิงก์ · ไม่มี User-Agent · อ่านหัวไม่ได้ — รายการอยู่ใน core ที่เดียว
+  ✅ [XR-4] มติ X6 (ครบเส้น · openBookProduct บนร้าน x): คน GET ครั้งแรก ⇒ views +1 พอดี (ด่าน 1 คำสั่ง → นับ 1 คำสั่งหลัง VM) · เปิดซ้ำ +0 · ไม่พบ/สินค้าร่าง/สินค้าร้านอื่น +0 · ถูกจำกัด +0 ไม่มีคำสั่งนับ · prefetch/บอต/HEAD/POST (ผ่าน bookRequestFromHeaders) ได้หน้าแต่ +0 และไม่เกิดถังกันนับซ้ำ · สินค้าถูกถอนระหว่างด่านกับตัวโหลด (หน้าแสดงไม่ได้) ⇒ ไม่นับ · คำสั่งนับล้ม ⇒ ไม่ throw
+  ✅ [XR-5] มติ X3: สินค้าที่มีกติกาลดตามจำนวน (GROUP_TIER ตั้งแต่ 2 คน ลด 20%) — ราคาต่อคนทุกประเภท · ราคาเริ่มต้น · ราคาเริ่มต้นของรอบ = ใบเสนอของ 1 คนจริงที่ข้อสอบขอเอง (ไม่มีส่วนลดกลุ่มปน) + ธง groupPricing true · สินค้าไม่มีกติกา ⇒ false · จอแสดงบรรทัดราคากลุ่มจากธงนั้น (ไม่คิดเลข)
+  ❌ [XR-6] มติ X4 (วันเดียวหลายรอบ): ทุกรอบของวันที่เลือก — ที่ว่าง = listAvailability ของรอบนั้น · ราคาเริ่มต้น = quoteTripLine ของรอบนั้นเอง (รอบบ่ายราคาเฉพาะรอบ 2,000) · ช่องปฏิทิน = รอบแรกที่ขายได้ + จำนวนรอบ · ปริยาย = รอบแรกที่ขายได้ · ?t ที่ตรงรูปและขายได้เลือกรอบนั้น (ตารางราคา/ราคาเริ่มต้น/ที่ว่างตามรอบเดียวกัน) · ?t ผิดรูป/ไม่มี/ชี้รอบที่ขายไม่ได้ ⇒ รอบแรกที่ขายได้ · ไม่มี id ใน VM/ตัวอ้างรอบ — แต่ละรอบ: ที่ว่าง + ราคาเริ่มต้นของรอบนั้นเอง: ได้ [["07:00–15:00",5,"LOW",{"code":"ADULT","unitSatang":123400},"pk2s62a73nan",true,true],["13:00–21:00",40,"OPEN",{"code":"ADULT","unitSatang":200000},"sxa3pthb7gdg",true,false]] ต้องเป็น [["07:00–15:00",5,"LOW",{"code":"ADULT","unitSatang":123400},"0700",true,true],["13:00–21:00",40,"OPEN",{"code":"ADULT","unitSatang":200000},"1300",true,false]]
+  ❌ [XR-7] มติ X4 (ตัวช่วย + เพดาน): parseBookSlot รับเฉพาะ HHMM (+ -2…-9) · slotTokensOf เวลาซ้ำได้ลำดับต่อท้าย · bookHref ต่อ t ท้ายสุด · วันที่มี 10 รอบ ⇒ แสดง 8 (รอบที่ขายได้มาก่อน เรียงเวลาออก) + moreSlots 2 · จอ: หัวหน้า (book-meta) ใช้รอบที่ selected · ลิงก์เลือกรอบสร้างด้วย bookHref ที่มี t — ตรงรูป: ได้ [null,null,null,null] ต้องเป็น ["0700","2359","0700-2","0700-9"]
+  ✅ [XR-8] มติ X5: cancelRowsOf — บันไดไม่มีขั้น 0 วัน ⇒ ต่อท้าย "หลังจากนั้นไม่คืนเงิน" เสมอ · มีขั้น 0 วัน 0% ⇒ บรรทัดเดียว (ไม่ซ้ำ) · ขั้น 0 วันมีร้อยละ ⇒ คงร้อยละ · บันไดว่าง ⇒ ไม่มีบรรทัด · จอใช้ตัวตัดสินนี้ + ข้อความ cancel.noRefund สองภาษา
+  ❌ [XR-9] มติ X7: ข้อความของร้านที่ยังไม่แปลได้ธง fallback ครบทุกช่อง (ชื่อตัวเลือก · ชื่อค่าธรรมเนียม · ชื่อ+หมายเหตุรายการเสริม · สรุปสินค้า · สรุปในการ์ด) และจอแสดงป้ายยังไม่แปลจากธงแต่ละช่อง · รอบสถานะ FULL (ขายหมด) ⇒ "เต็ม" ทั้งช่องปฏิทินและแถวรอบ (ไม่ใช่ปิดรับ) · ป้ายเก็บแทนไม่ฝังชนิดค่าธรรมเนียม — รอบ/วันสถานะ FULL ⇒ เต็ม: ได้ [[["FULL",null,false,false],["OPEN","ewkvbplwnxqc",true,true]],"FULL",0,false,1] ต้องเป็น [[["FULL",null,false,false],["OPEN","1300",true,true]],"FULL",0,false,1]
+  ✅ [XR-10] มติ X8: ลิงก์วันในตารางเดือนและชิปมือถือมี aria-label = วันที่เต็ม + สภาพ/ที่ว่าง (ไม่ใช่แค่เลขวัน) · ปุ่มเดือนก่อน/ถัดไปมี aria-label
+  ✅ [XR-11] มติ X9: ด่านล่มซ้ำ ๆ ⇒ ops log ไม่เกิน 1 แถว/นาที/โพรเซส (นาฬิกาจำลอง: 6 ครั้งในนาทีเดียว = 1 แถว · อีก 6 ครั้ง = 0 · ข้าม 61 วิ = อีก 1) · detail ไม่มี IP/กุญแจ/ข้อความของคำสั่ง · ไฟล์มีจุดเขียน ops จุดเดียวหลังตัวจำกัดความถี่ · ตราสินค้าล้มไม่เงียบ
+  ✅ [XR-12] มติ X9 (ไม่ค้นซ้ำ แต่ไม่เปิดช่อง): loadPublicProduct ที่ได้ found จากตัวแก้ ยังอ่านด้วยเงื่อนไข "มองเห็น" ชุดเดิม — found ชี้สินค้าร่าง / สินค้าของร้านอื่น / หน่วยนอก ref ⇒ ไม่ได้ข้อมูลของสินค้านั้น · platform ส่ง found ต่อ (ไม่ค้น slug รอบสอง)
+  ✅ [XR-13] มติ X10 (โลโก้): แสดงเฉพาะไฟล์ https บนที่เก็บไฟล์ของแพลตฟอร์ม (ตัวตรวจ storagePathFromCdnUrl) — โฮสต์ภายนอก / http / โฮสต์ชื่อคล้าย / โฟลเดอร์ส่วนตัว / เส้นทางผิดรูป ⇒ logoUrl null (ชื่อร้านยังแสดง)
+  ✅ [XR-14] มติ X10 (เขตเวลา): offset คิด ณ วันที่ของรอบที่เลือก ไม่ใช่ now — หน่วยนิวยอร์ก now = 1 มี.ค. (EST −300): รอบ 10 มี.ค. ⇒ −300 · รอบ 20 มี.ค. (หลังเริ่มเวลาออมแสง 14 มี.ค.) ⇒ −240 · รอบ 10 ก.ค. ⇒ −240 · เดือนไม่มีรอบ ⇒ ณ now (−300) · เวลารอบ/ปิดรับ/วันนี้ เป็นเวลาท้องถิ่นของหน่วย
+  ❌ [XR-15] มติ X11 · X12 (ร้านคิด VAT เพิ่มจากราคาตั้ง): ทุกยอดที่ลูกค้าเห็น = ยอดจ่ายจริงรวม VAT จากบริการราคา (สุทธิ + ภาษีของบรรทัด) · ราคาผู้ใหญ่ + ค่าธรรมเนียมบังคับ = payableSatang ของใบเสนอ 1 ผู้ใหญ่ · vatNote ADDED + ข้อความ "รวม VAT แล้ว" · ร้านรวม VAT ไม่เปลี่ยน · ตัวโหลดตรวจผลรวมบรรทัดกับ payableSatang ก่อนใช้ · จอไม่บวกเลข — จอ/platform ต้องไม่แตะยอดภาษีของใบเสนอ (อยู่ในตัวโหลดของโมดูลที่เดียว)
+  ✅ [XR-16] มติ X1 (ระดับฟังก์ชัน): ผลของ open* เมื่อไม่พบ/ถูกจำกัด ไม่มีชื่อร้าน · ชื่อสินค้า · slug · ตราสินค้า ใด ๆ (ชื่อหน้าและเนื้อหาจึงไม่มีทางได้ข้อมูลร้าน) · ผล ok มีชื่อร้าน/สินค้า (ตัวควบคุม) · ?a ของเครื่องที่ถูกจำกัด/คำขอไม่พบ ไม่ถูกส่งถึงตัวแก้ลิงก์
+  ── สรุป XR: ผ่าน 12/16
+
+── EM: โดเมนฝัง → frame-ancestors (ตัวอ่านค่าตั้ง · ยังไม่ต่อหัว HTTP) ──
+  ✅ [EM-1] หน่วยที่ตั้งโดเมน ⇒ frame-ancestors https://… ตามค่าตั้ง · หน่วยอื่นของร้านเดียวกัน/ร้านอื่น (ไม่ได้ตั้ง) ⇒ 'none' (ค่าตั้งไม่รั่วข้ามหน่วย/ร้าน)
+  ✅ [EM-2] ปิดเมื่อไม่แน่ใจ: (ร้าน B, หน่วยของ A) · หน่วยไม่มีจริง · หน่วย BOOKING · หน่วยพัก · ร้านระงับ · input ขยะ ⇒ 'none' ไม่ throw · embedOriginAllowed กับโดเมนของหน่วย: ตรงตัวเท่านั้น
+  ── สรุป EM: ผ่าน 2/2
+
+เหลือให้ด่านภาพ + การเปิดจริง (ผู้คุม · scripts/visual-trips.mts w1.1 + parity-trips.sh 19/01): เปิดได้โดยไม่มีคุกกี้ · 404 จริงของสินค้าที่ไม่เผยแพร่ · X-Frame-Options DENY ยังอยู่ · สองคอลัมน์ + แผงสรุปติดจอ 1440 · ชิปวัน/แถบล่าง 390 ไม่ล้น · 5 สภาพวันแยกรูปทรง+ข้อความ · สีตราสินค้า · สลับภาษาคงพารามิเตอร์
+
+===== QC TRIPS W1.1a · หน้าจองสาธารณะ: ตัวแก้ร้าน · ด่านอัตรา · ตัวนับเปิดดู · รายการ + หน้าสินค้าทัวร์ =====
+ผ่าน 75/84 · ไม่ผ่าน 9 · ข้าม 0
+ต่อกลุ่ม: PC 6/6 · S 9/12 · P 11/11 · LG 3/3 · SD 9/10 · IS 7/8 · RL 7/7 · TK 9/9 · XR 12/16 · EM 2/2
+JSON_SUMMARY {"suite":"qc-trips-w1.1","total":84,"passed":75,"failed":["S-4","S-5","S-12","SD-5","IS-5","XR-6","XR-7","XR-9","XR-15"],"skipped":[],"groups":{"PC":"6/6","S":"9/12","P":"11/11","LG":"3/3","SD":"9/10","IS":"7/8","RL":"7/7","TK":"9/9","XR":"12/16","EM":"2/2"}}

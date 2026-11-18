@@ -1,0 +1,22 @@
+[env] visual-trips · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+🌐 QC server http://127.0.0.1:3241 ตอบ HTTP 200
+(node:3706664) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ manifest-pickup [desktop 1440] (↔ ภาพ 12) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/t1.4/manifest-pickup-desktop.png
+  ✅ manifest-pickup [mobile 390] (↔ ภาพ 12) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/t1.4/manifest-pickup-mobile.png
+  ✅ manifest-booking [desktop 1440] (↔ ภาพ 12) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/t1.4/manifest-booking-desktop.png
+  ✅ manifest-booking [mobile 390] (↔ ภาพ 12) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/t1.4/manifest-booking-mobile.png
+  ✅ manifest-print [desktop 1440] (↔ ภาพ 12) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/t1.4/manifest-print-desktop.png
+  ❌ manifest-print [mobile 390] (↔ ภาพ 12) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/t1.4/manifest-print-mobile.png · ล้นแนวนอน
+  ✅ manifest-panel-link [desktop 1440] (↔ ภาพ 12) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/t1.4/manifest-panel-link-desktop.png
+  ✅ manifest-panel-link [mobile 390] (↔ ภาพ 12) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/t1.4/manifest-panel-link-mobile.png
+
+🧹 ลบ session ของรอบนี้ 1 · ภาพ 8 ใบใน /root/projects/shark-trips-l1/.qc-shots/trips/t1.4
+JSON_SUMMARY {"wo":"t1.4","shots":8,"failures":1,"fatal":null}

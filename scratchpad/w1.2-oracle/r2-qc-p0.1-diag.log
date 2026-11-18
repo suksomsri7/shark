@@ -1,0 +1,78 @@
+[env] qc-trips-p0.1 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+
+── A: ฟิกซ์เจอร์ (เลขคณิต + ตัวเลข README) ──
+✅ A-1 assertFixtureArithmetic ผ่าน (169 จุด ≥ 100)
+✅ A-2 positive control: แก้ยอด TR-6911-0142 +1 บาท ⇒ ตัวตรวจ throw
+✅ A-3 positive control: แก้ยอดรับ M1 ⇒ ตัวตรวจ throw (ผังเรือ)
+✅ A-4 positive control: แก้ภาษีหัก ณ ที่จ่ายใบแจ้งยอด ⇒ throw
+✅ A-5 TR-6911-0142 = ฿11,450
+✅ A-6 เอเจนซี่ 2 ผู้ใหญ่: 8,200 − 1,050 = 7,150 · หัก 3% ⇒ 7,181.50
+✅ A-7 ใบแจ้งยอด ST-6911-PTD-1 = ฿86,121.15 · ชุดเดิม ฿86,300 ติดป้าย legacy
+✅ A-8 Liveaboard D1: 69,400 · มัดจำ 19,740 · งวด 2 49,660 ภายใน 16 ธ.ค. 2569
+✅ A-9 ผังเรือ v2: 3 ดาดฟ้า 10 เคบิน 20 เตียง · 293,100 / 188,450 / 104,650
+✅ A-10 ผังเรือ v3: 12 เคบิน 24 เตียง เต็มลำ 753,600 เริ่ม 1 พ.ค. 2570
+✅ A-11 ส. 14 ราชา: 15/24 · 6 การจอง · 50,400 + 8,400 · คอมฯ 4,095 · ต้นทุน 21,500 · กำไร 24,805
+✅ A-12 ตั๋ว TK-6911-0318 = ฿900 (2×350 + 1×200)
+✅ A-13 RC-6911-0588: 9,299.07 + 650.93 + 1,500 = 11,450
+✅ A-14 คืนเงิน TR-6912-0188: 23 วัน · 50% · คืน 6,475 · ร้านเก็บ 4,975
+✅ A-15 ระดับ A 20 / B 15 / C 10 · PTD ระดับ B 15% วงเงิน 150,000 เทอม 15 วัน · Blue Planet ระดับ C 10%
+✅ A-16 ราคาราชา: ผู้ใหญ่ 3,500 · เด็ก 2,450 · อุทยาน 600/300 · กล้อง 500
+✅ A-17 ร้าน: อันดามันไดฟ์ DIVE_SHOP (ทัวร์+Liveaboard) · อควาเรียมอันดามัน ATTRACTION (ตั๋ว)
+✅ A-18 trips-fixture.mts ไม่ import อะไรเลย (ไม่มี prisma / @/)
+✅ A-19 ทุกฟิลด์ *Satang เป็นจำนวนเต็ม
+✅ A-20 ส่งออกรายการ TODO + DISCREPANCIES (ไม่แต่งตัวเลขที่หาไม่พบ)
+
+── B: ด่าน host ของ loadTripsQcEnv ──
+✅ B-1 positive control: host เลน l1 + TRIPS_QC_HOST=l1 ⇒ ผ่านด่าน (exit 0)
+✅ B-2 DATABASE_URL production (ep-royal-night) ⇒ exit 4
+✅ B-3 DIRECT_URL production ขณะ DATABASE_URL เป็นเลน ⇒ exit 4
+✅ B-4 prod ซ่อนใน query string ของ host เลน ⇒ exit 4
+✅ B-5 host QC ของ RUN อื่นทั้ง 14 ตัว (SVC/HR/POS/CRM/ACC) ⇒ exit 4 ทุกตัว
+✅ B-6 DIRECT_URL ชี้ QC ของ SVC (ep-mute-scene) ขณะ DATABASE_URL เป็นเลน ⇒ exit 4
+✅ B-7 host ที่ไม่รู้จัก ⇒ exit 4
+✅ B-8 URL อ่าน host ไม่ได้ ⇒ exit 4
+✅ B-9 QC_ENV_FILE=.env (production) ⇒ exit 4
+✅ B-10 APP_ENV=production บน host เลน ⇒ exit 4
+✅ B-11 host เลน l1 แต่ไม่ตั้ง TRIPS_QC_HOST (ค่าเริ่ม = ฐานหลัก) ⇒ exit 4
+✅ B-12 host เลน l2 ขณะ TRIPS_QC_HOST=l1 ⇒ exit 4
+✅ B-13 ไม่มี DATABASE_URL ⇒ exit 4
+✅ B-14 รายการ host ใน qc-trips.sh = trips-qc-hosts.mts
+✅ B-15 ฐานหลัก TRIPS ไม่อยู่ในรายการ RUN อื่น
+
+── C: seed ร้านตัวอย่าง ──
+(node:986909) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+✅ C-1 ร้าน 2 ร้าน slug andaman-dive · andaman-aquarium
+✅ C-2 หน่วย: อันดามันไดฟ์ BOOKING · อควาเรียม TICKET (ร้านละ 1)
+✅ C-3 ผู้ใช้ร้านละ 2 (เจ้าของ OWNER + พนักงาน STAFF) · ยอมรับแล้ว
+✅ C-4 พนักงานประตูมีสิทธิ์ ticket.checkin.scan
+❌ C-5 Party อันดามันไดฟ์ 9 (เอเจนซี่ 2 + ลูกค้า 7) — ได้ 10 ต้องการ 9
+✅ C-6 เอเจนซี่เป็น COMPANY: บจก. ภูเก็ตทราเวลเดสก์ · Blue Planet Travel
+✅ C-7 อีเวนต์ตั๋ว 1 รายการ เปิดขาย (PUBLISHED) รอบ 11 พ.ย. 13:00
+✅ C-8 ประเภทตั๋ว ผู้ใหญ่ 350 · เด็ก 200 · ผู้สูงอายุ 200 (สตางค์)
+✅ C-9 trips-expected.json ตรงกับฐาน (id อีเวนต์/ประเภทตั๋ว/Party)
+✅ C-10 seed รันซ้ำ exit 0
+✅ C-11 seed รันซ้ำรายงาน 'ไม่มีการเขียน' + created/updated ว่าง
+✅ C-12 หลังรันซ้ำ: จำนวนแถว + updatedAt ทุกตารางเท่าเดิม
+✅ C-13 ผู้ใช้ TRIPS 4 คน (อีเมล trips-qc-*@shark.local)
+
+── D: แยกร้าน (tenantDb) ──
+✅ D-1 ขอบเขตร้านอควาเรียมมองไม่เห็น Party ของอันดามันไดฟ์
+✅ D-2 ขอบเขตร้านอันดามันไดฟ์มองไม่เห็น Party ของอควาเรียม
+✅ D-3 ขอบเขตอันดามันไดฟ์เห็น Party ของตัวเองครบ 9
+✅ D-4 ภัทรา สายใจ อยู่ร้านละแถว (ชื่อซ้ำข้ามร้าน ไม่รวมกัน)
+✅ D-5 ค้นชื่อในขอบเขตอควาเรียม ได้เฉพาะแถวของอควาเรียม
+✅ D-6 ขอบเขตร้านอันดามันไดฟ์ + หน่วยอควาเรียม มองไม่เห็นอีเวนต์/ประเภทตั๋ว
+✅ D-7 ขอบเขตอควาเรียม + หน่วยตัวเอง เห็นอีเวนต์ 1 · ประเภทตั๋ว 3
+✅ D-8 ผู้ใช้อันดามันไดฟ์ไม่มีสิทธิ์ในร้านอควาเรียม
+
+===== QC TRIPS P0.1 · ฟิกซ์เจอร์ + seed + ด่าน host =====
+ผ่าน 55/56
+JSON_SUMMARY {"suite":"qc-trips-p0.1","total":56,"passed":55,"failed":["C-5"]}

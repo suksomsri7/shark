@@ -1,0 +1,20 @@
+[env] visual-trips · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+🌐 QC server http://127.0.0.1:3241 ตอบ HTTP 200
+(node:769202) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+  ✅ book-checkout [desktop 1440] (↔ ภาพ 01) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/w1.2-flow/book-checkout-desktop.png
+  ✅ book-checkout [mobile 390] (↔ ภาพ 01) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/w1.2-flow/book-checkout-mobile.png
+  ✅ book-pay [desktop 1440] (↔ ภาพ 01) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/w1.2-flow/book-pay-desktop.png
+  ✅ book-pay [mobile 390] (↔ ภาพ 01) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/w1.2-flow/book-pay-mobile.png
+  ✅ book-expired [desktop 1440] (↔ ภาพ 07) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/w1.2-flow/book-expired-desktop.png
+  ✅ book-expired [mobile 390] (↔ ภาพ 07) HTTP 200 → /root/projects/shark-trips-l1/.qc-shots/trips/w1.2-flow/book-expired-mobile.png
+
+🧹 ลบ session ของรอบนี้ 0 · ภาพ 6 ใบใน /root/projects/shark-trips-l1/.qc-shots/trips/w1.2-flow
+JSON_SUMMARY {"wo":"w1.2-flow","shots":6,"failures":0,"fatal":null}

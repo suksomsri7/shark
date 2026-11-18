@@ -1,0 +1,147 @@
+# ใบสั่ง W1.2 — ทัวร์ 4 ขั้นฝั่งลูกค้า (ภาพ 01 · 19) → **แยก a/b** · ใบนี้ = **W1.2a: เลือกคน/รับส่ง/เสริม (ยอดจากบริการ) → ถือที่ + ผู้จอง → จ่าย QR พร้อมเพย์ยอดล็อก (ร้านยืนยันรับเงิน) → วอเชอร์ QR + สิ่งที่ต้องทำ (สถานะ)**
+
+> ผู้เขียน 14 พ.ย. 2569 · **ร่างรอบ 2 = แก้ตามมติ R6–R14** (ท้ายไฟล์) · ฐาน `wip/trips-w1.2` = `session/trips` @234d84eb9 · ข้อสอบ `scripts/qc-trips-w1.2.mts` (79 ข้อ · builder ห้ามแก้) · ฉากภาพ `visual-trips.mts` `w1.2` (อ่านอย่างเดียว) + `w1.2-flow` (เขียนฐานเลน · มี `book-expired`)
+> กติกา: SVC-RUN §1 + TRIPS-RUN §1 · builder ห้าม build/เปิดเซิร์ฟเวอร์/commit/migrate/แก้ข้อสอบ · tsx/tsc ผ่าน `scripts/iso.sh` · **ไม่มี migration**
+> มติที่ผูก: R1–R14 · OQ8 · OQ2 · Q11 · **OQ17ก ไม่แตะ POS** · **OQ21 ไม่มีเอกสารบัญชี/สลิป TRIPS** · OQ23 · OQ28 · W1.1 X1–X12 Y1–Y5 · T0.4 มติ 1–3 · T0.6/T0.7a ข้อบังคับ
+
+## 0. ผู้คุมทำก่อน/ตอนรับงาน (ไม่ใช่งานผู้สร้าง)
+1. **ORACLE-EDIT w1.1** (R3): S-4 · S-5 · S-8 · ข้อที่ตรึง `cta.enabled:false` (SD-5) · S-12 · **ORACLE-EDIT t0.1** R-1/R-2 (ทะเบียน trips "ไม่มีคีย์เกิน" + เทียบ TRIPS-DEFAULTS) ⇐ 2 คีย์ใหม่ §3.4
+2. ร้าน seed `andaman-dive`: ตั้ง `trips.public.bookingEnabled = true` (ระดับหน่วย · ผ่าน setSettings) ก่อนถ่ายภาพ `w1.2`/`w1.2-flow` — ค่าเริ่ม = ปิด (R7)
+3. หนี้บริการที่พบในรอบ 2 (§12 ข้อ 1) — a ตรวจที่แพลตฟอร์ม · แก้ในบริการ = T0.4c หรือใบ T0.6 ถัดไป
+
+## 1. ขอบเขตและการแบ่งใบ
+| ใบ | ครอบ | รอ | ขนาด |
+|---|---|---|---|
+| **W1.2a (นับ)** | 01ข/19 คน·รับส่ง·เสริม·สรุป บนหน้าสินค้า W1.1 (GET ไม่ต้อง JS) → ถือที่ (holdTrips) → `c/[basket]` 01ค ผู้จอง+สรุป+ผู้ขาย+ยอมรับ → confirmTrips → `my/[token]` PAY (QR ยอดงวดแรก · "โอนภายใน") / VOUCHER (QR + ต้องทำแบบสถานะ) / EXPIRED (ทางติดต่อร้าน) · CANCELLED · ENDED · ปุ่มจองเปิดต่อร้าน (ค่าเริ่มปิด) · สินค้า SHOP_CONFIRMS ปิดปุ่ม · ด่านอัตราปิดเมื่อพัง · 1440+390 · ไทย/อังกฤษ | — | L |
+| W1.2b (นอก) | สลิป+ตรวจอัตโนมัติ (OQ21ข/OQ31) · บัตร/วอลเล็ต · โค้ดส่วนลด/แต้ม · **AWAIT_SHOP + ขายสินค้า SHOP_CONFIRMS สาธารณะ** (R8) · ลิงก์ในรายการต้องทำ (`/form/[token]` = W1.3) · LINE · ใบเสร็จ (T0.7b) · `starts/paid` (W1.1b) · ช่องเก็บการยอมรับ/ยินยอมการตลาด · **เก็บชื่อที่ผู้จองพิมพ์ลง snapshot/คอลัมน์** (R11) | OQ21 · OQ31 · W1.3 · W2 | M |
+| T0.4c (นอก · ผู้คุมออก) | เพดานที่ถือไม่จ่ายต่อรอบในบริการ (R7) — ต้องเสร็จก่อนเปิดร้านจริง | — | S |
+- W1.3 = เลื่อน/ยกเลิก/OTP บน `my/[token]` เดียวกัน · W1.4 = 07 ทั้งชุด
+
+## 2. ไฟล์เจ้าของ (แตะนอกนี้ = ตีกลับ · ข้อสอบ S-10 เทียบ BASE)
+```
+src/lib/platform/trips-book-core.ts   pure (import type เท่านั้น · ไม่มีนาฬิกา/env/crypto) — §3.1
+src/lib/platform/trips-book.ts        server — §3.2 · import: core/db (คำสั่งด่าน) · core/rate-limit-db (rateBucketCte เท่านั้น) · core/settings (resolveSettings) · platform/trips-public(-core) · modules/trips (facade) · node:crypto · qrcode
+src/lib/modules/trips/public-booking.ts  ตัวอ่าน (ไม่เขียน · ไม่ import core/db): ref ↔ id · ตัวเลือก · ตะกร้า/hold/การจองจาก tokenHash
+src/lib/modules/trips/index.ts        ต่อท้ายบล็อก "// TRIPS W1.2 ▸ … ◂" (≤ 30 บรรทัด · ไม่ลบ · ไม่ export *)
+src/app/book/[shop]/actions.ts        'use server' — startBookHoldAction · confirmBookHoldAction เท่านั้น (FormData → platform → redirect จากผลของ platform)
+src/app/book/[shop]/c/[basket]/page.tsx · src/app/book/[shop]/my/[token]/page.tsx  (cache() ห่อ open*/load* 1 จุด แบบ W1.1 X1 · §6)
+src/app/book/[shop]/t/[productSlug]/page.tsx · src/components/book/Book*.tsx · src/messages/{th,en}/book.json  (แก้/เพิ่ม)
+trips-public(-core).ts · public-catalog.ts  แก้จำกัด (cta.enabled ตามด่าน §4 ข้อ 4 · LIMITED ในข้อสอบ)
+src/lib/core/settings/defs/trips.ts   เพิ่ม 2 แถว §3.4 เท่านั้น (≤ 24 บรรทัด · ไม่ลบ) + ledger/TRIPS-DEFAULTS.md 2 แถว (X29 X30)
+```
+ห้ามแตะ: `prisma` `proxy.ts` `lib/core` (ยกเว้นบรรทัดข้างบน · ห้ามแตะ registry/service/ฟอร์มตั้งค่า) `lib/payment` `app/api` `app/(store)` `i18n` · บริการ T0.4–T0.8 (เรียกผ่าน facade · บกพร่อง = แจ้งผู้คุม) · `visual-trips.mts` (ผู้เขียนเพิ่มฉากแล้ว)
+
+## 3. สัญญา
+### 3.1 `trips-book-core.ts` (ข้อสอบ P)
+`BOOK_MAX_SEATS` = **10** (R7 · ที่นั่ง+ทารกรวมต่อการถือ) · `BOOK_FORM_MIN_SEC` 2 · `BOOK_FORM_MAX_SEC` 7200 · `BOOK_PAY_MARGIN_SEC` 180 (R8) · `BOOK_SLOT_HOLD_PER_HOUR` 2 (R7) · `BOOK_CONFIRM_PER_HOUR` 20 (R10) · `BOOK_TERMS_VERSION` สตริง ≤ 20 `[0-9A-Za-z.-]` เช่น `"2026-11-14"` (R14) · `BOOK_ERROR_CODES` = `NOT_FOUND RATE_LIMITED INVALID PRICE_CHANGED SOLD_OUT CUTOFF_PASSED SLOT_CLOSED HOLD_LIMIT HOLD_EXPIRED STALE_FORM TOO_FAST ACCEPT_REQUIRED DONE BUSY UNAVAILABLE` · `BOOK_RES_STATES` = `PAY VOUCHER EXPIRED CANCELLED ENDED` (**ไม่มี AWAIT_SHOP** · R8) · `BOOK_TODO_KEYS` = `PAY PASSENGERS WAIVER` · `BOOK_PAX_CODE_RE` `/^[A-Z0-9_]{1,32}$/` · `BOOK_REF_RE` `/^[a-z0-9]{12}$/` · `BOOK_BASKET_TOKEN_RE` (43 ตัว base64url)
+- `parseBookSelection(sp)` → `{ pax:{code,qty}[], extras:{ref,qty}[], zone:string|null } | null` — คีย์ `n.<CODE>` `x.<ref>` `z` · ค่า `/^(0|[1-9]\d{0,2})$/` ≤ BOOK_MAX_SEATS · 0 ทิ้ง · เรียง code/ref · คีย์อื่นทิ้ง (รวม `a` — R14) · ผิดรูปข้อใด ⇒ `null` · ไม่ throw
+- `selectionSeatsOk(sel, seatCodes, max)` ที่นั่ง ≥ 1 ∧ คนรวม ≤ max · `cancelDeadlinesOf(ladder, travelDate, today)` → `{date,pct}[]` · `reservationStateOf({status, holdExpiresAt, now})`: HOLD ยังไม่หมด ⇒ PAY · HOLD หมด/ไม่มีเวลา/EXPIRED ⇒ EXPIRED · CONFIRMED/PART_PAID/PAID ⇒ VOUCHER · CANCELLED · TRAVELLED/NO_SHOW ⇒ ENDED · **PENDING/อื่น ⇒ null** · `bookTodoOf(...)` (P-6)
+- ตัวตรวจผู้จอง (pure · §4.1) แนะนำชื่อ `bookerNameOf` `bookerPhoneOf` `bookerEmailOf` → ค่าปกติ หรือ null
+
+### 3.2 `trips-book.ts` (ทุกตัว `opts?: { now?: Date; deps?: { query? } }` = ช่องทดสอบ · หน้า/action **ไม่ส่ง**)
+| ฟังก์ชัน | คืน (ok) | ผิด |
+|---|---|---|
+| `issueBookFormNonce({now?})` | `<สุ่ม>.<วินาที>.<HMAC>` | null |
+| `quoteBookSelection({shop, productSlug, query, acceptLanguage, clientKey})` | `{ ok, options, summary \| null }` | NOT_FOUND · RATE_LIMITED · INVALID{fields} · UNAVAILABLE{reason} |
+| `startBookHold({shop, productSlug, form, acceptLanguage, clientKey})` | `{ ok, basketToken, sel, expiresAt, shopSlug }` | ทุกรหัสยกเว้น ACCEPT_REQUIRED/DONE · PRICE_CHANGED{totalSatang} |
+| `loadBookCheckout({shop, basketToken, sel, lang, acceptLanguage, clientKey})` | `{ ok, vm }` | NOT_FOUND · RATE_LIMITED · HOLD_EXPIRED · DONE{token, shopSlug} · PRICE_CHANGED{heldTotalSatang, totalSatang, rehold} · UNAVAILABLE |
+| `confirmBookHold({shop, basketToken, sel, form:{name, phone, email?, accept, nonce, seen}, clientKey})` | `{ ok, token, shopSlug }` | INVALID{fields} · ACCEPT_REQUIRED · HOLD_EXPIRED · HOLD_LIMIT · PRICE_CHANGED{heldTotalSatang, totalSatang, rehold} · SLOT_CLOSED · CUTOFF_PASSED · STALE_FORM · DONE{token, shopSlug} · NOT_FOUND · RATE_LIMITED · BUSY · UNAVAILABLE |
+| `openBookReservation({shop, token, lang, acceptLanguage, clientKey})` | `{ ok, vm }` | NOT_FOUND · RATE_LIMITED · UNAVAILABLE (state null) |
+| `bookVoucherQrPayload(tenantId, code)` / `verifyBookVoucherQr(tenantId, payload)` | `"<code>.<HMAC 16>"` / code | null |
+- RATE_LIMITED = `{ ok:false, code, reason: "LIMIT"|"LIMITER_DOWN"|"NO_CLIENT", retryAfterSec }` · UNAVAILABLE.reason ∈ `BOOKING_OFF SHOP_CONFIRMS` (อื่นไม่มี reason) · `shopSlug` = slug จริงจาก `resolveBookShop` (ตัวเล็ก) — action redirect ด้วยค่านี้เท่านั้น (R14)
+- `rehold = { productSlug, query }` — query ของหน้าสินค้า (d · t · n.* · x.* · z) จาก sel · ปุ่ม "ถือใหม่ด้วยราคาใหม่" = ลิงก์ GET (R6 · ห้ามแสดงยอดใหม่เงียบ ๆ)
+- `options = { pax:{code,label,ageMin,ageMax,seat,unitSatang}[], extras:{ref,name,note,basis,unitSatang}[], zones:{ref,kind,name,areas,surchargeSatang}[], maxSeats, left, slot:{token,timeText} }` (extras/zones = active ตามกติกา pricing · เรียง sortOrder)
+- `summary = { date, slotToken, timeText, seats, lines:{kind:"SEAT"|"EXTRA"|"PICKUP"|"VAT", label, qty, unitSatang, amountSatang, passThrough}[], totalSatang, passThroughSatang, vatNote, cancelRows, holdMinutes }` — **Σ lines = totalSatang = `quote.totals.payable`** · ร้านราคาไม่รวม VAT ⇒ บรรทัด `VAT` 1 บรรทัด (qty 1 · amount = payable − Σ บรรทัดอื่น · passThrough false · R12)
+- `shop = { name, contact: { phone?, line? }, address? }` — name = `Tenant.name` · อื่นจาก `trips.public.shopContact` · ค่าว่าง = ไม่มีคีย์ (R13)
+- checkout `vm = { shop, locale, product{slug,title}, date, timeText, summary, holdUntil(ISO), holdUntilLocal, cancelRows, legal{licenseNo, termsVersion}, form{nonce} }` — licenseNo = `trips.license.fields.number` (null ไม่บล็อก)
+- reservation `vm = { shop, locale, code, state, product{slug,title}, date, timeText, lines, totalSatang, paidSatang, outstandingSatang, holdUntil, holdUntilLocal, payByLocal, pay: null|{amountSatang, qrSvgDataUrl, receiverName}|{unavailable:"NO_RECEIVER"|"TOO_LATE"}, voucher: null|{qrSvgDataUrl}, todo, cancelRows, cancelUntil }` — totalSatang = ยอดรวมการจอง · `pay.amountSatang` = **ยอดที่ต้องโอนตอนนี้** = งวดแรกค้างของ `tripPaymentIntent` (สินค้ามัดจำ ≠ ยอดรวม · R12) · `pay.qrSvgDataUrl` = `svgDataUrl` ของบริการ ไม่สร้าง QR เอง · `payByLocal` = HH:MM ของ holdUntil − BOOK_PAY_MARGIN_SEC
+- `INVALID.fields` ⊂ `d t pax extras zone seen nonce name phone email` · ไม่สะท้อนค่า · ไม่ throw
+- **ตารางแปลงรหัสบริการ (R9):**
+
+| บริการ | ถือ | ยืนยัน |
+|---|---|---|
+| SOLD_OUT · CUTOFF_PASSED · SLOT_CLOSED · HOLD_LIMIT · HOLD_EXPIRED | เดิม | เดิม |
+| PRICE_CHANGED (details.quote) | PRICE_CHANGED{totalSatang = payable ใหม่} | PRICE_CHANGED{heldTotalSatang = sel.t, totalSatang = payable ใหม่, rehold} |
+| IDEMPOTENCY_CONFLICT · VALIDATION reason BASKET_TOKEN_USED | STALE_FORM | อ่านตะกร้าใหม่ (ล่าง) ⇒ STALE_FORM |
+| STATE_CONFLICT reason BASKET_CHECKED_OUT | — | อ่านตะกร้าใหม่ ⇒ DONE{token} |
+| VALIDATION มี fields ที่เราตรวจ / ไม่มี fields | INVALID{fields} / UNAVAILABLE | INVALID{fields} / UNAVAILABLE |
+| NOT_FOUND · HOLD_NOT_FOUND · FORBIDDEN | NOT_FOUND | NOT_FOUND |
+| อื่น | BUSY | BUSY |
+ยืนยันไม่ ok ⇒ **อ่านตะกร้าใหม่จาก tokenHash ก่อนแปลง**: CHECKED_OUT ⇒ `DONE{token ของการจองในตะกร้า}` · หมดเวลา = `HOLD_EXPIRED` รหัสเดียวทั้งหน้ายืนยันและยืนยัน
+- **รหัส:** `basketToken = base64url(HMAC(SECRET, "trips.public.basket.v1:"+tenantId+":"+nonce))` (nonce เดิม ⇒ ตะกร้าเดิม) · idempotencyKey ของบริการ = จาก sha256(nonce) · `token` = `BookingRef.publicToken`
+- **`sel` (R6 · R9):** `v1.<base64url(JSON)>.<MAC>` ยาว ≤ 1,024 · JSON (คีย์เรียงตามนี้ · ref/ค่าสาธารณะเท่านั้น) `{ p: ref สินค้า, s: token รอบ (W1.1), n: [[CODE, qty]…], x: [[ref, qty]…], z: ref|null, q: quoteId ตอนถือ, t: totalSatang ตอนถือ }` · MAC = base64url(HMAC-SHA256(SECRET, "trips.public.sel.v1:"+tenantId+":"+unitId+":"+sha256(basketToken)+":"+ส่วน JSON)) ตัด 22 ตัว · เทียบด้วย timingSafeEqual · ผิด/ถอดไม่ได้/ร้านอื่น ⇒ NOT_FOUND รูปเดียว · `basketId` `holdIds` หาจาก tokenHash (public-booking) เท่านั้น ไม่อยู่ใน sel
+- ref สาธารณะ = 12 ตัวแรก base32 ตัวเล็กของ HMAC(SECRET, "trips.public.ref.v1:"+tenantId+":"+ชนิด+":"+id) — ไม่มี id ภายในใน VM/HTML/URL
+
+### 3.4 ค่าตั้งใหม่ (R7 · R13) — `defs/trips.ts` + TRIPS-DEFAULTS
+- **X29 `trips.public.bookingEnabled`** bool · chain U (หน่วย) · ค่าเริ่ม **false ทุกแม่แบบ** · "เปิดปุ่มจองออนไลน์ (หน้าจองสาธารณะ)" — ไม่มีคีย์เดิมที่ความหมายตรง (ตรวจ `trips.public.*` `trips.sell.*` `trips.sell.cutoff.perChannel` แล้ว)
+- **X30 `trips.public.shopContact`** table `{ phone: string 1–30|null, line: string 1–50|null, address: string 1–300|null }` strict · chain U · ค่าเริ่ม null ทั้งหมด · "ช่องทางติดต่อร้านบนหน้าจอง" — ไม่มีที่เก็บเบอร์/LINE/ที่อยู่ร้านในโดเมน trips (AccountSettings มีเบอร์/ที่อยู่แต่ไม่มี LINE และเป็นโมดูลบัญชี)
+- ใช้ helper `row(...)` เดิมของไฟล์ · ไม่แตะ registry/service/ฟอร์ม (แถวใหม่ขึ้นหน้าตั้งค่าตามกลุ่มเอง — ไม่ขึ้น = แจ้งผู้คุม)
+
+## 4. ลำดับด่าน (ทุกตัว)
+1. `clientKey` ไม่ตรง `pc_[0-9a-f]{40}` ⇒ RATE_LIMITED NO_CLIENT **ไม่ถามฐาน**
+2. ร้าน: `resolveBookShop` + `findPublicProduct` (TOUR · ACTIVE) — ไม่พบ ⇒ ถังเดา W1.1 แล้ว NOT_FOUND รูปเดียว
+3. ถังอ่าน **คำสั่ง SQL เดียว** (`rateBucketCte` · `opts.deps.query`) ปิดเมื่อพัง (LIMITER_DOWN): `trips:book:<tenant>:<ck>` (BOOK_READ_LIMIT) · ยืนยัน: + `trips:confirm:<tenant>:<ck>` BOOK_CONFIRM_PER_HOUR/ชม. (R10) · my/: + อ่านถัง `trips:token:<tenant>:<ck>` (X8 `tokenPerHourPerDevice` · ค่า ≥ เพดาน ⇒ ปิดแม้ token จริง · +1 เมื่อค้นไม่เจอ) — ห้าม `checkRateLimitDb*`
+4. **เปิดปุ่ม (R7 · R8):** `trips.public.bookingEnabled` ของหน่วย ≠ true ⇒ UNAVAILABLE BOOKING_OFF · `trips.sell.confirmMode` ของสินค้า = SHOP_CONFIRMS ⇒ UNAVAILABLE SHOP_CONFIRMS · อ่านค่าตั้งไม่ได้ ⇒ UNAVAILABLE · ใช้กับ quote · ถือ · หน้ายืนยัน · ยืนยัน (my/ ไม่ตรวจ — การจองเดิมต้องเปิดได้) · W1.1 `openBookProduct` ใช้ด่านเดียวกันตั้ง `cta.enabled`
+5. ฟอร์ม: nonce ลายเซ็นถูก · อายุ ≥ MIN (TOO_FAST) ≤ MAX (STALE_FORM) · `seen` ต้องมี (INVALID seen) · ยืนยัน: `sel` ถูก (ข้อ 3.2) · accept (ACCEPT_REQUIRED) · ผู้จอง §4.1 — **ผิด = ไม่เรียกบริการ ไม่มี Party ใหม่** (R10)
+6. แปลง ref → id ในโมดูล (ของร้าน/หน่วย/สินค้านี้ · โซน/รายการเสริมปิด ⇒ INVALID — ปิดหนี้ `pricing.ts:184`)
+7. ถือเท่านั้น — ถังถือ **คำสั่ง SQL เดียว**: `trips:hold:<tenant>:<ck>` X8 `holdPerHourPerContact`/ชม. + `trips:slot:<tenant>:<departureId>:<ck>` BOOK_SLOT_HOLD_PER_HOUR/ชม. (R7) · เกิน ⇒ LIMIT · ค่าตั้งอ่านไม่ได้/พัง ⇒ LIMITER_DOWN · (หลังข้อ 5 = ฟอร์มผิดไม่กินโควตา)
+8. บริการ (ctx `{tenantId, unitId, channel:"WEB", actor:{kind:"PUBLIC", clientKey}, now, locale}`):
+   - ถือ: `quoteTrips` → payable ≠ seen ⇒ PRICE_CHANGED{totalSatang} → `holdTrips` (basketToken) → sel (q = quoteId · t = payable)
+   - หน้ายืนยัน: ตะกร้า/hold จาก tokenHash → หมด ⇒ HOLD_EXPIRED → `quoteTrips` ใหม่ → quoteId ≠ sel.q ⇒ PRICE_CHANGED{heldTotalSatang, totalSatang, rehold}
+   - ยืนยัน: seen ≠ sel.t ⇒ PRICE_CHANGED (ไม่เรียกบริการ) → **`getAvailability` (WEB · รอบของ hold): saleBlock CUTOFF/STARTED ⇒ CUTOFF_PASSED · อื่นที่ไม่ใช่ null ⇒ SLOT_CLOSED** (หนี้ §12 ข้อ 1 · C-14 C-15) → `confirmTrips` (`quoteId` = sel.q · `pay.method PAY_NOW` · booker `{name, phone(E.164), email?}` เท่านั้น — **ห้ามส่ง partyId/lineUserId**)
+9. หน้าการจอง: ค้น `sha256(token)` ผูก tenant ของ `[shop]` + หน่วย TRIPS ACTIVE · state จาก `reservationStateOf` (ถือหมดตามนาฬิกา ⇒ EXPIRED แม้ตัวกวาดยังไม่วิ่ง · null ⇒ UNAVAILABLE) · PAY: เหลือ < BOOK_PAY_MARGIN_SEC ⇒ `pay = {unavailable:"TOO_LATE"}` ไม่เรียก intent · ไม่งั้น `tripPaymentIntent({publicToken})` (ตัด `bookingId` `dueId` `payload` · STATE_CONFLICT NO_PROMPTPAY_RECEIVER ⇒ NO_RECEIVER)
+
+### 4.1 ผู้จอง (R11 · ข้อสอบ C-11–C-13)
+- ชื่อ: NFC → trim → 1–100 อักขระ · ห้าม C0/C1 (U+0000–001F · 007F–009F) · U+200B–200F · U+202A–202E · U+2066–2069 ⇒ INVALID(name)
+- เบอร์: ตัดช่องว่าง/`-`/วงเล็บ → `^0\d{8,9}$` ⇒ `+66` + ตัดเลข 0 · `^\+\d{8,15}$` ⇒ เดิม · อื่น ⇒ INVALID(phone) · ส่งบริการเป็น E.164 รูปเดียว (Party.phone = `+66…` · เบอร์เดียวกันสองรูป = ผู้จองคนเดียวกัน)
+- อีเมล: trim · ว่าง = ไม่มี · ตัวเล็ก · ≤ 200 · `^[^\s@]+@[^\s@]+\.[^\s@]+$` · อื่น ⇒ INVALID(email)
+- action ผิด ⇒ redirect `?sel=…&e=<CODE>&f=<field>` เท่านั้น — **ไม่มีค่าที่กรอกใน URL** (ฟอร์มไม่เติมค่ากลับ)
+
+## 5. จอ (ภาพ 01 ข/ค/ง · 19 · สถานะอื่นใช้กล่องข้อความแบบ 07)
+- หน้าสินค้า: `book-select` (− + = submit ของฟอร์ม GET · ≥ 44 px) · `book-zones` · `book-extra-pick-<i>` · `book-summary` ติดจอ 1440 / แถบล่างยอดรวม 390 · `book-continue` ใน `<form action={startBookHoldAction}>` · ปุ่มปิด (BOOKING_OFF/SHOP_CONFIRMS) ⇒ `book-closed` "ยังไม่เปิดจองออนไลน์ — ติดต่อร้าน"
+- `c/[basket]`: `book-steps` · `book-hold-until` (เวลา ไม่มีนาฬิกา JS) · `book-shop` (ชื่อ/เบอร์/LINE/ที่อยู่ · ใบอนุญาตถ้ามี) · ชื่อ/เบอร์/อีเมล · `book-accept` + `book-legal` + `book-terms-version` + `book-privacy` · `book-pay-submit` · ราคาเปลี่ยน ⇒ `book-price-changed` (ยอดเดิม · ยอดใหม่) + `book-rehold`
+- `my/[token]`: `book-res-code` · `book-shop` · PAY `book-res-total` (ยอดรวม) · `book-pay-amount` "ยอดที่ต้องโอนตอนนี้" · `book-pay-qr` · `book-pay-by` "โอนภายใน HH:MM — หลังเวลานี้อย่าโอน" · "ร้านจะยืนยันเมื่อได้รับเงิน" · `book-pay-too-late` · `book-pay-unavailable` · VOUCHER `book-voucher-qr` `book-todo-<key>` `book-cancel-until` · `book-res-expired` + `book-expired-contact` "ถ้าโอนแล้ว ติดต่อร้าน <ชื่อ/เบอร์/LINE> พร้อมรหัสการจอง" · `book-res-cancelled|ended` · ผิด `book-error[data-code]` ข้อความ `err.<CODE>`
+- เงิน `formatBaht` · วันเวลาคิดในตัวโหลด · ไม่มี JS ส่งฟอร์มเอง · 390 ไม่ล้น · ไม่มีรหัสดิบบนจอ · ไทย/อังกฤษคีย์เท่ากัน (LG-1)
+
+## 6. ความปลอดภัยหน้าสาธารณะ
+token ≥ 256 บิต ค้นด้วยแฮชผูกร้าน · ผิดร้าน = NOT_FOUND รูปเดียว (C-6 X-1) · VM ไม่มี id/quoteId/priceSource/warnings/เบอร์/อีเมล/ชื่อผู้จอง (Q-4 R-1 · ยกเว้นก้อน `shop` ของร้านเอง) · log/ops/audit/outbox/ถังไม่มี PII/token (X-7) · ไม่สะท้อนอินพุต (X-6) · **R14:** c/ my/ = `export const dynamic = "force-dynamic"` (Next ส่ง `Cache-Control: private, no-cache, no-store` — ผู้คุมตรวจ `curl -I`) · ไม่มี revalidate/`'use cache'` · metadata robots noindex/nofollow + referrer "no-referrer" · `<title>` = `page.titleCheckout`/`page.titleReservation` (ไม่มีรหัส/สินค้า/วันที่) · ไม่มี og:*/twitter · redirect จาก `shopSlug` ของ platform ไม่ใช่ FormData (S-4 H-1)
+
+## 7. เงิน
+สตางค์ · ยอดจาก `quoteTrips` (ก่อนจอง) / snapshot (หลังจอง) เท่านั้น · จอห้ามคิด (S-6) · **ยอดจอ = payable = Σ บรรทัด (+VAT) (Q-9 · PC-8)** · QR = งวดแรกค้างของบริการ ทุกไบต์ (R-1 R-11 · PC-7) · ร้านแก้ราคาหลังจอง ⇒ ไม่เปลี่ยน (R-3) · 2 ผู้ใหญ่ 1 เด็ก + กล้อง = ฿11,450.00 (Q-2)
+
+## 8. กฎหมาย (⚖️ ป้าย "ตรวจกับนักบัญชี/ทนาย")
+ก่อนจ่ายต้องเห็น: ราคาแยกบรรทัด + ค่าอุทยานเก็บแทนแยก + VAT (ถ้าบวกเพิ่ม) · ตารางยกเลิก · **ผู้ขาย: ชื่อ/เบอร์/LINE/ที่อยู่/เลขใบอนุญาตจากค่าตั้ง (ว่าง = ไม่แสดง ไม่บล็อก · R13)** · ติ๊กยอมรับ + รุ่นเงื่อนไข `BOOK_TERMS_VERSION` ท้ายข้อความ · PDPA สั้น: **ร้าน = ผู้ควบคุม · SHARK = ผู้ประมวลผล** · วัตถุประสงค์/ระยะเวลา/สิทธิ์ (LG-1) · **ไม่ถามความยินยอมการตลาด** · วอเชอร์ไม่อ้างว่าส่งใบเสร็จแล้ว (OQ21)
+
+## 9. เกณฑ์รับ · regression
+1. oracle w1.2 79/79 บนฐานเลน (seed ×2 ก่อน) 2. typecheck 0 · fitness ×2 3. ภาพ `w1.2` ×2 ขนาด + `w1.2-flow` (ผู้คุม · รวม `book-expired`) PARITY 01ข/ค/ง + 19 + 07 4. ผู้คุมเปิดจริง: ไม่มีคุกกี้จองได้ · ย้อนกลับ/ส่งซ้ำไม่จองซ้ำ · `X-Frame-Options DENY` · `Cache-Control` no-store บน c/ my/ · POST action ข้ามโดเมน (Origin) 5. ผู้ตรวจ 2 รอบ + นักล่า (🔴)
+regression: seed ×2 · w1.1 + t0.1 (หลัง ORACLE-EDIT §0) · t1.4 t1.3 t0.8 t0.7 t0.6 t0.5 t0.4 t0.3 t0.2 a1.2 a1.1 t1.2 t1.1 p0.1 · SVC r0.3 · qc-svc-smoke · fitness ×2
+
+## 10. ห้าม
+คิดเงิน/ตัดสินสถานะในจอ · float เงิน · อ่าน `TripPrice`/ตัวนับที่นั่งเองแทนบริการ · เขียนฐานนอก `holdTrips`/`confirmTrips`/คำสั่งด่าน · `checkRateLimitDb*` · ถัง unknown/IP ดิบ · เวลา/ผู้กระทำ/id จากคำขอเข้าบริการ · `dangerouslySetInnerHTML` · `loading/route/error.tsx` ใต้ `/book` · ข้อความสัญญาที่ระบบทำไม่ได้ (ยืนยันอัตโนมัติ · ส่งใบเสร็จ) · แสดงยอดใหม่เงียบ ๆ · ค่าที่ผู้จองกรอกใน URL · AWAIT_SHOP/ขาย SHOP_CONFIRMS · แตะ registry/ฟอร์มตั้งค่า · 中文 · แตะ POS/payment/proxy · `any` · migration
+
+## 11. คำถามเปิด (สถานะหลังมติ)
+| # | เรื่อง | สถานะ |
+|---|---|---|
+| Q1 🔴 | ไม่มีตัวยืนยันเงินอัตโนมัติ | R2 + R8: QR ยอดล็อก + "โอนภายใน" + ซ่อน QR < 3 นาที + EXPIRED บอกทางติดต่อ · OQ31 (เจ้าของ · ก่อน M1) |
+| Q2 ⚖️ | หลักฐานการยอมรับ | ติ๊กบังคับ + `BOOK_TERMS_VERSION` (R14) · หนี้ migration `acceptedTermsAt/termsHash` = b |
+| Q3 ⚖️ | PDPA | ข้อความรุ่น 1 ใน book.json · ผู้ควบคุม/ผู้ประมวลผล (R14) · รอทนาย (OQ23) |
+| Q4 ⚖️ | ใบเสร็จ | "ร้านจะออกใบเสร็จ/ใบกำกับภาษีให้" จน T0.7b |
+| Q5 | ที่อยู่หน้าการจอง | `/book/[shop]/my/[token]` (W1.3 ต่อในหน้าเดียวกัน) |
+| Q6 | กั๊กที่ | R7: ถังต่อรอบ 2/ชม. + ≤ 10 ที่ + ปุ่มปิดเป็นค่าเริ่ม · เพดานต่อรอบในบริการ = T0.4c |
+| Q7–Q9 | ref · sel · QR วอเชอร์ | ตาม §3.2 (sel = R6/R9) · ออฟไลน์ GateSigningKey = K1.1/T1.5 |
+| Q10 | ฟิลด์ผู้จอง | R11 §4.1 · โรงแรม = ฟอร์มผู้เดินทาง (W1.3) |
+| Q11 | ลิงก์รายการต้องทำ | สถานะอย่างเดียว + "ร้านจะส่งลิงก์" จน W1.3 |
+| Q12 | ร้านยืนยันก่อน | R8: ปิดปุ่มใน a · AWAIT_SHOP = b |
+| Q13 | X8 ต่อเครื่อง · อายุฟอร์ม · หลายรอบ/วัน | ตามเดิม (`t` = W1.1 X4) |
+| Q14 | ร้านไม่มีผู้รับพร้อมเพย์ | PAY + `{unavailable:"NO_RECEIVER"}` |
+| Q15 | ฉาก `w1.2-flow` | รันหลังข้อสอบ · `book-expired` เลื่อนเวลาถือของการจอง WEB ล่าสุดของ seed ให้หมด (เขียนฐานเลน) · reseed หลังด่าน |
+
+## 12. หนี้ · โค้ดที่ต่างจากสัญญา/มติ
+1. **(รอบ 2 · PC-9)** `confirmTrips` สาธารณะ PAY_NOW (สถานะ HOLD · hold KEEP) ไม่ตรวจสถานะรอบ/เวลาปิดรับ (`booking.ts:845-854` ล็อกรอบอย่างเดียว · `state.ts:86`) ⇒ รอบปิด/เลยปิดรับหลังถือยังได้การจอง HOLD — a ตรวจด้วย `getAvailability` ก่อนเรียก (TOCTOU ช่วงสั้น) · แก้ในบริการ = T0.4c/T0.6 ถัดไป
+2. ยกเลิกรอบที่มีที่ถือทำไม่ได้ (`departures.ts:1107-1116` HAS_BOOKINGS) ⇒ "ร้านปิด/ยกเลิก" ใน m7 ทดสอบด้วย `setDepartureStatus CLOSED` (C-14)
+3. ใบเสนอราคาไม่มียอด VAT แยก (`pricing.ts:431` totals มีแค่ gross/discount/passThrough/payable) ⇒ บรรทัด VAT = payable − Σ บรรทัด (คิดในแพลตฟอร์ม ไม่ใช่จอ)
+4. `phoneE164` หลวม (`booking-core.ts:176-186` ≥ 8 หลักอะไรก็ได้) · Party เก็บเบอร์ตามที่ส่ง (`party/service.ts:143`) ⇒ แพลตฟอร์มตรวจเข้ม + ส่ง E.164 (§4.1) · ชื่อผู้จองหายเมื่อเบอร์ชน Party เดิม = หนี้ b (R11)
+5. คีย์ค่าตั้งใหม่ 2 ตัวทำให้ t0.1 R-2 ("ไม่มีคีย์ trips เกิน") แดงจน ORACLE-EDIT (§0) · ไม่มีที่เก็บช่องทางติดต่อร้านในโดเมน trips (`account.prisma:539-551` ไม่มี LINE)
+6. เดิม: `booking.ts:509-570` holdTrips สาธารณะไม่มีเพดาน X8 · `sellable.ts:30` "แฮช IP+UA" · `sellable.ts:87` marketingConsent ≠ `booking-core.ts:74-83` · CC J.3 `checkRateLimitDb` ≠ ปิดเมื่อพัง · `pricing.ts:184` โซนไม่กรอง active · quote มี `priceSource`/`warnings` · `money.ts:608` intent คืน id/payload · ไม่มีตัวอ่านการจองสาธารณะ (`booking.ts:1269`) · `slip-shared.ts:42` ไม่มี TRIPS · QR ออฟไลน์ต้องมี GateSigningKey (K1.1)
+7. หนี้ที่รับในมติ (ท้ายไฟล์) + wo-notes `trips-W1.2a.md`: หนี้ b ทั้งรายการ · Q2 migration · T0.4c
+

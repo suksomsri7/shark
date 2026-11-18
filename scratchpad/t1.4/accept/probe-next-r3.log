@@ -1,0 +1,62 @@
+[env] probe-trips-t1.4-next · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+🌐 QC server http://127.0.0.1:3241 ตอบ HTTP 200
+(node:3721855) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ตั้งข้อมูล ──
+  ℹ️ [SETUP] ผู้เดินทางผ่านบริการจริง: {"adultForm":true,"adultWaiver":true,"minorForm":true,"minorWaiver":true}
+  ℹ️ ร้าน t14n_tN_mwgkg4ak20b514 · หน่วย trips-t14n-u-mwgkg2hu8f41 · รอบหลัก t14n_d_mwgkg4pt948f58 · การจองในใบ 18 (+ HOLD 1 · ยกเลิก 1) · รอบเกินเพดาน t14n_d_mwgkgi2ie54ee4
+  ℹ️ [SETUP] SQL: {"bookings":18,"people":66,"slots":66,"purged":1,"named":64,"health":3}
+
+── ฉาก 3: พิมพ์: audit ก่อนกล่องพิมพ์ · บันทึกไม่ได้ = ไม่พิมพ์ · ผังพิมพ์ A4 หลายหน้า ──
+  ✅ [S3] กดพิมพ์ ⇒ window.print ถูกเรียก 1 ครั้ง — expected 1 · got 1
+  ✅ [S3] ลำดับ: คำขอบันทึกการพิมพ์ถูกส่งก่อน window.print และตอบ HTTP 200 — expected ส่งก่อนพิมพ์ · 200 · got 200 · ส่งก่อนพิมพ์ 129ms · เหตุการณ์คำตอบถึง node -2ms เทียบเวลาเรียกพิมพ์
+  ✅ [S3] ตอนกล่องพิมพ์เปิด มีแถว audit trips.manifest.printed แล้ว 1 แถว — expected 1 · got 1
+  ✅ [S3] audit trips.manifest.printed รวม +1 — expected 1 · got 1
+  ✅ [S3] audit.after = { departureId, purpose, passengers (ไม่นับผู้ถูกลบ) } — expected {"departureId":"t14n_d_mwgkg4pt948f58","purpose":"MANIFEST","passengers":65} · got {"purpose":"MANIFEST","passengers":65,"departureId":"t14n_d_mwgkg4pt948f58"}
+  ✅ [S3] audit: ผู้กระทำ/เป้า — expected ["t14n_uoa_mwgkg4c719f2cd","TripDeparture","t14n_d_mwgkg4pt948f58"] · got ["t14n_uoa_mwgkg4c719f2cd","TripDeparture","t14n_d_mwgkg4pt948f58"]
+  ✅ [S3] หัวกระดาษมี "พิมพ์เมื่อ … โดย <ชื่อผู้พิมพ์>" — expected พิมพ์เมื่อ … Probe oa · got ือ: Boat mwgkg2hu8f41 · ไกด์: Guide mwgkg2hu8f41พิมพ์เมื่อ 14 พ.ย. 2569 22:34 โดย Probe oa
+  ℹ️ [S3] หัวกระดาษก่อนกด: …Guide mwgkg2hu8f41พิมพ์เมื่อ 14 พ.ย. 2569 22:34 โดย Probe oa · หลังกด: …Guide mwgkg2hu8f41พิมพ์เมื่อ 14 พ.ย. 2569 22:34 โดย Probe oa
+  ✅ [S3] สื่อพิมพ์: รากผังพิมพ์แสดง (display block) — expected block · got block
+  ✅ [S3] สื่อพิมพ์: เปลือกแอป/แถบทัวร์/ปุ่ม/การ์ดจอ ซ่อนทั้งหมด — expected [] · got []
+  ✅ [S3] สื่อพิมพ์: เนื้อหายาวกว่า 1 หน้า A4 และเอกสารสูงตามเนื้อหา (ไม่ถูกตัดเหลือหน้าเดียว) — expected > 1684px และ doc ≥ root · got [2953,2955]
+  ✅ [S3] สื่อพิมพ์: ไม่มีบรรพบุรุษที่ตัด/เลื่อนเนื้อหา (overflow/fixed) — expected [] · got []
+  ✅ [S3] สื่อพิมพ์: ไม่ล้นความกว้างกระดาษ — expected ≤ 794 · got 794
+  ✅ [S3] สื่อพิมพ์: ตัวอักษร ≥ 10pt (13.3px) สีดำ — expected ≥ 13.3px · rgb(0, 0, 0) · got [13.3333,"rgb(0, 0, 0)"]
+  ✅ [S3] สื่อพิมพ์: ทุกการจองในใบ + รายชื่อรายคนเปิดทั้งหมด — expected [18,66] · got [18,66]
+  ✅ [S3] สื่อพิมพ์: มีท้ายกระดาษเตือนข้อมูลส่วนบุคคล — expected มี · got ทริป (ลงชื่อ) ........................................
+
+เอกสารมีข้อมูลส่วนบุคคล — ใช้เฉพาะการดูแลทริปนี้ ทำลายหลังจบทริป
+  ✅ [S3] กระดาษไม่มี: เนื้อหาสุขภาพ · เลขเอกสารเต็ม · เบอร์เต็ม · วันเกิด · ผู้ปกครอง — expected [] · got []
+  ✅ [S3] กระดาษไม่มี: ชื่อผู้ถูกลบ · HOLD/ยกเลิก · หน่วยอื่น — expected [] · got []
+  ✅ [S3] กระดาษไม่มียอดเงิน (เจ้าของเห็นยอดบนจอ) — expected ไม่มี ฿/ค้างชำระ · got ไม่มี
+  ✅ [S3] กระดาษไม่มีจำนวนไฟล์/รอลบ — expected ไม่มี · got ไม่มี
+  ✅ [S3] กระดาษมีผู้ถูกลบเป็น "ลบตามนโยบายแล้ว" — expected มี · got —
+  ✅ [S3] ผังพิมพ์ (ไทย): ไม่มีคีย์ข้อความดิบ (manifest.* / errors.* …) — expected ไม่มี · got ไม่มี
+  ✅ [S3] ผังพิมพ์ (ไทย): ไม่มีรหัส enum ดิบบนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S3] ผังพิมพ์ (ไทย): ไม่มีรหัสใบงาน / คำว่า POS บนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S3] PDF: หลายหน้า (≥ 2) ขนาด A4 — expected ≥ 2 หน้า · A4 · got 5 หน้า · 594.96 x 841.92 pts (A4)
+  ✅ [S3] PDF: การจองท้ายใบ (Bulk14) และผู้เดินทางคนแรกอยู่ครบ — ไม่ถูกตัด — expected มีทั้งคู่ · got [true,true]
+  ✅ [S3] PDF: หน้าสุดท้ายมีช่องลงชื่อ/ท้ายกระดาษ — expected มีเส้นลงชื่อ · got ผู้รับผิดชอบทริป (ลงชื่อ) ........................................ เอกสารมีข้อมูลส่ วนบุคคล — ใช้เฉพาะการดูแลทริปนี้ ทำลายหลังจบทริป 
+  ✅ [S3] PDF หน้า 1: ขอบกระดาษ ≥ 10mm (28pt) ซ้าย/ขวา/บน — expected ≥ 28pt · got [34,35,32]
+  ℹ️ [S3] PDF 5 หน้า · ขอบ ซ้าย 34pt ขวา 35pt บน 32pt
+  ✅ [S3] action บันทึกการพิมพ์ล้ม (ตัดคำขอ) ⇒ window.print ไม่ถูกเรียก — expected 0 · got 0
+  ✅ [S3] ข้อความผิดพลาดการพิมพ์: role=alert + สีอันตราย + บอกว่ายังไม่เปิดกล่องพิมพ์ — expected alert · got {"role":"alert","text":"บันทึกการพิมพ์ไม่สำเร็จ จึงยังไม่เปิดกล่องพิมพ์ — ลองอีกครั้ง","color":"rgb(185, 28, 28)"}
+  ✅ [S3] ไม่มีแถว audit เพิ่ม — expected 0 · got 0
+  ✅ [S3] ปุ่มพิมพ์กลับมากดได้หลังผิดพลาด — expected false · got —
+  ✅ [S3] action ส่งออกล้ม ⇒ ข้อความ role=alert และไม่มีการดาวน์โหลด — expected alert · 0 ไฟล์ · got {"role":"alert","text":"ส่งออกไม่สำเร็จ — ลองอีกครั้ง"}
+  ℹ️ [S3] ผู้ดูธรรมดา: ผังพิมพ์อยู่ใน DOM ตั้งแต่โหลดหน้า ({"text":9154,"pax":0}) ⇒ Ctrl+P พิมพ์ได้โดยไม่มีแถว audit (ข้อจำกัดที่ใบสั่งรับ — Q4)
+  ✅ [S3] ผู้ดูธรรมดา: ผังพิมพ์ใน DOM ไม่มียอดเงิน/ข้อมูลอ่อนไหว — expected ไม่มี · got —
+  ✅ [END] ไม่มี OutboxEvent ชนิด trips.manifest* ของร้านชั่วคราว — expected 0 · got 0
+  ✅ [END] OpsEvent ตั้งแต่เริ่มรัน: ไม่มีตัวบ่งชี้บุคคล — expected [] · got []
+  ℹ️ [END] OpsEvent ของร้านชั่วคราว/ไม่ระบุร้านตั้งแต่เริ่มรัน: 0 แถว
+
+🧹 ลบแถวของ probe แล้ว — เหลือ ร้าน 0 · ผู้ใช้ 0 · session 0 · แถว trips/audit/party ของร้านชั่วคราว 0
+JSON_SUMMARY {"probe":"t1.4-next","base":"http://127.0.0.1:3241","checks":35,"passed":35,"failed":0,"scenarios":{"1":"SKIPPED(--only)","2":"SKIPPED(--only)","3":"PASS (33)","4":"SKIPPED(--only)","5":"SKIPPED(--only)","6":"SKIPPED(--only)","7":"SKIPPED(--only)"},"failures":[],"cleanup":{"tenants":0,"users":0,"sessions":0,"rows":0},"fatal":null,"shots":"/root/projects/shark-trips-l1/.qc-shots/trips/t1.4-next"}

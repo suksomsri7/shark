@@ -1,0 +1,41 @@
+[env] probe-w1.2-hunt-4 · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+(node:787052) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+INFO  [404-norm] shop missing: 404 raw=258133 norm=257929 43ms
+INFO  [404-norm] token random: 404 raw=258133 norm=257929 85ms
+INFO  [404-norm] token A on B: 404 raw=258175 norm=257963 78ms
+INFO  [404-norm] token malformed: 404 raw=258053 norm=257929 75ms
+FOUND [NF-norm] expected: after removing the echoed shop/token, all my/ 404 bodies are identical | got: identical=false firstDiff=257929,257929,2900,257929
+INFO  [404-norm] diff context: «_next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"S\",\"my\",\"T\"],\"q\":\"\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\"children\":[[\"shop\",\"» vs «_next_f.push([1,"0:{\"P\":null,\"c\":[\"\",\"book\",\"S\",\"my\",\"T\"],\"q\":\"?lang=th\",\"i\":false,\"f\":[[[\"\",{\"children\":[\"book\",{\"children\":[[\"s»
+INFO  [404-norm] action 404: 404 4790B title="404: This page could not be found." content-type=text/html; charset=utf-8 leak=[trips-w12h-mwgyiz4n0470-a,w12h-a-mwgyiz4n0470] head=<script src="/_next/static/chunks/polyfills-42372ed130431b0a.js" noModule=""></script><meta charSet="utf-8"/><meta name="viewport" content="width=device-width, 
+KNOWN [NF-action-shape] expected: action notFound() answers 404 with the same not-found page as GET (one shape) | got: 404 4790B vs GET 404 ~258KB · leak=[trips-w12h-mwgyiz4n0470-a,w12h-a-mwgyiz4n0470] | different body from GET 404 (method differs; informational)
+HELD  [RP-toofast] expected: hold submitted right after the page (< 1 s) ⇒ e=TOO_FAST, no hold | got: TOO_FAST
+INFO  [replay] re-hold: 303/OTHER→/book/trips-w12h-mwgyiz4n0470-a/t/w12h-a-mwgyiz4n0470?m=2026 → - · re-confirm: 303/OTHER→/book/trips-w12h-mwgyiz4n0470-a/my/d4MZM77Gi510BUKHQFilHILAp
+HELD  [RP-back] expected: re-POST of hold + confirm after booking ⇒ same my/ (DONE), no 2nd hold/booking, counters unchanged | got: bookings 2→2 held 3→3 sold 0→0 same=true
+INFO  [replay] counters after one 2-seat HOLD booking: {"capacity":20,"sold":0,"held":3,"reserved":0,"status":"OPEN"}
+INFO  [caps] 11 people: page 200/PRODUCT form=false
+HELD  [CAP-11 people] expected: refused (INVALID), no hold | got: INVALID +0
+INFO  [caps] infant only: page 200/PRODUCT form=false
+HELD  [CAP-infant only] expected: refused (INVALID), no hold | got: INVALID +0
+INFO  [caps] qty 999: page 200/PRODUCT form=false
+HELD  [CAP-qty 999] expected: refused (INVALID), no hold | got: INVALID +0
+INFO  [caps] unknown code: page 200/PRODUCT form=false
+HELD  [CAP-unknown code] expected: refused (INVALID), no hold | got: INVALID +0
+HELD  [W1-short] expected: 1-minute hold ⇒ c/ HOLD_EXPIRED (+ rehold) · no booking | got: confirm 303/OTHER→/book/trips-w12h-mwgyiz4n0470-a/t/w12h-x-mwgyiz4n0470?lang=t code=HOLD_EXPIRED rehold=false
+HELD  [W1-c] expected: 290 s left ⇒ c/ HOLD_EXPIRED + rehold, no form | got: code=HOLD_EXPIRED rehold=false form=false
+HELD  [W1-confirm] expected: 290 s left ⇒ confirm e=HOLD_EXPIRED, no booking | got: 303/OTHER→/book/trips-w12h-mwgyiz4n0470-a/c/OWImynhUuHlcom_m3fu4W7JqyE bookings +0
+HELD  [W1-ok] expected: 400 s left ⇒ c/ shows the booker form | got: 200/CHECKOUT form=true
+HELD  [LATE-qr] expected: right after confirm (≈15 min left) ⇒ PAY with QR (not TOO_LATE) | got: qr=true tooLate=false
+HELD  [LATE-tooLate] expected: my/ with < 3 min left ⇒ book-pay-too-late, no QR | got: tooLate=true qr=false
+HELD  [LATE-expired] expected: after hold time ⇒ EXPIRED + shop contact, no QR (sweeper not run) | got: expired=true contact=[076-555-444,@w12x] qr=false
+  cleanup: removed 2 miss buckets of 13 probe IPs
+  cleanup: hunt tenants+users left = 0 · tenant buckets left = 0
+
+=== hunt-4: HELD 13 · FOUND 1 · KNOWN 1 ===

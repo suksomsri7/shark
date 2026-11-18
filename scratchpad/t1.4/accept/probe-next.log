@@ -1,0 +1,222 @@
+[env] probe-trips-t1.4-next · ไฟล์ .env.qc-trips · DB ep-green-sound-aokclp5k-pooler.c-2.ap-southeast-1.aws.neon.tech (qc-trips)
+🌐 QC server http://127.0.0.1:3241 ตอบ HTTP 200
+(node:3708340) Warning: SECURITY WARNING: The SSL modes 'prefer', 'require', and 'verify-ca' are treated as aliases for 'verify-full'.
+In the next major version (pg-connection-string v3.0.0 and pg v9.0.0), these modes will adopt standard libpq semantics, which have weaker security guarantees.
+
+To prepare for this change:
+- If you want the current behavior, explicitly use 'sslmode=verify-full'
+- If you want libpq compatibility now, use 'uselibpqcompat=true&sslmode=require'
+
+See https://www.postgresql.org/docs/current/libpq-ssl.html for libpq SSL mode definitions.
+(Use `node --trace-warnings ...` to show where the warning was created)
+
+── ตั้งข้อมูล ──
+  ℹ️ [SETUP] ผู้เดินทางผ่านบริการจริง: {"adultForm":true,"adultWaiver":true,"minorForm":true,"minorWaiver":true}
+  ℹ️ ร้าน t14n_tN_mwgk9qsk72e23f · หน่วย trips-t14n-u-mwgk9pyy233b · รอบหลัก t14n_d_mwgk9rc76beed7 · การจองในใบ 18 (+ HOLD 1 · ยกเลิก 1) · รอบเกินเพดาน t14n_d_mwgka5525891c5
+  ℹ️ [SETUP] SQL: {"bookings":18,"people":66,"slots":66,"purged":1,"named":64,"health":3}
+
+── ฉาก 1: 2 มุมมอง: กลุ่ม/แถว/การ์ดสรุป · ขยายรายคน · ไม่ล้นที่ 1440/390 · อังกฤษ ──
+  ✅ [S1] ตัวโหลด (เจ้าของ) คืน VM — expected ok · got ok
+  ℹ️ [S1] ผู้เดินทางของการจองแรกตาม VM: [[1,"SUBMITTED","SIGNED","PROVIDED",false,"••••233B",{"live":2,"pendingDeletion":1}],[2,"PENDING","MISSING","MISSING",false,null,{"live":0,"pendingDeletion":0}],[3,"SUBMITTED","SIGNED","PROVIDED",true,null,{"live":1,"pendingDeletion":0}]]
+  ✅ [S1] ผู้ใหญ่กรอกครบ+ลงนาม (บริการจริง) ⇒ waiver SIGNED · health PROVIDED · เลขเอกสารปิดบัง 4 ตัวท้าย · ไฟล์ live 2 (หนังสือเดินทาง + ลายเซ็นเอกสารรับทราบความเสี่ยง) รอลบ 1 — expected SIGNED/PROVIDED/••••233B/{2,1} · got ["SIGNED","PROVIDED","••••233B",{"live":2,"pendingDeletion":1}]
+  ✅ [S1] ผู้เยาว์+ผู้ปกครอง (บริการจริง) ⇒ isMinor true · health PROVIDED · waiver SIGNED — expected true/PROVIDED/SIGNED · got [true,"PROVIDED","SIGNED"]
+  ✅ [S1] เจ้าของเปิดใบรายชื่อ (ตามรถรับส่ง) ได้ — expected 200 + trips-mf · got 200
+  ✅ [S1] กลุ่มบนจอ = รถ 1 → รถ 2 → ยังไม่จัดรถ — expected ["trips-mf-group-run:t14n_run_mwgka4iq4e8e26","trips-mf-group-run:t14n_run_mwgka4jg8795b8","trips-mf-group-unassigned"] · got ["trips-mf-group-run:t14n_run_mwgka4iq4e8e26","trips-mf-group-run:t14n_run_mwgka4jg8795b8","trips-mf-group-unassigned"]
+  ✅ [S1] แถวที่เห็น = การจองในใบทั้งหมด (ไม่มี HOLD/ยกเลิก/หน่วยอื่น) — expected ["tb22618480ec15d2b3387100","tb241064fa344bdaae39cb00","tb26a6f495b0fc674e54b100","tb3b945348a81f3e11b6ae00","tb42d357b955a27f54207900","tb486b43b963e3fed7623000","tb4adf98a44f09dcbaa0fd00","tb52c6c3415c2556f22b2500","tb570c93871a1d4ee0e03500","tb5a215dfc9aedb1e6f12300","tb8f835758cab33012a67d00","t · got ["tb22618480ec15d2b3387100","tb241064fa344bdaae39cb00","tb26a6f495b0fc674e54b100","tb3b945348a81f3e11b6ae00","tb42d357b955a27f54207900","tb486b43b963e3fed7623000","tb4adf98a44f09dcbaa0fd00","tb52c6c3415c2556f22b2500","tb570c93871a1d4ee0e03500","tb5a215dfc9aedb1e6f12300","tb8f835758cab33012a67d00","t
+  ✅ [S1] ลำดับแถวต้นใบ: รถ 1 (จุดรับ 06:45 → 07:10) แล้วรถ 2 (07:35 → 07:50 → 07:50) — expected ["tb4adf98a44f09dcbaa0fd00","tb9c45b012f15f8002073300","tbd1cb9adb930eeae982bb00","tbdf7fa9b4cf8d0508271500","tb22618480ec15d2b3387100"] · got ["tb4adf98a44f09dcbaa0fd00","tb9c45b012f15f8002073300","tbd1cb9adb930eeae982bb00","tbdf7fa9b4cf8d0508271500","tb22618480ec15d2b3387100"]
+  ✅ [S1] การ์ดผู้เดินทาง = 66 คน · 18 การจอง (SQL) — expected 66 / 18 การจอง · got ผู้เดินทาง 66 65 ผู้ใหญ่ 1 เด็ก 18 การจอง
+  ✅ [S1] การ์ดรายชื่อครบ = 64 / 66 (SQL) — expected 64 / 66 · got รายชื่อครบ 64 / 66 ขาด 2
+  ✅ [S1] การ์ดรับส่ง: จัดรถแล้ว 15 คน · รถ 2 คัน · ยังไม่จัด 51 คน — expected 15/2/51 · got รับส่ง 15 จัดรถแล้ว 15 คน รถ 2 คัน ยังไม่จัดรถ/มาเอง 51 คน
+  ℹ️ [S1] การ์ดลงนาม: เซ็นรับทราบความเสี่ยง 2 / 65 · การ์ดต้องเตรียม: ต้องเตรียม 66 อาหาร 66 ที่ + ไกด์ 1 เช่ากล้องกันน้ำ ตีนกบ 34 × 1 ตีนกบ 38 × 1 ตีนกบ 40 × 1 ตีนกบ 42 × 2 ตีนกบยังไม่ระบุ 60 คน ข้อมูลสุขภาพ: มี 3 คน · ยังไม่ตอบ 60 คน
+  ✅ [S1] การ์ดค้างชำระแสดงสำหรับเจ้าของ (มี ฿) — expected มี ฿ · got ค้างชำระ ฿231,500.00
+  ✅ [S1] แถบแจ้ง: มีการจองยังไม่ยืนยัน 1 (HOLD) — expected มี 1 · got มี 1 การจองที่ยังไม่ยืนยัน ไม่อยู่ในใบนี้
+  ✅ [S1] แถบแจ้ง: จุดรับค้าง 2 (ยกเลิก + หน่วยอื่น) — expected มี 2 · got มี 2 จุดรับที่อ้างการจองซึ่งไม่อยู่ในใบแล้ว
+  ✅ [S1] รถ 1 (4 ที่นั่ง · 5 คน) แสดงเกินที่นั่งด้วยสีอันตราย + ไอคอน — expected data-over · got true
+  ✅ [S1] การจองแรก (3 ที่ · ชื่อ 2) = ขาดรายชื่อ — expected MISSING_NAMES · got MISSING_NAMES
+  ✅ [S1] ขยายรายคน: เห็นชื่อ · เลขเอกสารปิดบัง · ผู้เยาว์ · ยังไม่กรอกชื่อ · ไฟล์ 2 + รอลบ 1 — expected ครบ · got 1. Somchai Probemwgk9pyy233b ผู้ใหญ่ TH หนังสือเดินทาง ••••233B แบบฟอร์ม: ส่งแล้ว ลงนาม: เซ็นแล้ว สุขภาพ: มีข้อมูล ตีนกบ 42 2 ไฟล์ · รอลบ 1 2. ยังไม่กรอกชื่อ ผู้ใหญ่ แบบฟอร์ม: รอกรอก ลงนาม: ยังไม่เซ็น สุขภาพ: ยังไม่ตอบ 0 ไฟล์ 3. Nong Dekmwgk9pyy233b เด็ก ผู้เยาว์ TH แบบฟอร์ม: ส่ง
+  ✅ [S1] ขยายรายคน: ไม่มีเลขเอกสารเต็ม/เบอร์/วันเกิด/ผู้ปกครอง/เนื้อหาสุขภาพ — expected [] · got []
+  ✅ [S1] กดซ้ำ ⇒ รายคนหุบ — expected 0 · got 0
+  ✅ [S1] ผู้เดินทางที่ถูกลบ: แสดง "ลบตามนโยบายแล้ว" ไม่มีชื่อ (แม้คอลัมน์ชื่อยังมีค่า) — expected ลบตามนโยบายแล้ว · ไม่มีชื่อ · got 1. สมหญิง ทดสอบmwgk9pyy233b ผู้ใหญ่ TH บัตรประชาชน ••••3456 แบบฟอร์ม: ส่งแล้ว ลงนาม: ยังไม่เซ็น สุขภาพ: ถอนความยินยอมแล้ว ตีนกบ 38 0 ไฟล์ 2. ลบตามนโยบายแล้ว 0 ไฟล์ · รอลบ 1
+  ✅ [S1] ไม่ล้นแนวนอนที่ 1440 (ตามรถรับส่ง) — expected ไม่ล้น · got 1440
+  ✅ [S1] ตารางไม่ต้องเลื่อนแนวนอนที่ 1440 — expected scrollWidth ≤ clientWidth · got [[1102,1102],[1102,1102],[1102,1102]]
+  ✅ [S1] HTML/ข้อมูลที่ส่งถึงเบราว์เซอร์ (เจ้าของ): ไม่มีเลขเอกสารเต็ม · เบอร์เต็ม · วันเกิด · ชื่อผู้ปกครอง · เนื้อหาสุขภาพ — expected [] · got []
+  ✅ [S1] HTML (เจ้าของ): ไม่มีชื่อผู้ถูกลบ · ผู้เดินทางของ HOLD/ยกเลิก · หน่วยอื่น · รหัสไฟล์ — expected [] · got []
+  ✅ [S1] ไทย: ตามรถรับส่ง: ไม่มีคีย์ข้อความดิบ (manifest.* / errors.* …) — expected ไม่มี · got ไม่มี
+  ✅ [S1] ไทย: ตามรถรับส่ง: ไม่มีรหัส enum ดิบบนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S1] ไทย: ตามรถรับส่ง: ไม่มีรหัสใบงาน / คำว่า POS บนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S1] กดตัวสลับ ⇒ URL มี ?view=booking และกลุ่มเดียว "การจองทั้งหมด" — expected view=booking + group-all · got http://127.0.0.1:3241/app/u/trips-t14n-u-mwgk9pyy233b/trips/departures/t14n_d_mwgk9rc76beed7/manifest?view=booking
+  ✅ [S1] มุมมองตามการจอง: แถวเรียงตามเลขจอง — expected ["tb4adf98a44f09dcbaa0fd00","tb9c45b012f15f8002073300","tbd1cb9adb930eeae982bb00","tb5a215dfc9aedb1e6f12300","tbdf7fa9b4cf8d0508271500","tb22618480ec15d2b3387100","tbcd6ea0f4417a0d937c6c00","tbf41ead64dda9395af13500","tb52c6c3415c2556f22b2500","tb241064fa344bdaae39cb00","tb8f835758cab33012a67d00","t · got ["tb4adf98a44f09dcbaa0fd00","tb9c45b012f15f8002073300","tbd1cb9adb930eeae982bb00","tb5a215dfc9aedb1e6f12300","tbdf7fa9b4cf8d0508271500","tb22618480ec15d2b3387100","tbcd6ea0f4417a0d937c6c00","tbf41ead64dda9395af13500","tb52c6c3415c2556f22b2500","tb241064fa344bdaae39cb00","tb8f835758cab33012a67d00","t
+  ✅ [S1] ไม่ล้นแนวนอนที่ 1440 (ตามการจอง) — expected ไม่ล้น · got 1440
+  ✅ [S1] ?view=zzz ⇒ ทิ้งค่า ใช้ตามรถรับส่ง (ไม่ 404) — expected 200 + มุมมองปริยาย · got 200
+  ✅ [S1] ไม่มี page error (เจ้าของ 1440) — expected [] · got []
+  ✅ [S1] 390: ไม่ล้นแนวนอน — expected ไม่ล้น · got 390
+  ✅ [S1] 390: เห็นการ์ดต่อการจอง ไม่เห็นตาราง — expected 18 การ์ด · 0 ตาราง · got [18,0]
+  ✅ [S1] 390: ขยายรายคนแล้วยังไม่ล้น (ชื่อยาว =HYPERLINK…) — expected ไม่ล้น · got 390
+  ✅ [S1] 390: ปุ่มในแถบปุ่มสูง ≥ 44px — expected ≥ 44 · got [44,44,44,44,44]
+  ✅ [S1] อังกฤษ: ตามรถรับส่ง + รายคน: ไม่มีคีย์ข้อความดิบ (manifest.* / errors.* …) — expected ไม่มี · got ไม่มี
+  ✅ [S1] อังกฤษ: ตามรถรับส่ง + รายคน: ไม่มีรหัส enum ดิบบนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S1] อังกฤษ: ตามรถรับส่ง + รายคน: ไม่มีรหัสใบงาน / คำว่า POS บนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S1] อังกฤษ: ตามรถรับส่ง + รายคน: จออังกฤษไม่มีอักษรไทย (นอกข้อมูลที่ปลูก) — expected ไม่มี · got ไม่มี
+  ✅ [S1] อังกฤษ: ชื่อสินค้าใช้ภาษาอังกฤษ — expected Probe Tour H · got Manifest · Probe Tour H
+  ✅ [S1] อังกฤษ: ตามการจอง: ไม่มีคีย์ข้อความดิบ (manifest.* / errors.* …) — expected ไม่มี · got ไม่มี
+  ✅ [S1] อังกฤษ: ตามการจอง: ไม่มีรหัส enum ดิบบนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S1] อังกฤษ: ตามการจอง: ไม่มีรหัสใบงาน / คำว่า POS บนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S1] อังกฤษ: ตามการจอง: จออังกฤษไม่มีอักษรไทย (นอกข้อมูลที่ปลูก) — expected ไม่มี · got ไม่มี
+  ✅ [S1] ไม่มี page error (อังกฤษ) — expected [] · got []
+
+── ฉาก 2: ส่งออก CSV: ไฟล์ · กันสูตร · ภาษาไทย · ไม่มีข้อมูลเกินจำเป็น · audit · ผู้ไม่มีสิทธิ์ ──
+  ✅ [S2] กดส่งออก ⇒ เกิดการดาวน์โหลด 1 ไฟล์ (<a download> จาก Blob) — expected 1 · blob: · got [{"name":"manifest-2026-12-24-6beed7.csv","href":"blob:http://127.0.0.1:3241/9fcc3b11-1929-412a-b1f6-a9ebc72a479f"}]
+  ✅ [S2] ชื่อไฟล์ = manifest-<วันที่รอบ>-<6 ตัวท้ายของรหัสรอบ>.csv (ไม่มีข้อความผู้ใช้) — expected manifest-2026-12-24-….csv · got manifest-2026-12-24-6beed7.csv
+  ✅ [S2] ชนิดของ Blob — expected text/csv;charset=utf-8 · got text/csv;charset=utf-8
+  ✅ [S2] ไฟล์ขึ้นต้นด้วย BOM UTF-8 (EF BB BF) — Excel อ่านไทยได้ — expected [239,187,191] · got [239,187,191]
+  ℹ️ [S2] วินิจฉัย BOM: บริการ exportManifestCsv คืน csv ขึ้นต้น U+FEFF = true · Blob ที่จอสร้างขึ้นต้นด้วย ef bb bf (ดูบรรทัดวินิจฉัยของคำตอบดิบด้านล่าง)
+  ✅ [S2] หัว 16 คอลัมน์ ภาษาไทยจาก messages — expected ["รถ/กลุ่ม","เวลารับ","จุดรับ","เลขจอง","ผู้จอง","ช่องทาง","ลำดับ","ผู้เดินทาง","ประเภท","สัญชาติ","ชนิดเอกสาร","เลขเอกสาร (4 ตัวท้าย)","แบบฟอร์ม","ลงนาม","ข้อมูลสุขภาพ","ขนาดตีนกบ"] · got ["รถ/กลุ่ม","เวลารับ","จุดรับ","เลขจอง","ผู้จอง","ช่องทาง","ลำดับ","ผู้เดินทาง","ประเภท","สัญชาติ","ชนิดเอกสาร","เลขเอกสาร (4 ตัวท้าย)","แบบฟอร์ม","ลงนาม","ข้อมูลสุขภาพ","ขนาดตีนกบ"]
+  ✅ [S2] จำนวนแถวข้อมูล = ผู้เดินทางที่ยังไม่ถูกลบ (การจองไม่มีผู้เดินทางเหลือ = 1 แถว) — expected 65 · got 65
+  ✅ [S2] ทุกแถวมี 16 เซลล์ — expected 16 · got [16]
+  ✅ [S2] จบทุกบรรทัดด้วย CRLF และไม่มี LF เปล่าในไฟล์ — expected 66 CRLF · got 66
+  ✅ [S2] ไม่มีเซลล์ใดขึ้นต้นด้วย = + - @ tab CR (รวมหลังช่องว่าง/BOM) — expected [] · got []
+  ✅ [S2] ชื่อ =HYPERLINK(…) ถูกนำหน้าด้วย ' และอยู่ครบทั้งข้อความ — expected '=HYPERLINK("http://evil.example/mwgk9pyy233b","x") · got '=HYPERLINK("http://evil.example/mwgk9pyy233b","x")
+  ✅ [S2] ชื่อ + - @ ถูกนำหน้าด้วย ' — expected ครบ 3 · got ["'=HYPERLINK(\"http://evil.example/mwgk9pyy233b\",\"x\")","'=9+9 \"อัญ\",mwgk9pyy233b บรรทัดสอง","'+1+1mwgk9pyy233b","'-2+3mwgk9pyy233b","'@SUM(1+1)mwgk9pyy233b"]
+  ✅ [S2] ชื่อมี tab นำหน้า + " , ขึ้นบรรทัด + ไทย ⇒ เซลล์เดียว ไม่แตกแถว ไทยครบ — expected '=9+9 "อัญ",mwgk9pyy233b บรรทัดสอง · got '=9+9 "อัญ",mwgk9pyy233b บรรทัดสอง
+  ✅ [S2] จุดรับ =cmd|… ถูกนำหน้าด้วย ' — expected '=cmd|' /C calc'!A0 mwgk9pyy233b · got '=cmd|' /C calc'!A0 mwgk9pyy233b
+  ✅ [S2] ภาษาไทยไม่เพี้ยน (ชื่อผู้เดินทางไทย + หัวคอลัมน์) — expected สมหญิง ทดสอบmwgk9pyy233b · got สมหญิง ทดสอบmwgk9pyy233b
+  ℹ️ [S2] ผู้จองของการจองที่ 2 ในไฟล์: Comma, "Quote" Booker mwgk9pyy233b
+  ✅ [S2] ไฟล์ไม่มี: เนื้อหาสุขภาพ · เลขเอกสารเต็ม · เบอร์ · วันเกิด · ชื่อผู้ปกครอง — expected [] · got []
+  ✅ [S2] ไฟล์ไม่มี: ผู้ถูกลบ · ผู้เดินทางของ HOLD/ยกเลิก · หน่วยอื่น — expected [] · got []
+  ✅ [S2] ไฟล์ไม่มีรหัสภายใน (id การจอง/ผู้เดินทาง/รอบ) — expected ไม่มี · got []
+  ✅ [S2] คอลัมน์เลขเอกสาร = ••••<4 ตัวท้าย> เท่านั้น — expected ••••XXXX · got ["••••233B","••••3456"]
+  ✅ [S2] เซลล์สถานะ (แบบฟอร์ม/ลงนาม/สุขภาพ) เป็นข้อความไทย ไม่ใช่รหัสดิบ — expected ข้อความจาก messages · got ตรง
+  ✅ [S2] กลุ่มในไฟล์ = ชื่อรถ / ยังไม่จัดรถ — expected ["Van One mwgk9pyy233b","Van Two mwgk9pyy233b","ยังไม่จัดรถ / มาเอง"] · got ["Van One mwgk9pyy233b","Van Two mwgk9pyy233b","ยังไม่จัดรถ / มาเอง"]
+  ✅ [S2] จอแจ้งผลการส่งออก (role=status · จำนวนแถวตรงไฟล์) — expected 65 · got ส่งออกแล้ว 65 แถว (บันทึกการนำออกแล้ว)
+  ✅ [S2] audit trips.manifest.exported เพิ่ม 1 แถวจากการกดปุ่ม (+ การเรียกบริการตรงของ probe เพื่อวินิจฉัย) — expected 2 · got 2
+  ✅ [S2] audit: ผู้กระทำ · หน่วย · เป้า — expected ["t14n_uoa_mwgk9qvva0c68d","t14n_uN_mwgk9qskfebd2e","TripDeparture","t14n_d_mwgk9rc76beed7"] · got ["t14n_uoa_mwgk9qvva0c68d","t14n_uN_mwgk9qskfebd2e","TripDeparture","t14n_d_mwgk9rc76beed7"]
+  ✅ [S2] audit.after = { departureId, format, purpose, rows, truncated, purgedSkipped } เท่านั้น — expected {"departureId":"t14n_d_mwgk9rc76beed7","format":"CSV","purpose":"MANIFEST","rows":65,"truncated":false,"purgedSkipped":1} · got {"rows":65,"format":"CSV","purpose":"MANIFEST","truncated":false,"departureId":"t14n_d_mwgk9rc76beed7","purgedSkipped":1}
+  ✅ [S2] audit ไม่มีข้อมูลบุคคล — expected [] · got []
+  ✅ [S2] ไม่มีสถานะส่งออกค้างใน URL/ที่เก็บของเบราว์เซอร์ — expected ["",0,0] · got ["",0,0]
+  ✅ [S2] จออังกฤษ ⇒ หัวคอลัมน์อังกฤษ (ภาษาอ่านจากเซิร์ฟเวอร์ ไม่ได้ส่งจากจอ) — expected ["Vehicle/group","Pickup time","Pickup point","Booking code","Booker","Channel","No.","Traveller","Type","Nationality","Document type","Document no. (last 4)","Form","Waiver","Health info","Fin size"] · got ["Vehicle/group","Pickup time","Pickup point","Booking code","Booker","Channel","No.","Traveller","Type","Nationality","Document type","Document no. (last 4)","Form","Waiver","Health info","Fin size"]
+  ✅ [S2] คำขอส่งออกไม่มีช่อง locale/เวลา จากจอ — expected ไม่มี · got ["trips-t14n-u-mwgk9pyy233b",{"departureId":"t14n_d_mwgk9rc76beed7"}]
+  ✅ [S2] ไฟล์อังกฤษ: เซลล์สถานะ/กลุ่ม/ประเภทไม่มีอักษรไทย (นอกข้อมูลที่ปลูก) — expected [] · got []
+  ✅ [S2] ผู้ดู (ดูรอบ+ดูผู้เดินทาง) มีปุ่มส่งออก — ใบสั่งไม่มีสิทธิ์ส่งออกแยก (ข้อสังเกตในรายงาน) — expected มีปุ่ม · got true
+  ✅ [S2] ผู้ไม่มีสิทธิ์ดูผู้เดินทาง: ไม่มีปุ่มส่งออก — expected ไม่มี · got false
+  ℹ️ [S2] วินิจฉัย BOM (คำตอบดิบของ server action อ่านด้วย fetch ในหน้า): มี U+FEFF = true · อยู่ก่อนหัวคอลัมน์แรก = true (true/true ⇒ เซิร์ฟเวอร์ส่ง BOM มา แต่หายตอนตัวถอดคำตอบของ server action ฝั่งเบราว์เซอร์แปลงข้อความ — ก่อนถึงโค้ดของจอ)
+  ✅ [S2] ตัวควบคุม: ยิง action ส่งออกซ้ำด้วยเจ้าของ ⇒ ได้ไฟล์ (วิธียิงตรงใช้ได้จริง) — expected 200 + ไฟล์ · got 200 · 9947 ไบต์
+  ✅ [S2] ยิง action ส่งออกตรงด้วยผู้ไม่มีสิทธิ์ ⇒ ไม่ได้ข้อมูลเลย — expected ไม่มีข้อมูล · got 200 · 0:{"a":"$@1","f":"","q":"","i":false,"b":"2OBslCwVU2CkyXYb0yg7K"} 1:{"ok":false,"code":"FORBIDDEN","message":"บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ — ติดต่อเจ้าของร้านหรือผู้จัดการเพื่อขอสิทธิ์"} 
+  ℹ️ [S2] ผลยิงตรงของผู้ไม่มีสิทธิ์: HTTP 200 · 0:{"a":"$@1","f":"","q":"","i":false,"b":"2OBslCwVU2CkyXYb0yg7K"} 1:{"ok":false,"code":"FORBIDDEN","message":"บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ — ติดต่อเจ้าของร้านหรือผู้จัดการเพื่อขอสิทธิ์"} 
+  ✅ [S2] audit หลังยิงตรง: +1 (เจ้าของ) · +0 (ผู้ไม่มีสิทธิ์) — expected 1 · got 1
+  ✅ [S2] input แถม unitId/locale/now ⇒ ไม่ถูกใช้ (หัวไฟล์ยังเป็นไทย ของหน่วยตาม slug) — expected หัวไทย · got 200 · 0:{"a":"$@1","f":"","q":"","i":false,"b":"2OBslCwVU2CkyXYb0yg7K"} 2:T425a, รถ/กลุ่ม,เวลารับ,จุดรับ,เลขจอง,ผู้จอง,ช่องทาง,ลำดับ,ผู้เดินทาง,ปร
+  ✅ [S2] ไม่มี page error — expected [] · got []
+
+── ฉาก 3: พิมพ์: audit ก่อนกล่องพิมพ์ · บันทึกไม่ได้ = ไม่พิมพ์ · ผังพิมพ์ A4 หลายหน้า ──
+  ✅ [S3] กดพิมพ์ ⇒ window.print ถูกเรียก 1 ครั้ง — expected 1 · got 1
+  ✅ [S3] ลำดับ: คำขอบันทึกการพิมพ์ถูกส่งก่อน window.print และตอบ HTTP 200 — expected ส่งก่อนพิมพ์ · 200 · got 200 · ส่งก่อนพิมพ์ 143ms · เหตุการณ์คำตอบถึง node 1ms เทียบเวลาเรียกพิมพ์
+  ✅ [S3] ตอนกล่องพิมพ์เปิด มีแถว audit trips.manifest.printed แล้ว 1 แถว — expected 1 · got 1
+  ✅ [S3] audit trips.manifest.printed รวม +1 — expected 1 · got 1
+  ✅ [S3] audit.after = { departureId, purpose, passengers (ไม่นับผู้ถูกลบ) } — expected {"departureId":"t14n_d_mwgk9rc76beed7","purpose":"MANIFEST","passengers":65} · got {"purpose":"MANIFEST","passengers":65,"departureId":"t14n_d_mwgk9rc76beed7"}
+  ✅ [S3] audit: ผู้กระทำ/เป้า — expected ["t14n_uoa_mwgk9qvva0c68d","TripDeparture","t14n_d_mwgk9rc76beed7"] · got ["t14n_uoa_mwgk9qvva0c68d","TripDeparture","t14n_d_mwgk9rc76beed7"]
+  ✅ [S3] หัวกระดาษมี "พิมพ์เมื่อ … โดย <ชื่อผู้พิมพ์>" — expected พิมพ์เมื่อ … Probe oa · got ือ: Boat mwgk9pyy233b · ไกด์: Guide mwgk9pyy233bพิมพ์เมื่อ 14 พ.ย. 2569 22:29 โดย Probe oa
+  ℹ️ [S3] หัวกระดาษก่อนกด: …Guide mwgk9pyy233bพิมพ์เมื่อ 14 พ.ย. 2569 22:29 โดย Probe oa · หลังกด: …Guide mwgk9pyy233bพิมพ์เมื่อ 14 พ.ย. 2569 22:29 โดย Probe oa
+  ✅ [S3] สื่อพิมพ์: รากผังพิมพ์แสดง (display block) — expected block · got block
+  ✅ [S3] สื่อพิมพ์: เปลือกแอป/แถบทัวร์/ปุ่ม/การ์ดจอ ซ่อนทั้งหมด — expected [] · got []
+  ✅ [S3] สื่อพิมพ์: เนื้อหายาวกว่า 1 หน้า A4 และเอกสารสูงตามเนื้อหา (ไม่ถูกตัดเหลือหน้าเดียว) — expected > 1684px และ doc ≥ root · got [2953,2955]
+  ✅ [S3] สื่อพิมพ์: ไม่มีบรรพบุรุษที่ตัด/เลื่อนเนื้อหา (overflow/fixed) — expected [] · got []
+  ✅ [S3] สื่อพิมพ์: ไม่ล้นความกว้างกระดาษ — expected ≤ 794 · got 794
+  ✅ [S3] สื่อพิมพ์: ตัวอักษร ≥ 10pt (13.3px) สีดำ — expected ≥ 13.3px · rgb(0, 0, 0) · got [13.3333,"rgb(0, 0, 0)"]
+  ❌ [S3] สื่อพิมพ์: ทุกการจองในใบ + รายชื่อรายคนเปิดทั้งหมด — expected [18,66] · got [18,0]
+  ✅ [S3] สื่อพิมพ์: มีท้ายกระดาษเตือนข้อมูลส่วนบุคคล — expected มี · got ทริป (ลงชื่อ) ........................................
+
+เอกสารมีข้อมูลส่วนบุคคล — ใช้เฉพาะการดูแลทริปนี้ ทำลายหลังจบทริป
+  ✅ [S3] กระดาษไม่มี: เนื้อหาสุขภาพ · เลขเอกสารเต็ม · เบอร์เต็ม · วันเกิด · ผู้ปกครอง — expected [] · got []
+  ✅ [S3] กระดาษไม่มี: ชื่อผู้ถูกลบ · HOLD/ยกเลิก · หน่วยอื่น — expected [] · got []
+  ✅ [S3] กระดาษไม่มียอดเงิน (เจ้าของเห็นยอดบนจอ) — expected ไม่มี ฿/ค้างชำระ · got ไม่มี
+  ✅ [S3] กระดาษไม่มีจำนวนไฟล์/รอลบ — expected ไม่มี · got ไม่มี
+  ✅ [S3] กระดาษมีผู้ถูกลบเป็น "ลบตามนโยบายแล้ว" — expected มี · got —
+  ✅ [S3] ผังพิมพ์ (ไทย): ไม่มีคีย์ข้อความดิบ (manifest.* / errors.* …) — expected ไม่มี · got ไม่มี
+  ✅ [S3] ผังพิมพ์ (ไทย): ไม่มีรหัส enum ดิบบนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S3] ผังพิมพ์ (ไทย): ไม่มีรหัสใบงาน / คำว่า POS บนจอ — expected ไม่มี · got ไม่มี
+  ✅ [S3] PDF: หลายหน้า (≥ 2) ขนาด A4 — expected ≥ 2 หน้า · A4 · got 5 หน้า · 594.96 x 841.92 pts (A4)
+  ❌ [S3] PDF: การจองท้ายใบ (Bulk14) และผู้เดินทางคนแรกอยู่ครบ — ไม่ถูกตัด — expected มีทั้งคู่ · got [true,false]
+  ✅ [S3] PDF: หน้าสุดท้ายมีช่องลงชื่อ/ท้ายกระดาษ — expected มีเส้นลงชื่อ · got ผู้รับผิดชอบทริป (ลงชื่อ) ........................................ เอกสารมีข้อมูลส่ วนบุคคล — ใช้เฉพาะการดูแลทริปนี้ ทำลายหลังจบทริป 
+  ✅ [S3] PDF หน้า 1: ขอบกระดาษ ≥ 10mm (28pt) ซ้าย/ขวา/บน — expected ≥ 28pt · got [34,35,32]
+  ℹ️ [S3] PDF 5 หน้า · ขอบ ซ้าย 34pt ขวา 35pt บน 32pt
+  ✅ [S3] action บันทึกการพิมพ์ล้ม (ตัดคำขอ) ⇒ window.print ไม่ถูกเรียก — expected 0 · got 0
+  ✅ [S3] ข้อความผิดพลาดการพิมพ์: role=alert + สีอันตราย + บอกว่ายังไม่เปิดกล่องพิมพ์ — expected alert · got {"role":"alert","text":"บันทึกการพิมพ์ไม่สำเร็จ จึงยังไม่เปิดกล่องพิมพ์ — ลองอีกครั้ง","color":"rgb(185, 28, 28)"}
+  ✅ [S3] ไม่มีแถว audit เพิ่ม — expected 0 · got 0
+  ✅ [S3] ปุ่มพิมพ์กลับมากดได้หลังผิดพลาด — expected false · got —
+  ✅ [S3] action ส่งออกล้ม ⇒ ข้อความ role=alert และไม่มีการดาวน์โหลด — expected alert · 0 ไฟล์ · got {"role":"alert","text":"ส่งออกไม่สำเร็จ — ลองอีกครั้ง"}
+  ℹ️ [S3] ผู้ดูธรรมดา: ผังพิมพ์อยู่ใน DOM ตั้งแต่โหลดหน้า ({"text":9154,"pax":0}) ⇒ Ctrl+P พิมพ์ได้โดยไม่มีแถว audit (ข้อจำกัดที่ใบสั่งรับ — Q4)
+  ✅ [S3] ผู้ดูธรรมดา: ผังพิมพ์ใน DOM ไม่มียอดเงิน/ข้อมูลอ่อนไหว — expected ไม่มี · got —
+
+── ฉาก 4: ข้อมูลสุขภาพ: ผู้มีสิทธิ์เปิดได้พร้อม audit รายคน · ผู้ไม่มีสิทธิ์ไม่มีปุ่ม/ยิงตรงไม่ได้ · ไม่ค้างหลังปิด/โหลดใหม่ ──
+  ✅ [S4] ผู้มีสิทธิ์สุขภาพ: มีปุ่มดูข้อมูลสุขภาพ — expected มี · got true
+  ✅ [S4] ก่อนเปิด: HTML ไม่มีเนื้อหาสุขภาพ — expected [] · got []
+  ✅ [S4] กล่อง: มีคำเตือน + ยังไม่แสดงข้อมูล + ยังไม่มี audit — expected เตือน · ยังไม่เปิด · got —
+  ✅ [S4] วัตถุประสงค์ปริยาย = ความปลอดภัย — expected SAFETY · got SAFETY
+  ✅ [S4] รายการ = ผู้เดินทางในใบที่ให้ข้อมูลสุขภาพและยังไม่ถูกลบ (SQL 3) — expected 3 · got 3
+  ✅ [S4] เห็นเนื้อหา: แพ้/โรค ของผู้ใหญ่ · ผู้เยาว์ (ผ่านผู้ปกครอง) · กลุ่ม — expected ครบ · got Somchai Probemwgk9pyy233b การจอง TR-6912-0001 แพ้: zqxalgmwgk9pyy233b โรค/ข้อควรระวัง: zqxcndmwgk9pyy233b Nong Dekmwgk9pyy233b การจอง TR-6912-0001 แพ้: zqxalmmwgk9pyy233b โรค/ข้อควรระวัง: ไม่ระบุ Bulk01 Pax1 mwgk9pyy233b การจอง TR-6912-0005 แพ้: zqxalbmwgk9pyy233b โรค/ข้อควรระวัง: ไม่ระบุ
+  ✅ [S4] ไม่มีของการจอง HOLD/ยกเลิก — expected [] · got []
+  ✅ [S4] audit trips.passenger.revealed = 1 แถวต่อผู้เดินทางที่เปิด — expected 3 · got 3
+  ✅ [S4] audit: เป้า = ผู้เดินทางแต่ละคน — expected ["tp_922e972a20cc9ce06de37e3e","tp_b2716ff7f8a29ded2c758f3a","tp_da98df93f3866161a8a812cb"] · got ["tp_922e972a20cc9ce06de37e3e","tp_b2716ff7f8a29ded2c758f3a","tp_da98df93f3866161a8a812cb"]
+  ✅ [S4] audit.after = { passengerId, what HEALTH, purpose CHECKIN, via MANIFEST, departureId } เท่านั้น · ผู้กระทำถูก — expected ตรง · got {"via":"MANIFEST","what":"HEALTH","purpose":"CHECKIN","departureId":"t14n_d_mwgk9rc76beed7","passengerId":"tp_da98df93f3866161a8a812cb"}
+  ✅ [S4] audit ไม่มีเนื้อหาสุขภาพ/ชื่อ — expected [] · got []
+  ✅ [S4] ผลไม่อยู่ใน URL / localStorage / sessionStorage — expected ["","",true,true] · got ["","",true,true]
+  ✅ [S4] สื่อพิมพ์ขณะกล่องสุขภาพเปิด: ไม่มีเนื้อหาสุขภาพบนกระดาษ — expected [] · got []
+  ✅ [S4] ปิดกล่อง ⇒ กล่องหาย และ DOM ไม่มีเนื้อหาสุขภาพเหลือ — expected ไม่เหลือ · got []
+  ✅ [S4] โหลดหน้าใหม่ ⇒ ไม่มีเนื้อหาสุขภาพ และกล่องไม่เปิดเอง — expected ไม่มี · got —
+  ✅ [S4] ไม่มีแถว audit เกินจากการเปิด 1 ครั้ง — expected 3 · got 3
+  ✅ [S4] ไม่มี page error (ผู้มีสิทธิ์สุขภาพ) — expected [] · got []
+  ✅ [S4] ผู้ไม่มีสิทธิ์สุขภาพ: ไม่มีปุ่มดูข้อมูลสุขภาพ — expected ไม่มี · got false
+  ✅ [S4] ยิง action เปิดสุขภาพตรงด้วยผู้ไม่มีสิทธิ์ ⇒ FORBIDDEN ไม่มีเนื้อหา/รายการ — expected FORBIDDEN · ไม่มีรายการ · got 200 · 0:{"a":"$@1","f":"","q":"","i":false,"b":"2OBslCwVU2CkyXYb0yg7K"} 1:{"ok":false,"code":"FORBIDDEN","message":"บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ — ติดต่อเจ้าของร้านหรือผู้จัดการเพื่อขอสิทธิ์"} 
+  ✅ [S4] ยิงตรงด้วยผู้ไม่มีสิทธิ์ดูผู้เดินทาง ⇒ ไม่มีเนื้อหา — expected ไม่มี · got 200 · 0:{"a":"$@1","f":"","q":"","i":false,"b":"2OBslCwVU2CkyXYb0yg7K"} 1:{"ok":false,"code":"FORBIDDEN","message":"บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ — ติดต่อเจ้า
+  ✅ [S4] ผู้มีสิทธิ์ + วัตถุประสงค์นอกชุด (OTHER) ⇒ INVALID_INPUT ไม่มีเนื้อหา — expected INVALID_INPUT · got 200 · 0:{"a":"$@1","f":"","q":"","i":false,"b":"2OBslCwVU2CkyXYb0yg7K"} 1:{"ok":false,"code":"INVALID_INPUT","message":"ข้อมูลที่ส่งมายังไม่ครบหรือรูปแบบยังไม่ตรง — ต
+  ✅ [S4] ผู้มีสิทธิ์ + รหัสรอบของหน่วยอื่น ⇒ NOT_FOUND — expected NOT_FOUND · got 200 · 0:{"a":"$@1","f":"","q":"","i":false,"b":"2OBslCwVU2CkyXYb0yg7K"} 1:{"ok":false,"code":"NOT_FOUND","message":"ไม่พบรายการนี้ในหน่วยที่เลือก"} 
+  ✅ [S4] ยิงตรงที่ถูกปฏิเสธทั้งหมด ⇒ ไม่มีแถว audit เพิ่ม — expected 0 · got 0
+  ✅ [S4] เจ้าของร้านมีปุ่มดูข้อมูลสุขภาพ — expected มี · got true
+
+── ฉาก 5: สิทธิ์/การแยกข้อมูล: ไม่มี passenger.view · รอบของหน่วยอื่น/ร้านอื่น · เงินเฉพาะผู้มี booking.view ──
+  ✅ [S5] ผู้ไม่มี trips.passenger.view เปิดหน้า ⇒ กล่อง "ไม่มีสิทธิ์" (trips-forbidden) ไม่มีใบรายชื่อ — expected trips-forbidden · got HTTP 200 · forbidden=true
+  ℹ️ [S5] ข้อความที่ผู้ไม่มีสิทธิ์เห็น: บัญชีนี้ยังเปิดหน้านี้ไม่ได้ บัญชีนี้ยังไม่ได้รับสิทธิ์ส่วนนี้ของระบบทัวร์ — ติดต่อเจ้าของร้านหรือผู้จัดการเพื่อขอสิทธิ์
+  ✅ [S5] หน้าไม่มีสิทธิ์: HTML ไม่มีชื่อผู้เดินทาง/ผู้จอง/ข้อมูลใด — expected [] · got []
+  ✅ [S5] รหัสรอบของหน่วยอื่น ⇒ หน้าไม่พบ ไม่มีใบรายชื่อ — expected ไม่พบ · got HTTP 200
+  ✅ [S5] หน้าไม่พบ (หน่วยอื่น): HTML ไม่มีข้อมูลของรอบนั้น — expected [] · got []
+  ✅ [S5] ตัวควบคุม: รอบเดียวกันใต้ slug ของหน่วยตัวเองเปิดได้และเห็นข้อมูล — expected เปิดได้ · got true
+  ✅ [S5] รหัสรอบของร้านอื่น (ร้าน seed · อ่านอย่างเดียว) ⇒ หน้าไม่พบ ไม่มีใบรายชื่อ — expected ไม่พบ · got HTTP 200
+  ✅ [S5] หน้าไม่พบ (ร้านอื่น): ไม่มีเลขจอง/ชื่อของร้าน seed — expected ไม่มี · got ไม่มี
+  ✅ [S5] รหัสรอบยาว 129 ⇒ หน้าไม่พบ — expected ไม่พบ · got false
+  ✅ [S5] รหัสรอบเป็นข้อความฉีด SQL ⇒ หน้าไม่พบ — expected ไม่พบ · got false
+  ✅ [S5] เจ้าของ: การ์ดค้างชำระ + ยอดค้างในแถว + เลขจองเป็นลิงก์ + ข้อมูลยอดอยู่ในหน้า — expected ครบ · got ["ค้างชำระ ฿231,500.00",18]
+  ✅ [S5] ผู้ไม่มี booking.view: ไม่มีการ์ดค้างชำระ · ไม่มีคำว่าค้างชำระ/฿ · เลขจองไม่เป็นลิงก์ — expected ไม่มีเงิน · got [false,null,0]
+  ✅ [S5] ผู้ไม่มี booking.view: ข้อมูลที่ส่งถึงเบราว์เซอร์ไม่มียอดเงิน (outstandingSatang = null ทุกแถว · ไม่มียอดรวม) — expected ไม่มี · got ไม่มี
+  ✅ [S5] ผู้ดูธรรมดา: HTML ไม่มีข้อมูลอ่อนไหว — expected [] · got []
+  ✅ [S5] ผู้ดูธรรมดา: เห็นชื่อ + เลขเอกสารปิดบัง + เบอร์ปิดบัง (ตามตารางสิทธิ์) — expected เห็น · got —
+  ✅ [S5] ไม่มี page error — expected [] · got []
+
+── ฉาก 6: แผงรอบ: ปุ่มใบรายชื่อเป็นลิงก์จริง · รอบที่เริ่มแล้ว/ยกเลิก (หนี้ของผู้สร้าง) ──
+  ✅ [S6] แผงรอบ (รอบอนาคต): ปุ่มใบรายชื่อเป็นลิงก์จริง — expected <a …/t14n_d_mwgk9rc76beed7/manifest> · got {"tag":"A","href":"/app/u/trips-t14n-u-mwgk9pyy233b/trips/departures/t14n_d_mwgk9rc76beed7/manifest","disabled":false}
+  ✅ [S6] กดปุ่ม ⇒ เปิดใบรายชื่อของรอบนั้น — expected หน้าใบรายชื่อ · got http://127.0.0.1:3241/app/u/trips-t14n-u-mwgk9pyy233b/trips/departures/t14n_d_mwgk9rc76beed7/manifest
+  ✅ [S6] ลิงก์กลับ ⇒ ปฏิทินรอบสัปดาห์ของวันเดินทาง + เปิดแผงของรอบเดิม — expected view=week&start&dep · got /app/u/trips-t14n-u-mwgk9pyy233b/trips/departures?view=week&start=2026-12-24&dep=t14n_d_mwgk9rc76beed7
+  ✅ [S6] กดกลับ ⇒ แผงรอบเดิมเปิดอยู่ — expected trips-dep-panel · got http://127.0.0.1:3241/app/u/trips-t14n-u-mwgk9pyy233b/trips/departures?view=week&start=2026-12-24&dep=t14n_d_mwgk9rc76beed7
+  ✅ [S6] รอบที่เริ่มแล้ว (วันเดินทาง หลังเวลาออก): แผงรอบยังมีปุ่มใบรายชื่อ — expected มีปุ่ม · got แผง=true ปุ่ม=true
+  ✅ [S6] ตัวควบคุม: ใบรายชื่อของรอบที่เริ่มแล้วเปิดทาง URL ได้และมีผู้เดินทาง — expected เปิดได้ · got 200
+  ✅ [S6] รอบที่ยกเลิก: แผงรอบยังมีปุ่มใบรายชื่อ — expected มีปุ่ม · got แผง=true ปุ่ม=true
+  ✅ [S6] ใบรายชื่อของรอบที่ยกเลิก (ไม่มีการจอง) ⇒ จอว่างบอกตรง ๆ — expected trips-mf-empty · got 200
+  ✅ [S6] ผู้ไม่มี passenger.view: แผงรอบเปิดได้แต่ไม่มีปุ่มใบรายชื่อ — expected ไม่มีปุ่ม · got แผง=true ปุ่ม=false
+
+── ฉาก 7: เกินเพดาน 600 ผู้เดินทาง: จอ/ไฟล์/กระดาษ บอกว่าถูกตัดหรือไม่ ──
+  ✅ [S7] ตัวโหลด: paxTruncated · paxTotal 608 · paxShown 600 — expected [true,608,600] · got [true,608,600]
+  ℹ️ [S7] การจองท้าย (ผู้เดินทางจริง 2 คน มีชื่อ) ตาม VM: travellers 0 · doc {"state":"INCOMPLETE","slots":2,"named":2,"missingNames":0,"formComplete":0,"paxCut":true,"waiverRequired":null,"waiverSigned":null,"healthProvided":null,"healthMissing":null,"needsFix":0,"finSizes":null}
+  ✅ [S7] จอ: มีแถบแจ้งว่ารายการถูกตัด พร้อมตัวเลข 600 จาก 608 — expected 600 / 608 · got แสดงผู้เดินทาง 600 คนแรกจาก 608 คน — การจองที่รายชื่อไม่ได้โหลดจะขึ้นว่า "ไม่ได้โหลดเพราะเกินเพดาน"
+  ✅ [S7] จอ: การ์ดลงนามเป็น — และบอกว่าตัวเลขไม่ครบ — expected — + ไม่ครบ · got เซ็นรับทราบความเสี่ยง — ตัวเลขนี้ไม่ครบเพราะรายการถูกตัด
+  ✅ [S7] จอ: การจองท้ายที่รายชื่อถูกตัด ต้องไม่บอกว่า "ยังไม่มีแถวผู้เดินทางของการจองนี้" (ข้อมูลมีจริง 2 คน) — expected ไม่ใช้ข้อความ "ยังไม่มีแถวผู้เดินทาง" · got ไม่ได้โหลดเพราะเกินเพดาน
+  ❌ [S7] ไฟล์: แถวข้อมูล ≤ 600 — expected ≤ 600 · got 601
+  ✅ [S7] จอ: หลังส่งออกมีข้อความ role=alert ว่าไฟล์ถูกตัด — expected alert · got ไฟล์มี 600 แถวแรกเท่านั้น — รอบนี้มีข้อมูลมากกว่าที่ส่งออกได้ในไฟล์เดียว
+  ✅ [S7] audit ของไฟล์ที่ถูกตัด: truncated true — expected true · got true
+  ✅ [S7] ไฟล์เอง (เปิดโดยคนที่ไม่เห็นจอ) มีเครื่องหมายบอกว่าถูกตัด — expected มีบรรทัด/เซลล์บอกว่าถูกตัด · got ไม่มีเครื่องหมายใดในไฟล์
+  ✅ [S7] ไฟล์: การจองท้ายที่รายชื่อถูกตัด ต้องไม่ออกเป็นแถว "ไม่มีผู้เดินทาง" (ช่องรายคนว่าง) ทั้งที่มี 2 คนมีชื่อ — expected ไม่ออกแถวว่างที่ทำให้เข้าใจผิด · got []
+  ✅ [S7] กระดาษ: มีข้อความตัวหนาบอกว่ารายชื่อถูกตัด (600 จาก 608) — expected มี · got แสดงผู้เดินทาง 600 คนแรกจาก 608 คน — การจองที่รายชื่อไม่ได้โหลดจะขึ้นว่า "ไม่ได้โหลดเพราะเกินเพดาน"
+  ✅ [S7] ไม่มี page error — expected [] · got []
+  ✅ [END] ไม่มี OutboxEvent ชนิด trips.manifest* ของร้านชั่วคราว — expected 0 · got 0
+  ✅ [END] OpsEvent ตั้งแต่เริ่มรัน: ไม่มีตัวบ่งชี้บุคคล — expected [] · got []
+  ℹ️ [END] OpsEvent ของร้านชั่วคราว/ไม่ระบุร้านตั้งแต่เริ่มรัน: 0 แถว
+
+🧹 ลบแถวของ probe แล้ว — เหลือ ร้าน 0 · ผู้ใช้ 0 · session 0 · แถว trips/audit/party ของร้านชั่วคราว 0
+JSON_SUMMARY {"probe":"t1.4-next","base":"http://127.0.0.1:3241","checks":175,"passed":172,"failed":3,"scenarios":{"1":"PASS (45)","2":"PASS (36)","3":"FAIL (2/33)","4":"PASS (24)","5":"PASS (15)","6":"PASS (9)","7":"FAIL (1/11)"},"failures":["[S3] สื่อพิมพ์: ทุกการจองในใบ + รายชื่อรายคนเปิดทั้งหมด — got [18,0]","[S3] PDF: การจองท้ายใบ (Bulk14) และผู้เดินทางคนแรกอยู่ครบ — ไม่ถูกตัด — got [true,false]","[S7] ไฟล์: แถวข้อมูล ≤ 600 — got 601"],"cleanup":{"tenants":0,"users":0,"sessions":0,"rows":0},"fatal":null,"shots":"/root/projects/shark-trips-l1/.qc-shots/trips/t1.4-next"}

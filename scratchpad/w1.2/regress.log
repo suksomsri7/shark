@@ -1,0 +1,23 @@
+=== seed1
+EXIT seed1 0
+=== seed2
+EXIT seed2 0
+=== w1.2
+EXIT w1.2 1
+=== w1.1
+EXIT w1.1 1
+=== t0.6
+EXIT t0.6 1
+=== t0.4
+EXIT t0.4 1
+=== t0.7
+EXIT t0.7 1
+=== t0.1
+EXIT t0.1 1
+=== fitness
+EXIT fitness 0
+=== fitness-nodb
+EXIT fitness-nodb 0
+=== typecheck
+EXIT typecheck 0
+ALLDONE
