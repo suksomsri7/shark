@@ -12,7 +12,7 @@
 // 🔴 ทุกฟังก์ชันบริการคืน SellResult — error ที่ไม่คาดคิดถูกบันทึก ops แล้วคืน BUSY (R10) · *InTx ปฏิเสธด้วย throw (ผู้เรียก rollback)
 // ─────────────────────────────────────────────────────────────
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client"; // TRIPS W1.3 ▸ ค่า (Prisma.raw/empty) ของ FOR UPDATE เฉพาะในธุรกรรม ◂
 import { tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { emitOutboxMany } from "@/lib/core/outbox";
@@ -1422,7 +1422,7 @@ async function idemAudits(db: Tx, tenantId: string, action: string, b: { id: str
 export const TRIPS_PUBLIC_SELF_REASON = "ลูกค้ายกเลิกเองผ่านลิงก์การจอง";
 export const TRIPS_PUBLIC_SELF_ACTOR = "trips.public.self";
 export const PUBLIC_SELF_AUDITOR: SellActor = { kind: "SYSTEM", job: TRIPS_PUBLIC_SELF_ACTOR };
-export type PublicSelf = { bookingId: string; tokenHash: string; expectedVersion: number };
+export type PublicSelf = { bookingId: string; tokenHash: string; expectedVersion: number; expectedRefundSatang?: number }; // P2: ยอดที่ลูกค้าเห็น (เทียบใต้ล็อก)
 /** ไม่ใช่ PUBLIC ⇒ null · PUBLIC ผ่านรั้ว ⇒ publicSelf · ไม่มี publicSelf ⇒ FORBIDDEN OTP_REQUIRED (เดิม) · เกินสิทธิ์ ⇒ FORBIDDEN */
 export function publicSelfGate(c: Ctx, opts: unknown, req: unknown): Failure | PublicSelf | null {
   if (c.actor.kind !== "PUBLIC") return null;
@@ -1431,12 +1431,13 @@ export function publicSelfGate(c: Ctx, opts: unknown, req: unknown): Failure | P
   const r = isRec(req) ? req : {};
   const ok = typeof ps.bookingId === "string" && ps.bookingId === r.bookingId && typeof ps.tokenHash === "string" && /^[0-9a-f]{64}$/.test(ps.tokenHash) && Number.isSafeInteger(ps.expectedVersion) &&
     r.reasonKind === "CUSTOMER" && r.reason === TRIPS_PUBLIC_SELF_REASON && (r.choice === undefined || r.choice === "MONEY") && r.deductions === undefined && r.moveToSlotId === undefined;
-  return ok ? { bookingId: String(ps.bookingId), tokenHash: String(ps.tokenHash), expectedVersion: Number(ps.expectedVersion) } : sellFail("FORBIDDEN");
+  const er = Number.isSafeInteger(ps.expectedRefundSatang) && Number(ps.expectedRefundSatang) >= 0 ? { expectedRefundSatang: Number(ps.expectedRefundSatang) } : {};
+  return ok ? { bookingId: String(ps.bookingId), tokenHash: String(ps.tokenHash), expectedVersion: Number(ps.expectedVersion), ...er } : sellFail("FORBIDDEN");
 }
-/** แถว (FOR UPDATE · ในธุรกรรม = ใต้ล็อก): token ไม่ตรง/PENDING/เอเจนซี่ ⇒ FORBIDDEN · `version` และรุ่นไม่ตรงที่หน้าเห็น ⇒ STATE_CONFLICT */
-export async function publicSelfRowFail(db: Tx, g: { tenantId: string; unitId: string }, id: string, ps: PublicSelf, version: boolean): Promise<Failure | null> {
+/** แถว (`lock` = FOR UPDATE ในธุรกรรมของผู้เรียกเท่านั้น · นอกธุรกรรมอ่านเฉย ๆ · P3): token ไม่ตรง/PENDING/เอเจนซี่ ⇒ FORBIDDEN · `version` และรุ่นไม่ตรงที่หน้าเห็น ⇒ STATE_CONFLICT */
+export async function publicSelfRowFail(db: Tx, g: { tenantId: string; unitId: string }, id: string, ps: PublicSelf, version: boolean, lock = true): Promise<Failure | null> {
   const r = (await db.$queryRaw<{ h: string | null; s: string; v: number; ch: string; cm: string; ag: string | null }[]>`
-    SELECT "publicTokenHash" AS "h", "status" AS "s", "version" AS "v", "channel" AS "ch", "collectMode" AS "cm", "agentAccountId" AS "ag" FROM "TripBooking" WHERE "id" = ${id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} FOR UPDATE`)[0];
+    SELECT "publicTokenHash" AS "h", "status" AS "s", "version" AS "v", "channel" AS "ch", "collectMode" AS "cm", "agentAccountId" AS "ag" FROM "TripBooking" WHERE "id" = ${id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} ${lock ? Prisma.raw("FOR UPDATE") : Prisma.empty}`)[0];
   if (!r || r.h !== ps.tokenHash || r.s === "PENDING" || String(r.ch).startsWith("AGENT_") || r.cm === "AGENT" || r.ag) return sellFail("FORBIDDEN");
   return version && r.v !== ps.expectedVersion ? sellFail("STATE_CONFLICT") : null;
 }
@@ -1457,7 +1458,7 @@ export async function selfReplayOf(ctx: unknown, input: unknown, opts?: CancelOp
     if (!pub || "ok" in pub) return pub ?? sellFail("FORBIDDEN");
     const g = await gateOf(pc.c);
     const b = g && typeof i.idempotencyKey === "string" && /^[A-Za-z0-9_-]{8,90}$/.test(i.idempotencyKey) ? await readBooking(unitDb(g), g, pub.bookingId) : null;
-    if (!g || !b || (await publicSelfRowFail(unitDb(g), g, b.id, pub, false))) return sellFail("FORBIDDEN");
+    if (!g || !b || (await publicSelfRowFail(unitDb(g), g, b.id, pub, false, false))) return sellFail("FORBIDDEN");
     return { ok: true, value: await replaySelf(g, pc.c, b, String(i.idempotencyKey)) };
   });
 }
@@ -1493,7 +1494,7 @@ async function cancelImpl(ctx: unknown, input: unknown, opts?: CancelOpts): Prom
   const b = await readBooking(unitDb(g), g, v.bookingId);
   if (!b) return NF();
   // TRIPS W1.3 ▸ แถวผ่านรั้ว (token · PENDING · เอเจนซี่) → ฟอร์มเดิม ⇒ ผลเดิมก่อนด่านสถานะ (K5) → รุ่นที่หน้าเห็น (L1) ◂
-  const pf = pub ? await publicSelfRowFail(unitDb(g), g, b.id, pub, false) : null;
+  const pf = pub ? await publicSelfRowFail(unitDb(g), g, b.id, pub, false, false) : null;
   if (pf) return pf;
   const rp = pub && v.mode === "EXECUTE" ? await replaySelf(g, c, b, v.idempotencyKey) : null;
   if (rp) return { ok: true, value: rp };

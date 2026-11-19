@@ -2,6 +2,7 @@
 // /book/[shop]/my — ฟอร์มของ "การจองของฉัน" (ยืนยันเบอร์ผู้จอง · ยกเลิก/ยื่นคำขอคืนเงิน) · RUN TRIPS W1.3a (ใบสั่ง ledger/trips-briefs/W1.3.md §3.2 §7 · มติ K7)
 // ไม่มี session (ลูกค้าไม่ล็อกอิน) — ด่านคือด่านอัตรา + ลายเซ็นของ nonce/grant ใน platform/trips-self · ไฟล์นี้ไม่ตัดสินอะไรเอง
 // FormData → platform → redirect จากผลของ platform (slug ร้านตัวจริง) · token/grant ที่ใส่ใน Location ผ่านการตรวจรูปก่อน (bookRedirectOk · SELF_GRANT_RE)
+// ฟอร์มทั้งก้อนส่งเข้า platform (ทุกช่องที่จอเรนเดอร์ · มติ P1 — ไม่เลือกช่องเองจนทำช่องหาย) · platform ตรวจทุกช่องเอง
 // ผิด ⇒ รหัส `e` ในรายการเท่านั้น ไม่มีค่าที่กรอก (ไม่มีเบอร์ใน URL) · สำเร็จแล้ว redirect ไม่มี `g` · ไม่มีคุกกี้ (grant อยู่ใน query `g` · K7)
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
@@ -32,7 +33,7 @@ export async function verifySelfAction(shop: unknown, token: unknown, data: unkn
   const req = bookRequestFromHeaders((name) => h.get(name), "POST");
   const f = formOf(data);
   const lang = langOf(f);
-  const r = await verifyBookSelf({ shop, token, form: { phone: f.get("phone") ?? "", nonce: f.get("nonce") ?? "" }, clientKey: req.clientKey });
+  const r = await verifyBookSelf({ shop, token, form: Object.fromEntries(f), clientKey: req.clientKey });
   if (r.ok && bookRedirectOk({ shopSlug: r.shopSlug, token }) && SELF_GRANT_RE.test(r.grant)) redirect(selfReservationHref(r.shopSlug, String(token), lang, { act: "cancel", grant: r.grant }));
   if (!r.ok && r.code !== "NOT_FOUND" && bookRedirectOk({ shopSlug: r.shopSlug, token })) {
     const slug = r.shopSlug ?? "";
@@ -49,7 +50,7 @@ export async function cancelSelfAction(shop: unknown, token: unknown, grant: unk
   const req = bookRequestFromHeaders((name) => h.get(name), "POST");
   const f = formOf(data);
   const lang = langOf(f);
-  const r = await cancelBookSelf({ shop, token, grant, form: { seen: f.get("seen") ?? "", accept: f.get("accept") ?? "", nonce: f.get("nonce") ?? "" }, clientKey: req.clientKey });
+  const r = await cancelBookSelf({ shop, token, grant, form: Object.fromEntries(f), clientKey: req.clientKey });
   if (r.ok && bookRedirectOk({ shopSlug: r.shopSlug, token })) redirect(selfReservationHref(r.shopSlug, String(token), lang, { done: r.result }));
   if (!r.ok && r.code !== "NOT_FOUND" && bookRedirectOk({ shopSlug: r.shopSlug, token })) {
     const slug = r.shopSlug ?? "";

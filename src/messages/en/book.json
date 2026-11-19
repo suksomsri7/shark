@@ -363,7 +363,8 @@
       "TOO_FAST": "That was too fast — wait a moment and try again",
       "STALE_FORM": "This form is out of date — reload the page and try again",
       "BUSY": "The system is busy — please try again",
-      "UNAVAILABLE": "Online booking management is not available right now — contact the shop"
+      "UNAVAILABLE": "Online booking management is not available right now — contact the shop",
+      "LIMITER_DOWN": "The system is busy — please try again in a moment"
     },
     "block": {
       "AGENT": "This booking was made through an agent and cannot be managed on this page",

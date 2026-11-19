@@ -213,7 +213,7 @@ export async function findBookReservation(ref: { tenantId: string; unitIds: stri
 }
 
 // TRIPS W1.3 ▸ ข้อเท็จจริงของก้อน "จัดการการจอง" (ใบสั่ง W1.3 §3.2 §4 · อ่านอย่างเดียว) — ผู้เรียก (platform/trips-self · trips-book) ใช้ตัดสิน
-//   ไม่ออก VM: เบอร์ผู้จอง (phoneNorm) ใช้เทียบในเซิร์ฟเวอร์เท่านั้น · ข้อมูลผู้จองถูกลบ (piiPurgedAt) ⇒ ไม่มีเบอร์ · คำขอคืนเงิน = แถวล่าสุดของการจอง ◂
+//   ไม่ออก VM: เบอร์ผู้จอง (phoneNorm) ใช้เทียบในเซิร์ฟเวอร์เท่านั้น · ข้อมูลผู้จองถูกลบ (piiPurgedAt) ⇒ ไม่มีเบอร์ · คำขอคืนเงิน = แถวล่าสุดที่ไม่ถูกถอน (P3 · K8) ◂
 export type BookSelfFacts = {
   channel: string;
   collectMode: string;
@@ -233,7 +233,7 @@ export async function findBookSelfFacts(ref: { tenantId: string; unitId: string 
   const b = rows[0];
   if (!b) return null;
   const rq = await db.$queryRaw<{ status: string; amountSatang: number; by: string }[]>`
-    SELECT "status", "amountSatang", "by" FROM "TripRefundRequest" WHERE "bookingId" = ${bookingId} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId}
+    SELECT "status", "amountSatang", "by" FROM "TripRefundRequest" WHERE "bookingId" = ${bookingId} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId} AND "status" <> 'WITHDRAWN'
     ORDER BY "createdAt" DESC, "id" DESC LIMIT 1`;
   const r = rq[0];
   return {

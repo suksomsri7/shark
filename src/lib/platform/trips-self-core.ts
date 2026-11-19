@@ -148,7 +148,7 @@ function phoneDigits(v: unknown): string | null {
   return d.length >= 8 ? d : null;
 }
 
-/** เบอร์ที่ลูกค้าพิมพ์ตรงกับ Party.phoneNorm ของผู้จองไหม (ว่าง/สั้นกว่า 9 หลัก/ไม่ใช่สตริง ⇒ false) */
+/** เบอร์ที่ลูกค้าพิมพ์ตรงกับ Party.phoneNorm ของผู้จองไหม — เทียบเลขสำคัญ (ว่าง/เลขสำคัญสั้นกว่า 8 หลัก/ไม่ใช่สตริง ⇒ false) */
 export function selfPhoneMatches(input: unknown, phoneNorm: unknown): boolean {
   const a = phoneDigits(input);
   const b = phoneDigits(phoneNorm);
@@ -156,8 +156,8 @@ export function selfPhoneMatches(input: unknown, phoneNorm: unknown): boolean {
 }
 
 // ═══════════════ พารามิเตอร์ของหน้า my/[token] (ค่าที่อยู่ในรายการเท่านั้น · ไม่สะท้อนค่าอื่น) ═══════════════
-/** รหัสใน `e` ของหน้า: รหัสผิด + LOCKED (ถูกล็อกจากการลองเบอร์ผิด · K6) + INVALID_PHONE (เบอร์ผิดรูป · L7 ง) */
-export const SELF_PAGE_ERRORS = [...SELF_ERROR_CODES.filter((c) => c !== "DONE" && c !== "NOT_FOUND"), "LOCKED", "INVALID_PHONE"] as const;
+/** รหัสใน `e` ของหน้า: รหัสผิด + LOCKED (ถูกล็อกจากการลองเบอร์ผิด · K6) + INVALID_PHONE (เบอร์ผิดรูป · L7 ง) + LIMITER_DOWN (ตัวนับล่ม · P3) */
+export const SELF_PAGE_ERRORS = [...SELF_ERROR_CODES.filter((c) => c !== "DONE" && c !== "NOT_FOUND"), "LOCKED", "INVALID_PHONE", "LIMITER_DOWN"] as const;
 export type SelfPageError = (typeof SELF_PAGE_ERRORS)[number];
 export const SELF_OUTCOMES = ["CANCELLED", "REFUND_REQUESTED", "CANCEL_REQUESTED"] as const;
 export type SelfOutcome = (typeof SELF_OUTCOMES)[number];
@@ -208,6 +208,7 @@ export function selfDoneShown(done: SelfOutcome | null, state: string, r: SelfRe
 /** รหัส `e` ของหน้าจากผลไม่สำเร็จ (ล็อกจากการลองเบอร์ผิด = LOCKED · K6 K15) · DONE/NOT_FOUND ⇒ null */
 export function selfPageErrorOf(f: { code: SelfErrorCode; reason?: string; fields?: readonly string[] }): SelfPageError | null {
   if (f.code === "RATE_LIMITED" && f.reason === "LOCKED") return "LOCKED";
+  if (f.code === "RATE_LIMITED" && f.reason === "LIMITER_DOWN") return "LIMITER_DOWN"; // P3: ตัวนับล่ม ≠ ถี่เกิน
   if (f.code === "INVALID" && Array.isArray(f.fields) && f.fields.includes("phone")) return "INVALID_PHONE"; // L7 ง
   return (SELF_PAGE_ERRORS as readonly string[]).includes(f.code) ? (f.code as SelfPageError) : null;
 }

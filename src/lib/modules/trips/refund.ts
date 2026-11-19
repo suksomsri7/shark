@@ -397,8 +397,11 @@ async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel",
     // TRIPS W1.3 ▸ ใต้ล็อกแถว: รั้ว (token · PENDING · เอเจนซี่ · รุ่นที่หน้าเห็น · K2 L1 L9) · คำขอล่าสุดของลูกค้าถูกปฏิเสธ ⇒ ยื่นใหม่ผ่านหน้าไม่ได้ (K8 L3) ◂
     const pf = pub ? await publicSelfRowFail(tx, g, lb.id, pub, true) : null;
     if (pf) throw new BookingAbort(pf.code, pf.details);
-    const last = pub ? (await tx.$queryRaw<{ s: string; b: string }[]>`SELECT "status" AS "s", "by" AS "b" FROM "TripRefundRequest" WHERE "bookingId" = ${lb.id} AND "tenantId" = ${g.tenantId} ORDER BY "createdAt" DESC, "id" DESC LIMIT 1`)[0] : undefined;
+    const last = pub ? (await tx.$queryRaw<{ s: string; b: string }[]>`SELECT "status" AS "s", "by" AS "b" FROM "TripRefundRequest" WHERE "bookingId" = ${lb.id} AND "tenantId" = ${g.tenantId} AND "status" <> 'WITHDRAWN' ORDER BY "createdAt" DESC, "id" DESC LIMIT 1`)[0] : undefined;
     if (last && last.s === "REJECTED" && last.b === "CUSTOMER") throw new BookingAbort("FORBIDDEN", { reason: "REFUND_REJECTED" });
+    // P2: ยอดที่ลูกค้าเห็นต้องเท่ายอดที่คิดใต้ล็อก (นาฬิกา/หลักฐานเดียวกับที่ fileRefundRequestInTx จะใช้) — ไม่ตรง ⇒ STATE_CONFLICT ไม่มีการเขียน
+    const fresh = pub?.expectedRefundSatang !== undefined ? await tripRefundQuote(tx, g, lb, c.clock.iso, v.reasonKind, deductionsSatang) : null;
+    if (fresh && (!fresh.ok || fresh.value.refundSatang !== pub?.expectedRefundSatang)) throw new BookingAbort("STATE_CONFLICT", { reason: "AMOUNT_CHANGED" });
     const again = await requestByKey(tx, g.tenantId, key);
     if (again) return { replay: again };
     if (!REFUNDABLE.has(lb.status)) throw new BookingAbort("STATE_CONFLICT", { reason: "NOT_REFUNDABLE_STATUS" });

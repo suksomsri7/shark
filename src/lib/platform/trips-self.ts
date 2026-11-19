@@ -271,7 +271,7 @@ async function openSelf(input: unknown, opts: SelfOpts | undefined, count = true
   if (v) return { ...v, shopSlug: shop.slug };
   const readSoFar = count ? 0 : peekOf(row0, "rp");
   if (readSoFar === null) return limiterDown(shop.slug);
-  if (readSoFar >= read.limit) return { ok: false, code: "RATE_LIMITED", reason: "LIMIT", retryAfterSec: retryOf(row0.rpw, read.windowMs, now.getTime()), shopSlug: shop.slug };
+  if (readSoFar > read.limit) return { ok: false, code: "RATE_LIMITED", reason: "LIMIT", retryAfterSec: retryOf(row0.rpw, read.windowMs, now.getTime()), shopSlug: shop.slug };
   const guessed = peekOf(row0, "tg");
   if (guessed === null) return limiterDown(shop.slug);
   if (guessed >= limits.token) return { ok: false, code: "RATE_LIMITED", reason: "LIMIT", retryAfterSec: retryOf(row0.tgw, HOUR_MS, now.getTime()), shopSlug: shop.slug };
@@ -299,8 +299,10 @@ async function manageOf(o: Opened): Promise<{ m: SelfManageVM; facts: BookSelfFa
 const blockedOf = (o: Opened, m: SelfManageVM): SelfFail =>
   m.block === "REFUND_IN_PROGRESS" && m.refund ? fail("DONE", { refund: m.refund, shopSlug: o.shop.slug }) : fail("NOT_ALLOWED", { block: m.block ?? "ENDED", shopSlug: o.shop.slug });
 const ctxOf = (o: Opened) => ({ tenantId: o.shop.tenantId, unitId: o.unit.id, channel: "WEB" as const, actor: { kind: "PUBLIC" as const, clientKey: o.clientKey }, now: o.now });
-/** publicSelf ของบริการ: รุ่นที่หน้าใช้คิดยอด (มติ L1) */
-const publicSelfOf = (o: Opened, expectedVersion: number) => ({ publicSelf: { bookingId: o.row.bookingId, tokenHash: o.tokenHash, expectedVersion } });
+/** publicSelf ของบริการ: รุ่นที่หน้าใช้คิดยอด (มติ L1) + ยอดที่ลูกค้าเห็น (มติ P2 · เฉพาะตอนยื่น) */
+const publicSelfOf = (o: Opened, expectedVersion: number, expectedRefundSatang?: number) => ({
+  publicSelf: { bookingId: o.row.bookingId, tokenHash: o.tokenHash, expectedVersion, ...(expectedRefundSatang === undefined ? {} : { expectedRefundSatang }) },
+});
 
 // ═══════════════ 1) ยืนยันเบอร์ผู้จอง → grant ═══════════════
 /**
@@ -482,7 +484,7 @@ export async function cancelBookSelf(input: { shop: unknown; token: unknown; gra
     const r = await cancelTripBooking(
       ctxOf(o),
       { bookingId: o.row.bookingId, mode: "EXECUTE", reason: TRIPS_PUBLIC_SELF_REASON, reasonKind: "CUSTOMER", ...(kind === "UNPAID" ? {} : { choice: "MONEY" as const }), idempotencyKey },
-      publicSelfOf(o, seenVersion),
+      publicSelfOf(o, seenVersion, seen), // P2: ยอดที่ลูกค้าเห็นถูกเทียบใต้ล็อก
     );
     if (r.ok) {
       const filed = r.value.requestId !== undefined;
