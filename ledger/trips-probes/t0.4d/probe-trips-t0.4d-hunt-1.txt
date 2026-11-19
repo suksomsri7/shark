@@ -1,0 +1,279 @@
+// hunt-1 — T0.4d D2 booker advisory lock: (a) Party dedup under concurrency · (b) deadlock hunt (mixed ops) · (c) cost of the lock
+// run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-t0.4d-hunt-1.mts
+import { addMin, BAD, fmt, hex, HOLD_MIN, huntSetup, KEY, NOW0, R, sleep, stats, tally, type Rec } from "./probe-trips-t0.4d-hunt-lib.mjs";
+
+const H = await huntSetup("probe-t0.4d-hunt-1");
+const { call, check, note, q } = H;
+const rnd = (n: number) => Math.floor(Math.random() * n);
+type Hd = Awaited<ReturnType<typeof H.holdT>>;
+const ONLY = process.env.HUNT_ONLY ?? "abc";
+let phN = 0;
+const freshPhone = () => `09${String(10_000_000 + Number.parseInt(hex(3), 16) % 80_000_000 + phN++).slice(-8)}`;
+const partiesByPhone = async (ph: string) => (await q<{ n: number }>(`SELECT count(*)::int n FROM "Party" WHERE "tenantId" = $1 AND "phoneNorm" = $2`, [H.tA, ph]))[0]?.n ?? -1;
+const partiesByEmail = async (em: string) => (await q<{ n: number }>(`SELECT count(*)::int n FROM "Party" WHERE "tenantId" = $1 AND lower(trim(email)) = lower(trim($2))`, [H.tA, em]))[0]?.n ?? -1;
+const partiesByName = async (nm: string) => (await q<{ n: number }>(`SELECT count(*)::int n FROM "Party" WHERE "tenantId" = $1 AND name = $2`, [H.tA, nm]))[0]?.n ?? -1;
+const mkDeps = async (n: number, capacity: number) => { const out: string[] = []; for (let i = 0; i < n; i++) out.push(await H.mkDep({ key: ["A", "B", "C", "D"][i % 4], capacity })); return out; };
+const quoted = async (ctx: Rec, lines: Rec[]) => { const qr = await call("quoteTrips", ctx, { lines }, {}); return R(qr.value); };
+const bookNowQ = (ctx: Rec, lines: Rec[], quote: Rec, b: Rec, lat?: number[]) =>
+  H.timed(call("bookTripsNow", ctx, { quote: { lines }, quoteId: quote.quoteId, quoteExpiresAt: quote.expiresAt, idempotencyKey: `n${hex(6)}`, booker: b, pay: { method: "PAY_LATER" } }, {}), lat);
+const holdMany = async (n: number, mk: () => Promise<Rec[]>, ctx: () => Rec = () => H.pub()): Promise<Hd[]> => {
+  const out: Hd[] = [];
+  for (let i = 0; i < n; i += 10) out.push(...(await Promise.all(Array.from({ length: Math.min(10, n - i) }, async () => H.holdT(ctx(), await mk())))));
+  const bad = out.filter((h) => h.r.ok !== true);
+  if (bad.length) throw new Error(`setup holds failed ${bad.length}: ${fmt(bad[0].r)}`);
+  return out;
+};
+const lockWaits = async () => (await q<{ n: number }>(`SELECT count(*)::int n FROM pg_stat_activity WHERE datname = current_database() AND wait_event_type = 'Lock'`))[0]?.n ?? 0;
+
+try {
+  await H.setV([{ key: KEY, scope: "UNIT", scopeId: H.uA, value: 100 }, { key: "trips.public.holdCapPerContact", scope: "UNIT", scopeId: H.uA, value: 20 }]);
+
+  // ═════ (a) dedup ═════
+  if (ONLY.includes("a")) {
+    // a1 STAFF bookTripsNow N-way, same NEW phone, different departures
+    for (const [n, rounds] of [[10, 5], [50, 2]] as const) {
+      const per: number[] = []; const lat: number[] = []; const bads: Rec[] = []; let okN = 0;
+      for (let r = 0; r < rounds; r++) {
+        const ds = await mkDeps(n, 10);
+        const ph = freshPhone();
+        const b = { name: `t04dh a1 ${ph}`, phone: ph };
+        const qs = await Promise.all(ds.map((d) => H.line(d, 1).then((l) => quoted(H.staff(), [l]).then((qt) => ({ l, qt })))));
+        const rs = await H.withTimer(Promise.all(qs.map(({ l, qt }) => bookNowQ(H.staff(), [l], qt, b, lat))), 180_000, `a1 ${n}`);
+        if (rs === "TIMEOUT") { bads.push({ ok: "TIMEOUT" }); continue; }
+        okN += rs.filter((x) => x.ok === true).length; bads.push(...rs.filter(BAD));
+        per.push(await partiesByPhone(ph));
+      }
+      check(`a1 STAFF bookTripsNow ${n}-way same new phone, ${n} departures ×${rounds} ⇒ exactly 1 Party each round · all ok · no BUSY/40P01`, per.every((x) => x === 1) && okN === n * rounds && bads.length === 0,
+        `Party 1×${rounds}`, `Party per round ${fmt(per)} · ok ${okN}/${n * rounds} · bad ${bads.length} ${fmt(bads[0])} · ${stats(lat)}`);
+    }
+    // a2 one phone in 6 spellings, 12-way (STAFF bookNow + PUBLIC confirm mixed)
+    {
+      const per: number[] = []; const tl: Rec[] = [];
+      for (let r = 0; r < 4; r++) {
+        const ph = freshPhone(); const d9 = ph.slice(1);
+        const forms = [ph, `+66${d9}`, `${ph.slice(0, 3)}-${ph.slice(3, 6)}-${ph.slice(6)}`, `${ph.slice(0, 3)} ${ph.slice(3, 6)} ${ph.slice(6)}`, `+66 ${d9.slice(0, 2)} ${d9.slice(2, 5)} ${d9.slice(5)}`, `0066${d9}`];
+        const ds = await mkDeps(12, 10);
+        const pubH = await Promise.all(ds.slice(6).map(async (d) => H.holdT(H.pub(), [await H.line(d, 1)])));
+        const qs = await Promise.all(ds.slice(0, 6).map(async (d) => { const l = await H.line(d, 1); return { l, qt: await quoted(H.staff(), [l]) }; }));
+        const rs = await Promise.all([
+          ...qs.map(({ l, qt }, i) => bookNowQ(H.staff(), [l], qt, { name: `t04dh a2 ${r} s${i}`, phone: forms[i] })),
+          ...pubH.map((h, i) => H.confirmT(h, { booker: { name: `t04dh a2 ${r} p${i}`, phone: forms[(i + 3) % 6] } })),
+        ]);
+        tl.push(...rs); per.push(await partiesByPhone(ph));
+      }
+      check("a2 one phone in 6 spellings (08… · +668… · dashes · spaces · +66 spaced · 0066…) 12-way STAFF bookNow ∥ PUBLIC confirm ×4 ⇒ 1 Party each round", per.every((x) => x === 1) && tl.every((x) => x.ok === true),
+        "1×4", `per round ${fmt(per)} · ${fmt(tally(tl))}`);
+    }
+    // a3 email-only bookers: identical ×10 concurrent; case/whitespace variants concurrent vs sequential
+    {
+      const same: number[] = [];
+      for (let r = 0; r < 3; r++) {
+        const ds = await mkDeps(10, 10); const em = `t04dh.${hex(4)}@example.com`; const nm = `t04dh a3 ${em}`;
+        const qs = await Promise.all(ds.map(async (d) => { const l = await H.line(d, 1); return { l, qt: await quoted(H.staff(), [l]) }; }));
+        await Promise.all(qs.map(({ l, qt }) => bookNowQ(H.staff(), [l], qt, { name: nm, email: em })));
+        same.push(await partiesByEmail(em));
+      }
+      check("a3a email-only same booker 10-way ×3 ⇒ 1 Party each", same.every((x) => x === 1), "1×3", fmt(same));
+      const variants = (base: string) => [base, base.toUpperCase(), ` ${base}`, `${base} `, base.replace(/^./, (c) => c.toUpperCase()), base];
+      const conc: number[] = []; const seq: number[] = [];
+      for (let r = 0; r < 3; r++) {
+        for (const mode of ["conc", "seq"] as const) {
+          const ds = await mkDeps(6, 10); const em = `t04dh.${hex(4)}@example.com`; const nm = `t04dh a3v ${em}`;
+          const qs = await Promise.all(ds.map(async (d) => { const l = await H.line(d, 1); return { l, qt: await quoted(H.staff(), [l]) }; }));
+          const vs = variants(em);
+          if (mode === "conc") await Promise.all(qs.map(({ l, qt }, i) => bookNowQ(H.staff(), [l], qt, { name: nm, email: vs[i] })));
+          else for (const [i, { l, qt }] of qs.entries()) await bookNowQ(H.staff(), [l], qt, { name: nm, email: vs[i] });
+          (mode === "conc" ? conc : seq).push(await partiesByEmail(em));
+        }
+      }
+      check("a3b email case/whitespace variants (6 spellings): concurrent Party count == sequential Party count (lock adds no duplicates beyond party-module matching)", conc.every((c, i) => c === seq[i]), "conc == seq", `concurrent ${fmt(conc)} · sequential ${fmt(seq)}`);
+      note("a3b", `party matching is case-sensitive on email (findOrCreate name+email exact) — 6 spellings incl. UPPER / Capitalised ⇒ sequential ${fmt(seq)} Parties (pre-existing, modules/party)`);
+    }
+    // a4 same person: one request phone+email, the other email-only (lock keys differ: p: vs e:)
+    {
+      const per: number[] = []; const seqPer: number[] = [];
+      for (let r = 0; r < 20; r++) {
+        const ds = await mkDeps(2, 10); const ph = freshPhone(); const em = `t04dh.${hex(4)}@example.com`; const nm = `t04dh a4 ${em}`;
+        const qs = await Promise.all(ds.map(async (d) => { const l = await H.line(d, 1); return { l, qt: await quoted(H.staff(), [l]) }; }));
+        await Promise.all([bookNowQ(H.staff(), [qs[0].l], qs[0].qt, { name: nm, phone: ph, email: em }), bookNowQ(H.staff(), [qs[1].l], qs[1].qt, { name: nm, email: em })]);
+        per.push(await partiesByName(nm));
+      }
+      for (let r = 0; r < 5; r++) {
+        const ds = await mkDeps(2, 10); const ph = freshPhone(); const em = `t04dh.${hex(4)}@example.com`; const nm = `t04dh a4s ${em}`;
+        const qs = await Promise.all(ds.map(async (d) => { const l = await H.line(d, 1); return { l, qt: await quoted(H.staff(), [l]) }; }));
+        if (r % 2) { await bookNowQ(H.staff(), [qs[0].l], qs[0].qt, { name: nm, phone: ph, email: em }); await bookNowQ(H.staff(), [qs[1].l], qs[1].qt, { name: nm, email: em }); }
+        else { await bookNowQ(H.staff(), [qs[1].l], qs[1].qt, { name: nm, email: em }); await bookNowQ(H.staff(), [qs[0].l], qs[0].qt, { name: nm, phone: ph, email: em }); }
+        seqPer.push(await partiesByName(nm));
+      }
+      const dup = per.filter((x) => x > 1).length;
+      note("a4 expected gap (phone+email vs email-only, same name+email, 2-way concurrent ×20)", `duplicate Party in ${dup}/20 rounds (per round ${fmt(per)}) · sequential baseline ×5 ⇒ ${fmt(seqPer)}`);
+      // 10-way: 5 phone+email + 5 email-only
+      const per10: number[] = [];
+      for (let r = 0; r < 5; r++) {
+        const ds = await mkDeps(10, 10); const ph = freshPhone(); const em = `t04dh.${hex(4)}@example.com`; const nm = `t04dh a4x ${em}`;
+        const qs = await Promise.all(ds.map(async (d) => { const l = await H.line(d, 1); return { l, qt: await quoted(H.staff(), [l]) }; }));
+        await Promise.all(qs.map(({ l, qt }, i) => bookNowQ(H.staff(), [l], qt, i % 2 ? { name: nm, email: em } : { name: nm, phone: ph, email: em })));
+        per10.push(await partiesByName(nm));
+      }
+      note("a4 10-way (5 phone+email ∥ 5 email-only) ×5", `Party rows per round ${fmt(per10)} (ideal 1 · the two lock keys serialise each group, not across groups)`);
+      // a4c short phone (< 8 digits: lock by phone, party matches by name+email) with same email, different short phones
+      const perS: number[] = [];
+      for (let r = 0; r < 10; r++) {
+        const ds = await mkDeps(2, 10); const em = `t04dh.${hex(4)}@example.com`; const nm = `t04dh a4c ${em}`;
+        const qs = await Promise.all(ds.map(async (d) => { const l = await H.line(d, 1); return { l, qt: await quoted(H.staff(), [l]) }; }));
+        const rs = await Promise.all([bookNowQ(H.staff(), [qs[0].l], qs[0].qt, { name: nm, phone: "12345", email: em }), bookNowQ(H.staff(), [qs[1].l], qs[1].qt, { name: nm, phone: "67890", email: em })]);
+        perS.push(rs.every((x) => x.ok === true) ? await partiesByName(nm) : -1);
+      }
+      note("a4c short phones (12345 / 67890) + same name+email, 2-way ×10", `Party per round ${fmt(perS)} (lock keys p:12345 / p:67890 differ; matching falls to name+email)`);
+      // a4d reviewer (1): N × (phone "1234567" + E, name X) ∥ N × (E only, name X) · concurrent vs sequential
+      for (const N of [1, 5]) {
+        const conc: number[] = []; const seq: number[] = [];
+        for (let r = 0; r < 6; r++) {
+          for (const mode of ["conc", "seq"] as const) {
+            const ds = await mkDeps(2 * N, 10); const em = `t04dh.${hex(4)}@example.com`; const nm = `t04dh a4d ${em}`;
+            const qs = await Promise.all(ds.map(async (d) => { const l = await H.line(d, 1); return { l, qt: await quoted(H.staff(), [l]) }; }));
+            const bk = (i: number) => (i % 2 ? { name: nm, email: em } : { name: nm, phone: "1234567", email: em });
+            if (mode === "conc") await Promise.all(qs.map(({ l, qt }, i) => bookNowQ(H.staff(), [l], qt, bk(i))));
+            else for (const [i, { l, qt }] of qs.entries()) await bookNowQ(H.staff(), [l], qt, bk(i));
+            (mode === "conc" ? conc : seq).push(await partiesByName(nm));
+          }
+        }
+        note(`a4d short phone "1234567"+E ∥ E-only, N=${N} each ×6`, `concurrent Party rows ${fmt(conc)} · sequential ${fmt(seq)}`);
+      }
+    }
+  }
+
+  // ═════ (b) deadlock hunt ═════
+  if (ONLY.includes("b")) {
+    const A = await H.mkDep({ key: "A", capacity: 3000 });
+    const B = await H.mkDep({ key: "B", capacity: 3000 });
+    const C = await H.mkDep({ key: "C", capacity: 3000 });
+    const sib: Record<string, string> = { [A]: await H.mkDep({ key: "A", capacity: 3000 }), [B]: await H.mkDep({ key: "B", capacity: 3000 }), [C]: await H.mkDep({ key: "C", capacity: 3000 }) };
+    const all: Rec[] = []; let timeouts = 0; const byOp: Record<string, Rec[]> = {}; const lat: Record<string, number[]> = {};
+    const P1 = freshPhone(), P2 = freshPhone();
+    const shared = (i: number) => (i % 3 === 0 ? { name: `t04dh b P1`, phone: P1 } : i % 3 === 1 ? { name: `t04dh b P2`, phone: P2 } : { name: `t04dh b u${hex(3)}`, phone: freshPhone() });
+    const pairs = [[A, B], [B, A], [B, C], [C, B], [A, C], [C, A]];
+    for (let round = 0; round < 8; round++) {
+      // setup per round: PUBLIC + STAFF baskets on crossing pairs, existing bookings (for cancel/change/pay/refund), expired PUBLIC holds for the sweeper
+      const pubBaskets = await holdMany(16, async () => { const [x, y] = pairs[rnd(6)]; return [await H.line(x, 1), await H.line(y, 1)]; });
+      const stBaskets = await holdMany(8, async () => { const [x, y] = pairs[rnd(6)]; return [await H.line(x, 1), await H.line(y, 1)]; }, () => H.staff());
+      const existing: { id: string; dep: string; due: number }[] = [];
+      for (let i = 0; i < 12; i++) {
+        const dep = [A, B, C][i % 3];
+        const r = await H.bookNow(H.staff(), [await H.line(dep, 1)], { booker: { name: `t04dh b P1`, phone: P1 } });
+        const v = (r.value as Rec[] | undefined)?.[0];
+        if (r.ok === true && v) existing.push({ id: String(v.bookingId), dep, due: ((v.dues as Rec[]) ?? []).reduce((s, d) => s + Number(R(d.amount).satang ?? 0), 0) });
+      }
+      // a few already-paid bookings for refund requests
+      const paid: { id: string }[] = [];
+      for (const e of existing.slice(0, 3)) { const r = await call("recordTripPayment", H.staff({ now: addMin(NOW0, 1) }), { bookingId: e.id, amountSatang: e.due, tender: "CASH", idempotencyKey: `y${hex(6)}` }); if (r.ok === true) paid.push({ id: e.id }); }
+      await holdMany(6, async () => { const [x, y] = pairs[rnd(6)]; return [await H.line(x, 1), await H.line(y, 1)]; }, () => H.pub({ now: addMin(NOW0, -HOLD_MIN - 1) }));
+      const ver = async (id: string) => Number((await q<{ v: number }>(`SELECT version v FROM "TripBooking" WHERE id = $1`, [id]))[0]?.v ?? 0);
+      const run = async (op: string, f: () => Promise<Rec>) => { const t = Date.now(); const r = await f().catch((e) => ({ ok: "THROW", e: String(e) }) as Rec); (lat[op] ??= []).push(Date.now() - t); (byOp[op] ??= []).push(r); return r; };
+      const jobs: Promise<Rec>[] = [
+        ...pubBaskets.map((h, i) => run("pubConfirm", () => H.confirmT(h, { booker: shared(i) }))),
+        ...stBaskets.map((h, i) => run("staffConfirm", () => H.confirmT(h, { booker: shared(i) }))),
+        ...Array.from({ length: 8 }, (_, i) => run("bookNow", async () => { const [x, y] = pairs[rnd(6)]; return H.bookNow(H.staff(), [await H.line(x, 1), await H.line(y, 1)], { booker: shared(i) }); })),
+        ...existing.slice(3, 6).map((e) => run("cancel", async () => call("cancelTripBooking", H.staff({ now: addMin(NOW0, 2) }), { bookingId: e.id, mode: "EXECUTE", reason: "hunt", idempotencyKey: `cx${hex(6)}` }))),
+        ...existing.slice(6, 9).map((e) => run("change", async () => {
+          const to = sib[e.dep];
+          const l = await H.line(to, 1); const qt = await quoted(H.staff(), [l]);
+          return call("changeTripBooking", H.staff({ now: addMin(NOW0, 2) }), { bookingId: e.id, expectedVersion: await ver(e.id), line: l, quoteId: qt.quoteId, quoteExpiresAt: qt.expiresAt, idempotencyKey: `cg${hex(6)}` }, {});
+        })),
+        ...existing.slice(9, 12).map((e) => run("pay", () => call("recordTripPayment", H.staff({ now: addMin(NOW0, 2) }), { bookingId: e.id, amountSatang: e.due, tender: "CASH", idempotencyKey: `y${hex(6)}` }))),
+        ...paid.map((p) => run("refundReq", async () => call("requestTripRefund", H.staff({ now: addMin(NOW0, 3) }), { bookingId: p.id, expectedVersion: await ver(p.id), reasonKind: "CUSTOMER", choice: "MONEY", reason: "hunt", idempotencyKey: `r${hex(6)}` }))),
+        run("sweep", async () => { const r = R(await H.sweep(NOW0)); return Array.isArray(r.failed) && r.failed.length ? { ok: false, code: "SWEEP_FAILED", details: r } : { ok: true }; }),
+        run("sweep", async () => { await sleep(rnd(50)); const r = R(await H.sweep(NOW0)); return Array.isArray(r.failed) && r.failed.length ? { ok: false, code: "SWEEP_FAILED", details: r } : { ok: true }; }),
+      ];
+      let maxWait = 0;
+      const mon = (async () => { for (let i = 0; i < 40; i++) { maxWait = Math.max(maxWait, await lockWaits()); await sleep(100); } })();
+      const rs = await H.withTimer(Promise.all(jobs), 180_000, `b round ${round}`);
+      await mon;
+      if (rs === "TIMEOUT") { timeouts++; continue; }
+      all.push(...rs);
+      if (round === 0) note("b lock waiters", `max concurrent backends waiting on a Lock during round 0: ${maxWait}`);
+    }
+    const bad = all.filter((r) => BAD(r) || r.code === "SWEEP_FAILED");
+    const inv = await H.inv([A, B, C, ...Object.values(sib)], NOW0, 100);
+    check("b deadlock hunt ×8 rounds (16 PUBLIC + 8 STAFF confirms on crossing pairs · 8 bookNow · cancel · change (move) · pay · refund request · 2 scoped sweepers; shared bookers P1/P2) ⇒ no 40P01/BUSY/P2028/THROW/timeout",
+      bad.length === 0 && timeouts === 0, "0", `bad ${bad.length} ${fmt(bad.slice(0, 3))} · timeouts ${timeouts}`);
+    check("b end invariants (held = Σ hold · sold = Σ bookings · ≤ capacity) · no idle-in-tx", inv.length === 0 && (await H.stuckTx()) === 0, "0", `${fmt(inv)} stuck ${await H.stuckTx()}`);
+    for (const [op, rs] of Object.entries(byOp)) note(`b ${op}`, `${fmt(tally(rs))} · ${stats(lat[op] ?? [])}`);
+    note("b Party", `P1 Party rows ${await partiesByPhone(P1)} · P2 ${await partiesByPhone(P2)}`);
+  }
+
+  // ═════ (b2) reviewer (2): same booker ×10 confirming on D ∥ payments / change / refund requests on D's bookings · unrelated customers' wait ═════
+  if (ONLY.includes("b")) {
+    const res: Rec[] = []; const notes: string[] = [];
+    for (let rep = 0; rep < 3; rep++) {
+      for (const withMix of [false, true]) {
+        const D = await H.mkDep({ key: "A", capacity: 500 }); const E = await H.mkDep({ key: "A", capacity: 500 });
+        const ph = freshPhone();
+        const same = await holdMany(10, async () => [await H.line(D, 1)]);
+        const others = await holdMany(10, async () => [await H.line(D, 1)]);
+        const ex: { id: string; due: number }[] = [];
+        for (let i = 0; i < 12; i++) { const r = await H.bookNow(H.staff(), [await H.line(D, 1)]); const v = (r.value as Rec[] | undefined)?.[0]; if (v) ex.push({ id: String(v.bookingId), due: ((v.dues as Rec[]) ?? []).reduce((s, d) => s + Number(R(d.amount).satang ?? 0), 0) }); }
+        for (const e of ex.slice(8)) await call("recordTripPayment", H.staff({ now: addMin(NOW0, 1) }), { bookingId: e.id, amountSatang: e.due, tender: "CASH", idempotencyKey: `y${hex(6)}` });
+        const ver = async (id: string) => Number((await q<{ v: number }>(`SELECT version v FROM "TripBooking" WHERE id = $1`, [id]))[0]?.v ?? 0);
+        const olat: number[] = [];
+        const mix: Promise<Rec>[] = withMix ? [
+          ...ex.slice(0, 4).map((e) => call("recordTripPayment", H.staff({ now: addMin(NOW0, 2) }), { bookingId: e.id, amountSatang: e.due, tender: "CASH", idempotencyKey: `y${hex(6)}` })),
+          ...ex.slice(4, 8).map(async (e, i) => { const l = await H.line(i % 2 ? E : D, 2); const qt = await quoted(H.staff(), [l]); return call("changeTripBooking", H.staff({ now: addMin(NOW0, 2) }), { bookingId: e.id, expectedVersion: await ver(e.id), line: l, quoteId: qt.quoteId, quoteExpiresAt: qt.expiresAt, idempotencyKey: `cg${hex(6)}` }, {}); }),
+          ...ex.slice(8).map(async (e) => call("requestTripRefund", H.staff({ now: addMin(NOW0, 3) }), { bookingId: e.id, expectedVersion: await ver(e.id), reasonKind: "CUSTOMER", choice: "MONEY", reason: "hunt", idempotencyKey: `r${hex(6)}` })),
+        ] : [];
+        const rs = await H.withTimer(Promise.all([
+          ...same.map((h) => H.confirmT(h, { booker: { name: `t04dh b2 ${ph}`, phone: ph } })),
+          ...others.map((h) => H.confirmT(h, { booker: { name: `t04dh b2o ${hex(3)}`, phone: freshPhone() } }, olat)),
+          ...mix,
+        ]), 180_000, "b2");
+        if (rs === "TIMEOUT") { res.push({ ok: "TIMEOUT" }); continue; }
+        res.push(...rs);
+        notes.push(`${withMix ? "mix" : "noMix"}#${rep}: others ${stats(olat)} · all ${fmt(tally(rs))} · Party(same) ${await partiesByPhone(ph)} · inv ${fmt(await H.inv([D, E], NOW0, 100))}`);
+      }
+    }
+    const bad = res.filter(BAD);
+    check("b2 same booker ×10 confirms on D ∥ 4 payments + 4 changes + 4 refund requests on D's bookings (×3) ⇒ no 40P01/BUSY/THROW/timeout", bad.length === 0, "0", `bad ${bad.length} ${fmt(bad.slice(0, 3))}`);
+    for (const n of notes) note("b2", n);
+  }
+
+  // ═════ (c) cost ═════
+  if (ONLY.includes("c")) {
+    const conf = async (n: number, sameBooker: boolean, actor: "STAFF" | "PUBLIC") => {
+      const d = await H.mkDep({ capacity: 400 });
+      const hs = await holdMany(n, async () => [await H.line(d, 1)], actor === "STAFF" ? () => H.staff() : () => H.pub());
+      const ph = freshPhone();
+      const lat: number[] = []; const t0 = Date.now();
+      const rs = await Promise.all(hs.map((h) => H.confirmT(h, { booker: sameBooker ? { name: `t04dh c same ${ph}`, phone: ph } : { name: `t04dh c ${hex(3)}`, phone: freshPhone() } }, lat)));
+      const wall = Date.now() - t0;
+      return { lat, wall, t: tally(rs), parties: sameBooker ? await partiesByPhone(ph) : -1 };
+    };
+    for (const n of [30, 60]) {
+      for (let rep = 0; rep < 2; rep++) {
+        const dI = await conf(n, false, "STAFF"); const sA = await conf(n, true, "STAFF");
+        note(`c ${n} STAFF confirms on one departure (rep ${rep})`, `distinct bookers ${stats(dI.lat)} wall ${dI.wall}ms ${fmt(dI.t)} · same NEW booker ${stats(sA.lat)} wall ${sA.wall}ms ${fmt(sA.t)} Party ${sA.parties}`);
+      }
+    }
+    for (let rep = 0; rep < 2; rep++) {
+      const dI = await conf(20, false, "PUBLIC"); const sA = await conf(20, true, "PUBLIC");
+      note(`c 20 PUBLIC confirms (contact cap 20) one departure (rep ${rep})`, `distinct ${stats(dI.lat)} wall ${dI.wall}ms · same booker ${stats(sA.lat)} wall ${sA.wall}ms ${fmt(sA.t)} Party ${sA.parties}`);
+    }
+    // spam: 20 other customers (PUBLIC) ∥ {nothing | 50 STAFF confirms same booker | 50 STAFF confirms distinct bookers | 50 PUBLIC confirms same phone}
+    const others = async (noise: "none" | "staffSame" | "staffDistinct" | "pubSame") => {
+      const d = await H.mkDep({ capacity: 400 });
+      const oh = await holdMany(20, async () => [await H.line(d, 1)]);
+      const nh = noise === "none" ? [] : await holdMany(50, async () => [await H.line(d, 1)], noise === "pubSame" ? () => H.pub() : () => H.staff());
+      const ph = freshPhone();
+      const olat: number[] = []; const nlat: number[] = [];
+      const noiseP = nh.map((h, i) => H.confirmT(h, { booker: noise === "staffDistinct" ? { name: `t04dh n ${i}`, phone: freshPhone() } : { name: `t04dh spam ${ph}`, phone: ph } }, nlat));
+      await sleep(noise === "none" ? 0 : 30);
+      const ors = await Promise.all(oh.map((h) => H.confirmT(h, { booker: { name: `t04dh o ${hex(3)}`, phone: freshPhone() } }, olat)));
+      const nrs = await Promise.all(noiseP);
+      return `others ${stats(olat)} ${fmt(tally(ors))} · noise ${stats(nlat)} ${fmt(tally(nrs))}`;
+    };
+    for (let rep = 0; rep < 2; rep++) for (const m of ["none", "staffSame", "staffDistinct", "pubSame"] as const) note(`c spam ${m} (rep ${rep})`, await others(m));
+  }
+} catch (e) {
+  console.log(`💥 probe crashed: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await H.finish();
+}

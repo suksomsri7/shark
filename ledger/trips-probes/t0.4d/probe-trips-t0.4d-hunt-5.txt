@@ -1,0 +1,55 @@
+// hunt-5 — re-fire of hunt-2 items: 2a with room left (capacity 30) · STAFF confirm/REHOLD of a PUBLIC basket · STAFF WEB basket REHOLD with PAY_NOW (unpaid st: hold)
+// run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-t0.4d-hunt-5.mts
+import { addMin, fmt, hex, HOLD_MIN, huntSetup, NOW0, R, type Rec } from "./probe-trips-t0.4d-hunt-lib.mjs";
+
+const H = await huntSetup("probe-t0.4d-hunt-5");
+const { call, check, note, q } = H;
+const CH = ["WEB", "LIFF", "EMBED", "CHAT_AI"];
+const shareOk = (r: Rec) => r.ok === false && r.code === "HOLD_LIMIT" && R(r.details).reason === "PUBLIC_UNPAID_SHARE";
+const code = (r: Rec) => (r.ok === true ? "ok" : `${String(r.code ?? r.ok)}${R(r.details).reason ? `:${String(R(r.details).reason)}` : ""}${R(r.details).fields ? fmt(R(r.details).fields) : ""}`);
+const rows = async (d: string) => (await q<{ k: string; qty: number; purpose: string; status: string; channel: string }>(`SELECT split_part("idempotencyKey", ':', 1) AS k, "qtyPublic" + "qtyAllot" AS qty, purpose, status, channel FROM "TripHold" WHERE "departureId" = $1 ORDER BY "createdAt"`, [d])).map((x) => `${x.k}/${x.channel}/${x.purpose}/${x.status}/${x.qty}`);
+try {
+  const out: string[] = []; let okAll = true;
+  for (const ch of CH) {
+    const d = await H.mkDep({ capacity: 30 }); // cap 15
+    const s1 = await H.holdT(H.staff({ ch }), [await H.line(d, 6)]);
+    const s2 = await call("placeHold", H.staff({ ch }), { departureId: d, qty: 4, idempotencyKey: `p${hex(6)}` });
+    const p1 = await H.holdT(H.pub({ ch }), [await H.line(d, 1)]);
+    const p2 = await H.holdT(H.pub({ ch }), [await H.line(d, 14)]);
+    const p3 = await H.holdT(H.pub({ ch }), [await H.line(d, 1)]);
+    const c = await H.publicHeld(d, NOW0);
+    const good = s1.r.ok === true && s2.ok === true && p1.r.ok === true && p2.r.ok === true && shareOk(p3.r) && c === 15;
+    okAll &&= good;
+    out.push(`${ch}: staff ${code(s1.r)}/${code(s2)} · pub 1 ${code(p1.r)} +14 ${code(p2.r)} +1 ${code(p3.r)} · counted ${c} · byChannel ${await H.channelHeld(d, NOW0)}`);
+  }
+  check("2a (re-fire, capacity 30 / cap 15) STAFF 10 on each public channel not counted · PUBLIC 1+14 = cap ok · +1 HOLD_LIMIT", okAll, "4 channels", out.join(" | "));
+
+  // STAFF confirm of a PUBLIC basket (live, then expired with REHOLD) using a fresh staff quote
+  {
+    const d = await H.mkDep({ capacity: 30 });
+    const h = await H.holdT(H.pub(), [await H.line(d, 6)]);
+    const sq = R((await call("quoteTrips", H.staff({ ch: "WEB" }), { lines: h.lines }, {})).value);
+    const live = await call("confirmTrips", H.staff({ ch: "WEB" }), { ...H.confirmInput(h, { pay: "PAY_NOW" }), quoteId: sq.quoteId }, {});
+    const late = addMin(NOW0, HOLD_MIN + 2);
+    const h2 = await H.holdT(H.pub(), [await H.line(d, 5)]);
+    const sq2 = R((await call("quoteTrips", H.staff({ ch: "WEB", now: late }), { lines: h2.lines }, {})).value);
+    const reh = await call("confirmTrips", H.staff({ ch: "WEB", now: late }), { ...H.confirmInput(h2, { pay: "PAY_NOW", onExpired: "REHOLD" }), quoteId: sq2.quoteId }, {});
+    note("STAFF on PUBLIC basket", `live confirm by STAFF ${code(live)} · after expiry STAFF REHOLD ${code(reh)} · rows ${fmt(await rows(d))} · counted ${await H.publicHeld(d, late)}`);
+  }
+  // STAFF WEB basket, PAY_NOW, REHOLD after expiry ⇒ unpaid st: hold (not counted) + PUBLIC on top
+  {
+    const d = await H.mkDep({ capacity: 30 }); // cap 15
+    const s = await H.holdT(H.staff({ ch: "WEB" }), [await H.line(d, 8)]);
+    const late = addMin(NOW0, HOLD_MIN + 2);
+    const sq = R((await call("quoteTrips", H.withNow(s.ctx, late), { lines: s.lines }, {})).value);
+    const r = await call("confirmTrips", H.withNow(s.ctx, late), { ...H.confirmInput(s, { pay: "PAY_NOW", onExpired: "REHOLD" }), quoteId: sq.quoteId }, {});
+    const st = (await q<{ s: string }>(`SELECT status s FROM "TripBooking" WHERE "basketId" = $1`, [String(s.v.basketId)]))[0]?.s;
+    const p1 = await H.holdT(H.pub({ now: late }), [await H.line(d, 15)]);
+    const p2 = await H.holdT(H.pub({ now: late }), [await H.line(d, 1)]);
+    note("STAFF WEB basket PAY_NOW REHOLD", `REHOLD ${code(r)} booking ${st} · rows ${fmt(await rows(d))} · counted ${await H.publicHeld(d, late)} · PUBLIC 15 ${code(p1.r)} +1 ${code(p2.r)} · dep ${fmt(await H.depRow(d))}`);
+  }
+} catch (e) {
+  console.log(`💥 probe crashed: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await H.finish();
+}

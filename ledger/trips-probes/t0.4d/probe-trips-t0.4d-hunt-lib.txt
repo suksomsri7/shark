@@ -1,0 +1,274 @@
+// probe lib — T0.4d bug hunt (adversarial · QC DB only · NOT an oracle)
+// Setup copied from scripts/qc-trips-t0.4c.mts (temporary tenant · units · products · departures · settings via setSettings).
+// Own marks (never collide with the oracle's sweep `trips-t04d-`): slug / e-mail prefix `trips-t04dh-` · ids `t04dh_*` · booker names `t04dh `.
+import { createHash, randomBytes } from "node:crypto";
+import pg from "pg";
+import { loadTripsQcEnv } from "./trips-qc-env.mjs";
+
+export type Rec = Record<string, unknown>;
+type F = (...a: unknown[]) => Promise<unknown>;
+export const PFX = "trips-t04dh-";
+export const NOW0 = "2027-03-01T03:00:00.000Z";
+export const HOLD_MIN = 60;
+export const PUBLIC_CHANNELS = ["WEB", "LIFF", "EMBED", "CHAT_AI"];
+const SOLD_ST = ["CONFIRMED", "PART_PAID", "PAID", "TRAVELLED", "NO_SHOW"];
+export const KEY = "trips.public.unpaidHoldMaxPct";
+export const shareLimit = (capacity: number, pct: number) => Math.ceil((capacity * pct) / 100);
+export const BKK = (ymd: string, hm: string) => new Date(`${ymd}T${hm}:00+07:00`);
+export const addMin = (d: Date | string, m: number) => new Date(new Date(d).getTime() + m * 60_000);
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const hex = (n = 6) => randomBytes(n).toString("hex");
+export const tok = () => randomBytes(24).toString("base64url");
+export const sha256hex = (s: string) => createHash("sha256").update(s).digest("hex");
+export const asRec = (v: unknown): Rec | null => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Rec) : null);
+export const R = (v: unknown): Rec => asRec(v) ?? {};
+export const fmt = (v: unknown): string => { try { return (JSON.stringify(v) ?? String(v)).slice(0, 600); } catch { return String(v); } };
+export const errMsg = (e: unknown) => (e instanceof Error ? e.message : String(e)).replace(/\s+/g, " ").slice(0, 300);
+export const pct = (xs: number[], p: number) => { if (!xs.length) return 0; const s = [...xs].sort((a, b) => a - b); return s[Math.min(s.length - 1, Math.floor((p / 100) * s.length))]; };
+export const stats = (xs: number[]) => `n=${xs.length} p50=${pct(xs, 50)}ms p95=${pct(xs, 95)}ms max=${xs.length ? Math.max(...xs) : 0}ms`;
+export const tally = (rs: Rec[]) => { const m: Record<string, number> = {}; for (const r of rs) { const k = r.ok === true ? "ok" : `${String(r.code ?? r.ok)}${R(r.details).reason ? `:${String(R(r.details).reason)}` : ""}${r.e ? `:${String(r.e).slice(0, 60)}` : ""}`; m[k] = (m[k] ?? 0) + 1; } return m; };
+export const BAD = (r: Rec) => r.ok === "THROW" || r.code === "BUSY" || /40P01|deadlock|P2028|P2034|P2024|55P03|Transaction already closed|Unable to start a transaction|Timed out fetching/i.test(`${r.e ?? ""} ${r.pg ?? ""} ${fmt(r.details ?? "")}`);
+
+export async function huntSetup(label: string) {
+  loadTripsQcEnv(label);
+  if (process.env.CI) { console.error("no CI"); process.exit(4); }
+  pg.defaults.parseInputDatesAsUTC = true;
+  const STAMP = `${Date.now().toString(36)}${hex(2)}`;
+  const rid = (p: string) => `t04dh_${p}_${Date.now().toString(36)}${hex(3)}`;
+  const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 12 });
+  const q = async <T extends pg.QueryResultRow = Rec>(sql: string, params: unknown[] = []) => (await pool.query<T>(sql, params)).rows;
+  type ColRow = { column_name: string; data_type: string; is_nullable: string; column_default: string | null };
+  const colCache = new Map<string, ColRow[]>();
+  const cols = async (t: string) => {
+    if (!colCache.has(t)) colCache.set(t, await q<ColRow>(`SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1`, [t]));
+    return colCache.get(t) ?? [];
+  };
+  const ins = async (table: string, vals: Rec): Promise<string> => {
+    const cs = await cols(table);
+    if (!cs.length) throw new Error(`no table ${table}`);
+    const names = new Set(cs.map((c) => c.column_name));
+    const v: Rec = {};
+    for (const [k, x] of Object.entries(vals)) if (names.has(k)) v[k] = x;
+    for (const c of cs) {
+      if (c.column_name in v || c.is_nullable === "YES" || c.column_default !== null) continue;
+      const t = c.data_type;
+      if (c.column_name === "id") { v.id = rid("id"); continue; }
+      v[c.column_name] = t === "text" || t.startsWith("character") ? `qc${hex(3)}` : ["integer", "bigint", "smallint"].includes(t) ? 0 : t === "boolean" ? false : t === "jsonb" ? "{}" : t.startsWith("timestamp") ? new Date() : t === "ARRAY" ? [] : null;
+    }
+    const keys = Object.keys(v);
+    await pool.query(`INSERT INTO "${table}" (${keys.map((k) => `"${k}"`).join(", ")}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(", ")})`, keys.map((k) => v[k]));
+    return String(v.id ?? "");
+  };
+  const tablesWithTenant = async () => (await q<{ t: string }>(`SELECT c.table_name AS t FROM information_schema.columns c JOIN information_schema.tables t ON t.table_name = c.table_name AND t.table_schema = c.table_schema WHERE c.table_schema = current_schema() AND c.column_name = 'tenantId' AND t.table_type = 'BASE TABLE'`)).map((r) => r.t).filter((t) => t !== "Tenant");
+  const cleanupTenants = async (tids: string[]) => {
+    if (!tids.length) return;
+    let pending = await tablesWithTenant();
+    for (let pass = 0; pass < 14 && pending.length; pass++) {
+      const next: string[] = [];
+      for (const t of pending) { try { await pool.query(`DELETE FROM "${t}" WHERE "tenantId" = ANY($1::text[])`, [tids]); } catch { next.push(t); } }
+      pending = next;
+    }
+    if (pending.length) console.log(`  ⚠️ cleanup: not all deleted ${pending.join(", ")}`);
+    try { await pool.query(`DELETE FROM "Tenant" WHERE id = ANY($1::text[])`, [tids]); } catch (e) { console.log(`  ⚠️ cleanup tenant: ${errMsg(e)}`); }
+  };
+  const cleanupUsers = async () => {
+    const us = (await q<{ id: string }>(`SELECT id FROM "User" WHERE email LIKE $1`, [`${PFX}%`])).map((r) => r.id);
+    if (!us.length) return;
+    for (const t of ["Membership", "Session"]) { try { await pool.query(`DELETE FROM "${t}" WHERE "userId" = ANY($1::text[])`, [us]); } catch { /* none */ } }
+    await pool.query(`DELETE FROM "User" WHERE id = ANY($1::text[])`, [us]);
+  };
+  const rateCleanup = async () => { try { await pool.query(`DELETE FROM "ChatRateBucket" WHERE key LIKE $1`, ["trips:hold:t04dh_%"]); } catch { /* none */ } };
+  // stale sweep of OWN marks only
+  {
+    const stale = (await q<{ id: string }>(`SELECT id FROM "Tenant" WHERE slug LIKE $1`, [`${PFX}%`])).map((r) => r.id);
+    if (stale.length) { console.log(`  🧹 stale own tenants ${stale.length}`); await cleanupTenants(stale); }
+    await cleanupUsers(); await rateCleanup();
+  }
+
+  const TRM = (await import("@/lib/modules/trips")) as unknown as Rec;
+  const SETM = (await import("@/lib/core/settings")) as unknown as Rec;
+  const TR = (n: string): F => { const f = TRM[n]; if (typeof f !== "function") throw new Error(`trips facade has no ${n}`); return f as F; };
+  const call = async (name: string, ...a: unknown[]): Promise<Rec> => {
+    try { return R(await TR(name)(...a)); } catch (e) { return { ok: "THROW", e: errMsg(e), pg: String((e as { code?: unknown }).code ?? "") }; }
+  };
+  const timed = async (p: Promise<Rec>, lat?: number[]): Promise<Rec> => { const t = Date.now(); const r = await p; lat?.push(Date.now() - t); return r; };
+
+  const tenantIds: string[] = [];
+  const tA = rid("tA");
+  await ins("Tenant", { id: tA, name: `hunt T0.4d`, slug: `${PFX}${STAMP}`, updatedAt: new Date() });
+  tenantIds.push(tA);
+  const uA = rid("uA");
+  await ins("BusinessUnit", { id: uA, tenantId: tA, type: "TRIPS", name: "หน่วย hunt", slug: `${PFX}a-${STAMP}`, settings: "{}", updatedAt: new Date() });
+  const userId = rid("uoa");
+  await ins("User", { id: userId, email: `${PFX}oa-${STAMP}@shark.local`, name: "hunt oa", updatedAt: new Date() });
+  await ins("Membership", { id: rid("mb"), userId, tenantId: tA, role: "OWNER", unitAccess: JSON.stringify(["*"]), permissions: "{}", acceptedAt: new Date(), updatedAt: new Date() });
+  const OWNER = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId };
+  const PRD: Record<string, { id: string; opt: string; pt: Record<string, string> }> = {};
+  const mkProd = async (key: string) => {
+    const id = rid(`p${key}`), o = rid(`o${key}`);
+    await ins("TripProduct", { id, tenantId: tA, unitId: uA, slug: `t04dh-${key}-${STAMP}`.toLowerCase().replace(/[^a-z0-9-]/g, ""), productType: "TOUR", sourceKind: "OWN", status: "ACTIVE", title: JSON.stringify({ th: `hunt ${key}` }), body: "{}", currency: "THB", deepDive: false, crossBorder: false, updatedAt: new Date() });
+    await ins("TripOption", { id: o, tenantId: tA, unitId: uA, productId: id, name: JSON.stringify({ th: "ร่วมกลุ่ม" }), durationMin: 480, sortOrder: 1, active: true, updatedAt: new Date() });
+    const pt: Record<string, string> = {};
+    for (const [i, code] of ["ADULT", "CHILD", "INFANT"].entries()) pt[code] = await ins("TripPaxType", { id: rid(`pt${code}`), tenantId: tA, unitId: uA, productId: id, code, label: JSON.stringify({ th: code }), countsCapacity: code !== "INFANT", active: true, sortOrder: i, updatedAt: new Date() });
+    await ins("TripExtra", { id: rid("xpark"), tenantId: tA, unitId: uA, productId: id, kind: "PARK_FEE", basis: "PER_PAX", mandatory: true, priceMinor: 60_000, currency: "THB", commissionable: false, discountable: false, passThrough: true, taxKind: "NONE",
+      name: JSON.stringify({ th: "ค่าอุทยาน" }), paxPrices: JSON.stringify({ ADULT: 60_000, CHILD: 30_000 }), active: true, updatedAt: new Date() });
+    for (const [code, amount] of [["ADULT", 350_000], ["INFANT", 0]] as const) await ins("TripPrice", { id: rid("pr"), tenantId: tA, unitId: uA, productId: id, optionId: null, paxTypeId: pt[code], cabinTypeId: null, seasonId: null, departureId: null, currency: "THB", amountMinor: amount, weekdayMask: null, priority: 0, updatedAt: new Date() });
+    PRD[key] = { id, opt: o, pt };
+  };
+  for (const k of ["A", "B", "C", "D"]) await mkProd(k);
+  const setV = async (changes: Rec[]) => {
+    const r = R(await (SETM.setSettings as F)(OWNER, { tenantId: tA }, changes, { ackLegalWarn: true }));
+    if (r.ok !== true) throw new Error(`setSettings: ${fmt(r)}`);
+  };
+  const T6_COUNTER_LATE = { daysBefore: 1, atMin: 1080, perChannel: { COUNTER: { daysBefore: 0, atMin: 420 } } };
+  await setV([
+    { key: "trips.tax.vatRegistered", scope: "UNIT", scopeId: uA, value: { registered: true, thresholdSatang: 180_000_000, warnAtPct: 90 } },
+    { key: "trips.sell.holdMinutes", scope: "UNIT", scopeId: uA, value: HOLD_MIN },
+    { key: "trips.sell.cutoff", scope: "UNIT", scopeId: uA, value: T6_COUNTER_LATE },
+    { key: "trips.public.holdCapPerContact", scope: "UNIT", scopeId: uA, value: 20 },
+  ]);
+
+  const usedStarts = new Set<string>();
+  let dayN = 0;
+  const mkDep = async (o: { key?: string; date?: string; hm?: string; capacity?: number; status?: string } = {}): Promise<string> => {
+    const p = PRD[o.key ?? "A"];
+    const date = o.date ?? `2027-03-${String(10 + (dayN++ % 18)).padStart(2, "0")}`;
+    let startsAt = BKK(date, o.hm ?? "08:00"); const id = rid("d");
+    while (usedStarts.has(`${p.id}|${startsAt.toISOString()}`)) startsAt = addMin(startsAt, 1);
+    usedStarts.add(`${p.id}|${startsAt.toISOString()}`);
+    await ins("TripDeparture", { id, tenantId: tA, unitId: uA, productId: p.id, optionId: p.opt, scheduleId: null, localDate: date, startsAt, endsAt: new Date(startsAt.getTime() + 8 * 3_600_000),
+      status: o.status ?? "OPEN", capacity: o.capacity ?? 10, sold: 0, held: 0, reserved: 0, minPax: null, cutoffAt: startsAt, version: 0, updatedAt: new Date() });
+    return id;
+  };
+  const prodOfDep = new Map<string, string>();
+  const depKey = async (d: string): Promise<string> => {
+    if (!prodOfDep.has(d)) {
+      const pid = (await q<{ productId: string }>(`SELECT "productId" FROM "TripDeparture" WHERE id = $1`, [d]))[0]?.productId;
+      prodOfDep.set(d, Object.entries(PRD).find(([, p]) => p.id === pid)?.[0] ?? "A");
+    }
+    return prodOfDep.get(d) ?? "A";
+  };
+  const staff = (o: { ch?: string; now?: string | Date } = {}): Rec => ({ tenantId: tA, unitId: uA, channel: o.ch ?? "COUNTER", actor: { kind: "STAFF", userId }, now: new Date(o.now ?? NOW0), locale: "th" });
+  const sys = (o: { now?: string | Date } = {}): Rec => ({ tenantId: tA, unitId: uA, channel: "COUNTER", actor: { kind: "SYSTEM", job: "t04dh" }, now: new Date(o.now ?? NOW0), locale: "th" });
+  let pubN = 0;
+  const pub = (o: { ch?: string; now?: string | Date } = {}): Rec => ({ tenantId: tA, unitId: uA, channel: o.ch ?? "WEB", actor: { kind: "PUBLIC", clientKey: `t04dh_c${pubN++}_${hex(3)}` }, now: new Date(o.now ?? NOW0), locale: "th" });
+  const withNow = (ctx: Rec, now: string | Date): Rec => ({ ...ctx, now: new Date(now) });
+  const line = async (dep: string, a = 2, promo?: string): Promise<Rec> => {
+    const p = PRD[await depKey(dep)];
+    return { productKind: "TRIP", unitId: uA, productId: p.id, slotId: dep, optionId: p.opt, pax: [{ paxTypeId: p.pt.ADULT, qty: a }], extras: [], ...(promo ? { promoCode: promo } : {}) };
+  };
+  let bkN = 0;
+  const booker = (o: Rec = {}): Rec => { bkN++; return { name: `t04dh ผู้จอง ${STAMP} ${bkN}`, phone: `08${String(30_000_000 + bkN * 7_919 + Number.parseInt(hex(2), 16)).slice(-8)}`, ...o }; };
+  type H = { r: Rec; v: Rec; quote: Rec; token?: string; lines: Rec[]; ctx: Rec; key: string };
+  const holdT = async (ctx: Rec, lines: Rec[], lat?: number[]): Promise<H> => {
+    const qr = await call("quoteTrips", ctx, { lines }, {});
+    const quote = R(qr.value);
+    const key = `h${hex(6)}`;
+    const isPub = R(ctx.actor).kind === "PUBLIC";
+    const token = isPub ? tok() : undefined;
+    if (qr.ok !== true) return { r: qr, v: {}, quote, token, lines, ctx, key };
+    const r = await timed(call("holdTrips", ctx, { quote: { lines }, quoteId: quote.quoteId, quoteExpiresAt: quote.expiresAt, idempotencyKey: key, ...(token ? { basketToken: token } : {}) }, {}), lat);
+    return { r, v: R(r.value), quote, token, lines, ctx, key };
+  };
+  const confirmInput = (h: H, o: { key?: string; booker?: Rec; pay?: string; onExpired?: string } = {}): Rec => ({
+    basketId: h.v.basketId, holdIds: h.v.holdIds, idempotencyKey: o.key ?? `c${hex(6)}`, quoteId: h.quote.quoteId, quote: { lines: h.lines },
+    booker: o.booker ?? booker(), pay: { method: o.pay ?? (R(h.ctx.actor).kind === "STAFF" ? "PAY_LATER" : "PAY_NOW") }, ...(h.token ? { basketToken: h.token } : {}), ...(o.onExpired ? { onExpired: o.onExpired } : {}),
+  });
+  const confirmT = (h: H, o: { ctx?: Rec; key?: string; booker?: Rec; pay?: string; onExpired?: string } = {}, lat?: number[]) => timed(call("confirmTrips", o.ctx ?? h.ctx, confirmInput(h, o), {}), lat);
+  const bookNow = async (ctx: Rec, lines: Rec[], o: { booker?: Rec } = {}, lat?: number[]): Promise<Rec> => {
+    const qr = await call("quoteTrips", ctx, { lines }, {});
+    if (qr.ok !== true) return qr;
+    const quote = R(qr.value);
+    return timed(call("bookTripsNow", ctx, { quote: { lines }, quoteId: quote.quoteId, quoteExpiresAt: quote.expiresAt, idempotencyKey: `n${hex(6)}`, booker: o.booker ?? booker(), pay: { method: "PAY_LATER" } }, {}), lat);
+  };
+  const placeHoldPub = (d: string, qty: number, ctx?: Rec, lat?: number[]): Promise<Rec> => {
+    const capKey = `basket:${sha256hex(tok())}`;
+    return timed(call("placeHold", ctx ?? pub(), { departureId: d, qty, idempotencyKey: `p${hex(6)}`, capKey }), lat).then((r): Rec => ({ ...r, capKey }));
+  };
+  const releaseBasket = async (h: H, ctx?: Rec): Promise<Rec[]> => {
+    const out: Rec[] = [];
+    for (const id of (h.v.holdIds as string[] | undefined) ?? []) out.push(await call("releaseHold", ctx ?? h.ctx, { holdId: id, reason: "hunt", capKey: `basket:${sha256hex(String(h.token))}` }));
+    return out;
+  };
+  const tctx = { tenantId: tA, actorUserId: userId };
+  const closeDep = (d: string, status = "CLOSED", now: string | Date = NOW0) => call("setDepartureStatus", tctx, { unitId: uA, departureId: d, status }, { now: new Date(now) });
+  const stopSell = (d: string, channels: string[] | null, now: string | Date = NOW0) => call("setDepartureStopSell", tctx, { unitId: uA, departureId: d, stopSell: channels ? { channels, reason: "hunt stop" } : null }, { now: new Date(now) });
+  const sweep = (now: string | Date) => call("runExpireHolds", new Date(now), { tenantIds: [tA] });
+
+  // ── readers / invariants ──
+  const depRow = async (id: string) => (await q<{ capacity: number; sold: number; held: number; reserved: number; status: string }>(`SELECT capacity, sold, held, reserved, status FROM "TripDeparture" WHERE id = $1`, [id]))[0];
+  const publicHeld = async (depId: string, now: string | Date) => (await q<{ n: number }>(`SELECT COALESCE(sum("qtyPublic" + "qtyAllot"),0)::int AS n FROM "TripHold"
+      WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND "idempotencyKey" LIKE 'pub:%' AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [depId, new Date(now).toISOString()]))[0]?.n ?? -1;
+  const channelHeld = async (depId: string, now: string | Date) => (await q<{ n: number }>(`SELECT COALESCE(sum("qtyPublic" + "qtyAllot"),0)::int AS n FROM "TripHold"
+      WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND channel = ANY($3::text[]) AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [depId, new Date(now).toISOString(), PUBLIC_CHANNELS]))[0]?.n ?? -1;
+  const publicGroups = async (depId: string, now: string | Date) => (await q<{ g: string; n: number }>(`SELECT COALESCE("basketId", id) AS g, sum("qtyPublic" + "qtyAllot")::int AS n FROM "TripHold"
+      WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND "idempotencyKey" LIKE 'pub:%' AND purpose IN ('PAYMENT','SHOP_CONFIRM') GROUP BY 1`, [depId, new Date(now).toISOString()]));
+  /** invariants per departure: held = Σ ACTIVE hold · sold = Σ sold-booking seats · sold+held+reserved ≤ capacity · PUBLIC counted ≤ cap OR exactly one group (first-basket exception) */
+  const inv = async (deps: string[], now: string | Date, capPct: number | ((d: string) => number) = 50, opts: { soldCheck?: boolean } = {}): Promise<string[]> => {
+    const bad: string[] = [];
+    for (const d of deps) {
+      const c = await depRow(d);
+      const s = (await q<{ n: number }>(`SELECT COALESCE(sum(i.qty),0)::int AS n FROM "TripBookingItem" i JOIN "TripBooking" b ON b.id = i."bookingId" LEFT JOIN "TripPaxType" p ON p.id = i."paxTypeId"
+        WHERE i."departureId" = $1 AND i.active AND i.kind IN ('SEAT','BERTH') AND COALESCE(p."countsCapacity", true) AND b.status = ANY($2::text[])`, [d, SOLD_ST]))[0]?.n ?? -1;
+      const h = (await q<{ n: number }>(`SELECT COALESCE(sum("qtyPublic" + "qtyAllot"),0)::int AS n FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE'`, [d]))[0]?.n ?? -1;
+      if (c.held !== h) bad.push(`${d.slice(-6)} held ${c.held} vs Σhold ${h}`);
+      if (opts.soldCheck !== false && c.sold !== s) bad.push(`${d.slice(-6)} sold ${c.sold} vs Σbooking ${s}`);
+      if (c.sold < 0 || c.held < 0 || c.sold + c.held + c.reserved > c.capacity) bad.push(`${d.slice(-6)} over: c${c.capacity} s${c.sold} h${c.held} r${c.reserved}`);
+      const p = typeof capPct === "function" ? capPct(d) : capPct;
+      const lim = shareLimit(c.capacity, p);
+      const gs = await publicGroups(d, now);
+      const tot = gs.reduce((a, x) => a + x.n, 0);
+      if (tot > lim && gs.length > 1) bad.push(`${d.slice(-6)} PUBLIC counted ${tot} > cap ${lim} with ${gs.length} groups`);
+    }
+    return bad;
+  };
+  const orphanParties = async () => (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Party" p WHERE p."tenantId" = $1 AND p.name LIKE 't04dh %'
+      AND NOT EXISTS (SELECT 1 FROM "TripBooking" b WHERE b."bookerPartyId" = p.id)`, [tA]))[0]?.n ?? -1;
+  const partyCount = async () => (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Party" WHERE "tenantId" = $1`, [tA]))[0]?.n ?? -1;
+  /** sampler: reads counters of deps every few ms during a storm (over-capacity / negative at any instant) */
+  const sampler = (ids: string[]) => {
+    let stop = false; const viol: string[] = []; let n = 0;
+    const loop = (async () => {
+      while (!stop) {
+        try {
+          const rows = await q<{ id: string; capacity: number; sold: number; held: number; reserved: number }>(`SELECT id, capacity, sold, held, reserved FROM "TripDeparture" WHERE id = ANY($1::text[])`, [ids]);
+          for (const r of rows) if (r.sold < 0 || r.held < 0 || r.reserved < 0 || r.sold + r.held + r.reserved > r.capacity) viol.push(`${r.id.slice(-6)} c${r.capacity} s${r.sold} h${r.held}`);
+          n++;
+          await sleep(5);
+        } catch { await sleep(10); }
+      }
+    })();
+    return async () => { stop = true; await loop; return { n, viol }; };
+  };
+  const withTimer = async <T,>(p: Promise<T>, ms: number, what: string): Promise<T | "TIMEOUT"> => {
+    let t: NodeJS.Timeout | undefined;
+    try { return await Promise.race([p, new Promise<"TIMEOUT">((res) => { t = setTimeout(() => { console.log(`  ⏱ ${what}: still running after ${ms / 1000}s`); res("TIMEOUT"); }, ms); })]); }
+    finally { if (t) clearTimeout(t); }
+  };
+  /** live-locks/waiting backends on our departures (pg_locks) */
+  const stuckTx = async () => (await q<{ n: number }>(`SELECT count(*)::int AS n FROM pg_stat_activity WHERE datname = current_database() AND state = 'idle in transaction' AND now() - state_change > interval '20 seconds'`))[0]?.n ?? 0;
+
+  // ── report ──
+  let held = 0, found = 0;
+  const findings: string[] = [];
+  const check = (name: string, cond: boolean, expected: string, got: string) => {
+    if (cond) { held++; console.log(`HELD [${name}] expected ${expected} | got ${got}`); }
+    else { found++; findings.push(name); console.log(`FOUND [${name}] expected ${expected} | got ${got}`); }
+  };
+  const note = (name: string, msg: string) => console.log(`NOTE [${name}] ${msg}`);
+  const finish = async () => {
+    try { await cleanupTenants(tenantIds); await cleanupUsers(); await rateCleanup(); } catch (e) { console.log(`  ⚠️ cleanup: ${errMsg(e)}`); }
+    let left = -1;
+    try { left = (await q<{ n: number }>(`SELECT (SELECT count(*) FROM "Tenant" WHERE slug LIKE $1) + (SELECT count(*) FROM "User" WHERE email LIKE $1) + (SELECT count(*) FROM "TripHold" WHERE "tenantId" = ANY($2::text[])) + (SELECT count(*) FROM "Party" WHERE "tenantId" = ANY($2::text[]))::int AS n`, [`${PFX}%`, tenantIds]))[0]?.n ?? -1; } catch (e) { console.log(`  ⚠️ leftover check: ${errMsg(e)}`); }
+    console.log(`\n== ${label}: HELD ${held} · FOUND ${found}${findings.length ? ` (${findings.join(" | ")})` : ""} · leftover rows ${left}`);
+    await pool.end().catch(() => undefined);
+    const db = (await import("@/lib/core/db").catch(() => null)) as Rec | null;
+    const pr = R(db?.prisma);
+    if (typeof pr.$disconnect === "function") await (pr.$disconnect as () => Promise<void>)().catch(() => undefined);
+  };
+
+  const promoRule = async (params: Rec) => ins("TripPriceRule", { id: rid("ru"), tenantId: tA, unitId: uA, productId: null, kind: params.kind, code: params.code ?? null, params: JSON.stringify(params), priority: 0, active: true, usedCount: 0, updatedAt: new Date() });
+  return { promoRule, STAMP, rid, q, pool, call, timed, tA, uA, userId, PRD, setV, mkDep, staff, sys, pub, withNow, line, booker, holdT, confirmInput, confirmT, bookNow, placeHoldPub, releaseBasket, closeDep, stopSell, sweep,
+    depRow, publicHeld, channelHeld, publicGroups, ins, tenantIds, cleanupTenants, OWNER, SETM, TRM, inv, orphanParties, partyCount, sampler, withTimer, stuckTx, check, note, finish };
+}
+export type Hunt = Awaited<ReturnType<typeof huntSetup>>;

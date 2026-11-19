@@ -1,0 +1,152 @@
+// hunt-3 — T0.4d D1 SLOT_BUSY through the platform (startBookHold / confirmBookHold in-process, as the w1.2 oracle) + `r` param helpers
+// run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-t0.4d-hunt-3.mts
+import { readFileSync } from "node:fs";
+import { fmt, hex, huntSetup, NOW0, R, sleep, tally, tok, type Rec } from "./probe-trips-t0.4d-hunt-lib.mjs";
+import * as FX from "./trips-fixture.mjs";
+
+const H = await huntSetup("probe-t0.4d-hunt-3");
+const { call, check, note, q } = H;
+type AnyFn = (...a: unknown[]) => unknown;
+const addSec = (d: Date | string, s: number) => new Date(new Date(d).getTime() + s * 1000);
+const BS = (await import("@/lib/platform/trips-book")) as unknown as Rec;
+const BC = (await import("@/lib/platform/trips-book-core")) as unknown as Rec;
+const PU = (await import("@/lib/platform/trips-public")) as unknown as Rec;
+const bcall = async (name: string, ...a: unknown[]): Promise<Rec> => { try { return R(await (BS[name] as AnyFn)(...a)); } catch (e) { return { ok: "THROW", e: String(e) }; } };
+const usedKeys: string[] = [];
+const RA = FX.PRODUCT_RACHA;
+
+try {
+  // ── platform shop P ──
+  const STAMP = `${Date.now().toString(36)}${hex(2)}`;
+  const tP = `t04dh_tP_${STAMP}`, uP = `t04dh_uP_${STAMP}`, SP = `trips-t04dh-${STAMP}-p`;
+  await H.ins("Tenant", { id: tP, name: "hunt T0.4d P", slug: SP, status: "ACTIVE", updatedAt: new Date() }); H.tenantIds.push(tP);
+  await H.ins("BusinessUnit", { id: uP, tenantId: tP, type: "TRIPS", status: "ACTIVE", name: "หน่วย p", slug: `trips-t04dh-p-${STAMP}`, settings: "{}", updatedAt: new Date() });
+  const userP = `t04dh_uop_${STAMP}`;
+  await H.ins("User", { id: userP, email: `trips-t04dh-op-${STAMP}@shark.local`, name: "hunt op", updatedAt: new Date() });
+  await H.ins("Membership", { id: `t04dh_mbp_${STAMP}`, userId: userP, tenantId: tP, role: "OWNER", unitAccess: JSON.stringify(["*"]), permissions: "{}", acceptedAt: new Date(), updatedAt: new Date() });
+  const OWNERP = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: userP };
+  const pid = `t04dh_pP_${STAMP}`, opt = `t04dh_oP_${STAMP}`, slug = `t04dh-p-${STAMP}`.toLowerCase();
+  await H.ins("TripProduct", { id: pid, tenantId: tP, unitId: uP, slug, productType: "TOUR", sourceKind: "OWN", status: "ACTIVE", title: JSON.stringify({ th: "ทดสอบ P", en: "Test P" }), body: JSON.stringify({ summary: { th: "สรุป" } }), currency: "THB", deepDive: false, crossBorder: false, publishedAt: new Date("2027-01-01T00:00:00Z"), updatedAt: new Date() });
+  await H.ins("TripOption", { id: opt, tenantId: tP, unitId: uP, productId: pid, name: JSON.stringify({ th: "ร่วมกลุ่ม", en: "Join-in" }), durationMin: 480, sortOrder: 1, active: true, updatedAt: new Date() });
+  const pt: Record<string, string> = {};
+  for (const [i, c] of ["ADULT", "CHILD", "INFANT"].entries()) pt[c] = await H.ins("TripPaxType", { id: `t04dh_pt${c}_${STAMP}`, tenantId: tP, unitId: uP, productId: pid, code: c, label: JSON.stringify({ th: c, en: c }), ageMin: c === "CHILD" ? RA.childAge.min : c === "ADULT" ? 12 : null, ageMax: c === "CHILD" ? RA.childAge.max : c === "INFANT" ? 3 : null, countsCapacity: c !== "INFANT", active: true, sortOrder: i, updatedAt: new Date() });
+  await H.ins("TripExtra", { id: `t04dh_xp_${STAMP}`, tenantId: tP, unitId: uP, productId: pid, kind: "PARK_FEE", basis: "PER_PAX", mandatory: true, priceMinor: RA.parkAdultSatang, currency: "THB", commissionable: false, discountable: false, passThrough: true, taxKind: "NONE", name: JSON.stringify({ th: "ค่าอุทยาน", en: "Park fee" }), paxPrices: JSON.stringify({ ADULT: RA.parkAdultSatang, CHILD: RA.parkChildSatang }), active: true, sortOrder: 0, updatedAt: new Date() });
+  for (const [c, amount] of [["ADULT", RA.adultSatang], ["CHILD", RA.childSatang], ["INFANT", 0]] as const) await H.ins("TripPrice", { id: `t04dh_pr${c}_${STAMP}`, tenantId: tP, unitId: uP, productId: pid, optionId: null, paxTypeId: pt[c], cabinTypeId: null, seasonId: null, departureId: null, currency: "THB", amountMinor: amount, weekdayMask: null, priority: 0, updatedAt: new Date() });
+  await H.ins("PaymentProfile", { id: `t04dh_pp_${STAMP}`, tenantId: tP, promptpayId: "0812345678", displayName: `hunt ${STAMP}`, updatedAt: new Date() });
+  const sr = R(await (H.SETM.setSettings as AnyFn)(OWNERP, { tenantId: tP }, [{ key: "trips.public.bookingEnabled", scope: "UNIT", scopeId: uP, value: true }, { key: "trips.public.shopContact", scope: "UNIT", scopeId: uP, value: { phone: "076-000-458", line: "@t04dhq", address: "9 ถนนทดสอบ ภูเก็ต" } }], { ackLegalWarn: true }));
+  if (sr.ok !== true) throw new Error(`settings P ${fmt(sr)}`);
+  let dN = 0;
+  const mkDepP = async (date: string, capacity: number) => {
+    const id = `t04dh_dP${dN++}_${STAMP}`; const startsAt = new Date(`${date}T08:00:00+07:00`);
+    await H.ins("TripDeparture", { id, tenantId: tP, unitId: uP, productId: pid, optionId: opt, scheduleId: null, localDate: date, startsAt, endsAt: new Date(startsAt.getTime() + 8 * 3_600_000), status: "OPEN", capacity, sold: 0, held: 0, reserved: 0, minPax: null, cutoffAt: startsAt, version: 0, updatedAt: new Date() });
+    return id;
+  };
+  let ipN = 0;
+  const ck = () => { ipN++; const k = String((PU.bookClientKey as AnyFn)(`100.67.${(ipN >> 8) & 255}.${ipN & 255}`)); usedKeys.push(k); return k; };
+  const nonceAt = (when: Date, purpose: "hold" | "confirm") => String((BS.issueBookFormNonce as AnyFn)({ now: addSec(when, -60), scope: { tenantId: tP, purpose } }));
+  const pHold = async (date: string, adults: number, when: Date, clientKey = ck()) => {
+    const qs = await bcall("quoteBookSelection", { shop: SP, productSlug: slug, query: { d: date, "n.ADULT": String(adults) }, acceptLanguage: "th", clientKey }, { now: when });
+    const sm = R(qs.summary);
+    if (qs.ok !== true || typeof sm.slotToken !== "string") throw new Error(`quoteBookSelection ${fmt(qs)}`);
+    const seen = Number(sm.totalSatang);
+    const r = await bcall("startBookHold", { shop: SP, productSlug: slug, form: { d: date, t: sm.slotToken, "n.ADULT": String(adults), nonce: nonceAt(when, "hold"), seen: String(seen) }, acceptLanguage: "th", clientKey }, { now: when });
+    return { r, clientKey, seen };
+  };
+  const pConfirm = async (h: { r: Rec; clientKey: string; seen: number }, phone: string, at: Date) => {
+    const c = await bcall("loadBookCheckout", { shop: SP, basketToken: h.r.basketToken, sel: h.r.sel, lang: "th", acceptLanguage: "th", clientKey: h.clientKey }, { now: addSec(at, -10) });
+    const nonce = String(R(R(c.vm).form).nonce ?? nonceAt(at, "confirm"));
+    return bcall("confirmBookHold", { shop: SP, basketToken: h.r.basketToken, sel: h.r.sel, form: { name: `t04dh หน้าจอง`, phone, email: "", accept: "on", nonce, seen: String(h.seen) }, clientKey: h.clientKey }, { now: at });
+  };
+  const pubP = (now: Date) => ({ tenantId: tP, unitId: uP, channel: "WEB", actor: { kind: "PUBLIC", clientKey: `t04dh_c${hex(4)}` }, now, locale: "th" });
+  const lineP = (d: string, a: number): Rec => ({ productKind: "TRIP", unitId: uP, productId: pid, slotId: d, optionId: opt, pax: [{ paxTypeId: pt.ADULT, qty: a }], extras: [] });
+  const modHold = async (now: Date, d: string, a: number) => {
+    const ctx = pubP(now); const qr = await call("quoteTrips", ctx, { lines: [lineP(d, a)] }, {}); const qv = R(qr.value);
+    return call("holdTrips", ctx, { quote: { lines: [lineP(d, a)] }, quoteId: qv.quoteId, quoteExpiresAt: qv.expiresAt, idempotencyKey: `h${hex(6)}`, basketToken: tok() }, {});
+  };
+  const buckets = async (k: string) => q<{ key: string; count: number }>(`SELECT key, "count" FROM "ChatRateBucket" WHERE key LIKE $1 ORDER BY key`, [`%${k}%`]);
+  const bsum = (bs: { key: string; count: number }[]) => Object.fromEntries(bs.map((b) => [b.key.split(":")[1], Number(b.count)]));
+
+  // ═════ 4a SLOT_BUSY on the hold path at several moments: retryAfterSec equal to the service value (computed by a module hold at the same instant) ═════
+  {
+    const out: string[] = []; let ok = true; let day = 10;
+    for (const off of [1, 330, 600, 879, 899, 900 - 0.5]) {
+      const date = `2027-04-${String(day++).padStart(2, "0")}`;
+      const d = await mkDepP(date, 10);
+      const a = await modHold(new Date(NOW0), d, 3); const b = await modHold(new Date(NOW0), d, 2);
+      if (a.ok !== true || b.ok !== true) throw new Error(`setup ${fmt(a)} ${fmt(b)}`);
+      const at = addSec(NOW0, off);
+      const svc = await modHold(at, d, 1);
+      const before = (await q<{ n: number }>(`SELECT count(*)::int n FROM "TripHold" WHERE "departureId" = $1`, [d]))[0]?.n;
+      const h = await pHold(date, 1, at);
+      const after = (await q<{ n: number }>(`SELECT count(*)::int n FROM "TripHold" WHERE "departureId" = $1`, [d]))[0]?.n;
+      const bk = bsum(await buckets(h.clientKey));
+      const good = h.r.ok === false && h.r.code === "SLOT_BUSY" && h.r.retryAfterSec === R(svc.details).retryAfterSec && before === after && bk.hold === 1 && bk.slot === 1 && !/"(seats|held|publicLeft|limit|count)"/.test(JSON.stringify(h.r));
+      ok &&= good;
+      out.push(`+${off}s svc ${String(svc.code)}:${fmt(R(svc.details).retryAfterSec)} plat ${String(h.r.code ?? h.r.ok)}:${fmt(h.r.retryAfterSec)} wait ${fmt((BC.bookWaitOfSec as AnyFn)(h.r.retryAfterSec))} buckets ${fmt(bk)} holds ${before}→${after}`);
+    }
+    check("4a startBookHold at the cap (6 instants, incl. 0.5 s before the first counted hold expires) ⇒ SLOT_BUSY · retryAfterSec == service value · no new hold · hold/slot buckets +1 each · no seat numbers", ok, "all", out.join(" | "));
+  }
+  // 4b baseline bucket movement of a successful hold and a SOLD_OUT, for comparison
+  {
+    const d = await mkDepP("2027-04-20", 2); void d;
+    const s = await pHold("2027-04-20", 2, new Date(NOW0));
+    const so = await pHold("2027-04-20", 1, new Date(NOW0));
+    note("4b bucket baseline", `success ${String(s.r.ok)} ${fmt(bsum(await buckets(s.clientKey)))} · SOLD_OUT ${String(so.r.code ?? so.r.ok)} ${fmt(bsum(await buckets(so.clientKey)))}`);
+    // same clientKey hitting SLOT_BUSY repeatedly: buckets move 1 per attempt, like any hold attempt
+    const d2 = await mkDepP("2027-04-21", 10); await modHold(new Date(NOW0), d2, 5);
+    const key = ck(); const rs: Rec[] = [];
+    for (let i = 0; i < 4; i++) rs.push((await pHold("2027-04-21", 1, addSec(NOW0, 60 + i), key)).r);
+    note("4b repeated SLOT_BUSY same device", `${fmt(tally(rs))} · buckets ${fmt(bsum(await buckets(key)))}`);
+  }
+  // 4c other HOLD_LIMIT reasons unchanged: contact cap (X10 default 3) through confirm ⇒ HOLD_LIMIT, not SLOT_BUSY; SLOT_BUSY 20-way concurrency
+  {
+    await mkDepP("2027-04-22", 24);
+    const phone = `08${String(50_000_000 + Number.parseInt(hex(2), 16)).slice(-8)}`;
+    const out: string[] = [];
+    for (let i = 0; i < 4; i++) { const h = await pHold("2027-04-22", 1, new Date(NOW0)); const r = await pConfirm(h, phone, addSec(NOW0, 10)); out.push(r.ok === true ? "OK" : `${String(r.code)}${r.retryAfterSec ? `/${String(r.retryAfterSec)}` : ""}`); }
+    check("4c contact cap through confirmBookHold ⇒ 4th HOLD_LIMIT (not SLOT_BUSY)", JSON.stringify(out) === JSON.stringify(["OK", "OK", "OK", "HOLD_LIMIT"]), "OK×3,HOLD_LIMIT", fmt(out));
+    const d = await mkDepP("2027-04-23", 20); await modHold(new Date(NOW0), d, 1);
+    const rs = await Promise.all(Array.from({ length: 20 }, async () => (await pHold("2027-04-23", 1, addSec(NOW0, 30))).r));
+    const counted = (await q<{ n: number }>(`SELECT COALESCE(sum("qtyPublic"),0)::int n FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE' AND "idempotencyKey" LIKE 'pub:%'`, [d]))[0]?.n;
+    check("4c' 20 concurrent page holds of 1 (cap 10, 1 counted) ⇒ 9 ok + 11 SLOT_BUSY · counted 10", tally(rs).ok === 9 && tally(rs).SLOT_BUSY === 11 && counted === 10, "9/11", `${fmt(tally(rs))} counted ${counted}`);
+  }
+  // 4d `r` helpers
+  {
+    const wm = BC.bookWaitMinutes as AnyFn, ws = BC.bookWaitOfSec as AnyFn, sel = BC.bookSelectHref as AnyFn, chk = BC.bookCheckoutHref as AnyFn, ep = BC.bookErrorParam as AnyFn;
+    const bad: unknown[] = [0, -1, "0", "-1", 1.5, "1.5", 1441, "1441", 1e9, "99999", "abc", "<script>alert(1)</script>", "5<script>", " 5", "5 ", "05", "+5", "5e1", "0x5", ["5"], null, undefined, NaN, Infinity, -Infinity, "１２", "٥", "5\n", "5%00", true, {}, 2 ** 53, -0];
+    const good: unknown[] = [1, "1", 5, "5", 1440, "1440", 10];
+    const wmBad = bad.filter((v) => wm(v) !== null); const wmGood = good.filter((v) => wm(v) === null);
+    const back = { productSlug: "p", query: { d: "2027-04-10" } };
+    const leaks: string[] = [];
+    for (const v of [...bad, 1440]) {
+      const s1 = String(sel("shop", back, "SLOT_BUSY", v)); const s2 = String(chk("shop", "tok", "sel", { e: "SLOT_BUSY", r: v }));
+      const p1 = R(ep({ e: "SLOT_BUSY", r: v }));
+      const isGood = wm(v) !== null;
+      if (isGood !== /[?&]r=/.test(s1) || isGood !== /[?&]r=/.test(s2) || isGood !== (p1.wait !== undefined) || /<|script|%3C/i.test(s1 + s2)) leaks.push(`${String(v)} → ${s1} | ${s2} | ${fmt(p1)}`);
+    }
+    const otherCode = [String(sel("shop", back, "HOLD_LIMIT", 5)), String(chk("shop", "tok", "sel", { e: "SOLD_OUT", r: 5 })), fmt(ep({ e: "HOLD_LIMIT", r: "5" }))];
+    const wsCases: [unknown, unknown][] = [[0, null], [-5, null], [NaN, null], [Infinity, null], [1e308, 1440], [1, 1], [59, 1], [60, 1], [61, 2], [570, 10], ["120", null], [172_800, 1440], [86_400, 1440], [86_401, 1440], [0.001, 1]];
+    const wsBad = wsCases.filter(([i, o]) => ws(i) !== o).map(([i, o]) => `${String(i)}→${fmt(ws(i))} (want ${fmt(o)})`);
+    const otherLeak = otherCode.some((s) => /r=|wait/.test(s));
+    check("4d bookWaitMinutes rejects 0/neg/decimals/1441/huge/text/script/whitespace/leading-zero/unicode digits/arrays · accepts 1–1440 · hrefs & bookErrorParam carry r only when valid and only for SLOT_BUSY · bookWaitOfSec clamps", wmBad.length === 0 && wmGood.length === 0 && leaks.length === 0 && wsBad.length === 0 && !otherLeak,
+      "0 leaks", `wm accepted bad ${fmt(wmBad)} · rejected good ${fmt(wmGood)} · href/param mismatches ${fmt(leaks.slice(0, 4))} · ws ${fmt(wsBad)} · other codes ${fmt(otherCode)}`);
+    // array r in search params (?r=5&r=6) as Next delivers
+    note("4d arrays", `bookErrorParam({e:SLOT_BUSY,r:["5","6"]}) = ${fmt(ep({ e: "SLOT_BUSY", r: ["5", "6"] }))} · bookErrorParam({e:SLOT_BUSY}) = ${fmt(ep({ e: "SLOT_BUSY" }))}`);
+    // messages: no 'full'/'เต็ม', placeholders present; contact empty rendering
+    for (const lang of ["th", "en"]) {
+      const err = R(R(JSON.parse(readFileSync(`src/messages/${lang}/book.json`, "utf8"))).err);
+      note(`4d msg ${lang}`, `SLOT_BUSY=${fmt(err.SLOT_BUSY)} · slotBusyLater=${fmt(err.slotBusyLater)} · rendered with contact "" ⇒ ${fmt(String(err.SLOT_BUSY).replace("{minutes}", "3").replace("{contact}", ""))}`);
+    }
+  }
+  await sleep(1);
+} catch (e) {
+  console.log(`💥 probe crashed: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  try {
+    await H.pool.query(`DELETE FROM "ChatRateBucket" WHERE key LIKE $1`, ["%t04dh_%"]);
+    for (const k of usedKeys) await H.pool.query(`DELETE FROM "ChatRateBucket" WHERE key LIKE $1`, [`%${k}%`]);
+    let n = 0; for (const k of usedKeys) n += Number((await q<{ n: number }>(`SELECT count(*)::int n FROM "ChatRateBucket" WHERE key LIKE $1`, [`%${k}%`]))[0]?.n ?? 0);
+    console.log(`  leftover rate buckets ${n}`);
+  } catch (e) { console.log(`  ⚠️ bucket cleanup ${String(e)}`); }
+  await H.finish();
+}
