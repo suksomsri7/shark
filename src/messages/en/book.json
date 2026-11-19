@@ -216,7 +216,8 @@
   },
   "page": {
     "titleCheckout": "Confirm booking",
-    "titleReservation": "My booking"
+    "titleReservation": "My booking",
+    "titleManage": "Manage booking"
   },
   "res": {
     "code": "Booking code {code}",
@@ -284,5 +285,67 @@
     "name": "Full name",
     "phone": "Phone",
     "email": "Email"
+  },
+  "self": {
+    "manage": {
+      "title": "Manage booking",
+      "cancel": "Cancel booking",
+      "cancelOnly": "Request cancellation",
+      "contact": "Contact the shop {contact} with booking code {code}",
+      "agent": "This booking was made through an agent — contact your agent to change or cancel it"
+    },
+    "verify": {
+      "title": "Confirm you made this booking",
+      "phone": "Phone number used when booking",
+      "submit": "Confirm",
+      "help": "Enter the booker's phone number to manage this booking. Access lasts 15 minutes on this device. This page never shows the booker's number.",
+      "locked": "Too many wrong attempts — this page is locked for now. Contact the shop {contact} with booking code {code}"
+    },
+    "cancel": {
+      "title": "Cancel booking",
+      "paid": "Paid",
+      "refund": "Refund under the terms",
+      "kept": "Kept by the shop",
+      "step": "Cancelling {days} days before travel · {pct}% refund under the terms at booking",
+      "stepDays": "Cancelling {days} days before travel",
+      "accept": "I want to cancel this booking and I understand the terms above",
+      "submit": "Confirm cancellation",
+      "done": "Done",
+      "unpaidDone": "Your booking is cancelled and the seats were released",
+      "requested": "Refund request submitted. The amount follows the terms at booking; the shop reviews it and makes the transfer. Questions? Contact the shop {contact} with booking code {code}",
+      "cancelRequested": "Cancellation request sent. The shop reviews it. Questions? Contact the shop {contact} with booking code {code}",
+      "paidWarning": "If you have already transferred money, do not cancel here — contact the shop {contact} with booking code {code}",
+      "legal": "The refund follows the cancellation terms at booking. The shop reviews it and makes the transfer. Your minimum rights follow the 2020 Tourism Business and Guide Committee notice on refunds. Questions? Contact the shop {contact} with booking code {code}"
+    },
+    "refund": {
+      "QUOTED": "Your refund request for {amount} is waiting for the shop to review. The shop makes the transfer. Questions? Contact the shop {contact} with booking code {code}",
+      "APPROVED": "The shop approved the refund of {amount}. The shop makes the transfer. Questions? Contact the shop {contact} with booking code {code}",
+      "REJECTED": "The shop did not approve this request and it cannot be filed again on this page. Contact the shop {contact} with booking code {code}",
+      "DONE": "The shop has recorded the refund of {amount}. Questions? Contact the shop {contact} with booking code {code}",
+      "byShop": "There is already a refund request for this booking ({amount}) handled by the shop. Questions? Contact the shop {contact} with booking code {code}"
+    },
+    "err": {
+      "NOT_FOUND": "Booking not found",
+      "RATE_LIMITED": "Too many attempts — try again later or contact the shop",
+      "INVALID": "Something is not right — check and try again",
+      "VERIFY_FAILED": "That number does not match this booking — check and try again, or contact the shop",
+      "VERIFY_REQUIRED": "Please confirm the booker's phone number again",
+      "NOT_ALLOWED": "This booking cannot be managed on this page — contact the shop",
+      "ACCEPT_REQUIRED": "Please tick the box before confirming",
+      "AMOUNT_CHANGED": "The amount has changed — check the new amount and confirm again",
+      "STATE_CHANGED": "This booking just changed — reload the page and try again",
+      "TOO_FAST": "That was too fast — wait a moment and try again",
+      "STALE_FORM": "This form is out of date — reload the page and try again",
+      "BUSY": "The system is busy — please try again",
+      "UNAVAILABLE": "Online booking management is not available right now — contact the shop"
+    },
+    "block": {
+      "AGENT": "This booking was made through an agent and cannot be managed on this page",
+      "PENDING": "This booking is waiting for the shop to confirm",
+      "ENDED": "This booking can no longer be managed on this page",
+      "STARTED": "The trip has already departed — it cannot be cancelled on this page",
+      "REFUND_IN_PROGRESS": "A refund request is being reviewed by the shop",
+      "REFUND_REJECTED": "The shop did not approve the request for this booking"
+    }
   }
 }

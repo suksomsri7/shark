@@ -1,6 +1,7 @@
 // components/book/BookReservation.tsx — หน้าการจองของลูกค้า: จ่าย (QR ยอดล็อก) / วอเชอร์ + สิ่งที่ต้องทำ / หมดเวลา / ยกเลิก / จบแล้ว (ภาพ 01ง · 07) · RUN TRIPS W1.2a
 // แสดงผลเท่านั้น: สถานะ · ยอด · เวลา "โอนภายใน" · QR มาจากตัวโหลดทั้งหมด (ตัวโหลดตัดสินว่าออก QR ได้ไหม) — ไม่มีนาฬิกา/การคิดเงินในไฟล์นี้
 // ไม่สัญญาสิ่งที่ระบบทำไม่ได้: ไม่มี "ยืนยันอัตโนมัติ" · ไม่อ้างว่าส่งใบเสร็จแล้ว (OQ21)
+import type { ReactNode } from "react";
 import { formatYmd } from "@/components/trips/trips-shared";
 import type { BookReservationVM } from "@/lib/platform/trips-book-core";
 import type { BookLocale } from "@/lib/platform/trips-public-core";
@@ -15,7 +16,8 @@ type Frame = { locale: BookLocale; homeHref: string; langHrefs: { th: string; en
 const BOX = "flex flex-col gap-3 rounded-2xl border bg-[color:var(--color-surface)] p-5";
 const NOTE = "rounded-xl border px-4 py-3 text-sm";
 
-export function BookReservation({ vm, frame }: { vm: BookReservationVM; frame: Frame }) {
+/** ก้อน "การจองของฉัน" ของ W1.3a ที่หน้าประกอบมาแล้ว: `selfTop` = ยืนยันเบอร์/ยกเลิก (ใต้หัวการจอง) · `selfManage` = ก้อนจัดการ (ใต้สิ่งที่ต้องทำ) */
+export function BookReservation({ vm, frame, selfTop, selfManage }: { vm: BookReservationVM; frame: Frame; selfTop?: ReactNode; selfManage?: ReactNode }) {
   const t = bookT(vm.locale);
   const names = bookDateNames(vm.locale);
   const pay = vm.pay;
@@ -35,6 +37,8 @@ export function BookReservation({ vm, frame }: { vm: BookReservationVM; frame: F
             </p>
           </div>
         </header>
+
+        {selfTop ?? null}
 
         {vm.state === "PAY" ? (
           <section data-testid="book-pay" className={BOX}>
@@ -136,6 +140,8 @@ export function BookReservation({ vm, frame }: { vm: BookReservationVM; frame: F
             <p className="text-sm text-[color:var(--color-muted)]">{t("todo.later")}</p>
           </section>
         ) : null}
+
+        {selfManage ?? null}
 
         <section className={BOX}>
           <h2 className="text-base font-semibold">{t("res.lines")}</h2>

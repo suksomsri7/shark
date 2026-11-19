@@ -166,6 +166,8 @@ export async function auditMoney(
       targetId: target.id,
       ...(before ? { before: { ...before } } : {}),
       after: { ...after },
+      // TRIPS W1.3 ▸ เส้นลูกค้า (รั้ว publicSelf) เขียนด้วยผู้กระทำ SYSTEM job "trips.public.self" ⇒ actorId + after.by PUBLIC (K3 · ไม่มีเบอร์/กุญแจเครื่อง/token) ◂
+      ...(a.actor.kind === "SYSTEM" && a.actor.job === "trips.public.self" ? { actorId: a.actor.job, after: { ...after, by: "PUBLIC" } } : {}),
     },
   });
 }

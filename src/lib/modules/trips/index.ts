@@ -513,3 +513,10 @@ export { loadBookCatalog, loadBookDay, loadBookDeparture, findBookBasket, findBo
 export type { BookCatalog, BookDaySlot, BookDepartureRow, BookBasketRow, BookReservationRow } from "./public-booking";
 export { hhmm as tripsHhmm } from "./departures-core";
 // ── /W1.2 public booking ──
+// ── W1.3 self-service ──
+// TRIPS W1.3 ▸ การจองของฉัน: ข้อเท็จจริงของก้อนจัดการ (อ่านอย่างเดียว) · เหตุผลคงที่ของลูกค้า (K16) · หาผลเดิมของฟอร์มเดิม (K5) · ผู้เรียก = platform/trips-self · ใบสั่ง ledger/trips-briefs/W1.3.md ◂
+export { findBookSelfFacts } from "./public-booking";
+export type { BookSelfFacts } from "./public-booking";
+export { TRIPS_PUBLIC_SELF_REASON, selfReplayOf } from "./booking";
+export type { PublicSelf } from "./booking";
+// ── /W1.3 self-service ──

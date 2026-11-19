@@ -6,6 +6,7 @@
 // 🔴 เพดาน/ค่าคงที่ของหน้าจองสาธารณะส่วนจอง อยู่ที่ไฟล์นี้ที่เดียว — ไฟล์อื่นห้ามมีตัวเลขเพดานของตัวเอง
 // 🔴 ตัวตรวจทุกตัวไม่ throw (อินพุตจากผู้ใช้ทุกรูป ⇒ null/false)
 // ─────────────────────────────────────────────────────────────
+import type { SelfManageVM } from "./trips-self-core"; // TRIPS W1.3 ▸ ◂
 import type { BookBrandVM, BookCancelRow, BookLocale, BookText } from "./trips-public-core";
 
 // ═══════════════ ค่าคงที่ (ที่เดียว) ═══════════════
@@ -447,4 +448,6 @@ export type BookReservationVM = {
   todo: BookTodo[];
   cancelRows: BookCancelRow[];
   cancelUntil: { date: string; pct: number }[];
+  /** TRIPS W1.3 ▸ ก้อน "จัดการการจอง" (ปุ่มยกเลิก/เหตุที่ปิด/สถานะคำขอคืนเงิน · ใบสั่ง W1.3 §3.2) ◂ */
+  manage: SelfManageVM;
 };

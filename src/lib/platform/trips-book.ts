@@ -23,6 +23,7 @@ import {
   confirmTrips,
   findBookBasket,
   findBookReservation,
+  findBookSelfFacts,
   getAvailability,
   holdTrips,
   loadBookCatalog,
@@ -80,6 +81,7 @@ import {
   type BookShopInfo,
   type BookSummaryVM,
 } from "./trips-book-core";
+import { selfManageVMOf } from "./trips-self-core"; // TRIPS W1.3 ▸ ก้อน "จัดการการจอง" ◂
 
 // ═══════════════ ชนิดผล ═══════════════
 export type BookFlowOpts = { now?: Date; deps?: { query?: (sql: unknown) => Promise<unknown[]> } };
@@ -1097,6 +1099,9 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
     }
     const live = finalState === "PAY" && holdUntil !== null;
     const [{ info }, brand] = await Promise.all([shopInfoOf(o.shop, unit.id, o.now), bookBrandOf(o.shop)]);
+    // TRIPS W1.3 ▸ ก้อน "จัดการการจอง" (ใบสั่ง W1.3 §3.2 · K8 K10) — ข้อเท็จจริงอ่านไม่ได้ ⇒ ไม่มีปุ่ม (ENDED) · ไม่มี id/ข้อมูลบุคคล ◂
+    const facts = await findBookSelfFacts({ tenantId: o.shop.tenantId, unitId: unit.id }, row.bookingId).catch(() => null);
+    const manage = selfManageVMOf({ status: row.status, startsAt: dep.startsAt, now: o.now.toISOString(), holdExpiresAt: row.holdExpiresAt, paidSatang: row.paidSatang, facts });
     return {
       ok: true,
       vm: {
@@ -1121,6 +1126,7 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
         todo: bookTodoOf({ status: row.status, outstandingSatang: outstanding, people, named: row.named, waiverRequired, waiversSigned: row.waiversSigned }),
         cancelRows: cancelRowsOf(ladder),
         cancelUntil: cancelDeadlinesOf(ladder, dep.localDate, utcToLocal(unit.tz, o.now).ymd),
+        manage,
       },
     };
   } catch {
