@@ -741,7 +741,8 @@ try {
   await st("LG-2", "⚖️ ข้อความ self.* ไม่สัญญาสิ่งที่ระบบทำไม่ได้ (วันโอนคืน · อัตโนมัติ · SMS/OTP/รหัส/แจ้งเตือน · ร้านจะติดต่อ · ใบลดหนี้ · เลขบัญชี) · self.cancel.requested บอกว่าร้านพิจารณา + {contact} · K9 self.cancel.paidWarning บอก \"ถ้าโอนแล้ว อย่ายกเลิกที่นี่ ติดต่อร้าน\" + {contact} · K10 self.manage.cancelOnly/self.cancel.cancelRequested ไม่พูดถึงเงินคืน · K8 self.refund.byShop ไม่พูดว่า \"คุณยื่น\"", () => {
     const vals = Object.entries({ ...th, ...Object.fromEntries(Object.entries(en).map(([k, v]) => [`en:${k}`, v])) }).filter(([k]) => /(^|:)self\./.test(k)).map(([k, v]) => [k, String(v)] as const);
     ok(vals.length > 0, "ยังไม่มีคีย์ self.*");
-    const bad = vals.filter(([, v]) => /ภายใน\s*\d+\s*(วัน|ชั่วโมง)|within\s+\d+\s+(business\s+)?(days?|hours?)|อัตโนมัติ|automatic|\bSMS\b|\bOTP\b|รหัส(ยืนยัน|ที่ส่ง)|code (we )?sent|ส่งรหัส|แจ้งเตือน|notif|ร้านจะติดต่อ|we will contact|will contact you|ใบลดหนี้|credit note|ใบเสร็จ.*ส่ง|บัญชีธนาคาร|เลขบัญชี|bank account/i.test(v));
+    // ORACLE-EDIT LG-2 (ผู้คุม 19 พ.ย. · มติ L7 จ): ข้อความล็อก "ลองใหม่ได้ภายใน 24 ชั่วโมง" บอกอายุของการล็อก ไม่ใช่คำสัญญาเรื่องคืนเงิน/แจ้งเตือน ⇒ ยกเว้นเฉพาะคีย์ self.verify.locked*
+    const bad = vals.filter(([k]) => !/(^|:)self\.verify\.locked(Bare)?$/.test(k)).filter(([, v]) => /ภายใน\s*\d+\s*(วัน|ชั่วโมง)|within\s+\d+\s+(business\s+)?(days?|hours?)|อัตโนมัติ|automatic|\bSMS\b|\bOTP\b|รหัส(ยืนยัน|ที่ส่ง)|code (we )?sent|ส่งรหัส|แจ้งเตือน|notif|ร้านจะติดต่อ|we will contact|will contact you|ใบลดหนี้|credit note|ใบเสร็จ.*ส่ง|บัญชีธนาคาร|เลขบัญชี|bank account/i.test(v));
     ok(bad.length === 0, `สัญญาที่ระบบทำไม่ได้: ${bad.slice(0, 3).map(([k, v]) => `${k}=${v}`).join(" | ")}`);
     const t = (k: string) => [String(th[k] ?? ""), String(en[k] ?? "")] as const;
     const [rqT, rqE] = t("self.cancel.requested");
