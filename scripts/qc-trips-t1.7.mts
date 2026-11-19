@@ -1340,6 +1340,51 @@ try {
     } catch (e) { bad.push(e instanceof AssertFail ? e.message : `เรนเดอร์: ${errMsg(e).slice(0, 160)}`); }
     ok(bad.length === 0, `${bad.length} ข้อ: ${bad.join(" · ")}`); // ORACLE-EDIT รอบ 2: แสดงครบทุกข้อที่ไม่ตรง
   });
+  // ═══ ORACLE-EDIT รอบ 3 (ผู้คุม 19 พ.ย.): ข้อตัดสินของ builder r2 ที่ยังไม่มีข้อพิสูจน์ ═══
+  await st("R-15", "Q7 ทาง MONEY_UNAVAILABLE (บังคับให้ตัวคิดล้มแน่นอน: ผลรวม qty ที่นั่งของการจองเกิน int4) ⇒ แผงรอบยังเปิดได้ · money null · คำเตือน MONEY_UNAVAILABLE 1 ตัว · รอบปกติไม่มีคำเตือนนี้", async () => {
+    await needR();
+    if (!R.J) {
+      R.J = await (mkDepR as NonNullable<typeof mkDepR>)("RJ", "PR", "2027-07-08", { cap: 10, sold: 1, status: "OPEN" });
+      const b = await (mkBkR as NonNullable<typeof mkBkR>)("jB", { dep: R.J, prod: "PR", status: "CONFIRMED", channel: "COUNTER", adults: 1, created: "2027-06-01T03:00:00Z" });
+      for (let i = 0; i < 2; i++) await insertRow("TripBookingItem", { id: rid("itj"), tenantId: tA, unitId: uA, bookingId: b, departureId: R.J, kind: "SEAT", paxTypeId: PRD.PR.adult, qty: 2_000_000_000, unitPriceMinor: 0, amountMinor: 0, amountSatang: 0,
+        vatSatang: 0, commissionable: true, discountable: true, passThrough: false, taxKind: "VAT7", priceSource: "RETAIL", active: true, updatedAt: new Date() });
+    }
+    const p = await panel("oa", R.J); ok(p.ok === true, `แผงล้ม: ${fmt(p)}`); const v = asRec(p.vm) ?? {};
+    eq([v.money, asArr(v.warnings).filter((w) => w.code === "MONEY_UNAVAILABLE").length], [null, 1], "แผง");
+    // หมายเหตุ: departureMoneySummary ของรอบนี้ยัง throw (ข้อผิดพลาดจากฐาน) — มติ Q7 พูดถึงแผงรอบเท่านั้น ⇒ ไม่ตรึง (รายงานผู้คุม)
+    const pR = VM(await panel("oa", DEP.R), "แผง dR"); ok(!asArr(pR.warnings).some((w) => w.code === "MONEY_UNAVAILABLE"), "รอบปกติมีคำเตือน MONEY_UNAVAILABLE");
+  });
+  await st("R-16", "Q5 ทางคำเชิญ (staff/invite.ts): STAFF trips.* + settings.staff.write เชิญพร้อม trips.cost.view ⇒ ปฏิเสธ ไม่มีแถวคำเชิญ · ตัวตรวจร่วม checkNoEscalation ที่คำเชิญใช้ ปฏิเสธ trips.* (ไม่มีคำเชิญเกิด) · OWNER/MANAGER/ผู้ถือคีย์ ผ่านตัวตรวจ", async () => {
+    needSetup(); const INV = await tryImport("@/lib/staff/invite"); const inv = INV.mod?.inviteStaff; ok(typeof inv === "function", `ไม่มี inviteStaff (${INV.err.slice(0, 80)})`);
+    const chkF = STAFF.mod?.checkNoEscalation; ok(typeof chkF === "function", "ไม่มี checkNoEscalation"); const chk0 = chkF as AnyFn;
+    const mctx = (role: string, perms: string[], ua: string[] = [uA]) => ({ role, unitAccess: ua, permissions: Object.fromEntries(perms.map((k) => [k, true])) });
+    const before = (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "StaffInvite" WHERE "tenantId" = $1`, [tA]))[0]?.n ?? 0;
+    const r = asRec(await (inv as AnyFn)({ tenantId: tA, actorUserId: U.sw.userId, membership: mctx("STAFF", ["trips.*", "settings.staff.write"]) }, { name: "ทดสอบเชิญ", phone: "0812345671", role: "STAFF", unitIds: [uA], permissions: { "trips.cost.view": true } }, new Date(), { channel: "app" })) ?? {};
+    ok(r.ok === false, `คำเชิญของ STAFF trips.* ต้องถูกปฏิเสธ: ${fmt(r)}`);
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "StaffInvite" WHERE "tenantId" = $1`, [tA]))[0]?.n ?? 0, before, "ไม่มีแถวคำเชิญ");
+    const res = { wild: chk0(mctx("STAFF", ["trips.*", "settings.staff.write"]), {}, { "trips.cost.view": true }) === null, owner: chk0(mctx("OWNER", [], ["*"]), {}, { "trips.cost.edit": true }) === null,
+      manager: chk0(mctx("MANAGER", []), {}, { "trips.cost.edit": true }) === null, holder: chk0(mctx("STAFF", ["trips.cost.view"]), {}, { "trips.cost.view": true }) === null, holderEdit: chk0(mctx("STAFF", ["trips.cost.view"]), {}, { "trips.cost.edit": true }) === null };
+    eq(res, { wild: false, owner: true, manager: true, holder: true, holderEdit: false }, "checkNoEscalation");
+  });
+  await st("R-17", "Q11 กติกาแสดงบรรทัด VAT อยู่ที่เดียว: vatShown ประกาศครั้งเดียวใน CostParts.tsx · การ์ด (CostMoneyCard) และจอต้นทุน (CostScreen) เรียก vatShown( · ไม่มีคอมโพเนนต์อื่นเทียบ vatSatang กับ 0 (vatMode ยังใช้เลือกป้ายวิธีใส่ยอดต้นทุน/ป้ายคอมฯ ได้)", () => {
+    needOwn(); const parts0 = stripComments(read(`${COMP}/CostParts.tsx`)), scr = stripComments(read(`${COMP}/CostScreen.tsx`));
+    const defs = [...compFiles, PANEL].filter((f) => /function\s+vatShown\b|const\s+vatShown\b/.test(stripComments(read(f))));
+    eq(defs, [`${COMP}/CostParts.tsx`], "ที่ประกาศ vatShown");
+    const card0 = parts0.slice(parts0.indexOf("export function CostMoneyCard"));
+    ok(/vatShown\(/.test(card0) && /vatShown\(/.test(scr) && /import[^;]*\bvatShown\b[^;]*from\s+["']\.\/CostParts["']/.test(scr), "การ์ด/จอต้นทุนไม่ได้ใช้ vatShown");
+    const vsAt = parts0.indexOf("function vatShown"); const outside = parts0.slice(0, vsAt) + parts0.slice(parts0.indexOf("\n}", vsAt));
+    const bad = [...compFiles.filter((f) => f !== `${COMP}/CostParts.tsx`).map((f) => [f, stripComments(read(f))] as const), [`${COMP}/CostParts.tsx (นอก vatShown)`, outside] as const, [PANEL, stripComments(read(PANEL))] as const]
+      .filter(([, s0]) => /vatSatang\s*(>|>=|===|!==|<=|<)\s*0|0\s*(<|===|!==)\s*\w*\.?vatSatang/.test(s0)).map(([f]) => f);
+    ok(bad.length === 0, `ตัดสินบรรทัด VAT นอก vatShown: ${bad.join(", ")}`);
+  });
+  await st("R-18", "Q12 รอบยกเลิก: การจองยังค้างที่ไม่มีเงินรับ = EXCLUDED · การจองจ่ายแล้ว = PENDING_REFUND — dY: bookings 0 · รอคืนเงิน 1 · held 410,000 · ที่นั่ง 1 (เฉพาะที่รอคืน) · ยอดขาย 0 · ยกเลิก 0", async () => {
+    await needR(); eq(pick(await sumV("oa", R.Y), ["bookings", "pendingRefundBookings", "heldSatang", "seats", "salesSatang", "cancelledBookings", "outstandingSatang"]), [0, 1, 410_000, 1, 0, 0, 0], "dY");
+  });
+  await st("R-19", "Q13 ตัวคั่นหลักพัน: \"1,000\" ⇒ 100000 · \"12,345.6\" ⇒ 1234560 · \"0.50\" ⇒ 50 · \"1000000\" ⇒ 100000000 · \"1,00\" \"1,0000\" \",100\" \"1,,000\" ⇒ COST_AMOUNT_FORMAT", () => {
+    const F = (t: string) => asRec(pure("costRowsFromForm", [{ kind: "FOOD", amountText: t, note: "" }])) ?? {};
+    eq(["1,000", "12,345.6", "0.50", "1000000"].map((t) => asArr(F(t).rows)[0]?.amountSatang ?? fmt(F(t))), [100_000, 1_234_560, 50, 100_000_000], "รับ");
+    eq(["1,00", "1,0000", ",100", "1,,000"].map((t) => F(t).code), Array(4).fill("COST_AMOUNT_FORMAT"), "ปฏิเสธ");
+  });
   groupLine("R");
 
   exitCode = cks.some((c) => c.res !== "PASS") ? 1 : 0;
