@@ -25,6 +25,7 @@ import {
   updateStaffAccess,
 } from "./service";
 import type { Role } from "@prisma/client";
+import { prisma } from "@/lib/core/db";
 
 const STAFF_PATH = "/app/settings/staff";
 
@@ -132,6 +133,19 @@ export async function revokeStaffAccessAction(formData: FormData): Promise<void>
     actorUserId: auth.user.id,
     membershipId,
   });
+  // CAL review m4 ▸ เว็บ "ถอนสิทธิ์" = ออกจากร้าน (สัญญา 32 §2.5/§2.6) — ลบเตือน/นัด/ค่าตั้งปฏิทินส่วนตัวของคนนั้นในร้านนี้
+  //   (ระงับชั่วคราวจากแอป `staff/[id]/suspend` ไม่ลบ — คืนสิทธิ์แล้วเตือนกลับมา · review M5) ◂
+  if (res.ok) {
+    try {
+      const m = await prisma.membership.findFirst({ where: { id: membershipId, tenantId: auth.active.tenantId }, select: { userId: true } });
+      if (m) {
+        const { purgeMemberCalendar } = await import("@/lib/modules/calendar/items");
+        await purgeMemberCalendar({ userId: m.userId, tenantId: auth.active.tenantId });
+      }
+    } catch {
+      /* ไม่บล็อกการถอนสิทธิ์ */
+    }
+  }
   revalidatePath(STAFF_PATH);
   if (!res.ok) throw new Error(res.reason);
 }

@@ -506,6 +506,7 @@ const DEFS: SettingDef[] = [
   row({ key: "trips.price.costWarnMarginPct", type: "percent", labelTh: "เตือนเมื่อราคาต่อคนต่ำกว่าต้นทุนรอบ + กี่ %", chain: U_P, schema: PCT, d: all(0), extra: { percentScale: 100 } }),
   row({ key: "trips.fx.rates", type: "table", labelTh: "อัตราแลกเปลี่ยนที่ใช้ล็อก ณ วันจอง", chain: U, schema: z.array(z.object({ currency: z.enum(["USD", "EUR"]), rateMicros: INT(1, 2_000_000_000) }).strict()).max(10).refine((a) => unique(a.map((x) => x.currency)), { message: "สกุลเงินซ้ำ" }), d: all([]), sensitivity: "MONEY", extra: { effectiveDated: true, ...ACCOUNTANT } }),
   row({ key: "trips.public.showLeftAtOrBelow", type: "int", labelTh: "แสดง \"เหลือ N ที่\" เมื่อเหลือไม่เกิน", chain: U_P, schema: INT(0, 1000), d: all(5) }),
+  row({ key: "trips.public.unpaidHoldMaxPct", type: "percent", labelTh: "ที่นั่งที่ลูกค้าออนไลน์ถือรอชำระได้รวมต่อรอบ (% ของความจุ)", helpTh: "100 = ไม่จำกัดนอกจากความจุ · ไม่กระทบพนักงาน", chain: U_P, schema: INT(1, 100), d: all(50), extra: { percentScale: 100 } }),
   row({ key: "trips.public.embedDomains", type: "table", labelTh: "โดเมนที่ฝังหน้าจองได้", chain: U, schema: uniqArr(z.string().regex(/^(?=.{1,253}$)([a-z0-9-]+\.)+[a-z]{2,}$/, { message: "ชื่อโดเมนไม่ถูกต้อง" }), 0, 20), d: all([]) }),
   row({
     key: "trips.public.rateLimits", type: "table", labelTh: "เพดานถือที่ / ขอรหัสยืนยัน / เดาลิงก์", chain: U,

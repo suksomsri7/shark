@@ -47,6 +47,10 @@ model Tenant {
   customDomain      String?      @unique
   domainStatus      DomainStatus @default(NONE)
   deleteRequestedAt DateTime? // PDPA (WO-0042): ขอลบร้าน — purge จริงหลัง 30 วัน (cron)
+  // ตั้งค่ากิจการ (แอปเลขา 14 พ.ย. · migration secretary_bizprofile): ประเภทธุรกิจ = คีย์ TENANT_TYPES ของ lib/mobile/tenants
+  //   (retail|restaurant|service|clinic|education|dorm|other) · null = ร้านเก่าที่ยังไม่เคยเลือก
+  //   ที่อยู่/เบอร์/เลขภาษี/สาขา = AccountSettings ของสมุดบัญชี (แหล่งเดียวกับใบกำกับ) · เวลาทำการ = ChatSetting.businessHours — ไม่เก็บซ้ำที่นี่
+  businessType      String?
   createdAt         DateTime     @default(now())
   updatedAt         DateTime     @updatedAt
 

@@ -4,7 +4,7 @@ import { listCasesForPlatform, caseTabCounts, CASE_TABS, type CaseTab } from "@/
 import { PageHeader } from "@/components/ui/PageHeader";
 import { StatusChip } from "@/components/ui/StatusChip";
 import { formatThaiDateTime } from "@/lib/ui/date";
-import { STATUS_LABEL, SOURCE_LABEL, CATEGORY_LABEL, caseNoLabel, initialsOf } from "./labels";
+import { STATUS_LABEL, STAGE_LABEL, SOURCE_LABEL, CATEGORY_LABEL, caseNoLabel, initialsOf } from "./labels";
 
 // S2.16 (จอ H3) — รายการเรื่องแจ้งจากทุกร้าน: แท็บ ใหม่/รอร้าน/ของฉัน/ปิดแล้ว (+ทั้งหมด) · ตัวกรองช่องทาง + หมวด · ป้าย "!" เรื่องเงิน
 const TAB_LABEL: Record<CaseTab | "all", string> = {
@@ -61,7 +61,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
       <PageHeader
         title="เรื่องแจ้งจากผู้ใช้"
         back={{ href: "/backoffice", label: "ภาพรวมแพลตฟอร์ม" }}
-        desc={`ทีม SHARK · ${cases.length.toLocaleString("th-TH")} เรื่องในมุมมองนี้`}
+        desc={`ทีมเลขา · ${cases.length.toLocaleString("th-TH")} เรื่องในมุมมองนี้`}
         actions={
           <form action={logoutAction}>
             <button type="submit" className="btn btn-ghost text-sm">
@@ -133,6 +133,7 @@ export default async function CasesPage({ searchParams }: { searchParams: Promis
                     <span className="block truncate text-xs text-[color:var(--color-muted)]">{meta}</span>
                     <span className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[color:var(--color-muted)]">
                       <StatusChip value={c.status} map={STATUS_LABEL} />
+                      <span data-testid={`case-row-stage-${c.id}`}>ขั้น: {STAGE_LABEL[c.stage] ?? c.stage}</span>
                       <span>{c.assigneeName ? `ผู้รับ: ${c.assigneeName}` : "ยังไม่มีผู้รับ"}</span>
                     </span>
                   </span>

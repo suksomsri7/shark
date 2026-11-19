@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import { useInApp } from "./use-in-app";
+import { useInApp, useNativeTopBar } from "./use-in-app";
 import { isRailPath } from "./NavRail";
 
 // พื้นที่เนื้อหาของแอป — เว้นที่ให้ topbar (สูง 56px) + แถบเมนู/รางไอคอนทางซ้าย
@@ -16,6 +16,8 @@ import { isRailPath } from "./NavRail";
 //   · หน้าบอร์ดงาน (isRailPath) บังคับรางเสมอ ไม่ว่าผู้ใช้ตั้งค่าไว้แบบไหน (K1.5)
 //
 // เปิดจากแอป (WebView) ไม่มีแถบปักซ้าย/ราง → ไม่เว้นซ้ายเลย
+//
+// 14 พ.ย.: แอปรุ่นใหม่วางแถบบน native เหนือ WebView (UA "SharkTopBar") ⇒ ไม่มี Topbar เว็บ ⇒ ไม่เว้นที่ 3.5rem ด้านบน
 //
 // WO-CV12 (มติเจ้าของ 1 ก.ย. 2026) — หน้ากล่องแชทเต็มจอ:
 //   จอ < lg ไม่มีแถบบนแล้ว (Topbar ซ่อนตัวเอง) ⇒ ถ้ายังเว้น `pt-[calc(3.5rem+1rem)]` ไว้
@@ -36,6 +38,7 @@ export function AppMain({
   posRegisterV2Ids?: string[];
 }) {
   const inApp = useInApp();
+  const nativeTopBar = useNativeTopBar();
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(navCollapsed);
   // ค่าจาก server เปลี่ยน (เช่น router.refresh หลังบันทึก) = แหล่งความจริง
@@ -54,6 +57,11 @@ export function AppMain({
   const leftPad = inApp ? "" : railMode ? "lg:pl-[calc(3.5rem+1.5rem)]" : "lg:pl-[calc(18rem+1.5rem)]";
   // 🔴 เขียนคลาสแยกเป็นชุดเต็ม ๆ โดยตั้งใจ — ไม่ผสม `px-*` กับ `pl-*` ในเบรกพอยต์เดียวกัน
   //    (ลำดับที่ Tailwind สร้างให้เป็นตัวตัดสิน ไม่ใช่ลำดับตัวอักษรในสตริง = อ่านแล้วเดาผิดง่าย)
+  if (nativeTopBar) {
+    // ในแอป: ไม่มีแถบบนเว็บ ไม่มีแถบซ้าย ⇒ เหลือแค่ระยะขอบเนื้อหา
+    const appPad = boardFullscreen ? "px-0 pb-0 pt-0" : chatFullscreen ? "px-0 pb-2 pt-2 sm:px-6" : "px-4 pb-10 pt-4 sm:px-6";
+    return <main className={appPad}>{children}</main>;
+  }
   if (boardFullscreen) {
     return <main className={`px-0 pb-0 pt-14 ${inApp ? "" : "lg:pl-14"}`}>{children}</main>;
   }

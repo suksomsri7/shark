@@ -11,9 +11,11 @@ import type {
   SupportCase,
   SupportCaseStatus,
   SupportMessage,
+  SupportStageEvent,
 } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { requirePlatformRole } from "./auth";
+import { STAGE_STATUS, isCaseStage, stageForStatus, stagePushTitle, type CaseStage } from "@/lib/support/stage";
 
 export type CaseWithTenant = SupportCase & { tenantName: string };
 
@@ -184,16 +186,18 @@ export async function tenantSecretarySuspendedAt(tenantId: string): Promise<Date
 }
 
 // เคสเดียว + บทสนทนา (สำหรับหน้ารายละเอียด backoffice) · S1.17: แถวเคสมี `source`/`category`/`roomId` (ห้องงานที่แนบ) ติดมาด้วย
+// help-cases ▸ + ประวัติขั้น (เก่า→ใหม่) ◂
 export async function caseDetail(
   caseId: string,
-): Promise<{ case: CaseWithTenant; messages: SupportMessage[] } | null> {
+): Promise<{ case: CaseWithTenant; messages: SupportMessage[]; stageEvents: SupportStageEvent[] } | null> {
   const c = await prisma.supportCase.findUnique({ where: { id: caseId } });
   if (!c) return null;
-  const [tenant, messages] = await Promise.all([
+  const [tenant, messages, stageEvents] = await Promise.all([
     prisma.tenant.findUnique({ where: { id: c.tenantId }, select: { name: true } }),
     prisma.supportMessage.findMany({ where: { caseId }, orderBy: { createdAt: "asc" } }),
+    prisma.supportStageEvent.findMany({ where: { caseId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }] }),
   ]);
-  return { case: { ...c, tenantName: tenant?.name ?? "—" }, messages };
+  return { case: { ...c, tenantName: tenant?.name ?? "—" }, messages, stageEvents };
 }
 
 // เปลี่ยนสถานะเคส (เช่น ปิดเคส = RESOLVED) + audit "support.status"
@@ -204,8 +208,13 @@ export async function setCaseStatus(
 ): Promise<boolean> {
   const c = await prisma.supportCase.findUnique({ where: { id: caseId } });
   if (!c) return false;
+  // help-cases: ปิดเคส ⇒ ขั้น CLOSED · เปิดใหม่จากสถานะปิด ⇒ RECEIVED (+ ประวัติขั้น)
+  const nextStage = stageForStatus(c.stage, status);
   await prisma.$transaction([
-    prisma.supportCase.update({ where: { id: caseId }, data: { status } }),
+    prisma.supportCase.update({ where: { id: caseId }, data: { status, ...(nextStage ? { stage: nextStage } : {}) } }),
+    ...(nextStage
+      ? [prisma.supportStageEvent.create({ data: { tenantId: c.tenantId, caseId, fromStage: c.stage, toStage: nextStage, actorSide: "PLATFORM", actorId: pu.id } })]
+      : []),
     prisma.platformAuditLog.create({
       data: {
         platformUserId: pu.id,
@@ -275,29 +284,36 @@ export async function addPlatformMessage(
   ]);
 
   // push เข้าเครื่องมือถือ — best-effort ห้ามพัง flow ตอบเคส
-  // CRM C5.5-G3 (รีวิว G2-2) ▸ เดิมยิง **ทุกเครื่องในร้าน** (`sendPushToTenant`) พร้อมคำตอบของทีมงาน 80 ตัวอักษรบนจอล็อก
-  //   ทั้งที่ห้องเปิดได้เฉพาะผู้สร้าง ⇒ ยิงเฉพาะคนที่เปิดห้องนั้นได้: ผู้สร้างห้อง (จากรหัสห้อง) · ห้องรุ่นเดิม/ของคีย์/งานภายใน
-  //   = เจ้าของร้าน (OWNER ที่ยืนยันแล้ว) ตามกติกาการมองเห็นห้อง (lib/ai/conversation-owner.ts) ◂
-  if (fromApp) {
-    try {
+  await pushCaseOpener(c, { title: "ทีมงานตอบกลับแล้ว", body: body.slice(0, 80) }, deps);
+  return true;
+}
+
+// ── push ถึงผู้แจ้งของเคส (ใช้ร่วม: ทีมตอบ · ทีมเปลี่ยนขั้น) ─────────────────────────────────────────────
+// CRM C5.5-G3 (รีวิว G2-2) ▸ เดิมยิง **ทุกเครื่องในร้าน** (`sendPushToTenant`) พร้อมคำตอบของทีมงาน 80 ตัวอักษรบนจอล็อก
+//   ทั้งที่ห้องเปิดได้เฉพาะผู้สร้าง ⇒ ยิงเฉพาะคนที่เปิดห้องนั้นได้: ผู้สร้างห้อง (จากรหัสห้อง) · ห้องรุ่นเดิม/ของคีย์/งานภายใน
+//   = เจ้าของร้าน (OWNER ที่ยืนยันแล้ว) ตามกติกาการมองเห็นห้อง (lib/ai/conversation-owner.ts) ◂
+// S1.17 (R-K12) ▸ เคสจากแอป (`source = "APP"`) ⇒ notifyUser(..., "help") ถึงผู้แจ้ง · link /help/<caseId> ◂
+// help-cases ▸ `dedupeKey` = กันข้อความคนละเรื่องในเคสเดียวกันถูกกลืนโดยตัวกันสแปม 60 วิ (เช่น ตอบ + เปลี่ยนขั้นติดกัน) ◂
+async function pushCaseOpener(
+  c: SupportCase,
+  msg: { title: string; body: string; dedupeKey?: string },
+  deps?: { post?: PushPost },
+): Promise<void> {
+  try {
+    if (c.source === "APP") {
       // ผู้แจ้งต้องยังเป็นสมาชิกของร้านนี้ (ออกจากร้านแล้ว = ไม่ยิงข้อความของทีมงานไปที่จอล็อก)
       const stillMember =
         (await prisma.membership.count({ where: { tenantId: c.tenantId, userId: c.openedByUserId, acceptedAt: { not: null } } })) > 0;
-      if (stillMember) {
-        const { notifyUser } = await import("@/lib/ai/secretary/notify");
-        await notifyUser(
-          c.openedByUserId,
-          c.tenantId,
-          "help",
-          { title: "ทีมงานตอบกลับแล้ว", body: body.slice(0, 80), data: { link: `/help/${c.id}`, caseId: c.id } },
-          deps?.post ? { post: deps.post } : undefined,
-        );
-      }
-    } catch {
-      // push พัง → เงียบ (เคสถูกบันทึกแล้ว)
-    }
-  } else if (c.conversationId) {
-    try {
+      if (!stillMember) return;
+      const { notifyUser } = await import("@/lib/ai/secretary/notify");
+      await notifyUser(
+        c.openedByUserId,
+        c.tenantId,
+        "help",
+        { title: msg.title, body: msg.body, data: { link: `/help/${c.id}`, caseId: c.id } },
+        { ...(deps?.post ? { post: deps.post } : {}), ...(msg.dedupeKey ? { dedupeKey: msg.dedupeKey } : {}) },
+      );
+    } else if (c.conversationId) {
       const { sendPushToUsers } = await import("@/lib/core/push");
       const { conversationCreatorOf } = await import("@/lib/ai/conversation-owner");
       const creator = conversationCreatorOf(c.conversationId);
@@ -314,14 +330,44 @@ export async function addPlatformMessage(
               })
             ).map((m) => m.userId);
       await sendPushToUsers(c.tenantId, recipients, {
-        title: "ทีมงานตอบกลับแล้ว",
-        body: body.slice(0, 80),
+        title: msg.title,
+        body: msg.body,
         data: { conversationId: c.conversationId },
       }, deps?.post ? { post: deps.post } : undefined);
-    } catch {
-      // push พัง → เงียบ (เคสถูกบันทึกแล้ว)
     }
+  } catch {
+    // push พัง → เงียบ (เคสถูกบันทึกแล้ว)
   }
+}
+
+// help-cases (15 พ.ย. 2026) ▸ ทีมงานตั้งขั้นของเคส — status ตาม STAGE_STATUS · ประวัติขั้น (ใคร/เมื่อไหร่) · audit "support.stage"
+//   · push ถึงผู้แจ้ง "เคส #SHARK-000124 · สถานะ → กำลังแก้ไข" (เส้นเดียวกับคำตอบทีม) · SUPER_ADMIN/SUPPORT เท่านั้น (FINANCE ⇒ throw)
+//   ขั้นเดิม = ไม่ทำอะไร (คืน true · ไม่ push) · ไม่มีเคส/ขั้นไม่รู้จัก = false ◂
+export async function setCaseStage(
+  pu: PlatformUser,
+  caseId: string,
+  stage: CaseStage,
+  opts?: { note?: string; post?: PushPost },
+): Promise<boolean> {
+  const me = requirePlatformRole(pu, CASE_WRITE_ROLES);
+  if (!isCaseStage(stage)) return false;
+  const c = await prisma.supportCase.findUnique({ where: { id: caseId } });
+  if (!c) return false;
+  if (c.stage === stage) return true;
+  const note = typeof opts?.note === "string" && opts.note.trim() ? opts.note.trim().slice(0, 200) : null;
+  const [, ev] = await prisma.$transaction([
+    prisma.supportCase.update({
+      where: { id: caseId },
+      data: { stage, status: STAGE_STATUS[stage], ...(c.assigneePlatformUserId ? {} : { assigneePlatformUserId: me.id }) },
+    }),
+    prisma.supportStageEvent.create({
+      data: { tenantId: c.tenantId, caseId, fromStage: c.stage, toStage: stage, actorSide: "PLATFORM", actorId: me.id, note },
+    }),
+    prisma.platformAuditLog.create({
+      data: { platformUserId: me.id, action: "support.stage", targetType: "SupportCase", targetId: caseId, detail: `${c.stage}→${stage}` },
+    }),
+  ]);
+  await pushCaseOpener(c, { title: stagePushTitle(c.caseNo, stage), body: note ?? c.subject.slice(0, 80), dedupeKey: `stage:${ev.id}` }, opts?.post ? { post: opts.post } : undefined);
   return true;
 }
 

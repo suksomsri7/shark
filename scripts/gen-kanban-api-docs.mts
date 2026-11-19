@@ -661,7 +661,7 @@ const KIND_SECTIONS: { kind: ApiOpKind; title: string; blurb: string }[] = [
 export function renderEndpointsReference(ops: ApiOp[] = KANBAN_OPS): string {
   const out: string[] = [];
   out.push(
-    "# SHARK Task Board API — endpoint reference",
+    "# Lekaa Task Board API — endpoint reference",
     "",
     "Generated from the operation registry by `scripts/gen-kanban-api-docs.mts` (`--check` covers this file too). Do not edit by hand.",
     "",

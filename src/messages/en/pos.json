@@ -678,7 +678,7 @@
       "reason": "Reason: {reason}",
       "approver": "Approver: {name}",
       "roleAny": "Approver",
-      "notified": "{role} · notified on the SHARK approvals page",
+      "notified": "{role} · notified on the Lekaa approvals page",
       "sentChip": "Sent",
       "waiting": "Waiting…",
       "retrying": "Cannot reach the server — retrying…",
@@ -1932,7 +1932,7 @@
         "OTHER": "Other",
         "ON_ACCOUNT": "On account"
       },
-      "footer": "Sent by SHARK · no other personal data on this page",
+      "footer": "Sent by Lekaa · no other personal data on this page",
       "lang": {
         "th": "Thai",
         "en": "English"
@@ -2318,7 +2318,7 @@
       "payments": "Payment methods",
       "devices": "Devices & printers",
       "staff": "Staff & permissions",
-      "shark": "SHARK connections",
+      "shark": "Lekaa connections",
       "channels": "External sales channels",
       "offline": "Offline & sync",
       "board": "Task boards & team room"
@@ -2797,7 +2797,7 @@
       "fromHr": "From HR"
     },
     "shark": {
-      "title": "SHARK connections",
+      "title": "Lekaa connections",
       "subtitle": "Connect system by system · the POS sells fine without them · turn each on/off on that system's page",
       "count": "{linked} of {total} systems connected",
       "backlog": "{count} jobs stuck",

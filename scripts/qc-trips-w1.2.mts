@@ -1565,6 +1565,9 @@ try {
   });
   await st("X-2", "X3 ขายเกินไม่ได้ (MP §5 ก): 50 เครื่องถือพร้อมกันคนละ 1 ที่ บนรอบ 12 ที่ ⇒ สำเร็จ 12 พอดี ที่เหลือ SOLD_OUT · รอบ held = 12 sold = 0 · ไม่มีผลอื่น (BUSY/throw)", async () => {
     needDb();
+    // ORACLE-EDIT X-2 (T0.4c มติ R1 · ใบ §3.4 §7): ข้อนี้ทดสอบขายเกินไม่ได้เมื่อถือแข่งจนเต็มรอบ ไม่ใช่เพดานที่ลูกค้าออนไลน์ถือไม่จ่าย (X31 ค่าเริ่ม 50%) — ตั้ง X31 = 100 ชั้น PRODUCT ของสินค้า A เฉพาะข้อนี้ แล้วคืน 50
+    await setV(tA, [{ key: "trips.public.unpaidHoldMaxPct", scope: "PRODUCT", scopeId: A().id, value: 100 }]);
+    try {
     const c0 = ck(); const o = await optsOf(SA, A().slug, "2027-03-11", c0);
     const nonces = Array.from({ length: 50 }, () => nonceAt());
     const keys = Array.from({ length: 50 }, () => ck());
@@ -1576,6 +1579,7 @@ try {
     eq([okN, sold], [12, 38], `ผล (อื่น: ${fmt(rs.filter((r) => r.ok !== true && r.code !== "SOLD_OUT").slice(0, 2))})`);
     const d = await depRow(DEP.race);
     eq([d.held, d.sold, d.capacity], [12, 0, 12], "ตัวนับรอบ");
+    } finally { await setV(tA, [{ key: "trips.public.unpaidHoldMaxPct", scope: "PRODUCT", scopeId: A().id, value: 50 }]); }
   });
   await st("X-3", "X3/X4 ถือซ้ำ: 10 คำขอพร้อมกัน nonce เดียวกัน เครื่องเดียวกัน ⇒ ผลมีแค่ ok (basketToken เดียวกันทุกตัว · อย่างน้อย 1) หรือ RATE_LIMITED (ถังต่อรอบ 3/ชม. · R7 แก้โดย W2 — ORACLE-EDIT ข้อความเท่านั้น) · ตะกร้า 1 ใบ · ที่ถือเพิ่ม 2 ครั้งเดียว · nonce เดิมแต่จำนวนคนต่างจากเครื่องใหม่ (ไม่ติดถัง · R9) ⇒ STALE_FORM", async () => {
     needDb();

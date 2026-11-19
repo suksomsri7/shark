@@ -231,7 +231,12 @@ console.log("\n── F2/F5: ขอบเขตโมดูล (baseline ratchet
 // SVC R0.8 rooms/occupancy.ts (46 → 47): `expireHolds` ไล่ hold หมดเวลา "ข้ามร้าน" จาก minute-job ก่อนรู้ tenant (เหมือน inventory sweep ·
 //   UPDATE มีเงื่อนไข active + FOR UPDATE SKIP LOCKED) + `withRoomTx` เปิดธุรกรรมให้ rooms/service.ts — ไฟล์เดียวของโมดูล rooms ที่ import prisma ดิบ
 //   (service.ts/index.ts ใช้ tenantDb) · ทุกคำสั่งเขียนอื่นผูก tenantId+unitId ตรง (X1 · oracle qc-svc-r0.8 C-8/C-9/R-2/R-9)
-const BASELINE = { f5RawPrisma: 52 }; // TRIPS A1.1 (ผู้คุม 13 พ.ย. 2569): agency/entry.ts — ตารางตัวตนเอเจนซี่ระดับแพลตฟอร์ม (ไม่มี tenantId · เข้าถึงได้เฉพาะไฟล์นี้ + platform/agent-auth.ts · คุมด้วย F17.1) · เดิม: // TRIPS T0.3 (ผู้คุม 12 พ.ย. 2569): trips/jobs.ts — งานสร้างรอบ/ตรวจขั้นต่ำไล่ข้ามร้านก่อนรู้ tenant (แบบ inventory sweep · where ผูก tenantId ทุกตัว) (50→51) · SVC B.6: booking/devices.ts deviceByToken (resolve token ก่อนรู้ tenant · แบบ forms/getPublicForm) (49→50) · SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+// CAL1.4 calendar/fire.ts (50 → 51): งานรายนาที calendar.fire จอง CalItem ที่ถึงเวลา "ข้ามผู้ใช้/ร้าน" ก่อนรู้ว่าเป็นของใคร (แบบ expireHolds/sweep)
+//   ด้วย updateMany มีเงื่อนไข lease + commit มีเงื่อนไข leaseToken+version · ส่งผลถึงเจ้าของแถวคนเดียวเสมอ (สัญญา 32 §3.3) — items.ts/links.ts ใช้ tenantDb
+// CAL1.5 calendar/brief.ts (51 → 52): งานรายนาที calendar.brief อ่าน Membership × CalPref × PushDevice "ข้ามผู้ใช้/ร้าน" (SQL เดียว · ชุดละ ≤ 50)
+//   แล้วจอง lastMorningDay/lastEveningDay ต่อคู่ (updateMany มีเงื่อนไข) · ส่งถึงเจ้าของคู่คนเดียว (สัญญา 32 §3.3 · §6)
+// TRIPS (รวม main 19 พ.ย. 2569 · ผู้คุม): TRIPS A1.1 (ผู้คุม 13 พ.ย. 2569): agency/entry.ts — ตารางตัวตนเอเจนซี่ระดับแพลตฟอร์ม (ไม่มี tenantId · เข้าถึงได้เฉพาะไฟล์นี้ + platform/agent-auth.ts · คุมด้วย F17.1) · เดิม: // TRIPS T0.3 (ผู้คุม 12 พ.ย. 2569): trips/jobs.ts — งานสร้างรอบ/ตรวจขั้นต่ำไล่ข้ามร้านก่อนรู้ tenant (แบบ inventory sweep · where ผูก tenantId ทุกตัว) (50→51) · SVC B.6: booking/devices.ts deviceByToken (resolve token ก่อนรู้ tenant · แบบ forms/getPublicForm) (49→50) · SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
+const BASELINE = { f5RawPrisma: 54 }; // SVC B.6: booking/devices.ts deviceByToken (resolve token ก่อนรู้ tenant · แบบ forms/getPublicForm) (49→50) · SVC B.4: queue-line.ts + planner-run.ts need FOR UPDATE SKIP LOCKED / advisory locks / cross-tenant tick (47→49) · 34 (2026-07-15)+approval(tx+outbox) +inventory(sweep ข้ามร้าน) +shop(resolveUnit จาก slug) +forms(getPublicForm จาก token) +account/period-sweep(ปิดงวดข้ามร้าน WO-0039) +inventory/procurement(vendor portalToken resolve ก่อนรู้ tenant WO-0059) +pos/register(catalog/member reads ข้ามระบบ WO-Wave1-B) +school/rental/clinic(refund: lookup posSale ด้วย idempotencyKey กรอง tenantId ตรง — Wave2-E/F/G · oracle cross-tenant เขียว) +chat/retention(PDPA sweep ข้ามร้าน WO-C12 — ไล่ทุก ChatSetting ก่อนรู้ tenant เหมือน inventory sweep · where ผูก tenantId+systemId ทุกตัว · oracle qc-chat-retention RT-3.2 เขียว) — ทุกตัวจงใจ · ratchet ลงได้อย่างเดียว
 
 const moduleDir = join(ROOT, "src", "lib", "modules");
 const moduleNames = existsSync(moduleDir)
@@ -500,6 +505,17 @@ const ALLOWED_EDGES = new Set([
   "inventory→pos",
   "account→pos",
   // ◂ POS P1.1b
+  // CAL1.2 ▸ ปฏิทินส่วนตัวของเลขา (docs/modules/32-secretary-calendar.md §4.5 · R-CAL-23): `calendar/links.ts` ตรวจว่าผู้ใช้ "อ่าน"
+  //   สิ่งที่เตือนผูกไว้ได้ ด้วยตัวกรองสิทธิ์เดิมของแหล่งนั้น (ไม่เขียนกฎซ้ำ) — อ่านอย่างเดียว · dynamic import ตอนใช้ ·
+  //   crm ผ่าน facade `crm/index` (contactWhere/dealWhere) · member ผ่าน `member/index` (toMemberActor) · kanban ไม่มี facade ⇒ `kanban/access`
+  //   (visibleBoardsWhere · ตัวเดียวกับเส้น kanban→calendar เดิมที่อ่าน calendar/service — คนละไฟล์ ไม่มีวงโหลด) ◂
+  "calendar→crm",
+  "calendar→member",
+  "calendar→kanban",
+  // CAL1.3 ▸ ตัวรวม agenda (docs/modules/32-secretary-calendar.md §4.3 · R-CAL-5/7): "ผู้ใช้คนนี้คือพนักงาน HR คนไหน" ผ่าน facade
+  //   `hr/index.employeeOfUser` (อ่านอย่างเดียว · dynamic import) — ใช้หา "นัดบัตรคิวของฉัน" (BookingStaff.employeeId) + "ใบลาของฉัน"
+  //   ไม่เขียนกฎผูกพนักงานซ้ำ · ทิศเดียว (hr ไม่รู้จัก calendar ส่วนตัว — เส้น hr→calendar ไม่มี) ◂
+  "calendar→hr",
 ]);
 const crossEdges = new Set<string>();
 for (const f of moduleFiles) {

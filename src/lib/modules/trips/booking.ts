@@ -2,8 +2,8 @@
 // trips/booking.ts — การจองทัวร์: ถือผ่านตะกร้า · ยืนยันในธุรกรรมเดียว · อนุมัติ/ปฏิเสธ · ยกเลิกก่อนจ่าย · แก้คน/เลื่อนวัน · อ่าน · RUN TRIPS T0.6
 // ใบสั่ง ledger/trips-briefs/T0.6.md §2 §5 §8 (§16 มติผู้คุมชนะ + มติรอบแก้ r1 R1–R14) · CC §C §D.4–§D.6 §F.2 §G §J.1 §K · wo-notes T0.4 r2 §(d) · T0.5 r2/r3
 //
-// 🔴 นอก tx เท่านั้น: quoteTrips · buildTripBookingSnapshot · capacityRowsOf · loadCapacityPolicies · resolveSettings (X1 X3) · party · approval
-//    ในธุรกรรม = *InTx ของ T0.4/T0.5 + SQL ผ่าน tx เดียวกัน (ไม่ขอ connection ที่สอง · pool 10)
+// 🔴 นอก tx เท่านั้น: quoteTrips · buildTripBookingSnapshot · capacityRowsOf · loadCapacityPolicies · resolveSettings (X1 X3) · approval
+//    ในธุรกรรม = *InTx ของ T0.4/T0.5 + SQL ผ่าน tx เดียวกัน (ไม่ขอ connection ที่สอง · pool 10) · Party ผู้จอง = safeFindOrCreate(…, tx) (T0.4c)
 // 🔴 ลำดับล็อก (ใบสั่ง §5.4 · r2 §d · R7 R13): ชั้น 0 (SellBasket FOR UPDATE / INSERT → advisory เพดานถือ/rekey/ผูกการแก้) → สินค้า FOR SHARE เรียง (id, ตัวเลือก) →
 //    1a รอบ เรียง id → 2a hold (เรียงตามรอบ) → advisory คำอนุมัติ (เรียง id) → 2c เลขจอง (เรียง prefix, งวด) → 2b การจอง/รายการ/ผู้เดินทาง →
 //    โค้ดส่วนลดทั้งตะกร้าเรียง ruleId → 2h outbox/audit → ตะกร้า CAS · ยกเลิก/ปฏิเสธ: คืนที่นั่ง (releaseHoldInTx) ก่อน releasePromoInTx เสมอ (r2 §d ข้อ 4)
@@ -46,6 +46,7 @@ import {
 import {
   CapacityAbort,
   acquireHoldCapInTx,
+  assertDeparturesSellableInTx,
   convertHoldForBookingInTx,
   holdRequestHash,
   insertHoldInTx,
@@ -450,11 +451,18 @@ async function lockDeparturesInTx(tx: Tx, sc: SellCtx, departureIds: readonly st
   if (!ids.length) return;
   await reserveInTx(tx, sc, ids.map((id) => ({ layer: "1a", table: "TripDeparture", id, sortKey: id })), { op: "CONVERT", qtyPublic: 0, qtyAllot: 0 });
 }
-/** เฟส 1 ถือ: reserveInTx(HOLD) ทีละบรรทัดตามรอบ (sortCapacityRows = id รอบ) */
+/**
+ * เฟส 1 ถือ: reserveInTx(HOLD) ครั้งเดียวต่อรอบ (เรียง id) ด้วยจำนวนรวมของทุกบรรทัดของรอบนั้น (T0.4c: เพดาน PUBLIC นับตะกร้าหลายบรรทัดรวมกัน)
+ * รวมเกิน QTY_MAX ⇒ แบ่งก้อน ≤ QTY_MAX (ขอบเขตของ intent) · insertHoldsInTx คงแถวละบรรทัด ⇒ held = Σ hold ACTIVE
+ */
 async function reserveHoldsInTx(tx: Tx, sc: SellCtx, lines: readonly { departureId: string; qty: number }[], policies: CapacityPolicies, capKey: string | null): Promise<void> {
-  const order = lines.map((l, i) => ({ ...l, i })).sort((a, b) => byStr(a.departureId, b.departureId) || a.i - b.i);
-  for (const l of order) {
-    await reserveInTx(tx, sc, [{ layer: "1a", table: "TripDeparture", id: l.departureId, sortKey: l.departureId }], { op: "HOLD", qtyPublic: l.qty, qtyAllot: 0, ...(capKey ? { capKey } : {}), policies });
+  const sum = new Map<string, number>();
+  for (const l of lines) sum.set(l.departureId, (sum.get(l.departureId) ?? 0) + l.qty);
+  for (const id of [...sum.keys()].sort(byStr)) {
+    for (let left = sum.get(id) ?? 0; left > 0; left -= QTY_MAX) {
+      const qty = Math.min(left, QTY_MAX);
+      await reserveInTx(tx, sc, [{ layer: "1a", table: "TripDeparture", id, sortKey: id }], { op: "HOLD", qtyPublic: qty, qtyAllot: 0, ...(capKey ? { capKey } : {}), policies });
+    }
   }
 }
 /** 2a INSERT hold ต่อบรรทัด (ตามหลัง reserveInTx(HOLD) ของรอบ/จำนวนเดียวกันใน tx นี้เท่านั้น) */
@@ -597,7 +605,8 @@ export type PreparedConfirm = {
   readonly requestHash: string;
   readonly tokenHash: string | null;
   readonly contactKey: string | null;
-  readonly bookerPartyId: string;
+  /** ผู้จอง (T0.4c): Party ที่พนักงานเลือก (ตรวจนอก tx แล้ว) หรือข้อมูลให้หา/สร้าง Party ในธุรกรรมยืนยัน (rollback ⇒ ไม่มี Party ค้าง) */
+  readonly booker: BookerRef;
   readonly payMethod: "PAY_NOW" | "PAY_LATER";
   readonly approvalIds: readonly string[];
   readonly onExpired: "FAIL" | "REHOLD";
@@ -625,7 +634,8 @@ type CoreReq = OverrideReq & {
   passengers?: { name: string; paxTypeId: string }[];
   pay: { method: "PAY_NOW" | "PAY_LATER" | "WALLET" | "CREDIT" };
 };
-type CoreOut = { ok: true; lines: Omit<PreparedLine, "holdId">[]; contactKey: string | null; bookerPartyId: string; payMethod: "PAY_NOW" | "PAY_LATER" };
+export type BookerRef = { readonly partyId: string } | { readonly name: string; readonly phone: string | null; readonly email: string | null };
+type CoreOut = { ok: true; lines: Omit<PreparedLine, "holdId">[]; contactKey: string | null; booker: BookerRef; payMethod: "PAY_NOW" | "PAY_LATER" };
 
 /** ส่วนร่วมของ confirm/bookNow นอก tx: ราคา (quoteId) → คำอนุมัติ → snapshot ต่อบรรทัด → ค่าตั้ง X1/X3 → สถานะแรก → ผู้เดินทาง → ผู้จอง (Party) */
 async function prepareCore(
@@ -703,17 +713,16 @@ async function prepareCore(
     });
   }
   for (const l of lines) if (!extra.policies.departures[l.departureId]) return NF();
-  // ผู้จอง = Party ของร้าน (นอก tx · ซ้ำได้ไม่เพิ่มแถว) — STAFF ส่ง partyId ของร้านตัวเองได้ · หา/สร้างไม่ได้ ⇒ ล้ม (ห้ามการจองไม่มีผู้จอง · R10)
-  let bookerPartyId: string | null;
+  // ผู้จอง = Party ของร้าน — STAFF ส่ง partyId ของร้านตัวเองได้ (ตรวจนอก tx · อ่านอย่างเดียว) · อื่น ๆ หา/สร้างใน tx ยืนยัน (T0.4c · finalizeCoreInTx)
+  let booker: BookerRef;
   if (c.actor.kind === "STAFF" && req.booker.partyId) {
     const party = await tenantDb({ tenantId: c.tenantId }).party.findFirst({ where: { id: req.booker.partyId, tenantId: c.tenantId }, select: { id: true } });
     if (!party) return NF();
-    bookerPartyId = party.id;
+    booker = { partyId: party.id };
   } else {
-    bookerPartyId = await safeFindOrCreate(c.tenantId, { name: req.booker.name, phone: req.booker.phone ?? null, email: req.booker.email ?? null });
+    booker = { name: req.booker.name, phone: req.booker.phone ?? null, email: req.booker.email ?? null };
   }
-  if (!bookerPartyId) return sellFail("BUSY", { reason: "BOOKER_UNAVAILABLE" });
-  return { ok: true, lines, contactKey, bookerPartyId, payMethod: req.pay.method === "PAY_LATER" ? "PAY_LATER" : "PAY_NOW" };
+  return { ok: true, lines, contactKey, booker, payMethod: req.pay.method === "PAY_LATER" ? "PAY_LATER" : "PAY_NOW" };
 }
 /** ที่นั่งต่อประเภทคนของ snapshot (SEAT ทุกประเภท — ผู้เดินทางทารกผูกที่นั่งทารกได้) */
 function seatsByPaxType(s: TripsBookingSnapshot): Record<string, number> {
@@ -814,7 +823,7 @@ async function prepareTripConfirmImpl(ctx: unknown, input: unknown, opts?: Booki
     requestHash,
     tokenHash,
     contactKey: core.contactKey,
-    bookerPartyId: core.bookerPartyId,
+    booker: core.booker,
     payMethod: core.payMethod,
     approvalIds: (req.overrideApprovals ?? []).map((a) => a.approvalId),
     onExpired: req.onExpired ?? "FAIL",
@@ -959,6 +968,8 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
   const sc: SellCtx = { tenantId: c.tenantId, unitId: c.unitId, channel: c.channel, actor: c.actor, now: c.clock.now };
   const nowIso = c.clock.iso;
   const pub = c.actor.kind === "PUBLIC";
+  // 1a′ (T0.4c): รอบยังขายได้สำหรับช่องทางของผู้กระทำ — ในธุรกรรมเดียวกับล็อกรอบ (ซ้ำแถวที่ถืออยู่ = ไม่รอ) ก่อนผูก/แปลง hold
+  await assertDeparturesSellableInTx(t, c, P.policies, P.lines.map((l) => l.departureId));
   const lines = P.lines.map((l, i) => ({ l, holdId: holdIds[i] ?? "" }));
   // 2a: ผูก hold กับการจอง ตามรอบเรียง id
   for (const { l, holdId } of [...lines].sort((a, b) => byStr(a.l.departureId, b.l.departureId) || byStr(a.holdId, b.holdId))) {
@@ -985,6 +996,9 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
   }
   // คำอนุมัติราคาแก้มือ: ใช้ได้ครั้งเดียว (R1)
   if (P.approvalIds.length) await consumeApprovalsInTx(t, { tenantId: c.tenantId, unitId: c.unitId, actor: c.actor }, P.approvalIds, P.lines.map((l) => l.bookingId));
+  // ผู้จอง (T0.4c): หา/สร้าง Party ผ่าน client ของ tx นี้ (ไม่มี connection ที่สอง · Party ไม่มี unique ⇒ ไม่รอใคร) — ล้ม/rollback ⇒ ไม่มี Party ค้าง
+  const bookerPartyId = "partyId" in P.booker ? P.booker.partyId : await safeFindOrCreate(c.tenantId, { name: P.booker.name, phone: P.booker.phone, email: P.booker.email }, t);
+  if (!bookerPartyId) throw new BookingAbort("BUSY", { reason: "BOOKER_UNAVAILABLE" });
   // 2c เลขจอง: จองเลขเรียง (prefix, งวด) ก่อน แล้วจึงคืนให้บรรทัด (R7 — แถว SellCounter ล็อกตามลำดับเดียวกันทุกตะกร้า)
   const codeOf = new Map<number, string>();
   const keyOf = (l: PreparedLine) => `${l.prefix}\u0001${bookingPeriodOf(l.snapshot.travel.localDate)}`;
@@ -1017,7 +1031,7 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
         salesStaffId: staffId,
         collectMode: k.collectMode,
         payMethod: P.payMethod,
-        bookerPartyId: P.bookerPartyId,
+        bookerPartyId,
         marketingEligible: k.marketingEligible,
         contactRoute: k.contactRoute,
         currency: k.currency,
@@ -1181,7 +1195,7 @@ async function bookTripsNowImpl(ctx: unknown, input: unknown, opts?: BookingOpts
     requestHash,
     tokenHash: null,
     contactKey: core.contactKey,
-    bookerPartyId: core.bookerPartyId,
+    booker: core.booker,
     payMethod: core.payMethod,
     approvalIds: (req.overrideApprovals ?? []).map((a) => a.approvalId),
     onExpired: "FAIL",

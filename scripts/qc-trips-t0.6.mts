@@ -439,7 +439,22 @@ try {
       const start = h.index ?? 0; const rest = s.slice(start + h[0].length);
       const end = rest.search(/\n(?:export\s+)?(?:async\s+)?function\s+\w+|\nexport\s+const\s+/);
       const body = end < 0 ? rest : rest.slice(0, end);
-      for (const k of ["quoteTrips(", "buildTripBookingSnapshot(", "capacityRowsOf(", "loadCapacityPolicies(", "resolveSettings", "safeFindOrCreate(", "requestStatuses(", "tenantDb(", "runTx(", "$transaction("]) if (body.includes(k)) bad.push(`${h[1]}: ${k}`);
+      for (const k of ["quoteTrips(", "buildTripBookingSnapshot(", "capacityRowsOf(", "loadCapacityPolicies(", "resolveSettings", /* safeFindOrCreate( ตรวจแยกด้านล่าง */ "requestStatuses(", "tenantDb(", "runTx(", "$transaction("]) if (body.includes(k)) bad.push(`${h[1]}: ${k}`);
+      // ORACLE-EDIT S-11 (T0.4c มติ R2): Party ผู้จองสร้างในธุรกรรมยืนยันได้ — อนุญาต safeFindOrCreate( เฉพาะใน finalizeCoreInTx และเฉพาะเมื่อ
+      // อาร์กิวเมนต์ที่ 3 คือ client ของ tx (พารามิเตอร์แรกของฟังก์ชัน) · ที่อื่นใน *InTx หรือเรียกแบบไม่ส่ง tx ยังผิด
+      const txName = /^\s*(\w+)/.exec(s.slice(start + h[0].length))?.[1] ?? "";
+      for (const m of body.matchAll(/safeFindOrCreate\(/g)) {
+        let depth = 0, i = (m.index ?? 0) + m[0].length; const args: string[] = []; let from = i;
+        for (; i < body.length; i++) {
+          const ch = body[i];
+          if (ch === "(" || ch === "{" || ch === "[") depth++;
+          else if (ch === ")" || ch === "}" || ch === "]") { if (depth === 0) break; depth--; }
+          else if (ch === "," && depth === 0) { args.push(body.slice(from, i).trim()); from = i + 1; }
+        }
+        args.push(body.slice(from, i).trim());
+        const a = args.filter(Boolean);
+        if (!(h[1] === "finalizeCoreInTx" && txName && a.length === 3 && a[2] === txName)) bad.push(`${h[1]}: safeFindOrCreate( (ต้องอยู่ใน finalizeCoreInTx และส่ง ${txName || "tx"} เป็นอาร์กิวเมนต์ที่ 3 · ได้ ${a.length} อาร์กิวเมนต์${a[2] ? ` ตัวที่ 3 = ${a[2].slice(0, 20)}` : ""})`);
+      }
     }
     ok(bad.length === 0, bad.slice(0, 6).join(" · "));
   });

@@ -161,7 +161,7 @@ export function RewardEditor(props: RewardEditorProps) {
             data-testid="rewards-name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            placeholder="เสื้อยืด SHARK"
+            placeholder="เสื้อยืดเลขา"
             disabled={!canManage}
           />
         </Row>

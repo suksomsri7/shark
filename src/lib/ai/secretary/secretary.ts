@@ -6,7 +6,7 @@
 
 import type { AiSecretary } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
-import { normalizeIdentityPatch, type SecretaryIdentity } from "./identity";
+import { normalizeIdentityPatch, SECRETARY_DEFAULT, type SecretaryIdentity } from "./identity";
 
 export {
   SECRETARY_DEFAULT,
@@ -27,10 +27,11 @@ export {
 
 const isUniqueViolation = (e: unknown) => typeof e === "object" && e !== null && (e as { code?: string }).code === "P2002";
 
-/** upsert ค่าเริ่มต้น (Shark · ครับ · สุภาพ · ไทย) · เรียกซ้ำ = แถวเดิม (id เดิม · ไม่แก้ค่าที่ผู้ใช้ตั้งไว้) */
+/** upsert ค่าเริ่มต้น (เลขา · ครับ · สุภาพ · ไทย) · เรียกซ้ำ = แถวเดิม (id เดิม · ไม่แก้ค่าที่ผู้ใช้ตั้งไว้)
+ *  17 พ.ย.: ใส่ชื่อปริยายเองตอนสร้าง (ค่า @default ของคอลัมน์ยังเป็น "Shark" — ไม่มี migration) */
 export async function ensureSecretary(userId: string): Promise<AiSecretary> {
   try {
-    return await prisma.aiSecretary.upsert({ where: { userId }, create: { userId }, update: {} });
+    return await prisma.aiSecretary.upsert({ where: { userId }, create: { userId, name: SECRETARY_DEFAULT.name }, update: {} });
   } catch (e) {
     // สองคำขอแข่งกันสร้างแถวแรก — ผู้แพ้อ่านแถวของผู้ชนะ
     if (isUniqueViolation(e)) return prisma.aiSecretary.findUniqueOrThrow({ where: { userId } });
@@ -47,7 +48,7 @@ export async function secretaryOf(userId: string): Promise<AiSecretary | null> {
 export async function updateSecretary(userId: string, patch: Partial<SecretaryIdentity>): Promise<AiSecretary> {
   const data = normalizeIdentityPatch((patch ?? {}) as Record<string, unknown>);
   try {
-    return await prisma.aiSecretary.upsert({ where: { userId }, create: { userId, ...data }, update: data });
+    return await prisma.aiSecretary.upsert({ where: { userId }, create: { userId, name: SECRETARY_DEFAULT.name, ...data }, update: data });
   } catch (e) {
     if (isUniqueViolation(e)) return prisma.aiSecretary.update({ where: { userId }, data });
     throw e;

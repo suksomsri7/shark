@@ -16,3 +16,5 @@ export const CHAT_SET_STATUS_ACTION = "chat.conversation.setStatus";
 export const CHAT_MARK_READ_ACTION = "chat.conversation.markRead";
 /** ผูกผู้ติดต่อเข้ากับสมาชิก */
 export const CHAT_CUSTOMER_LINK_ACTION = "chat.customer.link";
+/** ตั้งค่าระดับร้านของระบบแชท — ใช้กับสวิตช์ "AI แนะนำคำตอบ" · "การแปล" · ภาษาที่ทีมอ่านด้วย (ทะเบียนกลางยังไม่มีคีย์แยกของ AI · 17 พ.ย. เว็บ+แอปใช้คีย์เดียวกัน) */
+export const CHAT_SETTING_ACTION = "chat.setting.setMemberSystem";

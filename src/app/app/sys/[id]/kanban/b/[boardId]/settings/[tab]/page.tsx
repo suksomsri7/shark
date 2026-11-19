@@ -134,7 +134,7 @@ async function MembersTab({ ctx, boardId }: { ctx: CtxArg; boardId: string }) {
         <span style={{ fontSize: 12, color: "var(--color-muted)" }}>{members.length} คนถูกเชิญไว้ชัดเจน</span>
       </div>
       <p style={{ fontSize: 12, color: "var(--color-muted)" }}>
-        เห็นบอร์ดได้ = ต้องมีสิทธิ์โมดูล &ldquo;บอร์ดงาน&rdquo; ใน SHARK ก่อน แล้วจึงคุมรายละเอียดด้วยบทบาทในบอร์ดนี้ ·
+        เห็นบอร์ดได้ = ต้องมีสิทธิ์โมดูล &ldquo;บอร์ดงาน&rdquo; ในเลขาก่อน แล้วจึงคุมรายละเอียดด้วยบทบาทในบอร์ดนี้ ·
         เจ้าของร้านเป็นผู้ดูแลทุกบอร์ดโดยอัตโนมัติ
       </p>
       {members.length === 0 ? (

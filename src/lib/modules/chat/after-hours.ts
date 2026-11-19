@@ -7,7 +7,7 @@
 //   ขอคุยกับคน ⇒ human · คำเงิน/ราคา/ค่าส่ง/โอน/คืนเงิน/ส่วนลด ⇒ money · ร้องเรียน/ของมีปัญหา ⇒ complaint (regex) ·
 //   ตอบข้อความนี้แล้ว (ah:<id>) ⇒ reply เดิม · คน (senderUserId ไม่ null · ไม่ใช่ข้อความกลางคืน) ตอบหลังข้อความนี้แล้ว ⇒ answered ·
 //   ด่านต้นทุน (canRunAi assist) ไม่ผ่าน/ไม่มีโมเดล/ไม่มีเจ้าของร้าน ⇒ unknown · โมเดลตอบ UNKNOWN ⇒ unknown ·
-//   คำตอบพูดเรื่องเงิน/มีจำนวนเงิน ⇒ money (ไม่ส่ง) · ได้คำตอบ ⇒ ส่ง "Shark (ผู้ช่วย AI): …" + disclosure (reply · aiAfterHours ไม่ล้าง unread)
+//   คำตอบพูดเรื่องเงิน/มีจำนวนเงิน ⇒ money (ไม่ส่ง) · ได้คำตอบ ⇒ ส่ง "เลขา (ผู้ช่วย AI): …" (เดิม "Shark" · เปลี่ยน 17 พ.ย.) + disclosure (reply · aiAfterHours ไม่ล้าง unread)
 //   handoff (human/money/complaint/unknown) + `afterHoursHandoff` ⇒ ป้าย "รอคน" (ไม่ซ้ำ · คำสั่งเดียว) + ครั้งแรกของห้องต่อวันไทย:
 //   ChatConversationEvent STATUS_CHANGED meta { ai: "handoff", reason } + push ถึง OWNER/MANAGER · answered/disabled/no_window/in_hours ไม่มีผลข้างเคียง
 // 🔴 PDPA: เข้าโมเดลเฉพาะข้อความลูกค้าข้อนี้ (ปิดเบอร์/อีเมลก่อน) + ข้อมูลร้าน (ความจำระดับร้าน · DNA · เวลาทำการ) — ไม่มีชื่อ/เบอร์/ประวัติ
@@ -29,14 +29,18 @@ export type AfterHoursVerdict =
 /** เหตุที่ส่งต่อคน (มีผลข้างเคียง: ป้าย "รอคน" + event + push) — answered/disabled/no_window/in_hours ไม่มีผลข้างเคียง */
 type HandoffReason = "money" | "complaint" | "human" | "unknown";
 
-export const DEFAULT_AI_DISCLOSURE = "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ";
+// 17 พ.ย. (เจ้าของสั่ง): ผู้ช่วยชื่อ Lekaa — ข้อความไทยเรียก "เลขา" (เดิม "Shark") ◂
+export const DEFAULT_AI_DISCLOSURE = "ข้อความนี้ตอบโดยเลขา ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ";
+/** ข้อความปริยายเดิม (ก่อน 17 พ.ย.) — ร้านที่กดบันทึกโดยไม่แก้ข้อความมีคำนี้ใน `AiSettings.aiDisclosure` ⇒ อ่านเป็นปริยายใหม่
+ *  (ฐานไม่ถูกแก้ · สคริปต์ย้ายค่า scripts/lekaa-rename-db.mts) */
+export const LEGACY_AI_DISCLOSURES: readonly string[] = ["ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"];
 export const HANDOFF_TAG = "รอคน";
 const DISCLOSURE_MAX = 200;
 const ANSWER_MAX = 1000;
 const INBOUND_MAX = 1000;
 const UNKNOWN_TOKEN = "UNKNOWN";
 const MSG_OWNER_ONLY = "ตั้งค่าการตอบนอกเวลาทำการได้เฉพาะเจ้าของร้าน";
-const MSG_DISCLOSURE_EMPTY = "ข้อความแจ้งลูกค้าว่าเป็น AI ห้ามว่าง — พิมพ์ข้อความสั้น ๆ เช่น \"ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน\"";
+const MSG_DISCLOSURE_EMPTY = "ข้อความแจ้งลูกค้าว่าเป็น AI ห้ามว่าง — พิมพ์ข้อความสั้น ๆ เช่น \"ข้อความนี้ตอบโดยเลขา ผู้ช่วย AI ของร้าน\"";
 const MSG_DISCLOSURE_NO_AI = "ข้อความแจ้งลูกค้าต้องบอกว่าเป็นผู้ช่วย AI (มีคำว่า AI · เอไอ หรือ ผู้ช่วย)";
 const MSG_DISCLOSURE_LONG = `ข้อความแจ้งลูกค้าว่าเป็น AI ยาวได้ไม่เกิน ${DISCLOSURE_MAX} ตัวอักษร`;
 
@@ -58,12 +62,14 @@ const REASON_TH: Record<HandoffReason, string> = {
   money: "ลูกค้าถามเรื่องเงิน/ราคา",
   complaint: "ลูกค้าไม่พอใจ/ร้องเรียน",
   human: "ลูกค้าขอคุยกับทีมงาน",
-  unknown: "Shark ตอบไม่ได้จากข้อมูลร้าน",
+  unknown: "เลขาตอบไม่ได้จากข้อมูลร้าน",
 };
 
-/** disclosure ที่ใช้ได้ = ไม่ว่าง + บอกว่าเป็น AI (ค่าในแถวที่ไม่ผ่าน เช่นแก้มือลง DB = ใช้ข้อความปริยาย) */
+/** disclosure ที่ใช้ได้ = ไม่ว่าง + บอกว่าเป็น AI (ค่าในแถวที่ไม่ผ่าน เช่นแก้มือลง DB = ใช้ข้อความปริยาย)
+ *  17 พ.ย.: ค่าที่ตรงกับข้อความปริยายเดิม ("…ตอบโดย Shark…") = ข้อความปริยายใหม่ (null) */
 function cleanDisclosure(v: unknown): string | null {
-  return typeof v === "string" && v.trim() && DISCLOSURE_AI_RE.test(v) ? v.trim() : null;
+  if (typeof v !== "string" || !v.trim() || !DISCLOSURE_AI_RE.test(v)) return null;
+  return LEGACY_AI_DISCLOSURES.includes(v.trim()) ? null : v.trim();
 }
 
 /** ค่าตั้งของร้าน — ไม่มีแถว = ปริยาย (ตอบเอง ปิด · ส่งต่อคน เปิด · ข้อความปริยาย) โดยไม่สร้างแถว */
@@ -220,7 +226,7 @@ async function handoff(
       for (const s of staff) {
         await notifyUser(s.userId, tenantId, "inbox", {
           title: "ลูกค้ารอคนตอบ (นอกเวลาทำการ)",
-          body: `${REASON_TH[reason]} — Shark ส่งต่อให้ทีมงาน`,
+          body: `${REASON_TH[reason]} — เลขาส่งต่อให้ทีมงาน`,
           data: { link: url, url, kind: "chat.handoff", chatConversationId: conversationId, systemId },
         }, { now });
       }
@@ -319,14 +325,14 @@ export async function afterHoursAutoReply(args: {
   }
   await chargeUsageSafe(
     { tenantId },
-    { source: "CHAT_SUGGEST", model: reply.model, tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead, tokensOut: reply.tokensOut, conversationId, note: "Shark ตอบลูกค้านอกเวลาทำการ" },
+    { source: "CHAT_SUGGEST", model: reply.model, tokensIn: reply.tokensIn, cacheWrite: reply.cacheWrite, cacheRead: reply.cacheRead, tokensOut: reply.tokensOut, conversationId, note: "เลขาตอบลูกค้านอกเวลาทำการ" },
   );
   const answer = (reply.text ?? "").trim();
   if (!answer || answer.toUpperCase().includes(UNKNOWN_TOKEN)) return handoff(at, settings, "unknown");
   // R-S1.22b ▸ ตรวจฝั่งคำตอบ: โมเดลพูดเรื่องเงิน/มีจำนวนเงิน ⇒ ไม่ส่ง · ส่งต่อคน (money) ◂
   if (MONEY_RE.test(answer) || AMOUNT_RE.test(answer)) return handoff(at, settings, "money");
 
-  // R-S1.22d ▸ คำนำหน้าคงที่ "Shark (ผู้ช่วย AI): " + คำตอบ + บรรทัด disclosure (ช่องทางที่ไม่แสดง senderName ลูกค้าก็รู้ว่าเป็น AI) ◂
+  // R-S1.22d ▸ คำนำหน้าคงที่ "เลขา (ผู้ช่วย AI): " + คำตอบ + บรรทัด disclosure (ช่องทางที่ไม่แสดง senderName ลูกค้าก็รู้ว่าเป็น AI) ◂
   const body = `${CHAT_SEND_SENDER_NAME}: ${Array.from(answer).slice(0, ANSWER_MAX).join("")}\n${settings.disclosure}`;
   const { sendReply } = await import("./service");
   const sent = await sendReply({

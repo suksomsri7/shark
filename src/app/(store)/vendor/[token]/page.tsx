@@ -78,7 +78,7 @@ export default async function VendorPortalPage({
       )}
 
       <p className="mt-auto text-center text-[11px] text-[color:var(--color-muted)]">
-        ขับเคลื่อนโดย SHARK
+        ขับเคลื่อนโดยเลขา
       </p>
     </>,
   );

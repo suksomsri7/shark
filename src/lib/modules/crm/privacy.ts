@@ -1812,7 +1812,7 @@ export async function runExportJobs(opts: RunOpts = {}): Promise<{ done: number;
       const ctx = { tenantId: job.tenantId, systemId: job.systemId, actorUserId: who.userId };
       const { text, rows } = serialize(await buildTenantExport(ctx, who), format);
       const data = new TextEncoder().encode(text);
-      if (data.byteLength > CRM_HARD_CAPS.tenantExportMaxBytes) throw fail("VALIDATION", "ไฟล์ใหญ่เกินที่ส่งออกได้ในครั้งเดียว — ติดต่อทีม SHARK เพื่อขอไฟล์สำรองทั้งร้าน");
+      if (data.byteLength > CRM_HARD_CAPS.tenantExportMaxBytes) throw fail("VALIDATION", "ไฟล์ใหญ่เกินที่ส่งออกได้ในครั้งเดียว — ติดต่อทีมเลขาเพื่อขอไฟล์สำรองทั้งร้าน");
       const day = new Date(now.getTime() + 7 * 3_600_000).toISOString().slice(0, 10).replace(/-/g, "");
       const filename = `crm-export-${day}.${format === "JSON" ? "json" : "csv"}`;
       // AUDIT-CLASS X10: ไฟล์ส่วนตัว (t/<tid>/private/<สุ่ม 160 บิต> · cdnUrl private://) — ออกได้ทางลิงก์ลงนามของผู้ขอเท่านั้น

@@ -15,6 +15,7 @@ import { dayLabel, hhmm } from "./line-parts";
 import BookDialog, { type BookAt } from "./calendar/BookDialog";
 import { ROW_PX, SNAP_MIN, axisOf, calHref, hm, minOf, viewFields, type CalActions } from "./calendar/cal-utils";
 import { JobCard, ResourcesNowBox, WalkInNowBox } from "./calendar/SidePanel";
+import { usePageEntity } from "@/lib/ui/page-context";
 
 type Props = { view: CalendarView; unitSlug: string; actions: CalActions; at?: string; err?: string; notes?: JobNotesMap };
 type Drag = { id: string; colKey: string; durMin: number; grabMin: number; block: CalBlock };
@@ -57,6 +58,8 @@ export default function CalendarBoard({ view, unitSlug, actions, at, err, notes 
   const [bookAt, setBookAt] = useState<BookAt | null>(null);
   const [, startTransition] = useTransition();
   const selected = view.card?.appointmentId ?? null;
+  // Lekaa FAB ▸ นัดที่เปิดการ์ดอยู่ = "หน้าที่ผู้ใช้เปิดอยู่" ของปุ่ม Lekaa ในแอป (เซิร์ฟเวอร์อ่านนัดใหม่ด้วยสิทธิ์สาขาของผู้สั่ง) ◂
+  usePageEntity(selected ? { type: "BOOKING_APPT", id: selected } : null);
   const side = view.walkInNow !== null || view.resourcesNow !== null || view.card !== null;
 
   // เลื่อนแกนเวลาให้เห็นช่วงที่ใช้งาน (วันนี้: 2 ชม. ก่อนตอนนี้ · วันอื่น: เวลาเปิดร้าน)

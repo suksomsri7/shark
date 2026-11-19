@@ -720,7 +720,9 @@ try {
     eq([c.all, c.TOUR, c.LIVEABOARD, asArr(vm.items).length, vm.canCreate], [4, 3, 1, 4, true], "นับ");
   });
   await st("LV-2", "แถวราชา: เปิดขาย · ชี้ชวน 7/9 · EN ยังไม่แปล 2 ส่วน · ความจุ 24", async () => {
-    const vm = await listVM(SEED, { unitId: DIVE_TRIPS_UNIT.id });
+    // ORACLE-EDIT LV-2 (ผู้คุม 19 พ.ย.): ตรึงนาฬิกาไว้ในสัปดาห์ฟิกซ์เจอร์ (11 พ.ย.) — กฎรอบของ seed จบ 17 พ.ย. ⇒ ใช้นาฬิกาจริงแล้วแดงทุกทรีตั้งแต่ 18 พ.ย. (ระเบิดเวลา ไม่ใช่บั๊กของโค้ด)
+    const lv2 = await call("loadProductListVM", SEED, { unitId: DIVE_TRIPS_UNIT.id }, { now: new Date("2026-11-11T05:00:00.000Z") }); okR(lv2, "loadProductListVM");
+    const vm = asRec(lv2.vm) ?? {};
     const r = asArr(vm.items).find((x) => x.slug === SEED_SLUGS.racha);
     ok(r, "ไม่มีราชา");
     eq([r?.status, asRec(r?.prospectus)?.done, asRec(r?.prospectus)?.total, r?.enMissing, r?.capacity], ["ACTIVE", 7, 9, 2, R.capacity], "ราชา");

@@ -16,7 +16,10 @@ export type AiChatMessage = {
   toolCalls?: AiToolCall[];
   /** รูปแนบ (data URL หรือ http) — ส่งเข้าโมเดล vision inline ต่อข้อความนี้ (ไม่ persist ใน DB) */
   imageUrls?: string[];
+  /** 14 พ.ย. ▸ PDF แนบ (base64 ไม่มีขึ้นบรรทัด) — ใช้เฉพาะ user message · Anthropic = document block · OpenRouter = file part ◂ */
+  documents?: AiDocument[];
 };
+export type AiDocument = { name: string; mediaType: "application/pdf"; data: string };
 export type AiReply = {
   text: string;
   toolCalls?: AiToolCall[];
@@ -31,6 +34,38 @@ export type AiReply = {
 
 export interface AiProvider {
   chat(messages: AiChatMessage[], opts?: { maxTokens?: number; tools?: AiToolDef[] }): Promise<AiReply>;
+}
+
+/**
+ * 17 พ.ย. ▸ ผู้ให้บริการตอบ HTTP ไม่ ok — เก็บรหัสสถานะไว้ให้ `classifyAiProviderError` (ข้อความเดิมทุกไบต์ "AI provider <code>: <body>") ◂
+ */
+export class AiProviderHttpError extends Error {
+  readonly status: number;
+  constructor(status: number, body: string) {
+    super(`AI provider ${status}: ${body.slice(0, 200)}`);
+    this.name = "AiProviderHttpError";
+    this.status = status;
+  }
+}
+
+/** ชนิดของความล้มจากผู้ให้บริการ — "account" = ลองซ้ำไม่หาย (เครดิตหมด/คีย์ผิด/ถูกห้าม) · "transient" = ลองใหม่ได้ (timeout · 429 · 5xx · ตอบว่าง · อื่น ๆ) */
+export type AiProviderFailure = { kind: "account" | "transient"; status: number | null };
+/** 401 คีย์ผิด/หมดอายุ · 402 เครดิตไม่พอ · 403 ถูกห้าม (บัญชี/นโยบาย) — ระดับบัญชี ลองซ้ำก็ไม่หาย */
+const ACCOUNT_STATUSES = new Set([401, 402, 403]);
+
+/**
+ * 17 พ.ย. ▸ จัดชนิด error ของผู้ให้บริการ "ที่เดียว" (worker ห้องเลขาใช้ตัดสินว่าจะลองซ้ำหรือล้มทันที) ·
+ *   อ่าน `status` ของ AiProviderHttpError ก่อน · ไม่ใช่ (ผู้ให้บริการจำลอง/ห่อชั้นอื่น) = อ่านจากข้อความรูป "AI provider <code>:" ·
+ *   ไม่รู้จัก = transient (พฤติกรรมเดิม: ลองซ้ำ 3 ครั้ง) ◂
+ */
+export function classifyAiProviderError(e: unknown): AiProviderFailure {
+  let status: number | null = null;
+  if (e instanceof AiProviderHttpError) status = e.status;
+  else {
+    const m = /AI provider (\d{3}):/.exec(e instanceof Error ? e.message : typeof e === "string" ? e : "");
+    if (m) status = Number(m[1]);
+  }
+  return { kind: status !== null && ACCOUNT_STATUSES.has(status) ? "account" : "transient", status };
 }
 
 // ── ROUTING 2 ชั้น ── คุม cost: คำถามอ่านสั้น → FAST (haiku ถูก/เร็ว) · งานหนัก/มีรูป → SMART (sonnet)
@@ -127,10 +162,12 @@ export class OpenRouterProvider implements AiProvider {
     const oaMessages = messages.map((m) => {
       // vision: มีรูปแนบ → content เป็น array [{type:"text"},{type:"image_url",image_url:{url}}]
       // (รูปแบบ OpenAI/OpenRouter · โมเดล anthropic รองรับ vision) — ใช้เฉพาะ user message
-      if (m.imageUrls && m.imageUrls.length > 0) {
+      // 14 พ.ย. ▸ PDF แนบ → part `file` (รูปแบบ OpenRouter: file_data เป็น data URL) ◂
+      if ((m.imageUrls && m.imageUrls.length > 0) || (m.documents && m.documents.length > 0)) {
         const parts: unknown[] = [];
         if (m.content) parts.push({ type: "text", text: m.content });
-        for (const url of m.imageUrls) parts.push({ type: "image_url", image_url: { url } });
+        for (const url of m.imageUrls ?? []) parts.push({ type: "image_url", image_url: { url } });
+        for (const d of m.documents ?? []) parts.push({ type: "file", file: { filename: d.name, file_data: `data:${d.mediaType};base64,${d.data}` } });
         return { role: m.role, content: parts };
       }
       if (m.role === "assistant" && m.toolCalls && m.toolCalls.length > 0) {
@@ -177,7 +214,7 @@ export class OpenRouterProvider implements AiProvider {
     });
     if (!res.ok) {
       const body = await res.text().catch(() => "");
-      throw new Error(`AI provider ${res.status}: ${body.slice(0, 200)}`);
+      throw new AiProviderHttpError(res.status, body); // 17 พ.ย. ▸ ข้อความเดิม + รหัสสถานะ ◂
     }
     const data = (await res.json()) as {
       choices?: {
@@ -246,7 +283,7 @@ function anthropicImageBlock(url: string): AnthropicBlock {
 /**
  * ประกอบ request body ของ Messages API (pure · ทดสอบได้)
  * - system ทุกข้อความต่อกันด้วย "\n\n" → system block เดียวพร้อม cache_control ephemeral (ไม่มี = ไม่ใส่คีย์)
- * - user มีรูป ⇒ blocks [text?, image…] · assistant มี toolCalls ⇒ blocks [text? (ไม่ว่าง), tool_use…]
+ * - user มีรูป/PDF ⇒ blocks [document…, text?, image…] · assistant มี toolCalls ⇒ blocks [text? (ไม่ว่าง), tool_use…]
  * - role tool ⇒ tool_result ใน user message · ผลที่ติดกันรวมเป็น user message เดียว (กติกา API)
  * - tools ⇒ input_schema + cache_control บนตัวสุดท้าย (cache ทั้งชุด) · ไม่มี tools = ไม่ใส่คีย์
  * - ไม่ส่งพารามิเตอร์สุ่ม/thinking/tool_choice (API รุ่นปัจจุบันปฏิเสธ/ใช้ค่าปริยาย)
@@ -308,10 +345,12 @@ export function buildAnthropicRequestBody(
       continue;
     }
     // user
-    if (m.imageUrls && m.imageUrls.length > 0) {
+    if ((m.imageUrls && m.imageUrls.length > 0) || (m.documents && m.documents.length > 0)) {
+      // 14 พ.ย. ▸ PDF = document block (base64) วางก่อนข้อความ (แนวทางของ Messages API) · รูปคงลำดับเดิม (ข้อความ → รูป) ◂
       const blocks: AnthropicBlock[] = [];
+      for (const d of m.documents ?? []) blocks.push({ type: "document", source: { type: "base64", media_type: d.mediaType, data: d.data }, title: d.name });
       if (m.content) blocks.push({ type: "text", text: m.content });
-      for (const url of m.imageUrls) blocks.push(anthropicImageBlock(url));
+      for (const url of m.imageUrls ?? []) blocks.push(anthropicImageBlock(url));
       pushUser(blocks);
     } else {
       pushUser(m.content);
@@ -408,7 +447,7 @@ export class AnthropicProvider implements AiProvider {
     });
     if (!res.ok) {
       const errBody = await res.text().catch(() => "");
-      throw new Error(`AI provider ${res.status}: ${errBody.slice(0, 200)}`);
+      throw new AiProviderHttpError(res.status, errBody); // 17 พ.ย. ▸ ข้อความเดิม + รหัสสถานะ ◂
     }
     return parseAnthropicReply(await res.json(), this.model);
   }

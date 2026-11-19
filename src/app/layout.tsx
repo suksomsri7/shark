@@ -12,7 +12,7 @@ const appSans = IBM_Plex_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: "SHARK — ระบบบริหารจัดการร้านค้า",
+  title: "เลขา — ระบบบริหารจัดการร้านค้า",
   description: "จัดการโรงแรม ร้านอาหาร จองคิว สมาชิก แต้ม ครบในที่เดียว",
   appleWebApp: {
     title: "SHARK",

@@ -719,7 +719,7 @@ export function CardBack({
                 <AddChip icon="clock" label="กำหนดวัน" onClick={() => setDueOpen(true)} />
                 <AddChip icon="cklist" label="เช็คลิสต์" onClick={addChecklist} />
                 <AddChip icon="clip" label="ไฟล์แนบ" onClick={openAttachmentPicker} />
-                <AddChip icon="link" label="เชื่อมข้อมูล SHARK" onClick={() => setLinkAddNonce((n) => n + 1)} accent />
+                <AddChip icon="link" label="เชื่อมข้อมูลเลขา" onClick={() => setLinkAddNonce((n) => n + 1)} accent />
               </div>
             )}
           </div>

@@ -3,11 +3,13 @@
 // 🔴 X10 (COMMON §C.6 · docs/api/SECRETARY-API.md กติกาข้อ 5): ไม่มี token/คีย์/codeHash/เบอร์เต็มของคนอื่น/ต้นทุน/micro-dollar · ไม่มี payload ดิบของข้อเสนอ
 //    (ยกเว้น `input` ของ kind ที่แก้ก่อนอนุมัติได้ — ข้อมูลที่ผู้อนุมัติต้องเห็นเพื่อแก้) · เวลาเป็น ISO (Response.json แปลง Date เอง) · เงินเป็นสตางค์
 // route (`src/app/api/mobile/secretary/**`) และ server actions (`./server-actions.ts`) ใช้ตัวเดียวกัน — รูปเดียวทั้งแอปและเว็บ
+import { attachmentsOf } from "./attachments-shared";
+import { pageContextDto } from "./page-context";
 import type { AiActionLog, AiLesson, AiMessage, AiPlan, AiProposal, AiScheduledTask } from "@prisma/client";
 import { classOfKind } from "./kind-class";
 import { FREE_PACK } from "./pack";
 import { CHAT_SEND_SIGNATURE } from "./chat-send";
-import type { RoomCard, RoomStatus } from "./rooms";
+import type { RoomCard, RoomFailed, RoomStatus } from "./rooms";
 import type { RoomMemberRow } from "./members";
 import type { InboxItem } from "./inbox";
 import type { QuotaStatus } from "./quota";
@@ -43,6 +45,8 @@ export function roomCardDto(r: RoomCard, pendingProposals = 0) {
     startedByName: r.startedByName,
     memberIds: r.memberIds,
     unread: r.unread,
+    /** 17 พ.ย. ▸ งานล่าสุดล้มและยังไม่มีคำตอบ (แอปรุ่นเก่าไม่อ่าน · `status` คงค่าเดิม) */
+    failed: r.failed,
     pendingProposals,
     updatedAt: r.updatedAt,
     closedAt: r.closedAt,
@@ -55,15 +59,17 @@ export function memberDto(m: RoomMemberRow) {
 
 /** ห้องเดียว — contextJson ส่งเฉพาะรหัสห้องลูกค้า/ผู้ติดต่อ (ids) */
 export function roomDto(
-  r: { id: string; conversationId: string; title: string; startedById: string; systems: string[]; contextJson: unknown; closedAt: Date | null; createdAt: Date; updatedAt: Date; status: RoomStatus; members: RoomMemberRow[] },
+  r: { id: string; conversationId: string; title: string; startedById: string; systems: string[]; contextJson: unknown; pageContext?: unknown; closedAt: Date | null; createdAt: Date; updatedAt: Date; status: RoomStatus; members: RoomMemberRow[] },
   viewer: { userId: string; role: string },
+  failed: RoomFailed | null = null,
 ) {
   const c = obj(r.contextJson);
   const context =
     typeof c.chatConversationId === "string"
       ? { chatConversationId: c.chatConversationId, ...(typeof c.contactId === "string" ? { contactId: c.contactId } : {}) }
       : null;
-  const manage = viewer.role === "OWNER" || viewer.userId === r.startedById;
+  void viewer.role; // Lekaa FAB: ผู้ดูแลห้อง = ผู้เปิดห้องเท่านั้น (ไม่ใช่ OWNER ทุกห้องแล้ว)
+  const manage = viewer.userId === r.startedById;
   return {
     id: r.id,
     conversationId: r.conversationId,
@@ -74,6 +80,16 @@ export function roomDto(
     context,
     members: r.members.map(memberDto),
     canManage: manage,
+    /** Lekaa FAB ▸ ชวนคนเข้าห้องไม่ได้แล้ว (แอปซ่อนปุ่มเพิ่มคน) */
+    canAddMembers: false,
+    /** Lekaa FAB ▸ หน้าที่เปิดอยู่ตอนสั่ง (ป้าย · สถานะ · ข้อความที่อ้าง/ถาม) — null = ไม่มี */
+    pageContext: pageContextDto(r.pageContext),
+    /**
+     * 17 พ.ย. ▸ งานล่าสุดของห้องล้ม (ยังไม่มีคำตอบหลังข้อความนั้น) — ข้อความไทยของ job (ไม่มีชื่อผู้ให้บริการ/รหัส) ·
+     *   `reason` = ai_unavailable | gave_up | other (แอปแปล th/en เอง · other = แสดง `error` ไทยของเซิร์ฟเวอร์) ·
+     *   `canRetry` = ผู้เปิดห้อง ∧ ห้องยังเปิด ∧ ยังขึ้นรุ่นได้ · null = ไม่ล้ม · `status` คงค่าเดิม (แอปรุ่นเก่าไม่อ่านช่องนี้) ◂
+     */
+    failed: failed && !r.closedAt ? { jobId: failed.jobId, messageId: failed.messageId, error: failed.error, reason: failed.reason, at: failed.at, canRetry: manage && failed.retryable } : null,
     createdAt: r.createdAt,
     updatedAt: r.updatedAt,
     closedAt: r.closedAt,
@@ -83,6 +99,22 @@ export function roomDto(
 /** ข้อความในห้อง — ไม่มีจำนวน token (ต้นทุน) · ข้อความระบบ (`authorUserId = "system"`) ติดธง `system` */
 export function messageDto(m: Pick<AiMessage, "id" | "role" | "content" | "authorUserId" | "createdAt">) {
   return { id: m.id, role: m.role, content: m.content, authorUserId: m.authorUserId ?? null, system: m.authorUserId === "system", createdAt: m.createdAt };
+}
+
+/**
+ * 14 พ.ย. ▸ ข้อความของห้องเลขาสำหรับแอป = `messageDto` + `attachments` (ชื่อ · ชนิด · ขนาด · `url` = เส้นแอปที่ตรวจสิทธิ์ห้อง —
+ *   ไม่มี URL CDN เพราะไฟล์เป็นแบบส่วนตัว · แอปแนบ Bearer + x-tenant-id ตอนโหลดรูป) ◂
+ */
+export function roomMessageDto(m: Pick<AiMessage, "id" | "role" | "content" | "authorUserId" | "createdAt" | "attachments">, roomId: string) {
+  const atts = attachmentsOf(m.attachments).map((a) => ({
+    id: a.fileId,
+    name: a.name,
+    mimeType: a.mimeType,
+    size: a.size,
+    kind: a.kind,
+    url: `/api/mobile/secretary/rooms/${encodeURIComponent(roomId)}/files/${encodeURIComponent(a.fileId)}`,
+  }));
+  return { ...messageDto(m), ...(atts.length ? { attachments: atts } : {}) };
 }
 
 /** ข้อเสนอรออนุมัติ — ไม่มี payload ดิบ · `input` เฉพาะ kind ของทะเบียน op (แก้ก่อนอนุมัติได้ · Q9) · ชั้นความเสี่ยงจาก `classOfKind` */
@@ -203,6 +235,7 @@ export function inboxItemDto(i: InboxItem) {
     classes: classesOf(i.kind ? [i.kind] : (i.kinds ?? [])),
     ...(i.risk ? { risk: i.risk } : {}),
     canApprove: i.canApprove,
+    canOpenRoom: i.canOpenRoom, // Lekaa FAB: false = ผู้อนุมัติไม่ได้อ่านห้อง (แอปไม่เปิดห้อง)
     ...(i.why ? { why: i.why } : {}),
     createdAt: i.createdAt,
     expiresAt: i.expiresAt,

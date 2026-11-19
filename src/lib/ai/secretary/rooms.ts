@@ -3,12 +3,17 @@
 // 1 ห้อง = 1 งาน: `startRoom` สร้างบทสนทนา (รหัสฝังผู้สร้าง `u~<userId>~…`) + แถว `AiRoom` + ข้อความสั่งงาน + นับงาน 1 ครั้ง
 //   ทั้งหมดใน transaction เดียว · ตัวนับ = conditional `updateMany` คำสั่งเดียว (`jobs < limit`) — ห้ามอ่านแล้วค่อยเขียน (COMMON §C.5 · X3)
 //   โควตาหมด = ไม่สร้างอะไรเลย (ทั้ง tx ย้อนกลับ) · ยังไม่เรียกโมเดล — คิวงานของห้องอยู่ที่ S1.5
-// การมองเห็นห้อง (R-K1) = ผู้เปิดห้อง ∪ สมาชิกห้อง (`AiRoomMember`) ∪ เจ้าของร้าน (role OWNER) — ห้องที่มองไม่เห็น = เหมือนไม่มี (null/false)
+// การมองเห็นห้อง (R-K1) = ผู้เปิดห้อง ∪ สมาชิกห้อง (`AiRoomMember`) — ห้องที่มองไม่เห็น = เหมือนไม่มี (null/false)
+// Lekaa FAB (15 พ.ย. เจ้าของสั่ง "Lekaa = งานของใครของมัน") ▸ เจ้าของร้าน (OWNER) ไม่เห็น/ไม่ดูแลห้องของคนอื่นอีกต่อไป · ไม่มีขอบเขต "tenant" แล้ว
+//   (ผู้อนุมัติยังเห็นและกดรายการรออนุมัติได้ทางกล่องรออนุมัติ — conversations.ts#canConfirmerSeeConversation) ·
+//   `pageContext` = หน้าที่ผู้ใช้เปิดอยู่ตอนสั่ง (page-context.ts · ตรวจสิทธิ์แล้ว) · `hideRoom` = ผู้เปิดห้องปัดลบ (soft delete · hiddenAt) ◂
 // สถานะห้องไม่เก็บเป็นคอลัมน์ — คำนวณจาก closedAt + งานที่ค้าง + ข้อเสนอ/แผนที่รออนุมัติ (ลำดับ DONE > RUNNING > WAITING > OPEN)
 //
 // 🔴 ห้าม import `../service` (วงกลม: service → conversations → …) · ข้อความถึงผู้ใช้เป็นไทย · จาก credit.ts ใช้แค่ `balancePeek` (S1.13 · อ่านอย่างเดียว)
 // 🔴 `AiRoom.startedById` = `conversationCreatorOf(conversationId).id` เสมอ (denormalize — ข้อสอบ S1.4 ตรวจ)
 
+// 14 พ.ย. ▸ `startRoom` รับ `attachments` (ตรวจแล้วที่ route) เขียนลงข้อความสั่งงานแรกใน tx เดียวกัน ◂
+import type { SecAttachment } from "./attachments";
 import type { AiRoom, Prisma } from "@prisma/client";
 import { publicNameOf } from "@/lib/core/phone-auth";
 import { prisma, tenantDb } from "@/lib/core/db";
@@ -16,9 +21,12 @@ import { actorProblem, type AiMemberActor } from "../actor";
 import { conversationCreatorOf, newConversationId, type ConvCtx } from "../conversation-owner";
 import { balancePeek, LOW_BALANCE_MICRO } from "../credit";
 import { resolveProvider } from "../provider";
+import { ROOM_JOB_GEN, ROOM_JOB_MAX_GENS } from "./job-gen";
+import { failReasonOf, type RoomFailReason } from "./job-errors";
 import { countsAsJob, FREE_PACK, monthKeyBangkok, nextResetBangkok, quotaMessage } from "./pack";
 import { NOT_SYSTEM_MESSAGE, roomMemberRows, type RoomMemberRow } from "./members";
 import { visibleCustomerConversation } from "./customer-context";
+import { resolvePageContext, toJson, type PageContextInput } from "./page-context";
 
 export type RoomStatus = "OPEN" | "RUNNING" | "WAITING" | "DONE";
 
@@ -34,13 +42,24 @@ export type RoomCard = {
   updatedAt: Date;
   closedAt: Date | null;
   unread: boolean;
+  /** 17 พ.ย. ▸ งานล่าสุดของห้อง FAILED และยังไม่มีคำตอบเลขาหลังข้อความนั้น (`roomFailedJobs`) */
+  failed: boolean;
 };
+
+/** 17 พ.ย. ▸ ความล้มของงานล่าสุดในห้อง — ห้องแสดงประกาศ + ปุ่ม "ลองอีกครั้ง" (retryable = ยังขึ้นรุ่นถัดไปได้ · R-Z33) ◂ */
+export type RoomFailed = { jobId: string; messageId: string; authorUserId: string | null; error: string; reason: RoomFailReason; at: Date; retryable: boolean };
+/** job.error ว่าง (ไม่ควรเกิด) ⇒ ข้อความกลาง */
+export const ROOM_FAILED_FALLBACK = "เลขาทำงานนี้ไม่สำเร็จ — ลองอีกครั้งได้เลย";
 
 export type StartRoomInput = {
   instruction: string;
   title?: string;
   systems?: string[];
   context?: { chatConversationId?: string; contactId?: string };
+  /** 14 พ.ย. ▸ ไฟล์แนบของคำสั่งแรก (ตรวจแล้วด้วย `resolveAttachmentRefs`) — เขียนลง `AiMessage.attachments` ใน tx เดียวกัน ◂ */
+  attachments?: SecAttachment[];
+  /** Lekaa FAB ▸ หน้าที่ผู้ใช้เปิดอยู่ (ดิบจากแอป) — ตรวจสิทธิ์/อ่านป้ายใหม่ที่ `resolvePageContext` ก่อนเก็บ · ใช้ไม่ได้ = ไม่เก็บ (ไม่ล้มคำสั่ง) ◂ */
+  pageContext?: PageContextInput;
 };
 
 export type StartRoomResult =
@@ -167,6 +186,8 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
   //   อ่านอย่างเดียว (ไม่เปิดกระเป๋า) · ยังเป็น conditional update คำสั่งเดียวใน tx (X3) — แค่เงื่อนไขไม่มี `lt` ◂
   //   R-S1.13h: เกณฑ์ = ยอด ≥ LOW_BALANCE_MICRO ($0.50) ไม่ใช่แค่ > 0 · ยอดอ่านก่อน tx ⇒ คำขอพร้อมกันอาจเกินเป็นชุด (burst) ไม่ใช่แค่ 1 งาน ◂
   const paid = ((await balancePeek(tenantId)) ?? 0) >= LOW_BALANCE_MICRO;
+  // Lekaa FAB ▸ อ่านหน้าที่เปิดอยู่ใหม่ด้วยสิทธิ์ของผู้สั่ง (นอก tx · ล้ม = ไม่มีบริบทหน้า ไม่ล้มคำสั่ง) ◂
+  const page = input.pageContext ? await resolvePageContext(tenantId, actor, input.pageContext).catch(() => null) : null;
 
   try {
     const res = await prisma.$transaction(async (tx) => {
@@ -180,12 +201,12 @@ export async function startRoom(ctx: { tenantId: string; actor: AiMemberActor },
       if (got.count === 0) throw new QuotaExceeded();
       await tx.aiConversation.create({ data: { id: conversationId, tenantId, title } });
       const room = await tx.aiRoom.create({
-        data: { conversationId, tenantId, startedById: actor.userId, title, systems, ...(contextJson ? { contextJson } : {}), jobsCounted: inc },
+        data: { conversationId, tenantId, startedById: actor.userId, title, systems, ...(contextJson ? { contextJson } : {}), ...(page ? { pageContext: toJson(page) } : {}), jobsCounted: inc },
         select: { id: true },
       });
       // S1.9 ▸ คืนรหัสข้อความสั่งงานแรก — งานประจำต่อคิว (`enqueueRoomJob`) ด้วยรหัสนี้ ◂
       const msg = await tx.aiMessage.create({
-        data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId },
+        data: { tenantId, conversationId, role: "USER", content: instruction, authorUserId: actor.userId, ...(input.attachments?.length ? { attachments: input.attachments } : {}) },
         select: { id: true },
       });
       // SEC S3a.1-S1 ▸ R-Z3: job ของข้อความสั่งงานแรกใน tx เดียวกัน (เหมือน sendRoomMessage) — ไม่มีห้องที่ไม่มีงาน · ผู้เรียกไม่ต้อง enqueue แยก ◂
@@ -233,6 +254,51 @@ function statusFrom(c: StatusCounts, r: { id: string; conversationId: string; cl
   });
 }
 
+/**
+ * 17 พ.ย. ▸ ห้องที่ "งานล่าสุด" (createdAt ใหม่สุด) จบ FAILED และยังไม่มีคำตอบเลขา (ASSISTANT ไม่ใช่ข้อความระบบ) หลังข้อความสั่งงานของงานนั้น ·
+ *   ห้องปิดแล้ว = ไม่นับ (สั่งต่อไม่ได้) · 3 query รวมต่อชุด (ไม่ N+1) · ร้านเดียว (tenantDb) ◂
+ */
+export async function roomFailedJobs(tenantId: string, rooms: { id: string; conversationId: string; closedAt: Date | null }[]): Promise<Map<string, RoomFailed>> {
+  const out = new Map<string, RoomFailed>();
+  const open = rooms.filter((r) => !r.closedAt);
+  if (open.length === 0) return out;
+  const db = tenantDb({ tenantId });
+  const latest = await db.aiRoomJob.findMany({
+    where: { roomId: { in: open.map((r) => r.id) } },
+    orderBy: [{ roomId: "asc" }, { createdAt: "desc" }, { id: "desc" }],
+    distinct: ["roomId"],
+    select: { id: true, roomId: true, status: true, error: true, messageId: true, authorUserId: true, attempts: true, finishedAt: true, updatedAt: true },
+  });
+  const failed = latest.filter((j) => j.status === "FAILED");
+  if (failed.length === 0) return out;
+  const convOf = new Map(open.map((r) => [r.id, r.conversationId]));
+  const [msgs, replies] = await Promise.all([
+    db.aiMessage.findMany({ where: { id: { in: failed.map((j) => j.messageId) } }, select: { id: true, createdAt: true } }),
+    db.aiMessage.groupBy({
+      by: ["conversationId"],
+      where: { conversationId: { in: [...new Set(failed.map((j) => convOf.get(j.roomId) ?? ""))] }, role: "ASSISTANT", ...NOT_SYSTEM_MESSAGE },
+      _max: { createdAt: true },
+    }),
+  ]);
+  const msgAt = new Map(msgs.map((m) => [m.id, m.createdAt]));
+  const lastReply = new Map(replies.map((r) => [r.conversationId, r._max.createdAt]));
+  for (const j of failed) {
+    const at = msgAt.get(j.messageId);
+    const reply = lastReply.get(convOf.get(j.roomId) ?? "") ?? null;
+    if (at && reply && reply > at) continue; // เลขาตอบหลังข้อความนี้แล้ว (เช่น ทางอื่นตอบ) = ไม่ใช่สถานะล้ม
+    out.set(j.roomId, {
+      jobId: j.id,
+      messageId: j.messageId,
+      authorUserId: j.authorUserId ?? null,
+      error: (j.error ?? "").trim() || ROOM_FAILED_FALLBACK,
+      reason: failReasonOf(j.error),
+      at: j.finishedAt ?? j.updatedAt,
+      retryable: Math.floor(j.attempts / ROOM_JOB_GEN) + 1 < ROOM_JOB_MAX_GENS,
+    });
+  }
+  return out;
+}
+
 /** สถานะของห้อง (ตามรหัสบทสนทนา) จาก DB — ไม่มีห้อง = OPEN */
 export async function roomStatus(tenantId: string, conversationId: string, now: Date = new Date()): Promise<RoomStatus> {
   const room = await tenantDb({ tenantId }).aiRoom.findFirst({ where: { conversationId }, select: { id: true, conversationId: true, closedAt: true } });
@@ -245,13 +311,14 @@ function mineWhere(userId: string): Prisma.AiRoomWhereInput {
   return { OR: [{ startedById: userId }, { members: { some: { userId } } }] };
 }
 
-/** ผู้ใช้นี้เห็นห้องนี้ไหม (R-K1) — ผู้เปิด · สมาชิก · OWNER */
-function canSeeRoom(actor: AiMemberActor, room: { startedById: string; members: { userId: string }[] }): boolean {
-  return actor.membership.role === "OWNER" || room.startedById === actor.userId || room.members.some((m) => m.userId === actor.userId);
+/** ผู้ใช้นี้เห็นห้องนี้ไหม (R-K1) — ผู้เปิด · สมาชิก (Lekaa FAB: OWNER ไม่เห็นห้องคนอื่นแล้ว) · ห้องที่ปัดลบแล้ว = ไม่เห็น */
+function canSeeRoom(actor: AiMemberActor, room: { startedById: string; hiddenAt?: Date | null; members: { userId: string }[] }): boolean {
+  if (room.hiddenAt) return false;
+  return room.startedById === actor.userId || room.members.some((m) => m.userId === actor.userId);
 }
 
 /**
- * รายการห้องงาน — scope "tenant" ใช้ได้เฉพาะ OWNER (คนอื่นส่งมา = "mine" เงียบ ๆ) · "mine" = เปิดเอง ∪ เป็นสมาชิก
+ * รายการห้องงาน — "mine" เสมอ = เปิดเอง ∪ เป็นสมาชิก (Lekaa FAB: `scope:"tenant"` ถูกถอด — ส่งมาก็ได้ "mine" เงียบ ๆ ทุกบทบาท) · ไม่รวมห้องที่ปัดลบ
  *   เรียง updatedAt ใหม่→เก่า · take ≤ 100 (ปริยาย 50) · before = หน้าถัดไป (updatedAt < before) · q = ค้นในชื่อ (ไม่สนตัวพิมพ์)
  *   status กรองด้วยเงื่อนไขใน query (DONE/RUNNING) หรือชุดรหัสห้องที่มีข้อเสนอ/แผนรออนุมัติ (WAITING/OPEN) · สถานะของการ์ด = 3 query รวม
  *   unread = มีคำตอบเลขาใหม่กว่า `AiConversation.lastReadAt` (ค่าเดียวต่อห้อง — ต่อคนรอใบอ่านแล้ว)
@@ -264,10 +331,9 @@ export async function listRooms(
   if (!actor) return [];
   const db = tenantDb({ tenantId: ctx.tenantId });
   const now = new Date();
-  const scope = opts?.scope === "tenant" && actor.membership.role === "OWNER" ? "tenant" : "mine";
+  void opts?.scope; // Lekaa FAB: งานของใครของมัน — ไม่มีขอบเขตทั้งร้าน
   const take = Math.min(Math.max(Math.floor(Number(opts?.take) || LIST_TAKE_DEFAULT), 1), LIST_TAKE_MAX);
-  const and: Prisma.AiRoomWhereInput[] = [];
-  if (scope === "mine") and.push(mineWhere(actor.userId));
+  const and: Prisma.AiRoomWhereInput[] = [mineWhere(actor.userId), { hiddenAt: null }];
   const q = typeof opts?.q === "string" ? opts.q.trim().slice(0, 100) : "";
   if (q) and.push({ title: { contains: q, mode: "insensitive" } });
   if (opts?.before instanceof Date && !Number.isNaN(opts.before.getTime())) and.push({ updatedAt: { lt: opts.before } });
@@ -305,10 +371,11 @@ export async function listRooms(
 
   const convIds = rows.map((r) => r.conversationId);
   const starterIds = [...new Set(rows.map((r) => r.startedById))];
-  const [counts, users, lastReplies] = await Promise.all([
+  const [counts, users, lastReplies, failedOf] = await Promise.all([
     statusCounts(ctx.tenantId, rows, now),
     prisma.user.findMany({ where: { id: { in: starterIds } }, select: { id: true, name: true, email: true } }),
     db.aiMessage.groupBy({ by: ["conversationId"], where: { conversationId: { in: convIds }, role: "ASSISTANT", ...NOT_SYSTEM_MESSAGE }, _max: { createdAt: true } }), // R-S1.6b: ข้อความระบบไม่นับ unread
+    roomFailedJobs(ctx.tenantId, rows), // 17 พ.ย. ▸ การ์ด "ไม่สำเร็จ" ◂
   ]);
   const nameOf = new Map(users.map((u) => [u.id, publicNameOf(u)])); // SEC S3a.1-S2 R-Z34: placeholder ⇒ "สมาชิก" ◂
   const lastReplyOf = new Map(lastReplies.map((m) => [m.conversationId, m._max.createdAt]));
@@ -328,6 +395,7 @@ export async function listRooms(
       updatedAt: r.updatedAt,
       closedAt: r.closedAt,
       unread: last !== null && (readAt === null || last > readAt),
+      failed: failedOf.has(r.id),
     };
   });
 }
@@ -345,17 +413,34 @@ export async function getRoom(ctx: ConvCtx, roomId: string): Promise<(AiRoom & {
   return { ...room, status: statusFrom(counts, room), members };
 }
 
-/** ห้องที่ผู้ใช้นี้ "ดูแล" ได้ (ปิด/เปลี่ยนชื่อ) = ผู้เปิดห้อง หรือ OWNER · ไม่เห็น/ไม่ใช่ = null */
+/** ห้องที่ผู้ใช้นี้ "ดูแล" ได้ (ปิด/เปลี่ยนชื่อ/ปัดลบ) = ผู้เปิดห้องเท่านั้น (Lekaa FAB: ถอด OWNER) · ไม่เห็น/ไม่ใช่/ปัดลบแล้ว = null */
 async function managedRoom(ctx: ConvCtx, roomId: string) {
   const actor = memberActorOf(ctx);
   const id = typeof roomId === "string" ? roomId.trim() : "";
   if (!actor || !id) return null;
-  const row = await tenantDb({ tenantId: ctx.tenantId }).aiRoom.findFirst({ where: { id }, select: { id: true, conversationId: true, startedById: true, closedAt: true } });
+  const row = await tenantDb({ tenantId: ctx.tenantId }).aiRoom.findFirst({ where: { id, hiddenAt: null }, select: { id: true, conversationId: true, startedById: true, closedAt: true } });
   if (!row) return null;
-  return actor.membership.role === "OWNER" || row.startedById === actor.userId ? row : null;
+  return row.startedById === actor.userId ? row : null;
 }
 
-/** ปิดห้อง (→ DONE) — ผู้เปิดห้องหรือ OWNER เท่านั้น · ปิดอยู่แล้ว = false */
+/**
+ * Lekaa FAB ▸ ปัดลบห้อง (soft delete) — ผู้เปิดห้องเท่านั้น · ใน tx เดียว: hiddenAt + ปิดห้อง (ถ้ายังเปิด) +
+ *   ข้อเสนอ/แผนที่ยังรออนุมัติของห้องนี้ → REJECTED (ผู้อนุมัติไม่เห็นรายการของงานที่ผู้สั่งลบไปแล้ว) · ข้อความ/บันทึก/ตัวนับงานไม่แตะ
+ *   ไม่เห็น/ไม่ใช่ผู้เปิด/ลบไปแล้ว = false
+ */
+export async function hideRoom(ctx: ConvCtx, roomId: string, now: Date = new Date()): Promise<boolean> {
+  const row = await managedRoom(ctx, roomId);
+  if (!row) return false;
+  const tenantId = ctx.tenantId;
+  const [r] = await prisma.$transaction([
+    prisma.aiRoom.updateMany({ where: { id: row.id, tenantId, hiddenAt: null }, data: { hiddenAt: now, ...(row.closedAt ? {} : { closedAt: now }) } }),
+    prisma.aiProposal.updateMany({ where: { tenantId, conversationId: row.conversationId, status: "PENDING" }, data: { status: "REJECTED" } }),
+    prisma.aiPlan.updateMany({ where: { tenantId, conversationId: row.conversationId, status: "PENDING" }, data: { status: "REJECTED" } }),
+  ]);
+  return r.count > 0;
+}
+
+/** ปิดห้อง (→ DONE) — ผู้เปิดห้องเท่านั้น (Lekaa FAB) · ปิดอยู่แล้ว = false */
 export async function closeRoom(ctx: ConvCtx, roomId: string, now: Date = new Date()): Promise<boolean> {
   const row = await managedRoom(ctx, roomId);
   if (!row) return false;
@@ -363,7 +448,7 @@ export async function closeRoom(ctx: ConvCtx, roomId: string, now: Date = new Da
   return res.count > 0;
 }
 
-/** เปลี่ยนชื่อห้อง (AiRoom + AiConversation) — ผู้เปิดห้องหรือ OWNER เท่านั้น · ชื่อว่าง = false · ≤ 60 ตัว */
+/** เปลี่ยนชื่อห้อง (AiRoom + AiConversation) — ผู้เปิดห้องเท่านั้น (Lekaa FAB) · ชื่อว่าง = false · ≤ 60 ตัว */
 export async function renameRoom(ctx: ConvCtx, roomId: string, title: string): Promise<boolean> {
   const clean = typeof title === "string" && title.trim() ? roomTitleFrom(title) : "";
   if (!clean) return false;
@@ -388,7 +473,7 @@ export async function recentDuplicateRoom(tenantId: string, userId: string, inst
   const text = typeof instruction === "string" ? instruction.trim() : "";
   if (!tenantId || !userId || !text) return null;
   const rooms = await tenantDb({ tenantId }).aiRoom.findMany({
-    where: { startedById: userId, createdAt: { gte: new Date(now.getTime() - DUPLICATE_WINDOW_MS) } },
+    where: { startedById: userId, hiddenAt: null, createdAt: { gte: new Date(now.getTime() - DUPLICATE_WINDOW_MS) } },
     orderBy: { createdAt: "desc" },
     take: 10,
     select: { id: true, conversationId: true },

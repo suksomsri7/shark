@@ -30,7 +30,7 @@
   },
   {
    "id": "X-2",
-   "name": "ร่าง Shark มี gloss ⇒ บรรทัดคำแปล · ส่ง = body (ไม่ใช่ gloss)",
+   "name": "ร่างของเลขามี gloss ⇒ บรรทัดคำแปล · ส่ง = body (ไม่ใช่ gloss)",
    "file": "app/(app)/customers/[id]/index.tsx",
    "must": ["gloss", "sendText\\(draft\\.body"],
    "mustNot": ["sendText\\(draft\\.gloss"]

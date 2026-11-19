@@ -13,7 +13,7 @@ import type { Prisma } from "@prisma/client";
 import { closedRoomNote, DESTRUCTIVE_KINDS, isKnownKind, runKind, type ProposalKind } from "./proposals";
 import type { ConvCtx } from "./conversation-owner";
 import { currentToolCallKey, toolCallRowId } from "./tool-call-key"; // SEC S3a.1-S2 R-Z34 ◂
-import { canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
+import { canActOnApproval, canConfirmerSeeConversation, canSeeConversationById, findVisibleConversation } from "./conversations";
 import { visibleSinceFor, visibleSinceForUser, withinSight } from "./secretary/members";
 
 type Ctx = { tenantId: string };
@@ -247,7 +247,7 @@ async function planApproverBlock(tenantId: string, m: MembershipCtx, conversatio
 // CRM C5.5-G2 ▸ เฉพาะแผนในบทสนทนาที่ผู้กดเห็น ◂
 export async function rejectPlan(ctx: ConvCtx, id: string): Promise<boolean> {
   const row = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.findFirst({ where: { id }, select: { conversationId: true, createdAt: true } });
-  if (!row || !(await canSeeConversationById(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
+  if (!row || !(await canActOnApproval(ctx, row.conversationId))) return false; // S1.4 R-K1: + ห้องเลขาร่วม
   if (!withinSight(await visibleSinceFor(ctx, row.conversationId), row.createdAt)) return false; // S1.6 R-S1.6a (เหมือน rejectProposal)
   const res = await tenantDb({ tenantId: ctx.tenantId }).aiPlan.updateMany({
     where: { id, status: "PENDING" },

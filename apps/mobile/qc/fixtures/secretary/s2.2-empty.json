@@ -55,7 +55,7 @@
    "unread": 0
   },
   "GET /api/mobile/secretary/me": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [
@@ -69,7 +69,7 @@
    }
   },
   "GET /api/mobile/secretary": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "languages": [
     "th"

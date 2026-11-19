@@ -1,0 +1,455 @@
+{
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "suk@qc.invalid",
+    "name": "สมชาย ใจดี",
+    "phone": "+66800000101",
+    "appleLinked": true
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "SIAM DIVE CENTER",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "OWNER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "เลขา",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 3,
+    "approvedClean": 3,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [
+    {
+     "module": "booking",
+     "level": "READ"
+    },
+    {
+     "module": "account",
+     "level": "READ"
+    },
+    {
+     "module": "crm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "kanban",
+     "level": "DRAFT"
+    }
+   ]
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 40
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 0,
+   "customers": 40,
+   "team": {
+    "invites": 2,
+    "help": 0,
+    "support": 0
+   },
+   "total": 42,
+   "calendar": 6
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 0,
+   "canApprove": 0
+  },
+  "GET /api/mobile/secretary/systems": {
+   "items": [
+    {
+     "key": "s-chat",
+     "kind": "system",
+     "code": "CHAT",
+     "href": "/app/sys/chat",
+     "label": "แชทลูกค้า",
+     "badge": 40
+    },
+    {
+     "key": "u-q",
+     "kind": "unit",
+     "code": "QUEUE",
+     "href": "/app/u/queue",
+     "label": "บัตรคิว",
+     "badge": 0
+    },
+    {
+     "key": "s-hr",
+     "kind": "system",
+     "code": "HR",
+     "href": "/app/sys/hr",
+     "label": "พนักงาน HR",
+     "badge": 0
+    },
+    {
+     "key": "s-acc",
+     "kind": "system",
+     "code": "ACCOUNT",
+     "href": "/app/sys/acc",
+     "label": "บัญชี",
+     "badge": 0
+    },
+    {
+     "key": "s-inv",
+     "kind": "system",
+     "code": "INVENTORY",
+     "href": "/app/sys/inv",
+     "label": "บริการ",
+     "badge": 0
+    },
+    {
+     "key": "s-crm",
+     "kind": "system",
+     "code": "CRM",
+     "href": "/app/sys/crm",
+     "label": "CRM",
+     "badge": 0
+    },
+    {
+     "key": "s-kb",
+     "kind": "system",
+     "code": "KANBAN",
+     "href": "/app/sys/kb",
+     "label": "บอร์ดงาน",
+     "badge": 0
+    },
+    {
+     "key": "s-mem",
+     "kind": "system",
+     "code": "MEMBER",
+     "href": "/app/sys/mem",
+     "label": "สมาชิก",
+     "badge": 0
+    },
+    {
+     "key": "s-cp",
+     "kind": "system",
+     "code": "COUPON",
+     "href": "/app/sys/cp",
+     "label": "คูปอง",
+     "badge": 0
+    },
+    {
+     "key": "s-rw",
+     "kind": "system",
+     "code": "REWARD",
+     "href": "/app/sys/rw",
+     "label": "รางวัล",
+     "badge": 0
+    },
+    {
+     "key": "fp-KB",
+     "kind": "fixed",
+     "code": "KB",
+     "href": "/app/kb",
+     "label": "คลังความรู้",
+     "badge": 0
+    },
+    {
+     "key": "fp-PAGES",
+     "kind": "fixed",
+     "code": "PAGES",
+     "href": "/app/pages",
+     "label": "เพจ",
+     "badge": 0
+    }
+   ],
+   "order": [
+    "home",
+    "s-chat",
+    "u-q",
+    "s-hr",
+    "s-acc",
+    "s-inv",
+    "s-crm",
+    "s-kb",
+    "s-mem",
+    "s-cp",
+    "s-rw",
+    "fp-KB",
+    "fp-PAGES"
+   ]
+  },
+  "PUT /api/mobile/secretary/systems/order": {
+   "order": [
+    "home",
+    "u-q",
+    "s-hr",
+    "s-chat",
+    "s-acc",
+    "s-inv",
+    "s-crm",
+    "s-kb",
+    "s-mem",
+    "s-cp",
+    "s-rw",
+    "fp-KB",
+    "fp-PAGES"
+   ]
+  },
+  "POST /api/mobile/webview-session": {
+   "code": "qc-web"
+  },
+  "GET /api/mobile/secretary/rooms": {
+   "items": [
+    {
+     "id": "r1",
+     "title": "ตอนนี้เรามีสมาชิกกี่คนครับ",
+     "status": "OPEN",
+     "systems": [
+      "member"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": true,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-16T09:00:00.000Z"
+    },
+    {
+     "id": "r2",
+     "title": "ยอดขายสัปดาห์นี้",
+     "status": "DONE",
+     "systems": [
+      "pos"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-15T09:00:00.000Z"
+    },
+    {
+     "id": "r3",
+     "title": "ตั้งเตือนตามเงิน Ocean Tour",
+     "status": "WAITING",
+     "systems": [
+      "account"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 1
+     },
+     "updatedAt": "2026-11-14T09:00:00.000Z"
+    },
+    {
+     "id": "r4",
+     "title": "ลูกค้าใหม่เดือนนี้กี่คน",
+     "status": "DONE",
+     "systems": [
+      "crm"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-12T09:00:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1": {
+   "id": "r1",
+   "conversationId": "c-r1",
+   "title": "ส่งให้ลูกค้าทาง LINE หน่อย",
+   "status": "OPEN",
+   "systems": [
+    "account"
+   ],
+   "startedById": "u-qc-owner",
+   "context": null,
+   "members": [],
+   "canManage": true,
+   "canAddMembers": false,
+   "createdAt": "2026-11-17T02:00:00.000Z",
+   "updatedAt": "2026-11-17T02:01:00.000Z",
+   "closedAt": null,
+   "plans": [],
+   "reminders": [],
+   "calendarCards": [],
+   "pageContext": {
+    "label": "ใบแจ้งหนี้ INV-0312",
+    "state": "ASKED",
+    "askId": "m2",
+    "refIds": [
+     "m4"
+    ],
+    "entityType": "ACCOUNT_DOC"
+   }
+  },
+  "GET /api/mobile/secretary/rooms/r1/messages": {
+   "items": [
+    {
+     "id": "m1",
+     "role": "USER",
+     "content": "ส่งให้ลูกค้าทาง LINE หน่อย",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-17T02:00:00.000Z"
+    },
+    {
+     "id": "m2",
+     "role": "ASSISTANT",
+     "content": "หมายถึง ใบแจ้งหนี้ INV-0312 (Ocean Tour · ฿12,000) ที่เปิดอยู่ใช่ไหมครับ?",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-17T02:00:10.000Z"
+    },
+    {
+     "id": "m3",
+     "role": "USER",
+     "content": "ใช่",
+     "authorUserId": "u-qc-owner",
+     "system": false,
+     "createdAt": "2026-11-17T02:00:30.000Z"
+    },
+    {
+     "id": "m4",
+     "role": "ASSISTANT",
+     "content": "ส่ง INV-0312 ให้ Ocean Tour ทาง LINE แล้วครับ",
+     "authorUserId": null,
+     "system": false,
+     "createdAt": "2026-11-17T02:01:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "GET /api/mobile/secretary/rooms/r1/proposals": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/log": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/rooms/r1/members": {
+   "items": []
+  }
+ },
+ "shots": [
+  {
+   "name": "o1-bar",
+   "route": "/",
+   "steps": [
+    {
+     "gone": "launch-overlay"
+    },
+    {
+     "wait": "sec-top-team"
+    },
+    {
+     "wait": "sec-top-sys-s-chat"
+    },
+    {
+     "sleep": 800
+    }
+   ],
+   "mock": [
+    "/root/mockups/topbar-systems/topbar.html",
+    1
+   ]
+  },
+  {
+   "name": "o2-panel",
+   "route": "/",
+   "steps": [
+    {
+     "gone": "launch-overlay"
+    },
+    {
+     "wait": "sec-top-team"
+    },
+    {
+     "tap": "sec-top-biz"
+    },
+    {
+     "wait": "sec-sheet-sys-team"
+    },
+    {
+     "sleep": 900
+    }
+   ],
+   "mock": [
+    "/root/mockups/topbar-systems/topbar.html",
+    3
+   ]
+  },
+  {
+   "name": "o3-reorder-team",
+   "route": "/",
+   "steps": [
+    {
+     "gone": "launch-overlay"
+    },
+    {
+     "wait": "sec-top-team"
+    },
+    {
+     "tap": "sec-top-biz"
+    },
+    {
+     "wait": "sec-sheet-reorder"
+    },
+    {
+     "sleep": 600
+    },
+    {
+     "tap": "sec-sheet-reorder"
+    },
+    {
+     "pressTo": [
+      "sec-sheet-sys-team",
+      "sec-sheet-sys-s-chat",
+      0,
+      -4
+     ]
+    }
+   ],
+   "mock": [
+    "/root/mockups/topbar-systems/topbar.html",
+    4
+   ]
+  }
+ ],
+ "_note": "17 พ.ย. ทีม/ปฏิทิน จัดลำดับได้ + Dashboard + เว้นที่เหนือแถวแรก · order ที่บันทึกไม่มี team/calendar (ผู้ใช้เดิม) · แชท badge 40 อยู่แถวแรก (คอลัมน์ 4) · ทีม 2 ปฏิทิน 6"
+}

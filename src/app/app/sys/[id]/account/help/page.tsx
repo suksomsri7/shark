@@ -83,7 +83,7 @@ export default async function AccountHelpPage({ params }: { params: Promise<{ id
 
   return (
     <div className="flex flex-col gap-6 pb-16" data-testid="account-help-page">
-      <PageHeader title="เริ่มใช้บัญชี SHARK ใน 10 นาที" desc="คู่มือเริ่มต้นหน้าเดียว — เลื่อนอ่านได้ทั้งหน้า" />
+      <PageHeader title="เริ่มใช้บัญชีเลขาใน 10 นาที" desc="คู่มือเริ่มต้นหน้าเดียว — เลื่อนอ่านได้ทั้งหน้า" />
 
       <section className="card flex flex-col gap-3" data-testid="help-checklist">
         <h2 className="text-sm font-semibold">เช็กลิสต์ 5 ขั้นแรก</h2>

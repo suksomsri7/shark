@@ -27,7 +27,7 @@ export function posWebhookEvents(): string[] {
 }
 
 const INFO_DESCRIPTION = [
-  "REST API for the SHARK point of sale (POS). One API key works inside one POS system (AppSystem of type POS) and its branches (business units). It sells, refunds and voids bills exactly like the register screen does, takes and progresses online orders, manages the catalog and reads every sales report.",
+  "REST API for the Lekaa point of sale (POS). One API key works inside one POS system (AppSystem of type POS) and its branches (business units). It sells, refunds and voids bills exactly like the register screen does, takes and progresses online orders, manages the catalog and reads every sales report.",
   "",
   "Conventions that apply to every operation:",
   "1. Authentication is `Authorization: Bearer <api key>`. The key carries its own scopes (the POS permission keys, e.g. `pos.sale.create`); an operation returns 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope` (the missing scope is in `hint`). Bundles: `pos-read`, `pos-operate`, `pos-admin`.",
@@ -40,7 +40,7 @@ const INFO_DESCRIPTION = [
   "8. Success is `{ data, page?, requestId }`. For reads, `data` is the POS reader's answer itself (for example `GET /sales/{id}` answers the bill). Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }` - branch on `error.code`; `message_th` is already worded for a Thai shop owner. `requestId` is also returned in the `X-Request-Id` header; quote it when reporting a problem.",
   "9. Dates: report ranges are Thai business dates `YYYY-MM-DD` (`from`, `to`, inclusive, at most 92 days; the shop's day cut-off applies). Timestamps are ISO-8601 strings in UTC.",
   "10. Paging: `GET /sales` pages with `page` and `pageSize` (10, 20 or 50) and answers `page` next to `data`; `GET /products` pages with `pageSize` and `cursor` (send `nextCursor` back). `GET /shifts` is not paged: it answers the newest 50 shifts of the branch (`limit` up to 200) and has no status filter - keep the rows with `status: OPEN` to find the open shift, or ask `GET /shifts/current` with the register's `deviceId`. `GET /orders` answers the orders since the start of the Thai business day (`since` reaches back at most 7 days). Other lists return the whole set.",
-  `11. Rate limits are per key and per class: ${API_RATE_LIMITS.read.limit} reads, ${API_RATE_LIMITS.write.limit} writes and ${API_RATE_LIMITS.report.limit} reports per minute (namespace pos, separate from other SHARK modules). A 429 response carries \`Retry-After\`; successful responses carry \`X-RateLimit-Limit\` and \`X-RateLimit-Remaining\`.`,
+  `11. Rate limits are per key and per class: ${API_RATE_LIMITS.read.limit} reads, ${API_RATE_LIMITS.write.limit} writes and ${API_RATE_LIMITS.report.limit} reports per minute (namespace pos, separate from other Lekaa modules). A 429 response carries \`Retry-After\`; successful responses carry \`X-RateLimit-Limit\` and \`X-RateLimit-Remaining\`.`,
   "12. Reports render CSV with `Accept: text/csv`: `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment`, the same file as the export button of the reports screen.",
   `13. Outgoing webhooks. The shop can subscribe an endpoint to these POS events: ${posWebhookEvents().map((e) => `\`${e}\``).join(", ")}. Each delivery is \`POST\` with \`X-Shark-Event\`, a body of \`{ id, type, payload, sentAt }\` and header \`X-Shark-Signature\` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once, so handlers must be idempotent (\`id\` stays the same on every retry).`,
   "14. Bills sold through the API are bills of the POS: they carry `sourceModule: \"API\"` and the key id as seller, follow the shop's shift rule for sales from other sources (or the OPEN shift given as `shiftId`), and appear in every report. Cash taken for an order (`POST /orders/{id}/pay`) always lands in a shift: the branch must have exactly one open shift, otherwise 409 `state_conflict` and nothing is written.",
@@ -48,12 +48,12 @@ const INFO_DESCRIPTION = [
 
 /** ส่วนหัวเอกสารของ API ระบบขายหน้าร้าน */
 export const POS_DOC_INFO: ApiDocInfo = {
-  title: "SHARK POS API",
+  title: "Lekaa POS API",
   version: API_VERSION,
   serverUrl: SERVER_URL,
   serverDescription: "Production",
   description: INFO_DESCRIPTION,
-  securityDescription: "API key created in the POS settings (POS > Settings > SHARK connections > API keys). Send it as `Authorization: Bearer <key>`.",
+  securityDescription: "API key created in the POS settings (POS > Settings > Lekaa connections > API keys). Send it as `Authorization: Bearer <key>`.",
 };
 
 // POS P2.13 ▸ skill fix ช่องโหว่ 10: แกนกลาง (`@/lib/api/openapi`) เขียนคำของ "สมุดบัญชี" ไว้ใน X-Shark-System / 403 / 404 (ใช้ร่วมกับบัญชี — ไม่แตะ) ⇒

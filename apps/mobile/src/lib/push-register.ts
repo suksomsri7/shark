@@ -5,6 +5,7 @@ import * as Device from "expo-device";
 import Constants from "expo-constants";
 import { Platform } from "react-native";
 import { api } from "@/src/api/client";
+import { calActionOf, handleCalAction, registerCalCategories } from "@/src/lib/cal-notify";
 
 // 🔴 projectId ต้องอ่านจาก app.json เสมอ ห้ามพิมพ์ซ้ำในโค้ด (บทเรียน 22 ส.ค.)
 // เดิมฮาร์ดโค้ด `c24ec712-…` = โปรเจกต์ของบัญชี @siamdive ที่เลิกใช้ไปตั้งแต่ย้ายบัญชี 20 ส.ค.
@@ -17,6 +18,7 @@ let registered = false;
 let lastToken: string | null = null;
 
 export async function registerPush(): Promise<void> {
+  void registerCalCategories(); // CAL2.8: ปุ่มลัดของเตือนปฏิทิน (SEC_CAL / SEC_CAL_CALL) · ไม่ต้องรอ permission
   if (registered) return;
   try {
     const token = await currentPushToken({ ask: true });
@@ -65,7 +67,7 @@ export function conversationIdFromNotification(resp: Notifications.NotificationR
 // ───────── S2.6 แตะแจ้งเตือนของเลขา → deep link (data.link + data.tenantId) ─────────
 // 4 แบบของเซิร์ฟเวอร์ (รออนุมัติ · งานเสร็จ · โควตา · งานประจำ) ต่างกันแค่ link/ข้อความ — แอปอ่าน path อย่างเดียว (ตัด ?e=… / #… ทิ้ง · RESOLUTIONS §N)
 // link ที่รับ (สัมพัทธ์ของเราเท่านั้น · id ตัวอักษร/ตัวเลข/_- ≤ 80):
-//   /secretary/room/<id> · /secretary/inbox · /secretary/scheduled · /secretary/help/<id> (+ /help/<id> ของเซิร์ฟเวอร์ = ห้องแจ้งปัญหา) · /customers/<id>
+//   /secretary/room/<id> · /secretary/team/<id> · /secretary/staff (B27) · /secretary/inbox · /secretary/scheduled · /secretary/help/<id> (+ /help/<id> ของเซิร์ฟเวอร์ = ห้องแจ้งปัญหา) · /customers/<id>
 //   S2.20 ห้องลูกค้า: /customers/<id> และ /inbox/<id> (ลิงก์ที่ chat/routing.ts ของเซิร์ฟเวอร์ส่งจริงวันนี้) ⇒ /customers/<id>
 //     + `?s=<data.systemId>` (ระบบแชทของห้อง) + `&e=<เหตุ>` เมื่อ ?e= ของลิงก์ ∈ helper|handoff|sla|assigned (K2 แสดงข้อความตามเหตุ)
 //     🔴 3 แชทไม่ปน: ลิงก์แชทลูกค้าไม่ตกไปตัวจัดการเดิม (data.conversationId → /chat ของ 1.0 = ห้อง AI คนละชนิด)
@@ -78,6 +80,9 @@ const SEC_LINKS: { re: RegExp; to: (id: string) => string }[] = [
   { re: /^\/secretary\/scheduled$/, to: () => "/secretary/scheduled" },
   { re: new RegExp(`^/(?:secretary/)?help/${SEC_ID}$`), to: (id) => `/secretary/help/${id}` },
   { re: new RegExp(`^/(?:customers|inbox)/${SEC_ID}$`), to: (id) => `/customers/${id}` },
+  // B27 แชททีม ▸ ข้อความใหม่ = ห้องแชททีม · คำเชิญเข้าทีม = รายชื่อทีม (การ์ด "คุณได้รับคำเชิญ") ◂
+  { re: new RegExp(`^/secretary/team/${SEC_ID}$`), to: (id) => `/secretary/team/${id}` },
+  { re: /^\/secretary\/staff$/, to: () => "/secretary/staff" },
 ];
 /** เหตุของแจ้งเตือนห้องลูกค้า (?e= ของเซิร์ฟเวอร์) ที่ K2 รู้จัก */
 export const CUSTOMER_PUSH_REASONS = ["helper", "handoff", "sla", "assigned"] as const;
@@ -94,6 +99,16 @@ export function secretaryRouteFromLink(link: unknown, systemId?: unknown): strin
   if (!s.startsWith("/") || s.startsWith("//") || s.includes("\\")) return null;
   const [rawPath, rawQuery = ""] = s.split("#")[0]!.split("?");
   const path = rawPath!.replace(/\/+$/, "") || "/";
+  // CAL2.8 (สัญญา §7.1): /secretary/calendar[?day=YYYY-MM-DD[&item=<id>]] — คงเฉพาะ day/item ที่ถูกรูป
+  if (path === "/secretary/calendar") {
+    const q: string[] = [];
+    for (const kv of rawQuery.split("&")) {
+      if (/^day=\d{4}-\d{2}-\d{2}$/.test(kv) && !q.some((x) => x.startsWith("day="))) q.push(kv);
+      if (/^item=[A-Za-z0-9_-]{1,80}$/.test(kv) && !q.some((x) => x.startsWith("item="))) q.push(kv);
+    }
+    q.sort((a, b) => Number(b.startsWith("day=")) - Number(a.startsWith("day=")));
+    return q.length ? `${path}?${q.join("&")}` : path;
+  }
   for (const l of SEC_LINKS) {
     const m = l.re.exec(path);
     if (!m) continue;
@@ -125,6 +140,26 @@ const handledPush = new Set<string>();
  * ใบเดิมซ้ำ (listener + เปิดแอปจากแจ้งเตือน) = เปิดครั้งเดียว (จำ identifier)
  */
 export function handleSecretaryPush(resp: Notifications.NotificationResponse, deps: SecretaryPushDeps): boolean {
+  // CAL2.8 ปุ่มลัดของเตือนปฏิทิน (เสร็จ/เลื่อน/โทร) — ทำในนามกิจการของรายการ แล้วเปิดปฏิทินวันนั้น (ใบเดิม+ปุ่มเดิม = ครั้งเดียว)
+  if (calActionOf(resp?.actionIdentifier)) {
+    const k = `${resp.notification?.request?.identifier ?? ""}#${resp.actionIdentifier}`;
+    if (handledPush.has(k)) return true;
+    const ok = handleCalAction(resp, (link) => {
+      const href = secretaryRouteFromLink(link);
+      if (!href) return;
+      const tid = (resp.notification.request.content.data as { tenantId?: unknown } | undefined)?.tenantId;
+      void (async () => {
+        try {
+          if (typeof tid === "string" && tid && tid !== deps.activeTenantId && deps.tenantIds.includes(tid)) await deps.switchTenant(tid);
+        } catch {
+          /* เปิดในกิจการเดิม */
+        }
+        deps.push(href);
+      })();
+    });
+    if (ok) handledPush.add(k);
+    if (ok) return true;
+  }
   const data = (resp?.notification?.request?.content?.data ?? {}) as { link?: unknown; tenantId?: unknown; systemId?: unknown };
   const href = secretaryRouteFromLink(data.link, data.systemId);
   if (!href) return false;

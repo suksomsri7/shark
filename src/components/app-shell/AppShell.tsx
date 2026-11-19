@@ -9,13 +9,15 @@ import { AddSystemModal } from "./AddSystemModal";
 import { NavRail, isRailPath } from "./NavRail";
 import { SwipeEdge } from "./SwipeEdge";
 import { IssueReportSheet } from "./IssueReportSheet";
-import { useInApp } from "./use-in-app";
+import { useInApp, useNativeTopBar } from "./use-in-app";
+import { entityFromPath, PAGE_ENTITY_EVENT, systemFromPath, type PageContextMsg, type PageEntity } from "@/lib/ui/page-context";
 import { loadNavBadgesAction } from "@/lib/support/actions";
 import { setNavCollapsedAction } from "@/lib/core/preferences-actions";
 
 // โครงแอปฝั่ง client: จัดการสถานะเปิด/ปิด drawer
 // help-v2: เอาศูนย์ช่วยเหลือออก — แจ้งปัญหาผ่านแชท AI แทน (ทีมงานตอบกลับในห้องเดิม)
 // รับข้อมูลที่ดึงจาก DB มาจาก layout (server) เป็น props — ตัว shell ไม่แตะ DB เอง
+// 14 พ.ย.: ในแอปที่มีแถบบน native (useNativeTopBar) ไม่วาด Topbar และไม่เปิดท่าปัดขอบซ้าย (SwipeEdge) — แอปรุ่นเก่ายังมีครบ
 export function AppShell({
   tenantName,
   userEmail,
@@ -80,6 +82,9 @@ export function AppShell({
   // เปิดจากแอปมือถือ (WebView ส่ง UA "SharkApp") → ซ่อน orb เว็บ (แอปมีปุ่ม AI native ของตัวเอง — กัน orb ซ้อน)
   // + ไม่ปักแถบเมนูซ้าย (แอปมีเมนูของตัวเอง และจอมือถือไม่มีที่พอ)
   const inApp = useInApp();
+  // แอปรุ่นใหม่มีแถบบน native ของตัวเอง (UA "SharkTopBar") ⇒ ไม่วาด Topbar ของเว็บ + ไม่ดักท่าปัดขอบซ้าย (SwipeEdge)
+  //   เปิดระบบจากชีตกิจการของแอป (ตาราง "เปิดระบบ" → ?open=/app/...) · `app:drawer-open` ยังรับไว้ (ปุ่ม ☰ ในหัวรายการแชท)
+  const nativeTopBar = useNativeTopBar();
   // 🔴 ต้นทุน query ของ badge เมนู — ตั้งใจให้ "ไม่ผูกกับการเรนเดอร์":
   //  · ยิง 1 ครั้งตอน app shell mount (layout ไม่ re-mount ตอนเปลี่ยนหน้า ⇒ ไม่ใช่ต่อหน้า)
   //  · ยิงซ้ำเฉพาะตอนผู้ใช้ "กดเปิดเมนู" เอง (ท่าทางของคน = มีขอบเขต ไม่ใช่ polling)
@@ -126,6 +131,29 @@ export function AppShell({
     );
   }, [chatFullscreen]);
 
+  // Lekaa FAB (15 พ.ย.) ▸ บอกแอปว่าผู้ใช้อยู่หน้าไหน {ev:"page-context", system, systemId, path, title, entity?} ทุกครั้งที่เปลี่ยนหน้า
+  //   (เฉพาะในแอป · ฝั่งรับ apps/mobile/app/(app)/index.tsx → ปุ่ม Lekaa ส่งไปกับคำสั่งแรก · เซิร์ฟเวอร์อ่าน entity ใหม่ด้วยสิทธิ์ผู้สั่ง)
+  //   entity จากพาธ (entityFromPath) หรือจากหน้าที่ลงทะเบียนเอง (usePageEntity → "app:page-entity") ◂
+  const [pageEntity, setPageEntity] = useState<PageEntity | null>(null);
+  useEffect(() => {
+    const on = (e: Event) => setPageEntity(((e as CustomEvent).detail as PageEntity | null) ?? null);
+    window.addEventListener(PAGE_ENTITY_EVENT, on);
+    return () => window.removeEventListener(PAGE_ENTITY_EVENT, on);
+  }, []);
+  const search = searchParams.toString();
+  useEffect(() => {
+    if (!inApp) return;
+    const rn = (window as { ReactNativeWebView?: { postMessage: (s: string) => void } }).ReactNativeWebView;
+    if (!rn) return;
+    // รอชื่อหน้า (document.title) ของหน้าใหม่ตั้งเสร็จก่อนส่ง
+    const h = setTimeout(() => {
+      const entity = pageEntity ?? entityFromPath(pathname, search ? `?${search}` : "");
+      const msg: PageContextMsg = { ev: "page-context", ...systemFromPath(pathname), path: search ? `${pathname}?${search}` : pathname, title: document.title.slice(0, 120), ...(entity ? { entity } : {}) };
+      rn.postMessage(JSON.stringify(msg));
+    }, 300);
+    return () => clearTimeout(h);
+  }, [inApp, pathname, search, pageEntity]);
+
   // 🔴 สัญญาข้ามชั้น: โมดูลแชทห้าม import จาก app-shell และ shell ห้าม import จากโมดูล
   //    ⇒ ปุ่ม ☰ ในหัวรายการแชทยิง CustomEvent ชื่อเดียว แล้ว shell เปิด drawer ให้
   useEffect(() => {
@@ -139,6 +167,7 @@ export function AppShell({
 
   return (
     <>
+      {nativeTopBar ? null : (
       <Topbar
         branding={branding}
         aiUnread={aiUnread}
@@ -149,14 +178,19 @@ export function AppShell({
         }}
         hideOnMobile={chatFullscreen}
       />
-      {/* ปัดจากขอบซ้ายไปขวา = เปิดเมนู (จอเล็ก/แอป) — ในแอปไม่มี ☰ แล้ว ท่านี้คือทางเดียว */}
-      <SwipeEdge
-        alwaysOn={inApp}
-        onOpen={() => {
-          setDrawer(true);
-          refreshBadges();
-        }}
-      />
+      )}
+      {/* ปัดจากขอบซ้ายไปขวา = เปิดเมนู (จอเล็ก/แอปรุ่นเก่า) — แอปรุ่นเก่าไม่มี ☰ ท่านี้คือทางเดียว
+          14 พ.ย. (เจ้าของสั่ง · bizsheet4): แอปที่มีแถบบน native (UA SharkTopBar) ปิดท่านี้ — เปิดระบบจากชีตกิจการของแอปแทน
+          (แอปรุ่นเก่าที่ไม่มี token นี้ยังปัดได้เหมือนเดิม) */}
+      {nativeTopBar ? null : (
+        <SwipeEdge
+          alwaysOn={inApp}
+          onOpen={() => {
+            setDrawer(true);
+            refreshBadges();
+          }}
+        />
+      )}
       <NavDrawer
         open={drawer}
         // ในแอป หรือหน้าที่ใช้ราง (ไม่มีแถบปักซ้ายให้ชน) → overlay ต้องโผล่ทุกความกว้าง

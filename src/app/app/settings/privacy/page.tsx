@@ -103,7 +103,7 @@ export default async function PrivacyPage() {
           🔴 ทุกบทบาททำได้ ไม่ใช่แค่ OWNER · บอกผลกระทบต่อร้านให้เห็นก่อนกดยืนยัน */}
       <Section title="ลบบัญชีของฉัน" card>
         <p className="text-sm text-[color:var(--color-muted)]">
-          ลบตัวตนของคุณออกจาก SHARK ถาวร — อีเมล ชื่อ และการเข้าสู่ระบบทุกช่องทาง ทำแล้วกู้คืนไม่ได้
+          ลบตัวตนของคุณออกจากเลขาถาวร — อีเมล ชื่อ และการเข้าสู่ระบบทุกช่องทาง ทำแล้วกู้คืนไม่ได้
         </p>
 
         {impact.tenantsHandedOver.length > 0 && (

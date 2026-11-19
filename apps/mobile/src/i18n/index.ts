@@ -90,11 +90,21 @@ function subscribe(l: () => void): () => void {
   return () => listeners.delete(l);
 }
 
+// 17 พ.ย. (เจ้าของสั่ง): ผู้ช่วยชื่อ Lekaa — ไทยเรียก "เลขา" (ชื่อเลขาปริยาย = "เลขา") ⇒
+//   ไทย: แม่แบบ "เลขา {name}" กับชื่อปริยาย = "เลขา เลขา" ⇒ ยุบเหลือ "เลขา" · อังกฤษ: ชื่อปริยาย "เลขา" แสดงเป็น "Lekaa"
+const SEC_DEFAULT_TH = "เลขา";
+const SEC_DEFAULT_EN = "Lekaa";
+
 /** แทน {ชื่อ} ด้วยค่า · คีย์ที่ไม่มีในพจนานุกรม (ไม่ควรเกิด — type กันไว้) = คืนคีย์ */
 export function translate(l: Lang, key: I18nKey, vars?: Vars): string {
   const raw = DICT[l][key] ?? DICT.th[key] ?? key;
   if (!vars) return raw;
-  return raw.replace(/\{(\w+)\}/g, (m, k: string) => (k in vars ? String(vars[k]) : m));
+  const out = raw.replace(/\{(\w+)\}/g, (m, k: string) => {
+    if (!(k in vars)) return m;
+    const v = String(vars[k]);
+    return l === "en" && k === "name" && v === SEC_DEFAULT_TH ? SEC_DEFAULT_EN : v;
+  });
+  return l === "th" ? out.replace(/เลขา เลขา/g, SEC_DEFAULT_TH) : out;
 }
 
 export function useLang(): Lang {

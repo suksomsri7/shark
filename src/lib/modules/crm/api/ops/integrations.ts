@@ -21,7 +21,7 @@ const status = defineCrmOp({
   kind: "read",
   action: "crm.settings.manage",
   summary:
-    "Connection status of the 24 SHARK systems with this CRM (enabled, last event time and events in the last 7 days per system) and the health of the " +
+    "Connection status of the 24 Lekaa systems with this CRM (enabled, last event time and events in the last 7 days per system) and the health of the " +
     "background jobs. Event types and counts only - never an event payload.",
   label: "สถานะการเชื่อมต่อ",
   input: z.object({}).strict(),

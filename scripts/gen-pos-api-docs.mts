@@ -288,7 +288,7 @@ const sortOps = (ops: ApiOp[]) =>
 export function renderEndpointsReference(ops: ApiOp[] = POS_OPS): string {
   const out: string[] = [];
   out.push(
-    "# SHARK POS API — endpoint reference",
+    "# Lekaa POS API — endpoint reference",
     "",
     "Generated from the operation registry by `scripts/gen-pos-api-docs.mts` (`--check` covers this file too). Do not edit by hand.",
     "",
@@ -334,7 +334,7 @@ export function renderDocs(ops: ApiOp[] = POS_OPS): string {
   push(
     "## Authentication and scopes",
     "",
-    "Send `Authorization: Bearer <api key>`. Keys are created by the shop owner in POS > Settings > SHARK connections > API keys; the raw key is shown once. A key is bound to one POS system.",
+    "Send `Authorization: Bearer <api key>`. Keys are created by the shop owner in POS > Settings > Lekaa connections > API keys; the raw key is shown once. A key is bound to one POS system.",
     "",
     "Scopes are the same permission keys the staff roles use, so a key can never do more than a person could. The key acts as a staff member of its own (seller id = key id, role STAFF): bills it sells are attributed to the key, not to the person who created it.",
     "",

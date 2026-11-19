@@ -1,6 +1,6 @@
 {
- "generatedAt": "2026-11-06T14:29:03.243Z",
- "base": "http://127.0.0.1:4724",
+ "generatedAt": "2026-11-17T05:20:34.665Z",
+ "base": "http://127.0.0.1:4752",
  "view": {
   "tag": "iphone",
   "w": 390,
@@ -8,8 +8,8 @@
   "scale": 2
  },
  "fixture": {
-  "path": "/root/projects/shark-sec-d/apps/mobile/qc/fixtures/secretary/s3a6.json",
-  "sha256": "3504ae4abe9a6469d4f84973a94dd9c7563fa801587a99f617ce7353f68450b0"
+  "path": "/root/projects/shark-b27-team/apps/mobile/qc/fixtures/secretary/s2.1.json",
+  "sha256": "c6175abc5cd5b12d6b9ae280388a071bbfc7951fa7fe4e425d0544267accb353"
  },
  "screens": [
   {
@@ -1275,31 +1275,6 @@
    "generatedAt": "2026-11-05T19:34:36.528Z"
   },
   {
-   "name": "secretary-staff",
-   "route": "/secretary/staff",
-   "dark": false,
-   "ok": true,
-   "fixtureSha256": "c44c3c100fa55c0e87954a88304dd3c95548592bcb2bdc65ab05d35a8392e1fd",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-staff",
-    "sec-top-team",
-    "sec-top-team-badge",
-    "sec-top-help",
-    "sec-staff-row",
-    "sec-staff-pending",
-    "sec-staff-invite"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\n\nThe Bean Café\n\nพนักงาน 5 คน · แตะชื่อ = งาน + สิทธิ์ต่อระบบ/หน่วย · เห็นได้เฉพาะเจ้าของ/ผู้จัดการ\n\nน\nน้ำ ผู้จัดการ\nแชทลูกค้า: ตอบได้ · ทุกหน่วย\nส\nสมใจ พนักงาน\nแชทลูกค้า: ตอบได้ · 1 หน่วย · รออนุมัติ 1\n1\nก\nก้อง พนักงาน\nแชทลูกค้า: ดูได้ · 1 หน่วย · เข้าเวรอยู่\nย\nยิ่ง พนักงาน\nไม่เห็นแชทลูกค้า · 1 หน่วย\nค\nคุณสุข (QC) เจ้าของ (คุณ)\nแชทลูกค้า: ตอบได้ · ทุกหน่วย · กำลังทำ 2 · รออนุมัติ 1\n1\nรอรับคำเชิญ 1 คน\nบ\nบอย พนักงาน\nรอรับคำเชิญ · 081-xxx-4521 · ถึง 30/11\nยกเลิก\nส่งอีกครั้ง\nเพิ่มพนักงาน",
-   "unmocked": [],
-   "url": "/secretary/staff",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff.png",
-   "generatedAt": "2026-11-05T19:34:39.523Z"
-  },
-  {
    "name": "secretary-dark",
    "route": "/secretary",
    "dark": true,
@@ -1350,31 +1325,6 @@
    "url": "/customers",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-dark.png",
    "generatedAt": "2026-11-05T19:34:45.173Z"
-  },
-  {
-   "name": "secretary-staff-dark",
-   "route": "/secretary/staff",
-   "dark": true,
-   "ok": true,
-   "fixtureSha256": "c44c3c100fa55c0e87954a88304dd3c95548592bcb2bdc65ab05d35a8392e1fd",
-   "viewportH": 844,
-   "errors": [],
-   "missing": [],
-   "overflow": false,
-   "expect": [
-    "sec-staff",
-    "sec-top-team",
-    "sec-top-team-badge",
-    "sec-top-help",
-    "sec-staff-row",
-    "sec-staff-pending",
-    "sec-staff-invite"
-   ],
-   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n2\n\n3\n\n2\n\n\nThe Bean Café\n\nพนักงาน 5 คน · แตะชื่อ = งาน + สิทธิ์ต่อระบบ/หน่วย · เห็นได้เฉพาะเจ้าของ/ผู้จัดการ\n\nน\nน้ำ ผู้จัดการ\nแชทลูกค้า: ตอบได้ · ทุกหน่วย\nส\nสมใจ พนักงาน\nแชทลูกค้า: ตอบได้ · 1 หน่วย · รออนุมัติ 1\n1\nก\nก้อง พนักงาน\nแชทลูกค้า: ดูได้ · 1 หน่วย · เข้าเวรอยู่\nย\nยิ่ง พนักงาน\nไม่เห็นแชทลูกค้า · 1 หน่วย\nค\nคุณสุข (QC) เจ้าของ (คุณ)\nแชทลูกค้า: ตอบได้ · ทุกหน่วย · กำลังทำ 2 · รออนุมัติ 1\n1\nรอรับคำเชิญ 1 คน\nบ\nบอย พนักงาน\nรอรับคำเชิญ · 081-xxx-4521 · ถึง 30/11\nยกเลิก\nส่งอีกครั้ง\nเพิ่มพนักงาน",
-   "unmocked": [],
-   "url": "/secretary/staff",
-   "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/secretary-staff-dark.png",
-   "generatedAt": "2026-11-05T19:34:48.092Z"
   },
   {
    "name": "business-new",
@@ -1637,6 +1587,248 @@
    "url": "/customers/x9",
    "file": "/root/projects/shark-sec-d/apps/mobile/qc/shots-sec/customers-x9-dark.png",
    "generatedAt": "2026-11-06T14:29:02.567Z"
+  },
+  {
+   "name": "secretary-team-add",
+   "route": "/secretary/team/add",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "14c1d463a6484ee45be0aee5f3a52cc380b851e44fd675b34a7383467370ae2a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-add",
+    "team-add-close",
+    "team-add-phone",
+    "team-add-contacts",
+    "team-add-submit"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nเพิ่มคน\nTHE BEAN CAFÉ\nเบอร์โทร\n\nเลือกจากรายชื่อในเครื่อง\nเพิ่มเข้าทีม",
+   "unmocked": [],
+   "url": "/secretary/team/add",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-team-add.png",
+   "generatedAt": "2026-11-17T05:19:23.666Z"
+  },
+  {
+   "name": "secretary-team-new-group",
+   "route": "/secretary/team/new-group",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "14c1d463a6484ee45be0aee5f3a52cc380b851e44fd675b34a7383467370ae2a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-new-group",
+    "team-new-group-close",
+    "team-new-group-photo",
+    "team-new-group-name",
+    "team-new-group-person",
+    "team-new-group-submit"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nสร้างกลุ่ม\nเลือกแล้ว 0 คน\n\nสมาชิก\nค\nครูนิว\nพนักงาน\nค\nครูบอส\nผู้จัดการ\nพ\nพี่ต้น\nคุยอย่างเดียว\nน\nน้องแอน\nพนักงาน\nแ\nแม็ก\nรอยอมรับ · เลือกไม่ได้\nสร้างกลุ่ม",
+   "unmocked": [],
+   "url": "/secretary/team/new-group",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-team-new-group.png",
+   "generatedAt": "2026-11-17T05:19:26.391Z"
+  },
+  {
+   "name": "secretary-team-t1",
+   "route": "/secretary/team/t1",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "14c1d463a6484ee45be0aee5f3a52cc380b851e44fd675b34a7383467370ae2a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-room",
+    "team-room-back",
+    "team-room-gear",
+    "team-msg",
+    "team-input"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\nทีมครูสอนดำน้ำ\n5 คน · คุณ ครูนิว ครูบอส พี่ต้น +1\n\nครูนิว\nพรุ่งนี้เจอกัน 7 โมงที่ท่าเรือนะครับ\n09:10\nครูบอส\nรับทราบ เตรียมถังให้ 12 ใบ\n09:15\nโอเค ขอบคุณทุกคน 🙏\n09:20 · อ่านแล้ว 3\n\n",
+   "unmocked": [],
+   "url": "/secretary/team/t1",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-team-t1.png",
+   "generatedAt": "2026-11-17T05:19:29.648Z"
+  },
+  {
+   "name": "secretary-team-t1-settings",
+   "route": "/secretary/team/t1/settings",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "14c1d463a6484ee45be0aee5f3a52cc380b851e44fd675b34a7383467370ae2a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-group-settings",
+    "team-gs-back",
+    "team-gs-photo",
+    "team-gs-name",
+    "team-gs-add",
+    "team-gs-member",
+    "team-gs-mute",
+    "team-gs-leave"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nตั้งค่ากลุ่ม\nทีมครูสอนดำน้ำ\n\n\nสมาชิก 5 คน\n\nเพิ่มสมาชิก\nค\nคุณ (เจ้าของ)\nผู้สร้างกลุ่ม\nค\nครูนิว\nพนักงาน\n\nค\nครูบอส\nผู้จัดการ · แอดมินกลุ่ม\n\nพ\nพี่ต้น\nคุยอย่างเดียว\n\nน\nน้องแอน\nพนักงาน\n\nการแจ้งเตือน\nปิดเสียงกลุ่มนี้\nออกจากกลุ่ม",
+   "unmocked": [],
+   "url": "/secretary/team/t1/settings",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-team-t1-settings.png",
+   "generatedAt": "2026-11-17T05:19:32.531Z"
+  },
+  {
+   "name": "secretary-team-add-dark",
+   "route": "/secretary/team/add",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "14c1d463a6484ee45be0aee5f3a52cc380b851e44fd675b34a7383467370ae2a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-add",
+    "team-add-close",
+    "team-add-phone",
+    "team-add-contacts",
+    "team-add-submit"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nเพิ่มคน\nTHE BEAN CAFÉ\nเบอร์โทร\n\nเลือกจากรายชื่อในเครื่อง\nเพิ่มเข้าทีม",
+   "unmocked": [],
+   "url": "/secretary/team/add",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-team-add-dark.png",
+   "generatedAt": "2026-11-17T05:19:58.553Z"
+  },
+  {
+   "name": "secretary-team-new-group-dark",
+   "route": "/secretary/team/new-group",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "14c1d463a6484ee45be0aee5f3a52cc380b851e44fd675b34a7383467370ae2a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-new-group",
+    "team-new-group-close",
+    "team-new-group-photo",
+    "team-new-group-name",
+    "team-new-group-person",
+    "team-new-group-submit"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nสร้างกลุ่ม\nเลือกแล้ว 0 คน\n\nสมาชิก\nค\nครูนิว\nพนักงาน\nค\nครูบอส\nผู้จัดการ\nพ\nพี่ต้น\nคุยอย่างเดียว\nน\nน้องแอน\nพนักงาน\nแ\nแม็ก\nรอยอมรับ · เลือกไม่ได้\nสร้างกลุ่ม",
+   "unmocked": [],
+   "url": "/secretary/team/new-group",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-team-new-group-dark.png",
+   "generatedAt": "2026-11-17T05:20:03.605Z"
+  },
+  {
+   "name": "secretary-team-t1-dark",
+   "route": "/secretary/team/t1",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "14c1d463a6484ee45be0aee5f3a52cc380b851e44fd675b34a7383467370ae2a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-room",
+    "team-room-back",
+    "team-room-gear",
+    "team-msg",
+    "team-input"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\n\nทีมครูสอนดำน้ำ\n5 คน · คุณ ครูนิว ครูบอส พี่ต้น +1\n\nครูนิว\nพรุ่งนี้เจอกัน 7 โมงที่ท่าเรือนะครับ\n09:10\nครูบอส\nรับทราบ เตรียมถังให้ 12 ใบ\n09:15\nโอเค ขอบคุณทุกคน 🙏\n09:20 · อ่านแล้ว 3\n\n",
+   "unmocked": [],
+   "url": "/secretary/team/t1",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-team-t1-dark.png",
+   "generatedAt": "2026-11-17T05:20:09.242Z"
+  },
+  {
+   "name": "secretary-team-t1-settings-dark",
+   "route": "/secretary/team/t1/settings",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "14c1d463a6484ee45be0aee5f3a52cc380b851e44fd675b34a7383467370ae2a",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team-group-settings",
+    "team-gs-back",
+    "team-gs-photo",
+    "team-gs-name",
+    "team-gs-add",
+    "team-gs-member",
+    "team-gs-mute",
+    "team-gs-leave"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\n\nตั้งค่ากลุ่ม\nทีมครูสอนดำน้ำ\n\n\nสมาชิก 5 คน\n\nเพิ่มสมาชิก\nค\nคุณ (เจ้าของ)\nผู้สร้างกลุ่ม\nค\nครูนิว\nพนักงาน\n\nค\nครูบอส\nผู้จัดการ · แอดมินกลุ่ม\n\nพ\nพี่ต้น\nคุยอย่างเดียว\n\nน\nน้องแอน\nพนักงาน\n\nการแจ้งเตือน\nปิดเสียงกลุ่มนี้\nออกจากกลุ่ม",
+   "unmocked": [],
+   "url": "/secretary/team/t1/settings",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-team-t1-settings-dark.png",
+   "generatedAt": "2026-11-17T05:20:13.578Z"
+  },
+  {
+   "name": "secretary-staff",
+   "route": "/secretary/staff",
+   "dark": false,
+   "ok": true,
+   "fixtureSha256": "c6175abc5cd5b12d6b9ae280388a071bbfc7951fa7fe4e425d0544267accb353",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team",
+    "sec-top-secretary",
+    "sec-top-team",
+    "sec-top-help",
+    "team-search",
+    "team-plus",
+    "team-row"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\nTB\n\n\n\n1\n\n\n\n\nทีมครูสอนดำน้ำ\nกลุ่ม · 5\nครูนิว: พรุ่งนี้เจอกัน 7 โมง\n09:15\n4\nค\nครูนิว\nพนักงาน\nพรุ่งนี้ลูกค้า 3 คนนะครับ\n10:42\n2\nค\nครูบอส\nผู้จัดการ\nคุณ: โอเคครับ\n15:00\nพ\nพี่ต้น\nคุยอย่างเดียว\nส่งรูปเรือให้แล้วนะ\nเมื่อวาน\nน\nน้องแอน\nพนักงาน\nแตะเพื่อเริ่มแชท\nแ\nแม็ก\nรอยอมรับคำเชิญ\n1 วัน",
+   "unmocked": [],
+   "url": "/secretary/staff",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-staff.png",
+   "generatedAt": "2026-11-17T05:20:30.782Z"
+  },
+  {
+   "name": "secretary-staff-dark",
+   "route": "/secretary/staff",
+   "dark": true,
+   "ok": true,
+   "fixtureSha256": "c6175abc5cd5b12d6b9ae280388a071bbfc7951fa7fe4e425d0544267accb353",
+   "viewportH": 844,
+   "errors": [],
+   "missing": [],
+   "overflow": false,
+   "expect": [
+    "team",
+    "sec-top-secretary",
+    "sec-top-team",
+    "sec-top-help",
+    "team-search",
+    "team-plus",
+    "team-row"
+   ],
+   "texts": "กิจการ\nThe Bean Café\n▾\nระบบงาน\nผู้ช่วย AI\nสมาชิก\nCRM ขาย\nowner@qc.invalid\nออกจากระบบ\nTB\n\n\n\n1\n\n\n\n\nทีมครูสอนดำน้ำ\nกลุ่ม · 5\nครูนิว: พรุ่งนี้เจอกัน 7 โมง\n09:15\n4\nค\nครูนิว\nพนักงาน\nพรุ่งนี้ลูกค้า 3 คนนะครับ\n10:42\n2\nค\nครูบอส\nผู้จัดการ\nคุณ: โอเคครับ\n15:00\nพ\nพี่ต้น\nคุยอย่างเดียว\nส่งรูปเรือให้แล้วนะ\nเมื่อวาน\nน\nน้องแอน\nพนักงาน\nแตะเพื่อเริ่มแชท\nแ\nแม็ก\nรอยอมรับคำเชิญ\n1 วัน",
+   "unmocked": [],
+   "url": "/secretary/staff",
+   "file": "/root/projects/shark-b27-team/apps/mobile/qc/shots-sec/secretary-staff-dark.png",
+   "generatedAt": "2026-11-17T05:20:34.501Z"
   }
  ]
 }

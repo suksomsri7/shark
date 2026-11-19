@@ -22,6 +22,17 @@ import type { NextRequest } from "next/server";
 
 const ROOT_HOSTS = new Set(["shark.in.th", "www.shark.in.th", "localhost"]);
 
+// 14 พ.ย. 2569 (เจ้าของสั่ง "การเปิดทางเว็บ url ระงับไปก่อน"): หลังบ้านร้าน `/app/*` เปิดได้เฉพาะจากแอป SHARK HUB
+//   (WebView ส่ง UA "SharkApp") · เบราว์เซอร์ทั่วไป ⇒ rewrite ไปหน้า /use-app (บอกให้ใช้แอป) — URL เดิมคงอยู่ เปิดคืนได้ทันที
+//   ทำงานเฉพาะ production บน Vercel (QC/preview/local ไม่กระทบ) · เปิดคืนโดยไม่ต้อง deploy: ตั้ง env WEB_APP_BROWSER_OPEN=1
+//   ⚠️ เป็นการกั้นทางเข้าเชิงผลิตภัณฑ์ ไม่ใช่ความปลอดภัย (UA ปลอมได้) — สิทธิ์จริงยังตรวจที่ชั้น app เหมือนเดิม
+function browserBlockedFromApp(request: NextRequest): boolean {
+  if (process.env.VERCEL_ENV !== "production" || process.env.WEB_APP_BROWSER_OPEN === "1") return false;
+  const path = request.nextUrl.pathname;
+  if (path !== "/app" && !path.startsWith("/app/")) return false;
+  return !(request.headers.get("user-agent") ?? "").includes("SharkApp");
+}
+
 export function proxy(request: NextRequest) {
   const host = (request.headers.get("host") ?? "").split(":")[0].toLowerCase();
   const res = NextResponse.next();
@@ -44,6 +55,12 @@ export function proxy(request: NextRequest) {
     res.headers.set("x-shark-host", host);
   }
   res.headers.set("x-shark-surface", "app");
+  if (browserBlockedFromApp(request)) {
+    const url = request.nextUrl.clone();
+    url.pathname = "/use-app";
+    url.search = "";
+    return applySecurity(NextResponse.rewrite(url), framable, publicDoc);
+  }
   return applySecurity(res, framable, publicDoc);
 }
 

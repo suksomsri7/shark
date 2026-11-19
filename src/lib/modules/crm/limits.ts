@@ -219,7 +219,7 @@ async function warnOnce(tx: Tx, ctx: LimitsCtx, key: CrmLimitKey, used: number, 
         tenantId: ctx.tenantId,
         recipientUserId: o.userId,
         title: `CRM ใกล้ถึงเพดาน${label} (${pct}%)`,
-        body: `ระบบ CRM ใช้${label}ไปแล้ว ${used.toLocaleString("th-TH")} จากเพดาน ${limit.toLocaleString("th-TH")} ${CRM_LIMIT_UNIT[key]} (${pct}%) — เก็บถาวรรายการที่ไม่ใช้ หรือติดต่อทีม SHARK เพื่อขยายเพดานก่อนเต็ม`,
+        body: `ระบบ CRM ใช้${label}ไปแล้ว ${used.toLocaleString("th-TH")} จากเพดาน ${limit.toLocaleString("th-TH")} ${CRM_LIMIT_UNIT[key]} (${pct}%) — เก็บถาวรรายการที่ไม่ใช้ หรือติดต่อทีมเลขาเพื่อขยายเพดานก่อนเต็ม`,
       })),
     });
   }

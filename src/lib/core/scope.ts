@@ -226,6 +226,20 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   UserPhone: g("เบอร์ของ user (แทน User.phone · core FROZEN) — login ด้วยเบอร์ต้องหาก่อนรู้ร้าน"),
   PhoneOtp: g("OTP SMS ขั้น login — สร้างก่อนรู้ว่า user/ร้านไหน (แบบ AuthToken)"),
   AiNotifyPref: g("การตั้งค่าแจ้งเตือนต่อคน — tenantId null = ทุกร้าน · push ห้องเลขาไม่กรองร้าน (R-K20)"),
+  // CAL1.1 ▸ ปฏิทินส่วนตัวของเลขา (docs/modules/32-secretary-calendar.md §2.3) — CalItem/CalPref ผูกร้าน (purge ลบ · export ร้านยกเว้น R-CAL-33) ◂
+  CalItem: tenant,
+  CalPref: tenant,
+  CalShopPolicy: tenant, // calendar_c ▸ นโยบายปฏิทินของร้าน (ส่งนัดลูกค้าเข้า Google ส่วนตัว) ◂
+  // B27 แชททีม (prisma/schema/team_chat.prisma · ผู้เขียนเดียว src/lib/team-chat/service.ts) — ทุกคำสั่งกรอง tenantId + สมาชิกห้อง ◂
+  TeamThread: tenant,
+  TeamThreadMember: tenant,
+  TeamMessage: tenant,
+  CalRoomCard: tenant, // calendar_b ▸ การ์ด agenda ในห้องเลขา (ส่วนตัว · review b B1) ◂
+  CalLink: g("ปฏิทิน Google ของ \"คน\" (1 แถว/user/provider) ใช้ข้ามทุกร้าน — ส่วนตัว M4"),
+  CalExternalEvent: g("แคชอีเวนต์ Google ของคน — ผูก CalLink ไม่ผูกร้าน"),
+  // Q8 ▸ เผื่อเวลาเดินทาง (สัญญา 32 §16) — ส่วนตัวต่อ (ผู้ใช้, ร้าน) · export ร้านยกเว้น (PERSONAL_MODELS) ◂
+  CalTravelRule: tenant,
+  CalTravelDismissal: tenant,
   // Observability (WO-0041) — logger กลางเขียน · backoffice อ่าน (ข้ามร้านโดยเจตนา)
   OpsEvent: { axis: "platform", why: "ops log ข้ามร้าน — เขียนผ่าน core/ops.ts อ่านทาง backoffice" },
   OpsAlertState: { axis: "platform", why: "สถานะ throttle alert — ไม่ใช่ข้อมูลร้าน" },
@@ -235,6 +249,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   // Support Desk (WO-0021) — ฝั่งร้าน tenant-scoped · ฝั่ง platform อ่านข้ามร้านผ่าน src/lib/platform
   SupportCase: tenant,
   SupportMessage: tenant,
+  SupportStageEvent: tenant, // help-cases: ประวัติขั้นของเคส
   PlatformAuditLog: { axis: "platform", why: "audit การกระทำฝั่งแพลตฟอร์ม — tenantDb ห้ามแตะ" },
   // การเงิน (WO-0023) + storage (WO-0024)
   PaymentProfile: tenant,

@@ -14,8 +14,8 @@ export const POS_API_CONFIG: ApiModuleConfig = {
   rateNs: "pos",
   makeActor: posApiKeyActor,
   messages: {
-    keyExpiredTh: "คีย์ API หมดอายุแล้ว — ออกคีย์ใหม่ที่หน้าขาย › ตั้งค่า › การเชื่อมต่อระบบ SHARK › คีย์ API",
-    keyExpiredEn: "This API key has expired. Create a new one in POS settings > SHARK connections > API keys.",
+    keyExpiredTh: "คีย์ API หมดอายุแล้ว — ออกคีย์ใหม่ที่หน้าขาย › ตั้งค่า › การเชื่อมต่อระบบเลขา › คีย์ API",
+    keyExpiredEn: "This API key has expired. Create a new one in POS settings > Lekaa connections > API keys.",
     systemMismatchTh: "ระบบขายหน้าร้านที่ระบุใช้กับคีย์นี้ไม่ได้",
     systemMismatchEn: "The requested POS system is not available to this API key.",
     systemRequiredTh: "คีย์นี้ไม่ได้ผูกระบบขายหน้าร้าน — ต้องส่งส่วนหัว X-Shark-System บอกว่าจะทำงานกับระบบไหน",
