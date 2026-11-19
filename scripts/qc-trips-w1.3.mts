@@ -25,6 +25,7 @@ import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 import { loadTripsQcEnv } from "./trips-qc-env.mjs";
+import { fromMainMerge } from "./trips-main-merge.mjs"; // ORACLE-EDIT (ผู้คุม 19 พ.ย.: รวม main) — commit ฝั่ง main ที่รวมเข้ามา อยู่ที่เดียว
 import * as FX from "./trips-fixture.mjs";
 
 const LABEL = "qc-trips-w1.3";
@@ -436,20 +437,24 @@ try {
     if (typeof r !== "string" || !r) throw new AssertFail(`issueSelfFormNonce ไม่คืนสตริง: ${fmt(r)}`);
     return r;
   };
+  // ORACLE-EDIT X6 (ผู้คุม 19 พ.ย.): คีย์ที่ส่งมาแบบระบุ (รวม null/undefined) ต้องส่งตามนั้น — เดิม `o.phone ?? b.phone` / `o.nonce ?? snonce(…)` เปลี่ยน null เป็นค่าจริง
+  //   ⇒ X6-1 (เบอร์ null) / X6-2 (nonce null) แดงด้วยเหตุผิด (ได้ grant/INVALID ของค่าจริง) · ตอนนี้ null/undefined ที่ระบุถูกส่งไปตรง ๆ และต้องถูกปฏิเสธ ไม่มี grant
+  const pick = <K extends string, V>(o: Partial<Record<K, unknown>>, k: K, dflt: () => V): unknown => (k in o ? o[k] : dflt());
   const verify = (b: Bk, o: { phone?: unknown; clientKey?: string; when?: { now: Date }; nonce?: unknown; shop?: string; token?: string } = {}) => {
     const when = o.when ?? VNOW;
-    return call("verifyBookSelf", { shop: o.shop ?? b.shop, token: o.token ?? b.token, form: { phone: o.phone ?? b.phone, nonce: o.nonce ?? snonce(b, "verify", when.now.getTime() - NOW0.getTime() - 60_000) }, clientKey: o.clientKey ?? b.ck }, when);
+    return call("verifyBookSelf", { shop: pick(o, "shop", () => b.shop), token: pick(o, "token", () => b.token), form: { phone: pick(o, "phone", () => b.phone), nonce: pick(o, "nonce", () => snonce(b, "verify", when.now.getTime() - NOW0.getTime() - 60_000)) }, clientKey: pick(o, "clientKey", () => b.ck) }, when);
   };
   const grantOf = async (b: Bk, when = VNOW): Promise<string> => {
     const r = await verify(b, { when });
     ok(r.ok === true && typeof r.grant === "string", `verifyBookSelf ${b.tag}: ${fmt(r)}`);
     return String(r.grant);
   };
+  // ORACLE-EDIT X6 (ผู้คุม 19 พ.ย.): แบบเดียวกับ verify — accept/nonce/clientKey/shop/token ที่ระบุ (แม้ undefined/null) ส่งตามนั้น · เดิม `o.accept === undefined ? "on"` ซ่อนกรณี accept ที่ไม่ส่ง
   const cancelQ = (b: Bk, grant: unknown, when = ACT, o: { clientKey?: string; shop?: string; token?: string } = {}) =>
-    call("quoteBookSelfCancel", { shop: o.shop ?? b.shop, token: o.token ?? b.token, grant, clientKey: o.clientKey ?? b.ck }, when);
-  const cancelX = (b: Bk, grant: unknown, seen: unknown, o: { accept?: unknown; nonce?: string; when?: { now: Date }; clientKey?: string } = {}) => {
+    call("quoteBookSelfCancel", { shop: pick(o, "shop", () => b.shop), token: pick(o, "token", () => b.token), grant, clientKey: pick(o, "clientKey", () => b.ck) }, when);
+  const cancelX = (b: Bk, grant: unknown, seen: unknown, o: { accept?: unknown; nonce?: unknown; when?: { now: Date }; clientKey?: string } = {}) => {
     const when = o.when ?? ACT;
-    return call("cancelBookSelf", { shop: b.shop, token: b.token, grant, form: { seen: typeof seen === "number" ? String(seen) : seen, accept: o.accept === undefined ? "on" : o.accept, nonce: o.nonce ?? snonce(b, "cancel", when.now.getTime() - NOW0.getTime() - 60_000) }, clientKey: o.clientKey ?? b.ck }, when);
+    return call("cancelBookSelf", { shop: b.shop, token: b.token, grant, form: { seen: typeof seen === "number" ? String(seen) : seen, accept: pick(o, "accept", () => "on"), nonce: pick(o, "nonce", () => snonce(b, "cancel", when.now.getTime() - NOW0.getTime() - 60_000)) }, clientKey: pick(o, "clientKey", () => b.ck) }, when);
   };
   const openRes = (b: Bk, when = ACT, token?: string) => bcall("openBookReservation", { shop: b.shop, token: token ?? b.token, lang: "th", acceptLanguage: "th", clientKey: ck() }, when);
   const manageOf = async (b: Bk, when = ACT): Promise<Rec> => {
@@ -636,7 +641,9 @@ try {
       const add = Number(ns[0] || 0), del = Number(ns[1] || 0);
       ok(del <= maxDel && (maxAdd === null || add <= maxAdd), `${f}: +${add} −${del} (จำกัด −${maxDel}${maxAdd === null ? "" : ` +${maxAdd}`})`);
     }
-    ok(!git(["diff", "--name-only", BASE_SHA, "--", "prisma"]).trim(), "ใบนี้ไม่มี migration");
+    // ORACLE-EDIT S-10 (ผู้คุม 19 พ.ย.: รวม main — migration ของ main ไม่ใช่ของใบ): ไฟล์ใต้ prisma ที่ตรงกับ commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge · scripts/trips-main-merge.mts) ไม่นับ · ฝั่ง TRIPS เพิ่ม/แก้ หรือ untracked ใต้ prisma ยังแดง
+    const prismaNew = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", "prisma"]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]).split("\n")].filter(Boolean))].filter((f) => !fromMainMerge(ROOT, f));
+    ok(prismaNew.length === 0, `ใบนี้ไม่มี migration: ${prismaNew.slice(0, 4).join(", ")}`);
   });
   groupLine("S");
 
@@ -1171,6 +1178,142 @@ try {
     }
   });
   groupLine("X6");
+
+  // ═══════════════ ORACLE-EDIT DEV (ผู้คุม 19 พ.ย.): ข้อเพิ่มเพื่อพิสูจน์ส่วนที่ builder ทำต่างจากที่ใบเขียน (r1) — audit ผ่านผู้กระทำ SYSTEM job trips.public.self (K3) ·
+  //   ปล่อยที่ถือของ HOLD ด้วยผู้กระทำ SYSTEM ของรั้ว · ตรวจ tokenHash ใต้ล็อกหลัง CAS · grant 15 นาทีพอดี (K7) · ฟอร์มที่เปิดตอน HOLD แต่การจองกลายเป็น CONFIRMED ยังไม่จ่าย · outbox ของเส้นลูกค้า
+  console.log("\n── DEV: ส่วนที่ builder ทำต่างจากใบ (K3 · K7 · รั้วหลัง CAS · ฟอร์มค้าง) ──");
+  type AFull = { id: string; action: string; actorType: string; actorId: string | null; targetId: string; after: Rec | null };
+  const auditCount = async () => Number((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "AuditLog" WHERE "tenantId" = $1`, [tA]))[0]?.n ?? 0);
+  const auditIds = async () => new Set((await q<{ id: string }>(`SELECT id FROM "AuditLog" WHERE "tenantId" = $1`, [tA])).map((r) => r.id));
+  const auditNew = async (before: Set<string>) => (await q<AFull>(`SELECT id, action, "actorType"::text AS "actorType", "actorId", "targetId", "after" FROM "AuditLog" WHERE "tenantId" = $1`, [tA])).filter((r) => !before.has(r.id));
+  const outboxIds = async () => new Set((await q<{ id: string }>(`SELECT id FROM "OutboxEvent" WHERE "tenantId" = $1`, [tA])).map((r) => r.id));
+  const outboxNew = async (before: Set<string>) => (await q<{ id: string; type: string; payload: unknown }>(`SELECT id, type, payload FROM "OutboxEvent" WHERE "tenantId" = $1`, [tA])).filter((r) => !before.has(r.id));
+  const holdsOf = async (bookingId: string) => q<{ id: string; status: string; releasedReason: string | null; qty: number }>(`SELECT id, status, "releasedReason", ("qtyPublic" + "qtyAllot")::int AS qty FROM "TripHold" WHERE "bookingId" = $1 ORDER BY id`, [bookingId]);
+  const OB: Record<string, string[]> = {};
+  await st("DEV-1", "K3 (เส้น W1.2 ไม่เปลี่ยน): จองผ่านเว็บปกติ (startBookHold → confirmBookHold · PUBLIC) ไม่มีแถว audit ใหม่ที่เป็น SYSTEM / trips.public.self / after.by PUBLIC — ผู้กระทำ PUBLIC ไม่เขียน audit (เหมือน BASE)", async () => {
+    needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    const before = await auditIds(); const n0 = await auditCount();
+    const b = await mkBooking("bDevWeb", "gen", "A", { adults: 1 });
+    const rows = await auditNew(before);
+    const bad = rows.filter((r) => r.actorType === "SYSTEM" || r.actorId === PUBLIC_ACTOR_ID || asRec(r.after)?.by === "PUBLIC");
+    ok(bad.length === 0, `จองเว็บปกติเขียน audit ผู้กระทำระบบ/ลูกค้า: ${fmt(bad.map((r) => [r.action, r.actorType, r.actorId]))}`);
+    eq([await auditCount() - n0, rows.length], [0, 0], `แถว audit ใหม่จากการจองเว็บ ${b.tag} (PUBLIC ไม่เขียน audit) ${fmt(rows.map((r) => r.action))}`);
+  });
+  await st("DEV-2", "ยกเลิก HOLD ผ่านหน้า (cancelBookSelf): ที่นั่งคืนพอดี (held −ที่นั่งของการจอง · sold ไม่เปลี่ยน) · hold ของการจองทุกแถว RELEASED เหตุ BOOKING_CANCELLED · การจอง CANCELLED", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    await mkDep("devh", "A", "2027-04-29");
+    const b = await mkBooking("bDevHold", "devh", "A", FULL);
+    const d0 = await depRow(b.dep);
+    eq([d0.held, d0.sold], [b.seats, 0], "ก่อน");
+    const h0 = await holdsOf(b.id);
+    ok(h0.length >= 1 && h0.every((h) => h.status === "ACTIVE"), `hold ก่อนยกเลิก: ${fmt(h0)}`);
+    const g = await grantOf(b);
+    const aBefore = await auditIds(), oBefore = await outboxIds();
+    const r = await cancelX(b, g, 0);
+    eq([r.ok, r.result], [true, "CANCELLED"], `ผล ${fmt(r)}`);
+    const d1 = await depRow(b.dep);
+    eq([d0.held - d1.held, d1.sold], [b.seats, d0.sold], "ที่นั่งคืนพอดี");
+    eq((await holdsOf(b.id)).map((h) => [h.status, h.releasedReason]), h0.map(() => ["RELEASED", "BOOKING_CANCELLED"]), "hold");
+    eq((await bRow(b.id)).status, "CANCELLED", "การจอง");
+    G.devHoldAudit = JSON.stringify((await auditNew(aBefore)).map((x) => ({ action: x.action, actorType: x.actorType, actorId: x.actorId, by: asRec(x.after)?.by ?? null, targetId: x.targetId })));
+    OB.unpaidCancel = (await outboxNew(oBefore)).map((x) => x.type).sort();
+    console.log(`     outbox ของการยกเลิก HOLD ผ่านหน้า: ${OB.unpaidCancel.join(", ") || "ไม่มี"}`);
+  });
+  await st("DEV-3", "K3 ทุกแถว audit ที่เส้นลูกค้าเขียน (ยกเลิก HOLD ของ DEV-2 · รวมการปล่อย hold) = actorType SYSTEM · actorId trips.public.self · after.by PUBLIC · ไม่มีเบอร์/กุญแจเครื่อง/token", async () => {
+    const [b] = needBk("bDevHold");
+    const rows = JSON.parse(G.devHoldAudit ?? "[]") as { action: string; actorType: string; actorId: string | null; by: unknown; targetId: string }[];
+    ok(rows.length >= 1, "ไม่มีแถว audit จากการยกเลิก (DEV-2 ไม่ได้ทำ)");
+    const bad = rows.filter((x) => x.actorType !== "SYSTEM" || x.actorId !== PUBLIC_ACTOR_ID || x.by !== "PUBLIC");
+    ok(bad.length === 0, `แถวที่ไม่เป็นรูป K3: ${fmt(bad)}`);
+    const blob = JSON.stringify((await q<{ a: unknown }>(`SELECT "after" AS a FROM "AuditLog" WHERE "tenantId" = $1 AND "actorId" = $2`, [tA, PUBLIC_ACTOR_ID])).map((x) => x.a));
+    ok(!blob.includes(b.phone) && !blob.includes(b.ck) && !blob.includes(b.token), "audit มีเบอร์/กุญแจเครื่อง/token");
+  });
+  await st("DEV-4", "K2 รั้วหลัง CAS: ยกเลิก HOLD (บริการตรง · publicSelf ถูกตอนเริ่ม) ขณะที่ token ของแถวถูกเปลี่ยนก่อนธุรกรรมยกเลิกถึงแถว ⇒ FORBIDDEN · ไม่มีการเขียนเลย (hold ACTIVE · held เดิม · การจอง HOLD รุ่นเดิม · ไม่มี audit/outbox ยกเลิก)", async () => {
+    needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    await mkDep("devr", "A", "2027-04-30");
+    const b = await mkBooking("bDevRace", "devr", "A", { adults: 2 });
+    const reason = selfReason();
+    const v0 = await bRow(b.id), d0 = await depRow(b.dep), h0 = await holdsOf(b.id);
+    const aBefore = await auditIds(), oBefore = await outboxIds();
+    const lockC = await pool.connect();
+    let r: Rec = {};
+    let sawWait = false;
+    try {
+      await lockC.query("BEGIN");
+      await lockC.query(`SELECT 1 FROM "TripBooking" WHERE id = $1 FOR UPDATE`, [b.id]);
+      const p = tcall("cancelTripBooking", pubCtx(), { bookingId: b.id, mode: "EXECUTE", reason, reasonKind: "CUSTOMER", idempotencyKey: `w13dev_${hex(6)}` }, publicSelfOf(b));
+      for (let i = 0; i < 100 && !sawWait; i++) {
+        await new Promise((res) => setTimeout(res, 150));
+        sawWait = Number((await q<{ n: number }>(`SELECT count(*)::int AS n FROM pg_locks l JOIN pg_class c ON c.oid = l.relation WHERE NOT l.granted AND c.relname = 'TripBooking'`))[0]?.n ?? 0) > 0
+          || Number((await q<{ n: number }>(`SELECT count(*)::int AS n FROM pg_locks WHERE NOT granted AND locktype = 'transactionid'`))[0]?.n ?? 0) > 0;
+      }
+      await lockC.query(`UPDATE "TripBooking" SET "publicTokenHash" = $2 WHERE id = $1`, [b.id, sha256hex(`w13-other-${hex(4)}`)]);
+      await lockC.query("COMMIT");
+      r = await p;
+    } finally {
+      lockC.release();
+      await pool.query(`UPDATE "TripBooking" SET "publicTokenHash" = $2 WHERE id = $1`, [b.id, sha256hex(b.token)]);
+    }
+    ok(sawWait, `ไม่เห็นธุรกรรมยกเลิกรอล็อกแถวการจอง (ทดสอบเส้นหลัง CAS ไม่ได้) · ผล ${fmt(r)}`);
+    eq([r.ok, r.code], [false, "FORBIDDEN"], `ผล ${fmt(r)}`);
+    const v1 = await bRow(b.id), d1 = await depRow(b.dep);
+    eq([v1.status, v1.version, d1.held, d1.sold], [v0.status, v0.version, d0.held, d0.sold], "การจอง/รอบไม่เปลี่ยน");
+    eq((await holdsOf(b.id)).map((h) => h.status), h0.map((h) => h.status), "hold ยัง ACTIVE");
+    eq([(await auditNew(aBefore)).map((x) => x.action), (await outboxNew(oBefore)).map((x) => x.type)], [[], []], "ไม่มี audit/outbox ใหม่");
+  });
+  await st("DEV-5", "K7 grant 15 นาทีพอดี (นาฬิกาที่ส่ง): ใช้ที่ +14:59 ⇒ ผ่าน · +15:01 ⇒ VERIFY_REQUIRED · กุญแจเครื่องอื่นที่ +14:59 ⇒ VERIFY_REQUIRED", async () => {
+    needSelf(); const [b] = needBk("bV");
+    const g = await grantOf(b);
+    const r1 = await cancelQ(b, g, at(VMS + GRANT_TTL_MIN * MIN - 1_000));
+    ok(r1.ok === true, `+14:59: ${fmt(r1)}`);
+    ERR(await cancelQ(b, g, at(VMS + GRANT_TTL_MIN * MIN + 1_000)), "VERIFY_REQUIRED", "+15:01");
+    ERR(await cancelQ(b, g, at(VMS + GRANT_TTL_MIN * MIN - 1_000), { clientKey: ck() }), "VERIFY_REQUIRED", "กุญแจเครื่องอื่น +14:59");
+  });
+  await st("DEV-6", "ฟอร์มยกเลิกที่เปิดตอน HOLD (UNPAID ฿0) แต่การจองกลายเป็น CONFIRMED ยังไม่จ่ายก่อนกด ⇒ ห้ามยกเลิกทันที: ผลต้องเป็น คำขอยกเลิก (CANCEL_REQUESTED · คำขอ QUOTED ยอด 0 · by CUSTOMER · การจองยัง CONFIRMED) หรือให้ลองใหม่ (STALE_FORM/STATE_CHANGED/AMOUNT_CHANGED · ไม่มีการเขียน) — ไม่มีทาง CANCELLED", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    await mkDep("devc", "A", "2027-05-01");
+    const b = await mkBooking("bDevConf", "devc", "A", { adults: 1 });
+    const g = await grantOf(b);
+    const qv = await cancelQ(b, g);
+    const vm = asRec(qv.vm) ?? {};
+    eq([qv.ok, vm.kind, vm.refundSatang], [true, "UNPAID", 0], "ฟอร์มตอน HOLD");
+    const nonce = String(asRec(vm.form)?.nonce ?? "");
+    // ฟิกซ์เจอร์: การจองกลายเป็น CONFIRMED ยังไม่จ่าย (hold แปลงเป็นที่ขาย) — ทดสอบปฏิกิริยาของหน้า ไม่ใช่เส้นเปลี่ยนสถานะ
+    await pool.query(`UPDATE "TripHold" SET status = 'CONVERTED' WHERE "bookingId" = $1 AND status = 'ACTIVE'`, [b.id]);
+    await pool.query(`UPDATE "TripDeparture" SET held = held - $2, sold = sold + $2 WHERE id = $1`, [b.dep, b.seats]);
+    await pool.query(`UPDATE "TripBooking" SET status = 'CONFIRMED', version = version + 1 WHERE id = $1`, [b.id]);
+    const oBefore = await outboxIds();
+    const r = await cancelX(b, g, 0, { nonce, when: at(240_000) });
+    const row = await bRow(b.id), rq = await refunds(b.id);
+    ok(row.status !== "CANCELLED" && !(r.ok === true && r.result === "CANCELLED"), `ยกเลิกการจอง CONFIRMED ทันที: ${fmt(r)} · สถานะ ${row.status}`);
+    if (r.ok === true) {
+      eq([r.result, row.status, rq.map((x) => [x.status, x.amountSatang, x.by])], ["CANCEL_REQUESTED", "CONFIRMED", [["QUOTED", 0, "CUSTOMER"]]], "คำขอยกเลิก");
+      OB.cancelRequest = (await outboxNew(oBefore)).map((x) => x.type).sort();
+      console.log(`     outbox ของคำขอยกเลิก (CONFIRMED ฿0): ${OB.cancelRequest.join(", ") || "ไม่มี"} · ผลหน้า ${r.result}`);
+    } else {
+      ok(["STALE_FORM", "STATE_CHANGED", "AMOUNT_CHANGED"].includes(String(r.code)), `ผลต้องเป็นให้ลองใหม่: ${fmt(r)}`);
+      eq([row.status, rq.length], ["CONFIRMED", 0], "ไม่มีการเขียน");
+    }
+  });
+  await st("DEV-7", "outbox ของเส้นลูกค้า: ยื่นคำขอคืนเงิน (จ่ายแล้ว) เขียน trips.refund.requested · payload ไม่มีเบอร์/token/กุญแจเครื่อง (รายการชนิดพิมพ์ไว้ให้ผู้คุม)", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    const b = await mkBooking("bDevRq", "d45", "A", { adults: 1 }, { pay: true });
+    const g = await grantOf(b);
+    // ยอดที่เห็น = ยอดจาก quote ของหน้า (CN-7 ตั้งตารางยกเลิกของสินค้า A เป็น 0% ก่อนการจองนี้เกิด ⇒ snapshot ของการจองนี้คืนเฉพาะค่าอุทยาน) — ข้อนี้ตรวจ outbox ไม่ใช่ยอด
+    const seen = Number(asRec((await cancelQ(b, g)).vm)?.refundSatang);
+    ok(Number.isSafeInteger(seen) && seen > 0, `quote: ${seen}`);
+    const oBefore = await outboxIds();
+    const r = await cancelX(b, g, seen);
+    eq([r.ok, r.result], [true, "REFUND_REQUESTED"], `ผล ${fmt(r)}`);
+    const rows = await outboxNew(oBefore);
+    OB.refundRequest = rows.map((x) => x.type).sort();
+    console.log(`     outbox ของคำขอคืนเงินผ่านหน้า: ${OB.refundRequest.join(", ") || "ไม่มี"}`);
+    ok(OB.refundRequest.includes("trips.refund.requested"), `ไม่มี trips.refund.requested: ${fmt(OB.refundRequest)}`);
+    const blob = JSON.stringify(rows.map((x) => x.payload)) + JSON.stringify((await q<{ p: unknown }>(`SELECT payload AS p FROM "OutboxEvent" WHERE "tenantId" = $1`, [tA])).map((x) => x.p));
+    const leak = Object.values(BK).filter((x) => blob.includes(x.phone) || blob.includes(x.token) || blob.includes(x.ck));
+    ok(leak.length === 0, `payload มีเบอร์/token/กุญแจเครื่อง: ${leak.map((x) => x.tag).slice(0, 3).join(",")}`);
+  });
+  groupLine("DEV");
 
   // ═══════════════ PII ═══════════════
   console.log("\n── PII ──");

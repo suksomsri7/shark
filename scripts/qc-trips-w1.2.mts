@@ -28,6 +28,7 @@ import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 import { loadTripsQcEnv } from "./trips-qc-env.mjs";
+import { fromMainMerge } from "./trips-main-merge.mjs"; // ORACLE-EDIT (ผู้คุม 19 พ.ย.: รวม main) — commit ฝั่ง main ที่รวมเข้ามา อยู่ที่เดียว
 import * as FX from "./trips-fixture.mjs";
 
 const LABEL = "qc-trips-w1.2";
@@ -720,7 +721,8 @@ try {
   });
   await st("S-4", "app/book + components/book (ทุกไฟล์ · m7) import เฉพาะ next/react/platform trips-public(-core)/trips-book(-core)/components/book (+ จอ: trips-shared · branding/public · messages book) · 'use server' มีเฉพาะ actions.ts (บนสุดของไฟล์) · actions.ts เรียก platform เท่านั้น ไม่อ่าน/ส่งเวลา/deps · redirect ไม่ใช้ค่าจาก FormData (R14) · query ของ redirect มีแค่ e f sel (R11)", () => {
     needOwn();
-    const PLAT = ["@/lib/platform/trips-public", "@/lib/platform/trips-public-core", "@/lib/platform/trips-book", "@/lib/platform/trips-book-core"];
+    // ORACLE-EDIT S-4 (ผู้คุม 19 พ.ย. · ใบสั่ง W1.3 §2 §3.2): หน้า/จอ/action ของ W1.3a import trips-self / trips-self-core ได้ (ยังห้าม prisma/modules/core)
+    const PLAT = ["@/lib/platform/trips-public", "@/lib/platform/trips-public-core", "@/lib/platform/trips-book", "@/lib/platform/trips-book-core", "@/lib/platform/trips-self", "@/lib/platform/trips-self-core"];
     const UI_EXTRA = ["@/components/trips/trips-shared", "@/lib/branding/public", "@/messages/th/book.json", "@/messages/en/book.json"];
     const allow = (s: string, ui: boolean) => s === "react" || s === "next" || s.startsWith("next/") || PLAT.includes(s) || (ui && UI_EXTRA.includes(s)) || s.startsWith("@/components/book/") || s.startsWith("./") || s.startsWith("../");
     const bad: string[] = [];
@@ -728,7 +730,9 @@ try {
       for (const f of files) for (const m of stripComments(read(f)).matchAll(/from\s+["']([^"']+)["']/g)) if (!allow(m[1] ?? "", ui)) bad.push(`${basename(dirname(f))}/${basename(f)} ← ${m[1]}`);
     ok(bad.length === 0, `import ต้องห้ามใน app/book · components/book: ${bad.slice(0, 5).join(" · ")}`);
     const us = [...appFiles, ...compFiles].filter((f) => /["']use server["']/.test(read(f)));
-    eq(us, [ACTIONS], "ไฟล์ที่มี 'use server'");
+    // ORACLE-EDIT S-4 (ผู้คุม 19 พ.ย. · ใบสั่ง W1.3 §2): 'use server' ได้สองไฟล์พอดี — actions.ts ของเส้นจอง + my/actions.ts ของ W1.3a (ไฟล์หลังตรวจละเอียดใน qc-trips-w1.3 S-2) · ส่วนที่เหลือของข้อนี้ตรวจ actions.ts ของ W1.2 ตามเดิม
+    const US_OK = [ACTIONS, `${APP}/[shop]/my/actions.ts`];
+    ok(us.every((f) => US_OK.includes(f)) && us.includes(ACTIONS) && new Set(us).size === us.length, `ไฟล์ที่มี 'use server': ${us.join(", ")} (ได้เฉพาะ ${US_OK.join(" · ")})`);
     const ac = stripComments(read(ACTIONS));
     const redirects = [...ac.matchAll(/redirect\(([^;]*)\)/g)].map((m) => m[1] ?? "");
     ok(redirects.length >= 1 && redirects.every((r) => !/\.get\(|formData|FormData|fd\b/.test(r)), `redirect ต้องสร้างจากผลของ platform (shopSlug/path) ไม่ใช่ FormData: ${redirects.slice(0, 2).join(" | ")}`);
@@ -810,7 +814,9 @@ try {
       if (same(f)) continue;
       ok(del <= maxDel && (maxAdd === null || add <= maxAdd), `${f}: +${add} −${del} (จำกัด −${maxDel}${maxAdd === null ? "" : ` +${maxAdd}`})`);
     }
-    ok(!git(["diff", "--name-only", BASE_SHA, "--", "prisma"]).trim(), "ใบนี้ไม่มี migration");
+    // ORACLE-EDIT S-10 (ผู้คุม 19 พ.ย.: รวม main — migration ของ main ไม่ใช่ของใบ): ไฟล์ใต้ prisma ที่ตรงกับ commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge · scripts/trips-main-merge.mts) ไม่นับ · ฝั่ง TRIPS เพิ่ม/แก้ หรือ untracked ใต้ prisma ยังแดง
+    const prismaNew = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", "prisma"]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]).split("\n")].filter(Boolean))].filter((f) => !fromMainMerge(ROOT, f));
+    ok(prismaNew.length === 0, `ใบนี้ไม่มี migration: ${prismaNew.slice(0, 4).join(", ")}`);
   });
   groupLine("S");
 
