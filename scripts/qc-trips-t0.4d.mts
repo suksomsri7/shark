@@ -14,6 +14,8 @@
 //    ⇒ ข้อสอบ COMMIT ⇒ redeem เห็นสิทธิ์หมด (PROMO_EXHAUSTED) — เรียงลำดับแน่นอน ไม่ต้องแข่ง (ยืนยันแบบเรียงธรรมดาล้มที่ขั้นเตรียมก่อนถึง Party — ดู D6-1 D6-4)
 // รัน: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-trips-t0.4d.mts   (ห้าม timeout ครอบ · ห้าม kill กลางคัน)
 // ผลที่ถูกต้องก่อนมี T0.4d: PC/S เขียว · D1-1..D1-5 D2-1 D2-2 D2-4 (Party ซ้ำ · สุ่มตามจังหวะ) D2-7 D3-1..D3-5 D4-1..D4-3 แดงด้วยเหตุของหนี้ · D1-6 D2-3 D2-5 D2-6 D3-6 D4-4 D6-* เขียว (ข้อถาวร/regression)
+// รอบ 2 (มติ G1–G5 · ผู้เขียนข้อสอบ 19 พ.ย.): กลุ่ม G1 G2 G3 G4 · S-4 งบ +135/−40 + capacity-core.ts ≤ +4/−2 · D1-2 ไม่บังคับ {contact} ในแม่แบบ (ตรวจบนจอใน G4) · ที่ถือ PUBLIC นับด้วย PUBLIC_IDEM_PREFIX ของโมดูล
+//    ผลที่ถูกต้องก่อนแก้รอบ 2: G1-4 เขียว (ตัวควบคุมแบบเรียง) · G1-1..G1-3 G1-5 G1-6 G2-* G3-* G4-* แดงด้วยเหตุของมติ
 // D6-1 D6-4 (ยืนยันเรียงธรรมดา) ล้มที่ขั้นเตรียมนอก tx ด้วย PRICE_CHANGED ไม่มี reason — ไม่ถึงขั้น Party · D6-2 D6-3 คือข้อ "ล้มหลังขั้น Party" จริงของมติ D6
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -21,6 +23,8 @@ import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import pg from "pg";
 import { loadTripsQcEnv } from "./trips-qc-env.mjs";
 import * as FX from "./trips-fixture.mjs";
@@ -89,9 +93,11 @@ const MSG_HOLD_LIMIT = {
 const FORBIDDEN_WORDS = /เต็ม|sold\s*out|\bfull\b/i; // D1: ที่นั่งยังไม่ได้ขาย
 /** D6 ขอบเขตไฟล์ของผู้สร้าง (ใบสั่ง "ขอบเขตไฟล์ของผู้สร้าง") — ไฟล์ตรง + โฟลเดอร์ของหน้าจอง (component/หน้า เฉพาะจุดแสดงข้อความผิดพลาด) */
 const OWN_FILES = ["src/lib/modules/trips/booking.ts", "src/lib/modules/trips/capacity.ts", "src/lib/modules/trips/capacity-service.ts", "src/lib/platform/trips-book.ts", "src/lib/platform/trips-book-core.ts",
-  "src/messages/th/book.json", "src/messages/en/book.json"];
+  "src/messages/th/book.json", "src/messages/en/book.json", "src/lib/modules/trips/capacity-core.ts"];
 const OWN_DIRS = ["src/components/book/", "src/app/book/"];
-const BUDGET = { add: 120, del: 30 };
+const BUDGET = { add: 135, del: 40 }; // มติ G5 (เดิม +120/−30)
+/** มติ G2: เปิด capacity-core.ts ให้ผู้สร้าง ≤ +4/−2 */
+const LIMITED_FILES: Record<string, { add: number; del: number }> = { "src/lib/modules/trips/capacity-core.ts": { add: 4, del: 2 } };
 const ORACLE_FILES = ["scripts/qc-trips-t0.4d.mts", "scripts/qc-trips-t0.7.mts", "scripts/qc-trips-w1.2.mts"] /* ORACLE-EDIT S-3 (ผู้คุม): w1.2 ERROR_CODES เป็น ORACLE-EDIT ของผู้คุมตามมติ E5 */; // ไฟล์ของผู้เขียนข้อสอบ/ORACLE-EDIT ของใบนี้ (ผู้คุม commit)
 const SOLD_ST = ["CONFIRMED", "PART_PAID", "PAID", "TRAVELLED", "NO_SHOW"];
 const SELL_CODES = ["VALIDATION", "NOT_FOUND", "FORBIDDEN", "KIND_NOT_SUPPORTED", "CURRENCY_NOT_ALLOWED", "SOLD_OUT", "INSUFFICIENT_ALLOTMENT", "BERTH_TAKEN", "SLOT_CLOSED", "CUTOFF_PASSED",
@@ -251,6 +257,9 @@ try {
   const PUBI = await tryImport("@/lib/platform/trips-public");
   const BCI = await tryImport("@/lib/platform/trips-book-core");
   const BSI = await tryImport("@/lib/platform/trips-book");
+  const CCI = await tryImport("@/lib/modules/trips/capacity-core");
+  /** คำนำหน้าคีย์กันซ้ำของ PUBLIC (มติ G2 · ค่าคงที่ร่วม) — ไม่มี/ไม่ใช่สตริง ⇒ "pub:" (รูปของ idemKeyFor ณ T0.4c) */
+  const PIP = typeof CCI.mod?.PUBLIC_IDEM_PREFIX === "string" && CCI.mod.PUBLIC_IDEM_PREFIX ? String(CCI.mod.PUBLIC_IDEM_PREFIX) : "pub:";
   const needTrips = (): Rec => { if (!TR) throw new AssertFail(`โหลดโมดูล trips ไม่ได้ (${TRI.err.slice(0, 120)})`); return TR; };
   const fn = (name: string): AnyFn => { const f = needTrips()[name]; if (typeof f !== "function") throw new AssertFail(`facade trips ไม่มี ${name}`); return f as AnyFn; };
   const call = async (name: string, ...a: unknown[]): Promise<Rec> => {
@@ -379,7 +388,7 @@ try {
   const holdsOf = async (depId: string) => q<Rec>(`SELECT * FROM "TripHold" WHERE "departureId" = $1 ORDER BY "createdAt", id`, [depId]);
   /** ที่ถือที่นับตามมติ D3 (ผู้กระทำ PUBLIC — คอลัมน์ idempotencyKey ขึ้นต้น pub: ทุกเส้นทางที่ INSERT hold · ไม่ถูกแก้หลัง INSERT) · ACTIVE · expiresAt > now · PAYMENT|SHOP_CONFIRM */
   const publicHeld = async (depId: string, now: string | Date) => Number((await q<{ n: number }>(`SELECT COALESCE(sum("qtyPublic" + "qtyAllot"),0)::int AS n FROM "TripHold"
-      WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND "idempotencyKey" LIKE 'pub:%' AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [depId, new Date(now).toISOString()]))[0]?.n ?? -1);
+      WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND left("idempotencyKey", length($3)) = $3 AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [depId, new Date(now).toISOString(), PIP]))[0]?.n ?? -1);
   /** นิยามวันนี้ (T0.4c §3.1 ตามช่องทาง) — ใช้แสดงสภาพวันนี้เท่านั้น */
   const channelHeld = async (depId: string, now: string | Date) => Number((await q<{ n: number }>(`SELECT COALESCE(sum("qtyPublic" + "qtyAllot"),0)::int AS n FROM "TripHold"
       WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND channel = ANY($3::text[]) AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [depId, new Date(now).toISOString(), PUBLIC_CHANNELS]))[0]?.n ?? -1);
@@ -465,7 +474,7 @@ try {
   const msgs = (lang: "th" | "en"): Rec => { try { return asRec(JSON.parse(read(`src/messages/${lang}/book.json`))) ?? {}; } catch { return {}; } };
   /** ค่าคาดหวังของ retryAfterSec (T0.4c R5): min(ceil((min expiresAt ของ hold PUBLIC ที่นับ − now)/1000), T5×60) — คิดจากแถวจริง */
   const expectRetry = async (d: string, now: Date, t5: number) => {
-    const first = (await q<{ t: Date | null }>(`SELECT min("expiresAt") AS t FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND "idempotencyKey" LIKE 'pub:%' AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [d, now.toISOString()]))[0]?.t;
+    const first = (await q<{ t: Date | null }>(`SELECT min("expiresAt") AS t FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND left("idempotencyKey", length($3)) = $3 AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [d, now.toISOString(), PIP]))[0]?.t;
     ok(first, "ไม่พบที่ถือ PUBLIC ที่นับ");
     return Math.min(Math.max(1, Math.ceil((new Date(first!).getTime() - now.getTime()) / 1000)), t5 * 60);
   };
@@ -561,7 +570,7 @@ try {
     const qc = changedOf(base, ["scripts"]).filter((f) => /^scripts\/qc-/.test(f) && !ORACLE_FILES.includes(f));
     ok(qc.length === 0, `แก้ข้อสอบ: ${qc.slice(0, 6).join(", ")}`);
   });
-  await st("S-4", `งบบรรทัดรวมของ src/ ≤ +${BUDGET.add}/−${BUDGET.del}`, () => {
+  await st("S-4", `งบบรรทัดรวมของ src/ ≤ +${BUDGET.add}/−${BUDGET.del} (มติ G5) · capacity-core.ts ≤ +4/−2 (มติ G2)`, () => {
     const base = baseOf();
     let add = 0, del = 0; const per: string[] = [];
     for (const f of changedOf(base, ["src"])) {
@@ -571,6 +580,12 @@ try {
       add += a; del += d; per.push(`${f.split("/").pop()} +${a}/−${d}`);
     }
     ok(add <= BUDGET.add && del <= BUDGET.del, `รวม +${add}/−${del}: ${per.join(" · ")}`);
+    const over = Object.entries(LIMITED_FILES).filter(([f, lim]) => {
+      if (sameAsSession(f)) return false;
+      const [x, y] = (git(["diff", "--numstat", base, "--", f]).trim() || "0\t0").split("\t").map(Number);
+      return (x || 0) > lim.add || (y || 0) > lim.del;
+    });
+    ok(over.length === 0, `เกินงบรายไฟล์: ${over.map(([f, l]) => `${f} (≤ +${l.add}/−${l.del})`).join(" · ")}`);
   });
   groupLine("S");
 
@@ -587,7 +602,7 @@ try {
     ok(new RegExp(`[?&]e=${NEW_CODE}(&|$)`).test(href), `ลิงก์: ${href}`);
     eq(asRec((coreV("bookErrorParam") as AnyFn)({ e: NEW_CODE }))?.code, NEW_CODE, "bookErrorParam");
   });
-  await st("D1-2", `ข้อความ err.${NEW_CODE} th/en: มีอาร์กิวเมนต์นาที 1 ตัว + ช่องติดต่อร้าน · แทนค่า N = 10 / 1 แล้วมีเลข N · ไม่มี "เต็ม"/"sold out"/"full" · ไม่มีตัวเลขอื่น (จำนวนที่นั่ง) · ไม่ซ้ำข้อความ HOLD_LIMIT/SOLD_OUT · err.HOLD_LIMIT คงข้อความเดิม`, () => {
+  await st("D1-2", `ข้อความ err.${NEW_CODE} th/en: มีอาร์กิวเมนต์นาที 1 ตัว · แทนค่า N = 10 / 1 แล้วมีเลข N · ไม่มี "เต็ม"/"sold out"/"full" · ไม่มีตัวเลขอื่น (จำนวนที่นั่ง) · ไม่ซ้ำข้อความ HOLD_LIMIT/SOLD_OUT · err.HOLD_LIMIT คงข้อความเดิม (ช่องติดต่อร้านตรวจที่จอใน G4)`, () => {
     const contact = `${SHOP_CONTACT.phone} · LINE ${SHOP_CONTACT.line}`;
     for (const lang of ["th", "en"] as const) {
       const err = asRec(msgs(lang).err) ?? {};
@@ -597,12 +612,11 @@ try {
       const args = icuArgs(String(tpl));
       const mins = args.filter(isMinutesArg), others = args.filter((a) => !isMinutesArg(a));
       ok(mins.length >= 1 && new Set(mins.map((a) => a.name)).size === 1, `${lang}: ต้องมีอาร์กิวเมนต์นาที 1 ชื่อ (plural/number หรือชื่อแบบ minutes) ได้ ${fmt(args.map((a) => `${a.name}:${a.type}`))}`);
-      ok(others.length >= 1, `${lang}: ต้องมีช่องติดต่อร้าน (เช่น {contact}) ได้ ${fmt(args.map((a) => a.name))}`);
+      void others; // ORACLE-EDIT D1-2 (ผู้เขียนข้อสอบ รอบ 2 · มติ G4): ช่องติดต่อร้านไม่บังคับให้อยู่ในแม่แบบนี้แล้ว — ตรวจจากข้อความที่จอแสดงจริง (BookError) ใน G4-2/G4-3
       ok(tpl !== err.HOLD_LIMIT && tpl !== err.SOLD_OUT, `${lang}: ข้อความซ้ำ HOLD_LIMIT/SOLD_OUT`);
       for (const N of [10, 1]) {
         const s = icuRender(String(tpl), N, contact);
         ok(new RegExp(`(^|\\D)${N}(\\D|$)`).test(s), `${lang} N=${N}: ไม่มีเลขนาที — ${s}`);
-        ok(s.includes(SHOP_CONTACT.phone), `${lang} N=${N}: ไม่มีช่องทางติดต่อร้าน — ${s}`);
         ok(!FORBIDDEN_WORDS.test(String(tpl)), `${lang}: มีคำว่าเต็ม/sold out/full — ${tpl}`);
         const rest = s.split(contact).join(" ").replace(new RegExp(`(^|\\D)${N}(?=\\D|$)`, "g"), "$1");
         ok(!/[0-9๐-๙]/.test(rest), `${lang} N=${N}: มีตัวเลขอื่นนอกจากนาที (จำนวนที่นั่ง?) — ${s}`);
@@ -912,6 +926,205 @@ try {
     eq([await partiesOf(tA, b2), (await q(`SELECT id FROM "TripBooking" WHERE "departureId" = $1`, [d])).length, await usedCount(p.id)], [0, 1, 1], "Party/การจอง/usedCount");
   });
   groupLine("D6");
+
+
+  // ═══════════════ G. มติผู้คุมรอบ 2 (G1–G4 · ledger/trips-briefs/T0.4d.md ท้ายไฟล์) ═══════════════
+  console.log("\n── G1: ล็อกผู้จองตรงกับการจับคู่ Party (p: เฉพาะเบอร์ ≥ 8 หลัก · e: ทุกครั้งที่มีอีเมล · p ก่อน e) ──");
+  const partiesNamed = async (name: string) => Number((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Party" WHERE "tenantId" = $1 AND name = $2`, [tA, name]))[0]?.n ?? -1);
+  const twoDeps = async (date: string, hm: string) => [await mkDepK("A", { date, hm, capacity: 20 }), await mkDepK("B", { date, hm, capacity: 20 })];
+  /** สองผู้จอง (คนละรอบ) ของ STAFF bookTripsNow — พร้อมกันหรือเรียง (ทั้งสองลำดับ) ⇒ จำนวน Party ชื่อ X */
+  const pairRound = async (date: string, hm: string, mk: (name: string, email: string) => [Rec, Rec], mode: "conc" | "seqAB" | "seqBA"): Promise<{ parties: number; rs: Rec[] }> => {
+    const [d1, d2] = await twoDeps(date, hm);
+    const name = `qc4d G1 ${STAMP} ${hex(3)}`, email = `t04dqc.g1.${hex(4)}@example.com`;
+    const [b1, b2] = mk(name, email);
+    const l1 = [line(d1, { a: 1 })], l2 = [line(d2, { a: 1 })];
+    const q1 = await bookNowQ(staff(), l1), q2 = await bookNowQ(staff(), l2);
+    let rs: Rec[];
+    if (mode === "conc") rs = await withTimer(Promise.all([bookNowWith(staff(), l1, q1, b1), bookNowWith(staff(), l2, q2, b2)]), 120_000, "G1");
+    else if (mode === "seqAB") rs = [await bookNowWith(staff(), l1, q1, b1), await bookNowWith(staff(), l2, q2, b2)];
+    else rs = [await bookNowWith(staff(), l2, q2, b2), await bookNowWith(staff(), l1, q1, b1)];
+    return { parties: await partiesNamed(name), rs };
+  };
+  const SH_PE = (n: string, e: string): [Rec, Rec] => [{ name: n, phone: newPhone(), email: e }, { name: n, email: e }];
+  const SH_SE = (n: string, e: string): [Rec, Rec] => [{ name: n, phone: "1234567", email: e }, { name: n, email: e }];
+  const SH_SS = (n: string, e: string): [Rec, Rec] => [{ name: n, phone: "12345", email: e }, { name: n, phone: "67890", email: e }];
+  const concRounds = async (tag: string, mk: (n: string, e: string) => [Rec, Rec], rounds: number, day: string) => {
+    const per: number[] = []; const all: Rec[] = [];
+    for (let r = 0; r < rounds; r++) { const o = await pairRound(day, `${String(6 + r).padStart(2, "0")}:00`, mk, "conc"); per.push(o.parties); all.push(...o.rs); }
+    ok(!all.some(badOutcome), `${tag} ผลเสีย: ${fmt(all.find(badOutcome))}`);
+    eq(all.filter((r) => r.ok === true).length, rounds * 2, `${tag} สำเร็จ ${fmt(tally(all))}`);
+    eq(per, per.map(() => 1), `${tag} Party ต่อรอบ`);
+  };
+  await st("G1-1", "พร้อมกัน (เบอร์ 10 หลัก + อีเมล E · ชื่อ X) ∥ (อีเมล E อย่างเดียว · ชื่อ X) — STAFF bookTripsNow คนละรอบ ×6 รอบ ⇒ Party 1 แถวทุกรอบ · ไม่มี BUSY/40P01", async () => {
+    needDb(); await concRounds("G1-1", SH_PE, 6, "2027-04-01");
+  });
+  await st("G1-2", "พร้อมกัน (เบอร์สั้น \"1234567\" + E · ชื่อ X) ∥ (E อย่างเดียว · ชื่อ X) ×6 รอบ ⇒ Party 1 แถวทุกรอบ", async () => {
+    needDb(); await concRounds("G1-2", SH_SE, 6, "2027-04-02");
+  });
+  await st("G1-3", "พร้อมกัน เบอร์สั้นต่างกัน (\"12345\" / \"67890\") + อีเมลเดียวกัน + ชื่อเดียวกัน ×6 รอบ ⇒ Party 1 แถวทุกรอบ", async () => {
+    needDb(); await concRounds("G1-3", SH_SS, 6, "2027-04-03");
+  });
+  await st("G1-4", "ตัวควบคุมแบบเรียง (คงเดิม): ทั้งสามแบบของ G1-1..G1-3 เรียงทั้งสองลำดับ ⇒ Party 1 แถว", async () => {
+    needDb();
+    const out: string[] = [];
+    let h = 6;
+    for (const [tag, mk] of [["PE", SH_PE], ["SE", SH_SE], ["SS", SH_SS]] as const) for (const mode of ["seqAB", "seqBA"] as const) {
+      const o = await pairRound("2027-04-04", `${String(h++).padStart(2, "0")}:00`, mk, mode);
+      ok(o.rs.every((r) => r.ok === true), `${tag} ${mode}: ${fmt(tally(o.rs))}`);
+      out.push(`${tag}/${mode}=${o.parties}`);
+    }
+    eq(out.filter((x) => !x.endsWith("=1")), [], "Party แบบเรียง");
+  });
+  /** advisory lock สองอาร์กิวเมนต์ (objsubid 2) ที่ backend pid ถืออยู่ ในคลาส hashtext(cls) */
+  const advHeld = async (pid: number, cls: string) => Number((await q<{ n: number }>(`SELECT count(*)::int AS n FROM pg_locks WHERE pid = $1 AND locktype = 'advisory' AND granted AND objsubid = 2
+      AND classid = (hashtext($2)::bigint & 4294967295)::oid`, [pid, cls]))[0]?.n ?? -1);
+  /**
+   * ล็อกผู้จองที่ธุรกรรมถืออยู่จริง: STAFF bookTripsNow ด้วยโค้ดส่วนลด · ข้อสอบถือล็อกแถว TripPriceRule ⇒ ธุรกรรมผ่านขั้นล็อกผู้จอง/Party แล้วรอที่ redeem
+   * ⇒ อ่าน pg_locks ของ backend ที่รอ (คลาส trips.booker.v1 และ trips.booking.v1) ⇒ COMMIT (ผล PRICE_CHANGED · ไม่มีอะไรเหลือ)
+   */
+  const bookerLocksOf = async (b: Rec, day: string): Promise<{ booker: number; shared: number; r: Rec }> => {
+    const p = await promoRule(1);
+    const d = await mkDepK("C", { date: day, capacity: 20 });
+    const ln = [line(d, { a: 1, promo: p.code })];
+    const qt = await bookNowQ(staff(), ln);
+    const c = await pool.connect();
+    let res = { booker: -1, shared: -1 };
+    try {
+      await c.query("BEGIN");
+      await c.query(`UPDATE "TripPriceRule" SET "usedCount" = 1 WHERE id = $1`, [p.id]);
+      const myPid = Number((await c.query<{ p: number }>("SELECT pg_backend_pid() AS p")).rows[0]?.p ?? 0);
+      const pr = bookNowWith(staff(), ln, qt, b).catch((e) => ({ ok: "THROW", e: errMsg(e) }) as Rec);
+      let pid = 0;
+      for (let i = 0; i < 300 && !pid; i++) {
+        const w = await q<{ pid: number }>(`SELECT pid FROM pg_stat_activity WHERE datname = current_database() AND pid <> $1 AND wait_event_type = 'Lock' AND query ILIKE '%UPDATE "TripPriceRule"%usedCount%'`, [myPid]);
+        if (w[0]?.pid) pid = Number(w[0].pid); else await sleep(100);
+      }
+      if (pid) res = { booker: await advHeld(pid, "trips.booker.v1"), shared: await advHeld(pid, "trips.booking.v1") };
+      await c.query("COMMIT");
+      const r = await withTimer(pr, 60_000, "bookTripsNow หลังปล่อยล็อก");
+      ok(pid, `bookTripsNow ไม่ได้ไปรอที่ redeem (ไม่ถึงขั้นหลังล็อกผู้จอง): ${fmt(r)}`);
+      return { ...res, r };
+    } finally { await c.query("ROLLBACK").catch(() => undefined); c.release(); }
+  };
+  await st("G1-5", "ล็อกที่ถือจริงขณะธุรกรรมอยู่หลังขั้น Party (pg_locks · คลาส trips.booker.v1): เบอร์ 10 หลัก + อีเมล ⇒ 2 · อีเมลอย่างเดียว ⇒ 1 · เบอร์สั้น \"1234567\" + อีเมล ⇒ 1 · เบอร์ 10 หลักอย่างเดียว ⇒ 1", async () => {
+    needDb();
+    const got: number[] = [];
+    for (const [i, b] of ([{ phone: newPhone(), email: `t04dqc.l1.${hex(3)}@example.com` }, { email: `t04dqc.l2.${hex(3)}@example.com` }, { phone: "1234567", email: `t04dqc.l3.${hex(3)}@example.com` }, { phone: newPhone() }] as Rec[]).entries()) {
+      const o = await bookerLocksOf({ name: `qc4d G1-5 ${STAMP} ${i}`, ...b }, `2027-04-0${5 + i}`);
+      codeR(o.r, "PRICE_CHANGED", `ผลหลังปล่อยล็อก (${i})`, "PROMO_EXHAUSTED");
+      got.push(o.booker);
+    }
+    eq(got, [2, 1, 1, 1], "จำนวนล็อกผู้จอง [เบอร์+อีเมล, อีเมล, เบอร์สั้น+อีเมล, เบอร์]");
+  });
+  await st("G1-6", "โค้ด (finalizeCoreInTx): คีย์ p: ต้องมีเงื่อนไขเบอร์ ≥ 8 หลัก · มีคีย์ e: · คีย์ p: มาก่อน e: · การล็อก e: ไม่อยู่ในทางเลือกของ p: (ไม่ใช่ ph ? p : e)", () => {
+    const s = stripComments(read("src/lib/modules/trips/booking.ts"));
+    const i = s.search(/async\s+function\s+finalizeCoreInTx\s*\(/);
+    ok(i >= 0, "ไม่พบ finalizeCoreInTx");
+    const body = s.slice(i, i + s.slice(i + 10).search(/\n(?:export\s+)?(?:async\s+)?function\s+\w+/) + 10);
+    const pI = body.search(/[`"']p:/), eI = body.search(/[`"']e:/);
+    ok(pI > 0 && eI > 0, `ไม่พบคีย์ p:/e: (${pI}, ${eI})`);
+    ok(pI < eI, "คีย์ e: มาก่อน p:");
+    ok(/(>=\s*8|>\s*7|\{8,|<\s*8\b)/.test(body), "ไม่มีเงื่อนไขเบอร์ ≥ 8 หลัก");
+    ok(!/\?\s*[`"']p:[^?]*:\s*\w+\s*\?\s*[`"']e:/.test(body), "ยังเลือก p: หรือ e: อย่างใดอย่างหนึ่ง (ternary)");
+  });
+  groupLine("G1");
+
+  console.log("\n── G2: คำนำหน้า PUBLIC เป็นค่าคงที่ร่วม (PUBLIC_IDEM_PREFIX · capacity-core.ts) ──");
+  await st("G2-1", "capacity-core ส่งออก PUBLIC_IDEM_PREFIX (สตริงไม่ว่าง) · idemKeyFor ของ PUBLIC ขึ้นต้นด้วยค่านี้ · ของ STAFF/SYSTEM/AGENT ไม่ขึ้นต้นด้วยค่านี้", () => {
+    ok(CCI.mod, `โหลด capacity-core ไม่ได้ (${CCI.err.slice(0, 80)})`);
+    const pre = CCI.mod!.PUBLIC_IDEM_PREFIX;
+    ok(typeof pre === "string" && pre.length > 0, `PUBLIC_IDEM_PREFIX ไม่ได้ส่งออก/ไม่ใช่สตริง: ${fmt(pre)}`);
+    const f = CCI.mod!.idemKeyFor as AnyFn;
+    ok(typeof f === "function", "ไม่มี idemKeyFor");
+    const k = (a: Rec) => String(f(a, "k12345678", "h"));
+    ok(k({ kind: "PUBLIC", clientKey: "c" }).startsWith(String(pre)), `PUBLIC: ${k({ kind: "PUBLIC", clientKey: "c" })}`);
+    const others = [{ kind: "STAFF", userId: "u" }, { kind: "SYSTEM", job: "j" }, { kind: "AGENT", agentAccountId: "a", agentUserId: "u" }].map(k);
+    eq(others.filter((x) => x.startsWith(String(pre))), [], "คีย์ของผู้กระทำอื่นที่ขึ้นต้นด้วยคำนำหน้า PUBLIC");
+  });
+  await st("G2-2", "โค้ด: capacity.ts import PUBLIC_IDEM_PREFIX จาก ./capacity-core (ไม่ประกาศเอง · ไม่มี sentinel \\u0000 · ไม่มีสตริง \"pub:\") · capacity-core.ts มีสตริง pub: ที่เดียว (ค่าคงที่) และ idemKeyFor ใช้ค่าคงที่", () => {
+    const cap = stripComments(read("src/lib/modules/trips/capacity.ts")), core = stripComments(read("src/lib/modules/trips/capacity-core.ts"));
+    ok(/import\s*\{[^}]*\bPUBLIC_IDEM_PREFIX\b[^}]*\}\s*from\s*["']\.\/capacity-core["']/.test(cap), "capacity.ts ไม่ได้ import PUBLIC_IDEM_PREFIX จาก ./capacity-core");
+    ok(!/(const|let|var)\s+PUBLIC_IDEM_PREFIX\b/.test(cap), "capacity.ts ประกาศ PUBLIC_IDEM_PREFIX เอง");
+    ok(!/\\u0000|\\0/.test(cap), "capacity.ts ยังใช้ sentinel");
+    ok(!/["'`]pub:/.test(cap), "capacity.ts มีสตริง pub: ซ้ำ");
+    ok(/export\s+const\s+PUBLIC_IDEM_PREFIX\b/.test(core), "capacity-core.ts ไม่ได้ export const PUBLIC_IDEM_PREFIX");
+    eq((core.match(/["'`]pub:/g) ?? []).length, 1, "จำนวนสตริง pub: ใน capacity-core.ts");
+    const fi = core.search(/export\s+function\s+idemKeyFor\s*\(/);
+    ok(fi >= 0 && /PUBLIC_IDEM_PREFIX/.test(core.slice(fi, fi + 600)), "idemKeyFor ไม่ได้ใช้ PUBLIC_IDEM_PREFIX");
+  });
+  groupLine("G2");
+
+  console.log("\n── G3: ล็อกผู้จองใช้คลาสของตัวเอง (trips.booker.v1) ──");
+  await st("G3-1", "โค้ด: booking.ts มีคลาส 'trips.booker.v1' · ล็อกผู้จองไม่ผ่าน lockTripsKey (คลาส trips.booking.v1 ของ pay/change/refund/approval) · ชนิด \"booker\" ไม่อยู่ใน lockTripsKey", () => {
+    const s = stripComments(read("src/lib/modules/trips/booking.ts"));
+    ok(/["'`]trips\.booker\.v1["'`]/.test(s), "ไม่มีคลาส trips.booker.v1");
+    ok(!/lockTripsKey\([^)]*["'`]booker["'`]/.test(s), "ล็อกผู้จองยังเรียก lockTripsKey(…, \"booker\")");
+    const decl = /const\s+lockTripsKey\s*=\s*\([^)]*\)/.exec(s)?.[0] ?? "";
+    ok(!/["']booker["']/.test(decl), `lockTripsKey ยังรับชนิด booker: ${decl}`);
+  });
+  await st("G3-2", "ขณะธุรกรรมยืนยันอยู่หลังขั้น Party (เบอร์ + อีเมล): pg_locks ของ backend นั้นมี advisory คลาส trips.booker.v1 ≥ 1 และไม่มี advisory สองอาร์กิวเมนต์ในคลาส trips.booking.v1", async () => {
+    needDb();
+    const o = await bookerLocksOf({ name: `qc4d G3-2 ${STAMP}`, phone: newPhone(), email: `t04dqc.g3.${hex(3)}@example.com` }, "2027-04-09");
+    eq([o.booker >= 1, o.shared], [true, 0], `ล็อก [trips.booker.v1 ≥ 1, trips.booking.v1] ได้ ${fmt([o.booker, o.shared])}`);
+  });
+  groupLine("G3");
+
+  console.log("\n── G4: ข้อความ SLOT_BUSY (ไม่อ้าง \"หลายราย\" · ไม่มีวลีติดต่อลอยเมื่อ X30 ว่าง · en ปิดด้วยจุด) — แสดงผ่าน BookError + ตัวช่วยติดต่อร้านที่หน้าใช้จริง ──");
+  const BFI = await tryImport("@/components/book/BookFlowParts");
+  const unent = (h: string) => h.replace(/<[^>]+>/g, " ").replace(/&#x27;|&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, "<").replace(/&gt;/g, ">").replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+  /** ตัวช่วยติดต่อร้านที่หน้าใช้: ชื่อฟังก์ชันจาก prop contact={fn(…)} ของ <BookError> ใน BookSelect.tsx / BookCheckout.tsx (ต้องเป็นชื่อเดียวกัน · ส่งออกจาก BookFlowParts) */
+  const contactHelper = (): ((shop: unknown) => string) => {
+    const names = ["src/components/book/BookSelect.tsx", "src/components/book/BookCheckout.tsx"].flatMap((f) => [...stripComments(read(f)).matchAll(/<BookError\b[^>]*\bcontact=\{\s*(\w+)\s*\(/g)].map((m) => m[1]));
+    ok(names.length >= 2 && new Set(names).size === 1, `หา prop contact={fn(…)} ของ BookError ในหน้าเลือก/หน้าชำระไม่ได้หรือไม่ตรงกัน: ${fmt(names)}`);
+    const fnc = BFI.mod?.[names[0]];
+    ok(typeof fnc === "function", `BookFlowParts ไม่ส่งออก ${names[0]} (${BFI.err.slice(0, 80)})`);
+    return fnc as (shop: unknown) => string;
+  };
+  const shown = (locale: "th" | "en", shop: Rec, wait?: number): string => {
+    const BE = BFI.mod?.BookError;
+    ok(typeof BE === "function", `โหลด BookError ไม่ได้ (${BFI.err.slice(0, 80)})`);
+    return unent(renderToStaticMarkup(createElement(BE as never, { code: NEW_CODE, locale, wait, contact: contactHelper()(shop) } as never)));
+  };
+  const SHOP_SET = { name: "ร้านทดสอบจีสี่", contact: { phone: SHOP_CONTACT.phone, line: "@shopgfour" } }; // LINE ไม่มีตัวเลข (ตัวตรวจ "ไม่มีตัวเลขอื่น" ตัดเฉพาะเบอร์ร้าน)
+  const SHOP_EMPTY = { name: "ร้านทดสอบจีสี่", contact: {} };
+  await st("G4-1", "แม่แบบทุกคีย์ของ SLOT_BUSY ใน err (th/en · ชื่อคีย์มี slot…busy) ไม่มี \"หลายราย\" / \"Several people\" / \"เต็ม\" / \"sold out\" / \"full\"", () => {
+    const bad: string[] = [];
+    let n = 0;
+    for (const lang of ["th", "en"] as const) for (const [k, v] of Object.entries(asRec(msgs(lang).err) ?? {})) {
+      if (!/slot_?busy/i.test(k)) continue;
+      n++;
+      if (/หลายราย|several\s+people/i.test(String(v)) || FORBIDDEN_WORDS.test(String(v))) bad.push(`${lang}.${k}: ${String(v)}`);
+    }
+    ok(n >= 2, `ไม่พบคีย์ SLOT_BUSY ใน err (${n})`);
+    eq(bad, [], "ข้อความที่อ้างหลายราย/เต็ม");
+  });
+  await st("G4-2", "X30 มีเบอร์+LINE: ข้อความบนจอ (BookError) ทั้ง th/en · มีนาที (10) และไม่มีนาที ⇒ มีเบอร์ร้าน · มีเลข 10 เมื่อมีนาที · ไม่มีตัวเลขอื่น · ไม่มีหลายราย/เต็ม · en ปิดด้วยจุด", () => {
+    const bad: string[] = [];
+    for (const locale of ["th", "en"] as const) for (const wait of [10, undefined]) {
+      const t = shown(locale, SHOP_SET, wait);
+      const tag = `${locale}/${wait ?? "-"}: ${t}`;
+      if (!t.includes(SHOP_CONTACT.phone)) bad.push(`ไม่มีเบอร์ร้าน ${tag}`);
+      if (wait && !/(^|\D)10(\D|$)/.test(t)) bad.push(`ไม่มีนาที ${tag}`);
+      const rest = t.split(SHOP_CONTACT.phone).join(" ").replace(/(^|\D)10(?=\D|$)/g, "$1");
+      if (/[0-9๐-๙]/.test(rest)) bad.push(`มีตัวเลขอื่น ${tag}`);
+      if (/หลายราย|several\s+people/i.test(t) || FORBIDDEN_WORDS.test(t)) bad.push(`หลายราย/เต็ม ${tag}`);
+      if (locale === "en" && !/\.$/.test(t)) bad.push(`en ไม่ปิดด้วยจุด ${tag}`);
+    }
+    eq(bad, [], "ข้อความบนจอ");
+  });
+  await st("G4-3", "X30 ว่าง (ไม่มีเบอร์ ไม่มี LINE): ข้อความบนจอ th/en (มีนาที/ไม่มีนาที) ไม่มีวลีติดต่อร้านเลย (ไม่มี \"ติดต่อ\" / \"contact\") · ไม่จบด้วย \"หรือ\"/\"or\" · en ปิดด้วยจุด · ยังมีนาทีเมื่อมี", () => {
+    const bad: string[] = [];
+    for (const locale of ["th", "en"] as const) for (const wait of [10, undefined]) {
+      const t = shown(locale, SHOP_EMPTY, wait);
+      const tag = `${locale}/${wait ?? "-"}: ${t}`;
+      if (/ติดต่อ|contact/i.test(t)) bad.push(`มีวลีติดต่อลอย ${tag}`);
+      if (/(หรือ|\bor)[\s,.]*$/i.test(t)) bad.push(`จบด้วยหรือ/or ${tag}`);
+      if (locale === "en" && !/\.$/.test(t)) bad.push(`en ไม่ปิดด้วยจุด ${tag}`);
+      if (wait && !/(^|\D)10(\D|$)/.test(t)) bad.push(`ไม่มีนาที ${tag}`);
+    }
+    eq(bad, [], "ข้อความบนจอเมื่อ X30 ว่าง");
+  });
+  groupLine("G4");
 
   exitCode = cks.some((c) => c.res !== "PASS") ? 1 : 0;
 } catch (e) {
