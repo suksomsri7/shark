@@ -119,7 +119,7 @@ const BCORE_NAMES = ["BOOK_MAX_SEATS", "BOOK_ERROR_CODES", "BOOK_RES_STATES", "B
   "parseBookSelection", "selectionSeatsOk", "cancelDeadlinesOf", "reservationStateOf", "bookTodoOf"];
 // ORACLE-EDIT S-2 (มติ W2 · ผู้ตรวจรอบ 2): releaseBookHold (ปุ่ม "ถือใหม่" ปล่อยที่ถือเดิม) เป็นฟังก์ชันบริการของใบ — อยู่ในรายการ
 const BSVC_FNS = ["issueBookFormNonce", "quoteBookSelection", "startBookHold", "loadBookCheckout", "confirmBookHold", "releaseBookHold", "openBookReservation", "bookVoucherQrPayload", "verifyBookVoucherQr"];
-const ERROR_CODES = ["NOT_FOUND", "RATE_LIMITED", "INVALID", "PRICE_CHANGED", "SOLD_OUT", "CUTOFF_PASSED", "SLOT_CLOSED", "HOLD_LIMIT", "HOLD_EXPIRED", "STALE_FORM", "TOO_FAST", "ACCEPT_REQUIRED", "DONE", "BUSY", "UNAVAILABLE"];
+const ERROR_CODES = ["NOT_FOUND", "RATE_LIMITED", "INVALID", "PRICE_CHANGED", "SOLD_OUT", "CUTOFF_PASSED", "SLOT_CLOSED", "HOLD_LIMIT", "SLOT_BUSY", "HOLD_EXPIRED", "STALE_FORM", "TOO_FAST", "ACCEPT_REQUIRED", "DONE", "BUSY", "UNAVAILABLE"]; // ORACLE-EDIT S-2 (ผู้คุม · T0.4d มติ D1): รหัสหน้าใหม่ SLOT_BUSY
 const RES_STATES = ["PAY", "VOUCHER", "EXPIRED", "CANCELLED", "ENDED"]; // R8: AWAIT_SHOP ย้ายไป W1.2b
 const K_ON = "trips.public.bookingEnabled"; // R7 คีย์ใหม่ (ค่าเริ่ม false ทุกแม่แบบ) — ใบสั่ง §3.3
 const K_CONTACT = "trips.public.shopContact"; // R13 คีย์ใหม่ { phone, line, address } ว่างทั้งหมด — ใบสั่ง §3.3
