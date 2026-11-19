@@ -87,7 +87,7 @@ const vatIncl = (x: number) => halfUp(BigInt(x) * BigInt(700), BigInt(10_700));
 
 
 // ═══════════════ สเปก (ใบสั่ง T1.7a1) ═══════════════
-const BASE_SHA = "5789e974344d3e1e148edb4cd5a41a6b9d190ab5"; // draft commit ของ T1.7 (= session/trips @c3650f79c + ร่างรอบ 0) — ORACLE-EDIT ผู้คุม 19 พ.ย.
+const BASE_SHA = "dff33c6262a21ad5f3e46eff1847d696eb0c2f05"; // draft commit ของ T1.7 (= session/trips @c3650f79c + ร่างรอบ 0) — ORACLE-EDIT ผู้คุม 19 พ.ย.
 const APP = "src/app/app/u/[unitSlug]/trips";
 const COST_PAGE = `${APP}/departures/[departureId]/costs/page.tsx`;
 const MOD = "src/lib/modules/trips/";
