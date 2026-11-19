@@ -109,6 +109,9 @@ const OPEN_REFUND = ["REQUESTED", "QUOTED", "APPROVED", "EXECUTING", "FAILED"];
 const DEP_STATES = ["UPCOMING", "ENDED", "CANCELLED"];
 const WARN_CODES = ["PARK_FEE_WITH_PASS_THROUGH", "SUPPLIER_COSTS_NOT_INCLUDED", "SNAPSHOT_FALLBACK", "FX_BOOKINGS", "VAT_STATUS_UNKNOWN", "OTA_FEES_NOT_INCLUDED"];
 const NEW_PERMS = ["trips.report.view", "trips.cost.view", "trips.cost.edit"];
+/** ORACLE-EDIT รอบ 3 (มติ U4 · U6 — รูปที่ผู้เขียนข้อสอบเลือก): ผลผิดของ costRowsFromForm = { ok:false, code, row, field: "kind"|"amount"|"note" }
+ *  หมายเหตุมีอักขระควบคุม/bidi/มองไม่เห็น ⇒ code "COST_NOTE_INVISIBLE" (errors.COST_NOTE_INVISIBLE th = ข้อความเฉพาะ) · ชนิดผิด ⇒ INVALID_INPUT field "kind" · หมายเหตุยาวเกิน ⇒ INVALID_INPUT field "note" */
+const NOTE_CODE = "COST_NOTE_INVISIBLE";
 const COST_KEY_RE = /^(commission\w*|cost\w*|grossProfit\w*|margin\w*|perSeat\w*|byKind)$/;
 /** ข้อความที่ข้อสอบตรึง (ใบสั่ง §8 · N2 N7 N8 N11) */
 const PINNED: Record<string, string> = {
@@ -147,7 +150,7 @@ const RAW_CODES = new Set([...DEP_STATES, ...COST_KINDS, "AGENT_PORTAL", "AGENT_
 const VISUAL_SCENES = ["panel-money", "departure-costs", "departure-costs-forbidden"];
 /** ไฟล์เดิมที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด (null = ไม่จำกัด)] */
 // ORACLE-EDIT รอบ 2 (มติ Q5): src/lib/staff/service.ts ≤ +6/−0
-const LIMITED: [string, number, number | null][] = [["src/lib/staff/service.ts", 0, 6], [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 3, 30], [PANEL, 8, 50], [`${COMP}/ProductsScreenParts.tsx`, 3, null], [PERMS, 0, 6],
+const LIMITED: [string, number, number | null][] = [["src/lib/staff/service.ts", 0, 4] /* ORACLE-EDIT รอบ 3 (U1): ไม่เกิน +4 ที่มีอยู่ */, ["src/lib/staff/levels.ts", 0, 2] /* ORACLE-EDIT รอบ 3 (U1) */, [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 3, 30], [PANEL, 8, 50], [`${COMP}/ProductsScreenParts.tsx`, 3, null], [PERMS, 0, 6],
   ["src/messages/th/trips.json", 2, null], ["src/messages/en/trips.json", 2, null], ["scripts/trips-ui-inventory.json", 4, null], ["scripts/visual-trips.mts", 30, null], ["scripts/parity-trips.sh", 4, null]];
 const LIMITED_SET = new Set(LIMITED.map(([f]) => f));
 /** ORACLE-EDIT รอบ 2 (ผู้คุม): ข้อสอบเดิมที่ผู้คุมแก้ในใบนี้ (b77b3b0a6) — ไม่นับเป็นการแตะของ builder (BASE ต้องคงก่อน commit ของ builder) */
@@ -458,7 +461,8 @@ try {
     const bad = [...writesOf(c).filter((t) => t !== "TripCost" && t !== "AuditLog"), ...writesOf(p)];
     ok(bad.length === 0, `เขียนตารางต้องห้าม: ${bad.join(",")}`);
     ok(!/outboxEvent|OutboxEvent|emitTx\(|publishEvent\(|enqueue\w*\(/.test(c), "ส่ง outbox/event");
-    ok(!/console\.(log|info|debug|warn|error)\(/.test(c + p), "มี console.*");
+    // ORACLE-EDIT S-14 รอบ 3 (มติ U2): catch ของสรุปเงินต้อง log ⇒ ยอม console.error ใน costs.ts เท่านั้น (report-core ยังห้ามทุกตัว)
+    ok(!/console\.(log|info|debug|warn)\(/.test(c) && !/console\.(log|info|debug|warn|error)\(/.test(p), "มี console.* (ยอมเฉพาะ console.error ใน costs.ts)");
   });
   await st("S-15", "ไม่แตะระบบอื่น: ไฟล์ของใบไม่ import modules/{pos,account,hotel,rooms,dorm,approval,agency,supplier,hr} · @/lib/payment · ./pricing*", () => {
     needOwn(); const bad = ownFiles.filter((f) => /from\s*["']@\/lib\/modules\/(pos|account|hotel|rooms|dorm|approval|agency|supplier|hr)\b|from\s*["']@\/lib\/payment|from\s*["']\.\/pricing/.test(stripComments(read(f))));
@@ -631,7 +635,7 @@ try {
     // ORACLE-EDIT รอบ 2 (มติ Q5): ผู้ดูแลผู้ใช้งาน (settings.staff.write) แบบ trips.* / แบบถือคีย์ต้นทุนระบุตรง · เป้าหมายพนักงาน 4 คน
     await mkUser("sw", tA, "STAFF", [uA], ["trips.*", "settings.staff.write"]);
     await mkUser("swk", tA, "STAFF", [uA], ["settings.staff.write", "trips.cost.view"]);
-    for (const t of ["tg1", "tg2", "tg3", "tg4", "tg5"]) await mkUser(t, tA, "STAFF", [uA], []);
+    for (const t of ["tg1", "tg2", "tg3", "tg4", "tg5", "tg6", "tg7"]) await mkUser(t, tA, "STAFF", [uA], []); // tg6/tg7 = ORACLE-EDIT รอบ 3 (U1)
     const mkProd = async (key: string, tenantId: string, unitId: string, o: { title?: string; source?: string } = {}) => {
       const id = rid(`p${key}`), opt = rid(`o${key}`);
       await insertRow("TripProduct", { id, tenantId, unitId, slug: `t17qc-${key}-${STAMP}`.toLowerCase().replace(/[^a-z0-9-]/g, ""), productType: "TOUR", sourceKind: o.source ?? "OWN", status: "ACTIVE",
@@ -978,7 +982,7 @@ try {
     const s2 = await acState(); eq([s2.rows, s2.audit, s2.token], [s.rows, 1, s.token], "ไม่เขียน");
     acTok = s.token;
   });
-  await st("AC-3", "ยอดผิดผ่าน action: \"1,2a\" / \"12.345\" / \"abc\" ⇒ COST_AMOUNT_FORMAT + row (มติ Q4) · \"0\" ⇒ COST_AMOUNT_INVALID · หมายเหตุ bidi ⇒ INVALID_INPUT + row · ไม่เขียน · token/audit เดิม · ข้อความไม่สะท้อนอินพุต", async () => {
+  await st("AC-3", "ยอดผิดผ่าน action: \"1,2a\" / \"12.345\" / \"abc\" ⇒ COST_AMOUNT_FORMAT + row (มติ Q4) · \"0\" ⇒ COST_AMOUNT_INVALID · หมายเหตุ bidi ⇒ COST_NOTE_INVISIBLE + row + field note (U4 U6) · ไม่เขียน · token/audit เดิม · ข้อความไม่สะท้อนอินพุต", async () => {
     const vm = VM(await loadCosts("oa", DEP.AC), "load"); const before = await acState();
     for (const [txt, code] of [["1,2a", "COST_AMOUNT_FORMAT"], ["12.345", "COST_AMOUNT_FORMAT"], ["abc", "COST_AMOUNT_FORMAT"], ["0", "COST_AMOUNT_INVALID"]] as const) {
       const r = await act("oa", SLUG_A, editorPayload(vm, [{ kind: "OTHER", amountText: txt, note: "" }]));
@@ -986,7 +990,7 @@ try {
       if (code === "COST_AMOUNT_FORMAT") eq(r.row, 3, `row ของ ${txt} (มติ Q4 · action ส่งต่อ)`); // ORACLE-EDIT AC-3 รอบ 2
     }
     const r5 = await act("oa", SLUG_A, editorPayload(vm, [], (x) => (x.kind === "FUEL" ? { ...x, amountText: "3OO" } : x))); codeR(r5, "COST_AMOUNT_FORMAT", "แก้แถวเดิมเป็นยอดผิด"); eq(r5.row, 1, "row ของแถว FUEL (มติ Q4)");
-    const r6 = await act("oa", SLUG_A, editorPayload(vm, [{ kind: "OTHER", amountText: "10", note: "a\u202Eb" }])); codeR(r6, "INVALID_INPUT", "หมายเหตุ bidi"); eq(r6.row, 3, "row ของหมายเหตุผิด (มติ Q4 Q13)");
+    const r6 = await act("oa", SLUG_A, editorPayload(vm, [{ kind: "OTHER", amountText: "10", note: "a\u202Eb" }])); codeR(r6, NOTE_CODE, "หมายเหตุ bidi (มติ U4)"); eq([r6.row, r6.field], [3, "note"], "row/field ของหมายเหตุผิด (มติ Q4 Q13 U4 U6)");
     eq(await acState(), before, "ไม่เขียน");
   });
   await st("AC-4", "พนักงาน trips.cost.edit ผ่าน action แก้ยอด FUEL เป็น \"350.25\" ⇒ applied (35025) · แล้ว OWNER ส่งด้วย token เดิมของ AC-2 เนื้อหาต่าง ⇒ STATE_CONFLICT · ไม่เขียน", async () => {
@@ -1202,6 +1206,9 @@ try {
       R.Z = await D("RZ", "PR", "2027-07-06", { cap: 10, sold: 1, status: "OPEN" });
       await B("zN", { dep: R.Z, prod: "PR", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2027-06-01T03:00:00Z", snapVatReg: false });
       // Q12: รอบยกเลิก — การจองยังค้างที่ไม่มีเงินรับ ไม่ใช่ "รอคืนเงิน" · การจองที่จ่ายแล้วเป็น
+      // U3 (ORACLE-EDIT รอบ 3): หน่วย a2 สถานะ VAT ไม่ระบุ · การจองเอเจนซี่ snapshot ไม่จด VAT ⇒ VAT คอมฯ ถูกนับเป็นต้นทุน
+      R.W = await D("RW", "PA2", "2027-07-09", { cap: 10, sold: 2, status: "OPEN" });
+      await B("wAg", { dep: R.W, prod: "PA2", status: "CONFIRMED", channel: "AGENT_LINK", adults: 2, agent: true, commission: 100_000, commissionVat: 7_000, created: "2027-06-01T03:00:00Z", snapVatReg: false });
       R.Y = await D("RY", "PR", "2027-07-07", { cap: 10, sold: 2, status: "CANCELLED" });
       await B("yU", { dep: R.Y, prod: "PR", status: "CONFIRMED", channel: "COUNTER", adults: 1, created: "2027-06-01T03:00:00Z" });
       await B("yP", { dep: R.Y, prod: "PR", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2027-06-01T04:00:00Z" });
@@ -1235,16 +1242,16 @@ try {
     ok(String(fth["costs.conflict"] ?? "").includes("ยอดที่พิมพ์ไว้จะหายเมื่อโหลดใหม่"), `costs.conflict: ${fth["costs.conflict"]}`);
     ok(/lost|discard/i.test(String(fen["costs.conflict"] ?? "")), `en costs.conflict ไม่บอกว่าจะหาย: ${fen["costs.conflict"]}`);
   });
-  await st("R-4", "Q4 costRowsFromForm บอกแถวแรกที่ผิด: ยอดผิดรูปแถว 2 ⇒ { COST_AMOUNT_FORMAT, row: 2 } · หมายเหตุผิดแถว 0 ⇒ { INVALID_INPUT, row: 0 } · ตัวแก้มี aria-invalid + aria-describedby ผูกกับแถวที่ผิด (โค้ด — สถานะหลังกดบันทึกเรนเดอร์แบบนิ่งไม่ได้)", () => {
+  await st("R-4", "Q4 costRowsFromForm บอกแถวแรกที่ผิด: ยอดผิดรูปแถว 2 ⇒ { COST_AMOUNT_FORMAT, row: 2 } · หมายเหตุผิดแถว 0 ⇒ { COST_NOTE_INVISIBLE, row: 0 } (U4) · ตัวแก้มี aria-invalid + aria-describedby ผูกกับแถวที่ผิด (โค้ด — สถานะหลังกดบันทึกเรนเดอร์แบบนิ่งไม่ได้)", () => {
     const F = (rows: Rec[]) => asRec(pure("costRowsFromForm", rows)) ?? {};
     const okRow = { kind: "FOOD", amountText: "100", note: "" };
     eq(pick(F([okRow, okRow, { ...okRow, amountText: "1,2a" }]), ["ok", "code", "row"]), [false, "COST_AMOUNT_FORMAT", 2], "ยอดผิดรูป");
-    eq(pick(F([{ ...okRow, note: "a\u0007b" }, { ...okRow, amountText: "x" }]), ["ok", "code", "row"]), [false, "INVALID_INPUT", 0], "หมายเหตุผิด (แถวแรกที่ผิดชนะ)");
+    eq(pick(F([{ ...okRow, note: "a\u0007b" }, { ...okRow, amountText: "x" }]), ["ok", "code", "row"]), [false, NOTE_CODE, 0], "หมายเหตุผิด (แถวแรกที่ผิดชนะ · รหัสเฉพาะ U4 · ORACLE-EDIT รอบ 3)");
     const ed = stripComments(read(`${COMP}/CostEditor.tsx`));
     ok(/aria-invalid=\{/.test(ed) && /aria-describedby=\{/.test(ed), "ตัวแก้ไม่มี aria-invalid/aria-describedby ที่ผูกค่า");
     ok(/\.row\b/.test(ed), "ตัวแก้ไม่อ่าน row จากผลของ action");
   });
-  await st("R-5", "Q5 แจกสิทธิ์ต้นทุนผ่าน updateStaffAccess จริง: STAFF trips.* + settings.staff.write ⇒ ปฏิเสธ trips.cost.view/edit (แต่แจก trips.departure.view ได้ = ตัวควบคุม) · OWNER ⇒ view ได้ · MANAGER ⇒ edit ได้ · ผู้ถือ trips.cost.view ระบุตรง ⇒ view ได้ / edit ไม่ได้ · ป้ายสองคีย์มี \"(ต้องติ๊กเอง — ไม่รวมใน 'ทุกอย่างในระบบทัวร์')\"", async () => {
+  await st("R-5", "Q5 แจกสิทธิ์ต้นทุนผ่าน updateStaffAccess จริง: STAFF trips.* + settings.staff.write ⇒ ปฏิเสธ trips.cost.view/edit (แต่แจก trips.departure.view ได้ = ตัวควบคุม) · OWNER ⇒ view ได้ · MANAGER ⇒ edit ได้ · ผู้ถือ trips.cost.view ระบุตรง ⇒ view ได้ / edit ไม่ได้ · ป้ายสองคีย์ลงท้าย \"(ต้องติ๊กเอง — ไม่รวมใน 'ทุกอย่างในหัวข้อนี้' ของทัวร์และทริป)\" (U5)", async () => {
     needSetup(); const up = STAFF.mod?.updateStaffAccess; ok(typeof up === "function", `ไม่มี updateStaffAccess (${STAFF.err.slice(0, 80)})`);
     const mid = async (t: string) => String((await q<{ id: string }>(`SELECT id FROM "Membership" WHERE "userId" = $1`, [U[t]?.userId]))[0]?.id ?? "");
     const grant = async (actor: string, target: string, key: string) => asRec(await (up as AnyFn)({ tenantId: tA, actorUserId: U[actor]?.userId, membershipId: await mid(target), permissions: { [key]: true } })) ?? {};
@@ -1255,7 +1262,7 @@ try {
     };
     eq(res, { swDep: true, swView: false, swEdit: false, oaView: true, mgEdit: true, swkView: true, swkEdit: false }, "ผล");
     eq([(await permsOf("tg1"))["trips.cost.view"], (await permsOf("tg1"))["trips.cost.edit"], (await permsOf("tg2"))["trips.cost.edit"], (await permsOf("tg4"))["trips.cost.edit"]], [true, undefined, true, undefined], "สิทธิ์ในฐาน");
-    const s = read(PERMS); const NOTE = /\(ต้องติ๊กเอง — ไม่รวมใน ['‘"“]ทุกอย่างในระบบทัวร์['’"”]\)/;
+    const s = read(PERMS); const NOTE = /\(ต้องติ๊กเอง — ไม่รวมใน ['‘"“]ทุกอย่างในหัวข้อนี้['’"”] ของทัวร์และทริป\)$/; // ORACLE-EDIT รอบ 3 (มติ U5): ลงท้ายด้วยคำบนจอสิทธิ์จริง
     for (const k of ["trips.cost.view", "trips.cost.edit"]) { const lab = new RegExp(`"${k.replace(/\./g, "\\.")}":\\s*"([^"]+)"`).exec(s)?.[1] ?? ""; ok(NOTE.test(lab), `ป้าย ${k}: ${lab}`); }
   });
   await st("R-6", "Q6 ลำดับด่านของ action: ผู้ไม่มีสิทธิ์บันทึก (STAFF trips.* · cost.view · report.view) ส่งยอดผิดรูป \"1,2a\" ⇒ FORBIDDEN (ไม่ใช่ COST_AMOUNT_FORMAT) · ไม่เขียน", async () => {
@@ -1308,14 +1315,15 @@ try {
     if (asRec(vm.costs)?.byKind !== undefined && !/\.byKind\b|[{,]\s*byKind\s*[,}:]/.test(src)) bad.push("VM ส่ง costs.byKind แต่จอไม่แสดง");
     ok(bad.length === 0, bad.join(" · "));
   });
-  await st("R-13", "Q13 ยอดในฟอร์ม: คอมมาเป็นตัวคั่นหลักพันเท่านั้น — \"1250,50\" \",5\" \"1 000\" \"1,25\" ⇒ COST_AMOUNT_FORMAT · \"1,250.50\" ⇒ 125050 · \"1,234,567\" ⇒ 123456700 · \"12,345,678\" รูปถูก (เกินเพดานต่อแถว ⇒ COST_AMOUNT_INVALID ไม่ใช่ FORMAT) · หมายเหตุมีอักขระควบคุม/มองไม่เห็น/bidi ⇒ INVALID_INPUT + row", () => {
+  await st("R-13", "Q13 ยอดในฟอร์ม: คอมมาเป็นตัวคั่นหลักพันเท่านั้น — \"1250,50\" \",5\" \"1 000\" \"1,25\" ⇒ COST_AMOUNT_FORMAT · \"1,250.50\" ⇒ 125050 · \"1,234,567\" ⇒ 123456700 · \"12,345,678\" รูปถูก (เกินเพดานต่อแถว ⇒ COST_AMOUNT_INVALID ไม่ใช่ FORMAT) · หมายเหตุมีอักขระควบคุม/มองไม่เห็น/bidi ⇒ COST_NOTE_INVISIBLE + row (U4 · U+200B ตัดทิ้งแทน)", () => {
     const F = (t: string, note = "") => asRec(pure("costRowsFromForm", [{ kind: "FOOD", amountText: "1", note: "" }, { kind: "FOOD", amountText: t, note }])) ?? {};
     const bad = ["1250,50", ",5", "1 000", "1,25"].filter((t) => F(t).code !== "COST_AMOUNT_FORMAT" || F(t).row !== 1);
     ok(bad.length === 0, `ต้อง FORMAT + row 1: ${fmt(bad.map((t) => [t, pick(F(t), ["ok", "code", "row"])]))}`);
     eq([asArr(F("1,250.50").rows)[1]?.amountSatang, asArr(F("1,234,567").rows)[1]?.amountSatang, F("12,345,678").code], [125_050, 123_456_700, "COST_AMOUNT_INVALID"], "รูปถูก");
-    const notes = ["a​b", "‮abc", "x⁦y", "﻿z", "a b", "a\u0007", "a­b"];
-    const nb = notes.filter((n) => { const r = F("10", n); return r.code !== "INVALID_INPUT" || r.row !== 1; });
-    ok(nb.length === 0, `หมายเหตุต้อง INVALID_INPUT + row 1: ${fmt(nb.map((n) => [escape(n), pick(F("10", n), ["ok", "code", "row"])]))}`);
+    // ORACLE-EDIT R-13 รอบ 3 (มติ U4): U+200B ไม่ปฏิเสธแล้ว (ตัดทิ้ง — ตรวจใน R-20) · ที่เหลือ ⇒ รหัสเฉพาะ COST_NOTE_INVISIBLE
+    const notes = ["‮abc", "x⁦y", "﻿z", "a b", "a\u0007", "a­b"];
+    const nb = notes.filter((n) => { const r = F("10", n); return r.code !== NOTE_CODE || r.row !== 1; });
+    ok(nb.length === 0, `หมายเหตุต้อง ${NOTE_CODE} + row 1: ${fmt(nb.map((n) => [escape(n), pick(F("10", n), ["ok", "code", "row"])]))}`);
   });
   await st("R-14", "Q14 ข้อความ: Saving… · อังกฤษเอกพจน์/พหูพจน์ (1 booking / 2 bookings) ของ agentCollect pendingRefund noShowUnpaid · การ์ดขาดทุน \"ขาดทุนขั้นต้น 1,200.00\" / \"Gross loss 1,200.00\" (ไม่มีเครื่องหมายลบ) · ตัวแก้มี \"รวมที่บันทึกแล้ว\" · ปุ่มลบ aria-label \"ลบรายการที่ 1\" · ข้อความยอดเกิน · บรรทัดเอเจนซี่เก็บเงินเติม \"ยังไม่นับในรับแล้ว/ค้างรับ\"", async () => {
     needSetup(); const bad: string[] = [];
@@ -1384,6 +1392,84 @@ try {
     const F = (t: string) => asRec(pure("costRowsFromForm", [{ kind: "FOOD", amountText: t, note: "" }])) ?? {};
     eq(["1,000", "12,345.6", "0.50", "1000000"].map((t) => asArr(F(t).rows)[0]?.amountSatang ?? fmt(F(t))), [100_000, 1_234_560, 50, 100_000_000], "รับ");
     eq(["1,00", "1,0000", ",100", "1,,000"].map((t) => F(t).code), Array(4).fill("COST_AMOUNT_FORMAT"), "ปฏิเสธ");
+  });
+  // ═══ ORACLE-EDIT รอบ 3 (ผู้คุม 19 พ.ย. · มติ U1–U6) ═══
+  const LEVELS = await tryImport("@/lib/staff/levels");
+  const COSTK = ["trips.cost.view", "trips.cost.edit"];
+  /** ชุดคีย์ระดับของ trips ณ builder r2 (ถ่ายจาก permissionsForLevel 19 พ.ย.) ลบสองคีย์ต้นทุน — การแก้ U1 ต้องไม่ทำคีย์อื่นหาย */
+  const LEVEL_SNAP: Record<string, string[]> = {
+    OFF: [],
+    VIEW: ["trips.booking.view", "trips.departure.view", "trips.passenger.view", "trips.product.view", "trips.report.view"],
+    USE: ["trips.booking.approve", "trips.booking.create", "trips.booking.edit", "trips.booking.view", "trips.departure.edit", "trips.departure.status", "trips.departure.view", "trips.passenger.edit", "trips.passenger.health",
+      "trips.passenger.reveal", "trips.passenger.view", "trips.pdpa.manage", "trips.price.edit", "trips.price.override", "trips.product.edit", "trips.product.publish", "trips.product.view", "trips.report.view", "trips.resource.edit", "trips.seat.manage"],
+  };
+  await st("R-20", "U1 ระดับสำเร็จรูป (levels.ts · ใช้ทั้งตั้งระดับและคำเชิญของแอปเลขา): permissionsForLevel(\"trips\", OFF/VIEW/USE) ไม่มี trips.cost.view/edit · คีย์อื่นครบตามชุดเดิม · isSensitiveKey(สองคีย์) = true (คำเชิญจึงปฏิเสธคีย์ต้นทุนที่ใส่มาตรง) · ระดับที่มี = OFF/VIEW/USE เหมือนเดิม", () => {
+    const pfl = LEVELS.mod?.permissionsForLevel as AnyFn | undefined, isS = LEVELS.mod?.isSensitiveKey as AnyFn | undefined, avail = LEVELS.mod?.levelsAvailableFor as AnyFn | undefined;
+    ok(typeof pfl === "function" && typeof isS === "function" && typeof avail === "function", `levels.ts (${LEVELS.err.slice(0, 80)})`);
+    const got = Object.fromEntries(["OFF", "VIEW", "USE"].map((lv) => [lv, Object.keys(asRec((pfl as AnyFn)("trips", lv, {})) ?? {}).sort()]));
+    eq(got, LEVEL_SNAP, "ชุดคีย์ต่อระดับ");
+    eq([COSTK.map((k) => (isS as AnyFn)(k)), (avail as AnyFn)("trips")], [[true, true], ["OFF", "VIEW", "USE"]], "คีย์อ่อนไหว/ระดับ");
+  });
+  await st("R-21", "U1 ปลายทางจริง: OWNER ตั้งพนักงานเป็น ทัวร์:ดู / ทัวร์:ใช้งาน ผ่าน setStaffLevels ⇒ สิทธิ์ในฐานไม่มีคีย์ต้นทุน · costAccessOf = {view:false, edit:false} · สรุปเงิน dR ช่องต้นทุน/กำไร/noCosts = null · จอต้นทุน FORBIDDEN", async () => {
+    needSetup(); const ssl = LEVELS.mod?.setStaffLevels as AnyFn | undefined; ok(typeof ssl === "function", "ไม่มี setStaffLevels");
+    const mid = async (t: string) => String((await q<{ id: string }>(`SELECT id FROM "Membership" WHERE "userId" = $1`, [U[t]?.userId]))[0]?.id ?? "");
+    const octx = { tenantId: tA, actorUserId: U.oa.userId, membership: { role: "OWNER", unitAccess: ["*"], permissions: {} } };
+    const bad: string[] = [];
+    for (const [t, lv] of [["tg6", "VIEW"], ["tg7", "USE"]] as const) {
+      const r = asRec(await (ssl as AnyFn)(octx, await mid(t), { levels: { trips: lv } })) ?? {}; if (r.ok !== true) { bad.push(`${t} ตั้งระดับไม่ได้: ${fmt(r)}`); continue; }
+      const m = (await q<{ role: string; unitAccess: unknown; permissions: unknown }>(`SELECT role, "unitAccess", permissions FROM "Membership" WHERE "userId" = $1`, [U[t]?.userId]))[0];
+      const perms = asRec(m?.permissions) ?? {}; const leak = COSTK.filter((k) => perms[k] === true); if (leak.length) bad.push(`${t}(${lv}) ได้ ${leak.join(",")}`);
+      const acc = asRec(pure("costAccessOf", { role: String(m?.role), unitAccess: Array.isArray(m?.unitAccess) ? m?.unitAccess : [], permissions: perms }, uA)); if (!isDeepStrictEqual(acc, { view: false, edit: false })) bad.push(`${t} costAccessOf ${fmt(acc)}`);
+      const sm = await summary(t, DEP.R); const v = asRec(sm.value) ?? {};
+      if (sm.ok !== true || ["commissionCostSatang", "costSatang", "costRows", "grossProfitSatang", "marginBp", "noCosts"].some((k) => v[k] !== null)) bad.push(`${t} สรุปเงิน ${fmt(sm).slice(0, 200)}`);
+      const lc = await loadCosts(t, DEP.R); if (lc.ok !== false || lc.code !== "FORBIDDEN") bad.push(`${t} จอต้นทุน ${fmt(lc).slice(0, 120)}`);
+    }
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("R-22", "U2 แผงรอบที่สรุปเงินล้ม (ฟิกซ์เจอร์ R-15): แผงที่เรนเดอร์แสดงคำเตือน departures.money.unavailable และไม่มีโน้ต \"ยังไม่เปิดใช้\" (trips-dep-money-note / departures.notYet.money) · โค้ด: catch ของ departureMoneyForPanel ผูกตัวแปรความผิดพลาดและ log (ไม่กลืนเงียบ)", async () => {
+    await needR(); ok(R.J, "ต้องรัน R-15 ก่อน (ฟิกซ์เจอร์ RJ)");
+    const PANELM = await tryImport("@/components/trips/DeparturePanel"); const vm = VM(await panel("oa", R.J), "แผง RJ");
+    const html = render(PANELM.mod?.DeparturePanel, { unitSlug: SLUG_A, vm, base: `/app/u/${SLUG_A}/trips/departures`, q: { view: "week", start: null, month: null, filter: "all", dep: R.J }, resources: null, openDecide: false });
+    const txt = unent(html);
+    ok(txt.includes(String(fth["departures.money.unavailable"] ?? "\u0000")), `ไม่มีคำเตือน unavailable: ${txt.slice(0, 200)}`);
+    ok(!html.includes('data-testid="trips-dep-money-note"') && !txt.includes(String(fth["departures.notYet.money"] ?? "\u0000")), "ยังแสดงโน้ต ยังไม่เปิดใช้ คู่กับคำเตือน");
+    const c = stripComments(read(COSTS)); const at = c.indexOf("export async function departureMoneyForPanel"); const body = at < 0 ? "" : c.slice(at, c.indexOf("\n}\n", at));
+    const m = /catch\s*\(\s*(\w+)\s*\)\s*\{([\s\S]*?)\n\s*\}/.exec(body);
+    ok(m && new RegExp(`\\b(console\\.error|log\\w*|report\\w*)\\([^)]*\\b${m[1]}\\b`).test(m[2] ?? ""), `catch ไม่ log ความผิดพลาด: ${(m?.[0] ?? body.slice(body.indexOf("catch"), body.indexOf("catch") + 120)).slice(0, 160)}`);
+  });
+  await st("R-23", "U3 ป้าย \"(รวม VAT ของคอมมิชชัน)\" ตามที่คิดจริง: หน่วยสถานะ VAT ไม่ระบุ (a2) ที่มีการจองซึ่ง VAT คอมฯ นับเป็นต้นทุน ⇒ มี · หน่วยไม่จด VAT (dV · dU) ⇒ มี · หน่วยจด VAT ที่ไม่มีการจองแบบนั้น (dR) ⇒ ไม่มี", async () => {
+    await needR(); const LABEL = "(รวม VAT ของคอมมิชชัน)"; const has = async (dep: string, unit: string) => unent(byTestid(screen(VM(await loadCosts("oa", dep, unit), `จอ ${dep}`)), "trips-cost-breakdown")).includes(LABEL);
+    eq({ a2: await has(R.W, uA2), dV: await has(DEP.V, uN), dU: await has(R.U, uN), dR: await has(DEP.R, uA) }, { a2: true, dV: true, dU: true, dR: false }, "ป้าย");
+    eq((await sumV("oa", R.W, uA2)).commissionCostSatang, 107_000, "ฟิกซ์เจอร์: VAT คอมฯ ถูกนับ");
+  });
+  await st("R-24", "U4 หมายเหตุ: U+200B ตัดทิ้ง (\"เรือ\\u200Bใหญ่\" ⇒ \"เรือใหญ่\") · อีโมจิผสม ZWJ (👨‍👩‍👧 · ❤️‍🔥) และ ZWNJ รับไม่เปลี่ยน · ผ่าน action แล้วในฐานเก็บตามนั้น · ข้อความเฉพาะ errors.COST_NOTE_INVISIBLE (th ตรงตัว · en มี ไม่มีอักษรไทย)", async () => {
+    const F = (note: string) => asRec(pure("costRowsFromForm", [{ kind: "FOOD", amountText: "10", note }])) ?? {};
+    const fam = "👨\u200D👩\u200D👧 ครอบครัว", fire = "❤️\u200D🔥", zwnj = "ab\u200Ccd";
+    eq([asArr(F("เรือ\u200Bใหญ่").rows)[0]?.note, asArr(F(fam).rows)[0]?.note, asArr(F(fire).rows)[0]?.note, asArr(F(zwnj).rows)[0]?.note], ["เรือใหญ่", fam, fire, zwnj], "หมายเหตุ");
+    eq(fth[`errors.${NOTE_CODE}`], "หมายเหตุมีอักขระที่มองไม่เห็น ลบแล้วพิมพ์ใหม่", "ข้อความ th"); ok(fen[`errors.${NOTE_CODE}`] && !/[฀-๿]/.test(fen[`errors.${NOTE_CODE}`]), `ข้อความ en: ${fen[`errors.${NOTE_CODE}`]}`);
+    const vm = VM(await loadCosts("oa", DEP.AC), "load AC");
+    const r = await act("oa", SLUG_A, editorPayload(vm, [{ kind: "OTHER", amountText: "11", note: `U4เรือ\u200Bใหญ่${STAMP}` }, { kind: "OTHER", amountText: "12", note: `${fam}${STAMP}` }]));
+    ok(r.ok === true && asRec(r.value)?.applied === true, `action: ${fmt(r)}`);
+    const notes = (await costRowsDb(DEP.AC)).map((x) => x.note);
+    ok(notes.includes(`U4เรือใหญ่${STAMP}`) && notes.includes(`${fam}${STAMP}`) && !notes.some((n) => String(n ?? "").includes("\u200B")), `หมายเหตุในฐาน: ${fmt(notes)}`);
+  });
+  await st("R-25", "U5 คำเตือนอังกฤษเอกพจน์/พหูพจน์: costs.warn.SNAPSHOT_FALLBACK · FX_BOOKINGS · OTA_FEES_NOT_INCLUDED (n=1 ⇒ \"1 booking\" · n=2 ⇒ \"2 bookings\")", () => {
+    const tr = (RX?.ui.createTranslator as AnyFn)({ locale: "en", messages: { trips: en }, namespace: "trips" }) as AnyFn; const bad: string[] = [];
+    for (const k of ["SNAPSHOT_FALLBACK", "FX_BOOKINGS", "OTA_FEES_NOT_INCLUDED"]) { const one = String(tr(`costs.warn.${k}`, { n: 1 })), two = String(tr(`costs.warn.${k}`, { n: 2 })); if (!/\b1 booking\b(?!s)/.test(one) || !/\b2 bookings\b/.test(two)) bad.push(`${k}: "${one}" / "${two}"`); }
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("R-26", "U6 ตัวแก้: ทุก <select>/<input> ปิดระหว่างรอผล (disabled ผูก busy) · aria-invalid ของช่องชนิด/ยอด/หมายเหตุ ผูกกับ field ของตัวเอง · costRowsFromForm คืน field: ชนิดผิด ⇒ { INVALID_INPUT, row, field: \"kind\" } · หมายเหตุยาวเกิน ⇒ { INVALID_INPUT, field: \"note\" } · ยอดผิดรูป ⇒ { COST_AMOUNT_FORMAT, field: \"amount\" } · อักขระมองไม่เห็น ⇒ { COST_NOTE_INVISIBLE, field: \"note\" }", () => {
+    const F = (rows: Rec[]) => pick(asRec(pure("costRowsFromForm", rows)) ?? {}, ["ok", "code", "row", "field"]); const okRow = { kind: "FOOD", amountText: "100", note: "" };
+    eq([F([okRow, { ...okRow, kind: "COMMISSION" }]), F([{ ...okRow, note: "ก".repeat(201) }]), F([okRow, okRow, { ...okRow, amountText: "1,2a" }]), F([{ ...okRow, note: "a\u202Eb" }])],
+      [[false, "INVALID_INPUT", 1, "kind"], [false, "INVALID_INPUT", 0, "note"], [false, "COST_AMOUNT_FORMAT", 2, "amount"], [false, NOTE_CODE, 0, "note"]], "field");
+    const ed = stripComments(read(`${COMP}/CostEditor.tsx`)); /** แท็ก JSX เต็มตัว (นับวงเล็บปีกกา — ข้าม "=>" ในแอตทริบิวต์) */
+    const tagAt = (i: number): string => { let d = 0; for (let j = i; j < ed.length; j++) { const ch = ed[j]; if (ch === "{") d++; else if (ch === "}") d--; else if (ch === ">" && d === 0) return ed.slice(i, j + 1); } return ed.slice(i); };
+    const tags = [...ed.matchAll(/<(select|input)\b/g)].map((m) => tagAt(m.index ?? 0)); const bad: string[] = [];
+    if (tags.length < 3) bad.push(`พบช่องกรอก ${tags.length}`);
+    for (const tg of tags) if (!/disabled=\{[^}]*busy/.test(tg)) bad.push(`ไม่ปิดระหว่างรอ: ${tg.slice(0, 80)}`);
+    const sel = tags.find((x) => x.startsWith("<select")) ?? "", note = tags.find((x) => /x\.note|note:/.test(x)) ?? "", amt = tags.find((x) => /amountText/.test(x)) ?? "";
+    for (const [nm, tg, f] of [["ชนิด", sel, "kind"], ["หมายเหตุ", note, "note"], ["ยอด", amt, "amount"]] as const) if (!new RegExp(`aria-invalid=\\{[^}]*["'\`]${f}["'\`]`).test(tg)) bad.push(`aria-invalid ของช่อง${nm} ไม่ผูก field "${f}"`);
+    ok(bad.length === 0, bad.join(" · "));
   });
   groupLine("R");
 
