@@ -45,11 +45,11 @@ export type BookingMoneyIn = {
   vatSatang: number;
   commissionSatang: number;
   commissionVatSatang: number;
-  /** snapshot.tax.vatRegistered (ไม่มี ⇒ true) */
+  /** snapshot.tax.vatRegistered (ผู้เรียก: ไม่มี ⇒ สถานะ VAT ของหน่วย · Q10) */
   vatRegistered: boolean;
   paidSatang: number;
   refundedSatang: number;
-  /** มีคำขอคืนเงินเปิด ∨ (รอบยกเลิก ∧ สถานะยังนับ) */
+  /** มีคำขอคืนเงินเปิด ∨ (รอบยกเลิก ∧ สถานะยังนับ ∧ มีเงินรับไว้ · Q12) */
   pendingRefund: boolean;
   /** รอบถูกยกเลิก (Q12): การจองที่ยังค้างโดยไม่มีเงินรับไว้ ⇒ ไม่นับ (ไม่ใช่ยอดขาย/ค้างรับ ไม่ใช่รอคืนเงิน) — ไม่ระบุ = false */
   departureCancelled?: boolean;
@@ -207,41 +207,49 @@ export function costAccessOf(m: { role: string; unitAccess: string[]; permission
 // ═══════════════ แถวต้นทุน ═══════════════
 export type CostRowIn = { id: string | null; kind: TripCostKind; amountSatang: number; note: string | null };
 type ParseCode = "INVALID_INPUT" | "COST_ROWS_LIMIT" | "COST_AMOUNT_INVALID";
-/** row = ลำดับ (เริ่ม 0) ของแถวแรกที่ผิด (Q4) · ไม่มี ⇒ ผิดทั้งชุด */
-export type ParsedCostRows = { ok: true; rows: CostRowIn[] } | { ok: false; code: ParseCode; row?: number };
+/** ช่องที่ผิดของแถว (U6) — จอผูก aria-invalid ตามช่องนี้ */
+export type CostRowField = "kind" | "amount" | "note";
+/** row = ลำดับ (เริ่ม 0) ของแถวแรกที่ผิด (Q4) · field = ช่องที่ผิด (U6) · ไม่มี ⇒ ผิดทั้งชุด/รูปแถว */
+export type ParsedCostRows = { ok: true; rows: CostRowIn[] } | { ok: false; code: ParseCode; row?: number; field?: CostRowField };
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const KIND_SET: readonly string[] = TRIP_COST_KINDS;
 const CTL_RE = /[\u0000-\u001f\u007f]/;
-/** Q13: หมายเหตุห้ามอักขระควบคุม · มองไม่เห็น · bidi · ตัวคั่นบรรทัดพิเศษ */
-const NOTE_BAD_RE = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200b-\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/;
+/** U4: U+200B (ZWSP) ตัดทิ้งเงียบ ๆ ก่อนตรวจ */
+const ZWSP_RE = /\u200b/g;
+/** U4: อักขระควบคุม · มองไม่เห็น · bidi · ตัวคั่นบรรทัดพิเศษ — ยอม U+200C/U+200D (อีโมจิผสม/ข้อความที่วางจาก LINE) */
+const NOTE_BAD_RE = /[\u0000-\u001f\u007f-\u009f\u00ad\u061c\u180e\u200e\u200f\u2028-\u202e\u2060-\u206f\ufeff\ufff9-\ufffb]/;
 /** Q13: รูปยอดในฟอร์ม — คอมมาเป็นตัวคั่นหลักพันเท่านั้น · ช่องว่างหัวท้ายได้ ข้างในไม่ได้ */
 const AMOUNT_TEXT_RE = /^(\d{1,3}(,\d{3})+|\d+)(\.\d{1,2})?$/;
 const ROW_KEYS = new Set(["id", "kind", "amountSatang", "note"]);
 const FORM_KEYS = new Set(["id", "kind", "amountText", "note"]);
 
-/** id / kind / note ของแถว (ร่วมกันสองรูปแบบ) — ผิด ⇒ null */
-function rowBase(r: Record<string, unknown>): { id: string | null; kind: TripCostKind; note: string | null } | null {
+type RowBase = { ok: true; id: string | null; kind: TripCostKind; note: string | null } | { ok: false; field: CostRowField | null; invisible: boolean };
+/** id / kind / note ของแถว (ใช้ทั้งทางบริการ parseCostRows และทางฟอร์ม costRowsFromForm) — ผิด ⇒ ช่องที่ผิด */
+function rowBase(r: Record<string, unknown>): RowBase {
   const id = r.id;
-  if (id !== undefined && (typeof id !== "string" || id.length < 1 || id.length > 100 || CTL_RE.test(id))) return null;
-  if (typeof r.kind !== "string" || !KIND_SET.includes(r.kind)) return null;
+  if (id !== undefined && (typeof id !== "string" || id.length < 1 || id.length > 100 || CTL_RE.test(id))) return { ok: false, field: null, invisible: false };
+  if (typeof r.kind !== "string" || !KIND_SET.includes(r.kind)) return { ok: false, field: "kind", invisible: false };
   const note = r.note;
-  if (note !== undefined && note !== null && typeof note !== "string") return null;
+  if (note !== undefined && note !== null && typeof note !== "string") return { ok: false, field: "note", invisible: false };
   let n: string | null = null;
   if (typeof note === "string") {
-    if (NOTE_BAD_RE.test(note)) return null;
-    const t = note.trim();
-    if (t.length > TRIP_COST_NOTE_MAX) return null;
+    const clean = note.replace(ZWSP_RE, "");
+    if (NOTE_BAD_RE.test(clean)) return { ok: false, field: "note", invisible: true };
+    const t = clean.trim();
+    if (t.length > TRIP_COST_NOTE_MAX) return { ok: false, field: "note", invisible: false };
     n = t.length ? t : null;
   }
-  return { id: typeof id === "string" ? id : null, kind: r.kind as TripCostKind, note: n };
+  return { ok: true, id: typeof id === "string" ? id : null, kind: r.kind as TripCostKind, note: n };
 }
+/** ผลผิดของแถว (field เฉพาะเมื่อรู้ช่อง) */
+const rowFail = <C extends string>(code: C, row: number, field: CostRowField | null) => ({ ok: false as const, code, row, ...(field ? { field } : {}) });
 
 /** ชุดหลังแปลงยอดแล้ว: id ซ้ำ ⇒ INVALID_INPUT (แถวที่ซ้ำ) · Σ เกิน int4 ⇒ COST_AMOUNT_INVALID */
 function finishRows(rows: CostRowIn[]): ParsedCostRows {
   const seen = new Set<string>();
   for (const [i, r] of rows.entries()) {
     if (r.id === null) continue;
-    if (seen.has(r.id)) return { ok: false, code: "INVALID_INPUT", row: i };
+    if (seen.has(r.id)) return rowFail("INVALID_INPUT", i, null);
     seen.add(r.id);
   }
   let total = 0;
@@ -250,38 +258,38 @@ function finishRows(rows: CostRowIn[]): ParsedCostRows {
   return { ok: true, rows };
 }
 
-/** ชุดต้นทุนทั้งรอบ (ทางบริการ · ยอดเป็นสตางค์) — แถวแรกที่ผิดชนะ */
+/** ชุดต้นทุนทั้งรอบ (ทางบริการ · ยอดเป็นสตางค์) — แถวแรกที่ผิดชนะ · หมายเหตุมีอักขระต้องห้าม ⇒ INVALID_INPUT (ทางบริการ) */
 export function parseCostRows(raw: unknown): ParsedCostRows {
   if (!Array.isArray(raw)) return { ok: false, code: "INVALID_INPUT" };
   if (raw.length > TRIP_COST_ROWS_MAX) return { ok: false, code: "COST_ROWS_LIMIT" };
   const rows: CostRowIn[] = [];
   for (const [i, r] of raw.entries()) {
-    if (!isRec(r) || Object.keys(r).some((k) => !ROW_KEYS.has(k))) return { ok: false, code: "INVALID_INPUT", row: i };
+    if (!isRec(r) || Object.keys(r).some((k) => !ROW_KEYS.has(k))) return rowFail("INVALID_INPUT", i, null);
     const base = rowBase(r);
-    if (!base) return { ok: false, code: "INVALID_INPUT", row: i };
+    if (!base.ok) return rowFail("INVALID_INPUT", i, base.field);
     const a = r.amountSatang;
-    if (typeof a !== "number" || !Number.isSafeInteger(a)) return { ok: false, code: "INVALID_INPUT", row: i };
-    if (a < 1 || a > TRIP_COST_AMOUNT_MAX) return { ok: false, code: "COST_AMOUNT_INVALID", row: i };
+    if (typeof a !== "number" || !Number.isSafeInteger(a)) return rowFail("INVALID_INPUT", i, "amount");
+    if (a < 1 || a > TRIP_COST_AMOUNT_MAX) return rowFail("COST_AMOUNT_INVALID", i, "amount");
     rows.push({ id: base.id, kind: base.kind, amountSatang: a, note: base.note });
   }
   return finishRows(rows);
 }
 
-/** ฟอร์มของจอ (ยอดเป็นข้อความบาท · N11 · Q13) — แถวแรกที่ผิดชนะ · ผลผิดมี row (Q4) */
-export function costRowsFromForm(raw: unknown): ParsedCostRows | { ok: false; code: "COST_AMOUNT_FORMAT"; row: number } {
+/** ฟอร์มของจอ (ยอดเป็นข้อความบาท · N11 · Q13) — แถวแรกที่ผิดชนะ · ผลผิดมี row (Q4) + field (U6) · หมายเหตุมองไม่เห็น ⇒ COST_NOTE_INVISIBLE (U4) */
+export function costRowsFromForm(raw: unknown): ParsedCostRows | { ok: false; code: "COST_AMOUNT_FORMAT" | "COST_NOTE_INVISIBLE"; row: number; field: CostRowField } {
   if (!Array.isArray(raw)) return { ok: false, code: "INVALID_INPUT" };
   if (raw.length > TRIP_COST_ROWS_MAX) return { ok: false, code: "COST_ROWS_LIMIT" };
   const rows: CostRowIn[] = [];
   for (const [i, r] of raw.entries()) {
-    if (!isRec(r) || Object.keys(r).some((k) => !FORM_KEYS.has(k)) || typeof r.amountText !== "string") return { ok: false, code: "INVALID_INPUT", row: i };
+    if (!isRec(r) || Object.keys(r).some((k) => !FORM_KEYS.has(k)) || typeof r.amountText !== "string") return rowFail("INVALID_INPUT", i, null);
     const base = rowBase(r);
-    if (!base) return { ok: false, code: "INVALID_INPUT", row: i };
+    if (!base.ok) return base.invisible ? { ok: false, code: "COST_NOTE_INVISIBLE", row: i, field: "note" } : rowFail("INVALID_INPUT", i, base.field);
     const text = r.amountText.trim();
     // ตรวจรูปก่อนเรียกตัวแปลงกลาง (ตัวแปลงกลางตัดคอมมา/ช่องว่างทุกตำแหน่ง — ไม่แก้ตัวกลาง)
-    if (!AMOUNT_TEXT_RE.test(text)) return { ok: false, code: "COST_AMOUNT_FORMAT", row: i };
+    if (!AMOUNT_TEXT_RE.test(text)) return { ok: false, code: "COST_AMOUNT_FORMAT", row: i, field: "amount" };
     const satang = parseAmountSatang(text);
-    if (satang === null) return amountProblemOf(text) === "format" ? { ok: false, code: "COST_AMOUNT_FORMAT", row: i } : { ok: false, code: "COST_AMOUNT_INVALID", row: i };
-    if (satang > TRIP_COST_AMOUNT_MAX) return { ok: false, code: "COST_AMOUNT_INVALID", row: i };
+    if (satang === null) return amountProblemOf(text) === "format" ? { ok: false, code: "COST_AMOUNT_FORMAT", row: i, field: "amount" } : rowFail("COST_AMOUNT_INVALID", i, "amount");
+    if (satang > TRIP_COST_AMOUNT_MAX) return rowFail("COST_AMOUNT_INVALID", i, "amount");
     rows.push({ id: base.id, kind: base.kind, amountSatang: satang, note: base.note });
   }
   return finishRows(rows);

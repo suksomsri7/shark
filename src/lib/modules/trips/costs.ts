@@ -43,7 +43,7 @@ import {
 type Opts = { now?: Date };
 type Tx = Prisma.TransactionClient;
 type Code = "INVALID_INPUT" | "NOT_FOUND" | "FORBIDDEN" | "UNIT_NOT_TRIPS" | "STATE_CONFLICT" | "BUSY" | "COST_ROWS_LIMIT" | "COST_AMOUNT_INVALID";
-type Fail = TripsFail<Code | string> & { row?: number };
+type Fail = TripsFail<Code | string> & { row?: number; field?: string };
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isFail = (x: unknown): x is TripsFail => isRec(x) && x.ok === false;
 const CTL_RE = /[\u0000-\u001f\u007f]/;
@@ -91,7 +91,8 @@ export type DepartureMoneyVM = Omit<MoneyTotals, "commissionCostSatang"> & {
 export type CostRowVM = { id: string; kind: string; amountSatang: number; note: string | null; updatedAtIso: string };
 export type DepartureCostsVM = {
   unit: { id: string; slug: string; tz: string; today: string; nowIso: string };
-  flags: { canEdit: boolean };
+  /** commissionWithVat (U3): มีการจองที่ VAT ของคอมฯ ถูกนับเป็นต้นทุนจริง (snapshot ไม่จด VAT) ⇒ ป้าย "รวม VAT ของคอมมิชชัน" */
+  flags: { canEdit: boolean; commissionWithVat: boolean };
   departure: {
     id: string;
     productId: string;
@@ -172,7 +173,7 @@ type BookingRow = {
   retN: number;
   openRefund: boolean;
 };
-type Computed = { money: DepartureMoneyVM; perBooking: { b: BookingRow; m: BookingMoney }[]; costs: CostDb[] };
+type Computed = { money: DepartureMoneyVM; perBooking: { b: BookingRow; m: BookingMoney; commissionVatCounted: boolean }[]; costs: CostDb[] };
 const READ_STATUSES = [...REPORT_LIVE_STATUSES, ...REPORT_PENDING_STATUSES, "CANCELLED"];
 const LIVE_SET: readonly string[] = REPORT_LIVE_STATUSES;
 const PENDING_SET: readonly string[] = REPORT_PENDING_STATUSES;
@@ -218,6 +219,8 @@ async function computeMoney(g: TripsUnitGate, dep: Pick<DepRow, "id" | "status" 
     // Q7: ยอดใน snapshot ใช้ได้เมื่อเป็นจำนวนเต็มปลอดภัย 0..int4 เท่านั้น · Q8: fallback ของราคาไม่รวม VAT บวก VAT
     const hasPayable = typeof b.payableJson === "number" && Number.isSafeInteger(b.payableJson) && b.payableJson >= 0 && b.payableJson <= INT4_MAX;
     const payable = hasPayable ? Number(b.payableJson) : b.grossSatang - b.discountSatang - b.agentDiscountSatang + (b.inclVatJson === false ? b.vatSatang : 0);
+    // Q10: snapshot ไม่บอก ⇒ สถานะของหน่วย (ไม่ถือว่าจด VAT เอง)
+    const bookingVatReg = typeof b.vatRegJson === "boolean" ? b.vatRegJson : registered === true;
     const m = bookingMoneyOf({
       status: b.status,
       collectMode: b.collectMode,
@@ -229,8 +232,7 @@ async function computeMoney(g: TripsUnitGate, dep: Pick<DepRow, "id" | "status" 
       vatSatang: b.vatSatang,
       commissionSatang: b.commissionSatang,
       commissionVatSatang: b.commissionVatSatang,
-      // Q10: snapshot ไม่บอก ⇒ สถานะของหน่วย (ไม่ถือว่าจด VAT เอง)
-      vatRegistered: typeof b.vatRegJson === "boolean" ? b.vatRegJson : registered === true,
+      vatRegistered: bookingVatReg,
       paidSatang: b.paidSatang,
       refundedSatang: b.refundedSatang,
       // Q12: รอบยกเลิก — รอคืนเงินเฉพาะที่มีเงินรับไว้ · ที่ค้างโดยไม่มีเงิน ⇒ ไม่นับ
@@ -238,7 +240,7 @@ async function computeMoney(g: TripsUnitGate, dep: Pick<DepRow, "id" | "status" 
       departureCancelled: depCancelled,
       retained: b.retN > 0 ? [{ amountSatang: b.retAmount, vatSatang: b.retVat, passThroughSatang: b.retPt }] : [],
     });
-    perBooking.push({ b, m });
+    perBooking.push({ b, m, commissionVatCounted: m.counted === "LIVE" && !bookingVatReg && b.commissionVatSatang > 0 });
     if (m.counted === "EXCLUDED") continue;
     if (!hasPayable && m.counted === "LIVE") fallback += 1; // Q9
     if (b.currency !== "THB") fx += 1;
@@ -310,7 +312,9 @@ export async function departureMoneyForPanel(
   if (!canSeeMoney(g, access.view)) return { money: null, costs, failed: false };
   try {
     return { money: (await computeMoney(g, dep, sourceKind, access.view, now)).money, costs, failed: false };
-  } catch {
+  } catch (err) {
+    // U2: ไม่กลืนเงียบ — log ชนิด/ข้อความของความผิดพลาด (ไม่มีตัวเลขเงินของรอบ) · แผงยังเปิดได้
+    console.error("[trips.costs] departure money summary failed", { departureId: dep.id, error: err instanceof Error ? err.message : String(err) });
     return { money: null, costs, failed: true };
   }
 }
@@ -362,7 +366,7 @@ export async function loadDepartureCostsVM(ctx: TripsScreenCtx, input: unknown, 
     ok: true,
     vm: {
       unit: { id: g.unitId, slug: g.unitSlug, tz, today: utcToLocal(tz, now).ymd, nowIso: now.toISOString() },
-      flags: { canEdit: access.edit },
+      flags: { canEdit: access.edit, commissionWithVat: c.perBooking.some((x) => x.commissionVatCounted) },
       departure: {
         id: d.dep.id,
         productId: d.dep.productId,
@@ -423,7 +427,7 @@ export async function saveDepartureCosts(ctx: TripsScreenCtx, input: unknown, op
   if (isFail(g)) return g;
   if (!g.can("trips.departure.view") || !costAccessOf(g.member, g.unitId).edit) return fail("FORBIDDEN");
   const parsed = parseCostRows(p.data.rows);
-  if (!parsed.ok) return parsed.row === undefined ? fail(parsed.code) : { ...fail(parsed.code), row: parsed.row };
+  if (!parsed.ok) return { ...fail(parsed.code), ...(parsed.row === undefined ? {} : { row: parsed.row }), ...(parsed.field === undefined ? {} : { field: parsed.field }) };
   const want: CostRowIn[] = parsed.rows;
   const departureId = p.data.departureId;
   const expected = p.data.expectedToken;

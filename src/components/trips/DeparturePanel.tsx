@@ -182,7 +182,7 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
             </Link>
           ) : null}
         </section>
-      ) : (
+      ) : vm.warnings.some((w) => w.code === "MONEY_UNAVAILABLE") ? null : (
         <p data-testid="trips-dep-money-note" className="rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-sm text-[color:var(--color-muted)]">
           {t("departures.notYet.money")}
         </p>

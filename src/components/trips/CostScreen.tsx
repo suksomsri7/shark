@@ -2,7 +2,7 @@
 // TRIPS T1.7a1 ▸ จอ "ต้นทุนและกำไรของรอบ" ฝั่งร้าน (ใบสั่ง T1.7 §5.2 · ไม่มีภาพออกแบบ — ผังตามใบสั่ง · ภาษาภาพเดียวกับจอใบรายชื่อ)
 //   หัว (กลับปฏิทิน · ชื่อ · สถานะรอบ · ป้ายประมาณการ) · บรรทัดตัวเลขบริหาร · การ์ด 6 ใบ · ที่มาของกำไร · คำเตือน · ตัวแก้ต้นทุน/รายการอ่านอย่างเดียว · ยอดตามช่องทาง
 //   🔴 แสดงผลเท่านั้น — ทุกตัวเลขจาก VM (loadDepartureCostsVM) · เงินผ่าน formatBaht · % ผ่าน pctText ตัวเดียว · บรรทัด VAT/คำว่า "ก่อน VAT" ตาม vatShown (Q11)
-//   🔴 ยังไม่มีแถวต้นทุน (noCosts) ⇒ กำไร "—" + ยังไม่หักต้นทุนรอบ (Q2) · vatMode ใช้เลือกข้อความวิธีใส่ยอดต้นทุนและป้ายคอมมิชชัน (ร้านไม่จด VAT รวม VAT ของคอมฯ)
+//   🔴 ยังไม่มีแถวต้นทุน (noCosts) ⇒ กำไร "—" + ยังไม่หักต้นทุนรอบ (Q2) · vatMode ใช้เลือกข้อความวิธีใส่ยอดต้นทุน · ป้าย "รวม VAT ของคอมมิชชัน" ตาม flags.commissionWithVat (ที่คิดจริง · U3)
 //   🔴 390: การ์ด 2 คอลัมน์ · ตัวแก้เป็นการ์ดต่อแถว · ไม่มีอะไรล้นจอ
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -56,7 +56,7 @@ export default function CostScreen({ vm }: { vm: DepartureCostsVM }) {
   const d = vm.departure;
   const m = vm.money;
   const noVat = !vatShown(m);
-  const commissionWithVat = m.vatMode === "NOT_REGISTERED";
+  const commissionWithVat = vm.flags.commissionWithVat; // U3: ตามที่คิดจริง
   const noCosts = m.noCosts === true;
   const base = `/app/u/${vm.unit.slug}/trips/departures`;
   const backHref = `${base}?view=week&start=${d.localDate}&dep=${encodeURIComponent(d.id)}`;

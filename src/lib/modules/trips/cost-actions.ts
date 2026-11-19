@@ -16,6 +16,7 @@ const FORMAT_MSG: Record<string, string> = {
   COST_AMOUNT_FORMAT: "พิมพ์ยอดเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง",
   COST_AMOUNT_INVALID: "ยอดต้นทุนต้องมากกว่าศูนย์ ไม่เกิน 10,000,000 บาทต่อรายการ และรวมทั้งรอบไม่เกิน 21 ล้านบาท",
   COST_ROWS_LIMIT: "ต้นทุนของรอบมีได้ไม่เกิน 30 รายการ",
+  COST_NOTE_INVISIBLE: "หมายเหตุมีอักขระที่มองไม่เห็น ลบแล้วพิมพ์ใหม่",
   INVALID_INPUT: "ข้อมูลที่ส่งมายังไม่ครบหรือรูปแบบยังไม่ตรง — ตรวจแล้วลองอีกครั้ง",
 };
 
@@ -38,7 +39,7 @@ export async function saveDepartureCostsAction(unitSlug: string, input: unknown)
   if (!costAccessOf(m, unit.id).edit) return FORBIDDEN;
   const body = typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
   const rows = costRowsFromForm(body.rows);
-  // Q4: แถวแรกที่ผิด (เริ่ม 0) ส่งต่อให้จอชี้ช่อง
-  if (!rows.ok) return { ok: false as const, code: rows.code, message: FORMAT_MSG[rows.code] ?? FORMAT_MSG.INVALID_INPUT, ...(rows.row === undefined ? {} : { row: rows.row }) };
+  // Q4 + U6: แถวแรกที่ผิด (เริ่ม 0) + ช่องที่ผิด ส่งต่อให้จอชี้ช่อง
+  if (!rows.ok) return { ok: false as const, code: rows.code, message: FORMAT_MSG[rows.code] ?? FORMAT_MSG.INVALID_INPUT, ...(rows.row === undefined ? {} : { row: rows.row }), ...(rows.field === undefined ? {} : { field: rows.field }) };
   return saveDepartureCosts({ tenantId: auth.active.tenantId, actorUserId: auth.user.id }, { unitId: unit.id, departureId: body.departureId, expectedToken: body.expectedToken, rows: rows.rows.map((r) => (r.id === null ? { kind: r.kind, amountSatang: r.amountSatang, note: r.note } : r)) });
 }

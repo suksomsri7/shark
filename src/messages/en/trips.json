@@ -421,6 +421,7 @@
   },
   "loading": "Loading…",
   "errors": {
+    "COST_NOTE_INVISIBLE": "The note has invisible characters — delete it and type it again",
     "COST_ROWS_LIMIT": "A departure can have at most 30 cost lines",
     "COST_AMOUNT_INVALID": "Cost amounts must be above zero, at most 10,000,000 baht per line and at most 21 million baht for the whole departure",
     "COST_AMOUNT_FORMAT": "Type the amount as a number with at most 2 decimal places",
@@ -1438,10 +1439,10 @@
     "warn": {
       "PARK_FEE_WITH_PASS_THROUGH": "This departure has both park fees collected on behalf of customers and a park fee cost line — check it is not counted twice (the cost line is only what the shop pays itself)",
       "SUPPLIER_COSTS_NOT_INCLUDED": "This product comes from a supplier — what the shop owes the supplier is not in this cost yet",
-      "SNAPSHOT_FALLBACK": "{n} bookings have no net amount saved at booking time — worked out from list price minus discounts, revenue may be off",
-      "FX_BOOKINGS": "{n} bookings are in another currency — added up in baht from the saved amounts, check the exchange rate",
+      "SNAPSHOT_FALLBACK": "{n, plural, one {# booking} other {# bookings}} with no net amount saved at booking time — worked out from list price minus discounts, revenue may be off",
+      "FX_BOOKINGS": "{n, plural, one {# booking} other {# bookings}} in another currency — added up in baht from the saved amounts, check the exchange rate",
       "VAT_STATUS_UNKNOWN": "Shop VAT registration is not set — set it in trip settings, tax section",
-      "OTA_FEES_NOT_INCLUDED": "{n} bookings came from outside tour sites — platform fees are not deducted yet"
+      "OTA_FEES_NOT_INCLUDED": "{n, plural, one {# booking} other {# bookings}} from outside tour sites — platform fees are not deducted yet"
     }
   }
 }

@@ -15,8 +15,9 @@ import { formatBaht } from "./trips-shared";
 const KINDS = ["BOAT", "FUEL", "GUIDE", "FOOD", "PARK_FEE", "TRANSPORT", "EQUIPMENT", "OTHER"] as const;
 const ROWS_MAX = 30;
 const NOTE_MAX = 200;
-const KNOWN_ERRORS = new Set(["COST_ROWS_LIMIT", "COST_AMOUNT_INVALID", "COST_AMOUNT_FORMAT", "INVALID_INPUT", "FORBIDDEN", "NOT_FOUND", "BUSY"]);
+const KNOWN_ERRORS = new Set(["COST_ROWS_LIMIT", "COST_AMOUNT_INVALID", "COST_AMOUNT_FORMAT", "COST_NOTE_INVISIBLE", "INVALID_INPUT", "FORBIDDEN", "NOT_FOUND", "BUSY"]);
 
+type Field = "kind" | "amount" | "note";
 type Draft = { key: string; id: string | null; kind: string; amountText: string; note: string };
 let seq = 0;
 const newKey = () => `n${++seq}`;
@@ -71,7 +72,7 @@ export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
   const [seenToken, setSeenToken] = useState(vm.costs.token);
   const [savedToken, setSavedToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<{ text: string; row: number | null; field: "amount" | "note" } | null>(null);
+  const [error, setError] = useState<{ text: string; row: number | null; field: Field | null } | null>(null);
   const [conflict, setConflict] = useState(false);
   // รับชุดใหม่ระหว่างเรนเดอร์ (รูปแบบ "ปรับ state ตาม prop" ของ React) เมื่อ token ของ VM เปลี่ยน
   if (seenToken !== vm.costs.token) {
@@ -116,19 +117,21 @@ export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
           setConflict(true);
           return;
         }
+        // Q4 + U6: แถว + ช่องที่ผิดจากผลของ action (ไม่เดาช่อง)
         const row = "row" in r && typeof r.row === "number" ? r.row : null;
-        setError({ text: KNOWN_ERRORS.has(r.code) ? t(`errors.${r.code}`) : t("common.failed"), row, field: r.code.startsWith("COST_AMOUNT") ? "amount" : "note" });
+        const field = "field" in r && (r.field === "kind" || r.field === "amount" || r.field === "note") ? r.field : null;
+        setError({ text: KNOWN_ERRORS.has(r.code) ? t(`errors.${r.code}`) : t("common.failed"), row, field });
         return;
       }
       setSavedToken(r.value.token);
       router.refresh();
     } catch {
-      setError({ text: t("common.failed"), row: null, field: "amount" });
+      setError({ text: t("common.failed"), row: null, field: null });
     } finally {
       setBusy(false);
     }
   };
-  const bad = (i: number, field: "amount" | "note") => error !== null && error.row === i && error.field === field;
+  const bad = (i: number, field: Field) => error !== null && error.row === i && error.field === field;
 
   return (
     <div data-testid="trips-cost-editor" className="flex min-w-0 flex-col gap-3">
@@ -143,7 +146,14 @@ export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
           >
             <label className="flex min-w-0 flex-col gap-1 text-sm">
               <span className="text-[color:var(--color-muted)] md:sr-only">{t("costs.editor.kind")}</span>
-              <select className={INPUT} value={x.kind} onChange={(e) => patch(x.key, { kind: e.target.value })}>
+              <select
+                className={INPUT}
+                value={x.kind}
+                disabled={busy}
+                aria-invalid={bad(i, "kind") ? true : undefined}
+                aria-describedby={bad(i, "kind") ? ERROR_ID : undefined}
+                onChange={(e) => patch(x.key, { kind: e.target.value })}
+              >
                 {KINDS.map((k) => (
                   <option key={k} value={k}>
                     {t(`costs.kind.${k}`)}
@@ -158,6 +168,7 @@ export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
                 inputMode="decimal"
                 value={x.amountText}
                 maxLength={20}
+                disabled={busy}
                 aria-invalid={bad(i, "amount") ? true : undefined}
                 aria-describedby={bad(i, "amount") ? ERROR_ID : undefined}
                 onChange={(e) => patch(x.key, { amountText: e.target.value })}
@@ -169,12 +180,13 @@ export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
                 className={INPUT}
                 value={x.note}
                 maxLength={NOTE_MAX}
+                disabled={busy}
                 aria-invalid={bad(i, "note") ? true : undefined}
                 aria-describedby={bad(i, "note") ? ERROR_ID : undefined}
                 onChange={(e) => patch(x.key, { note: e.target.value })}
               />
             </label>
-            <button type="button" data-testid={`trips-cost-remove-${i}`} aria-label={t("costs.editor.removeAria", { n: i + 1 })} className={`${BTN_DANGER} col-span-2 md:col-span-1`} onClick={() => remove(x.key)}>
+            <button type="button" data-testid={`trips-cost-remove-${i}`} disabled={busy} aria-label={t("costs.editor.removeAria", { n: i + 1 })} className={`${BTN_DANGER} col-span-2 md:col-span-1`} onClick={() => remove(x.key)}>
               {t("costs.editor.remove")}
             </button>
           </li>
