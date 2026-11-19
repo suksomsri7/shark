@@ -1926,8 +1926,10 @@ try {
     const T = at(VMS + 8 * MIN);
     const key = `trips:book:${tA}:${b.ck}`;
     const out: Record<string, [unknown, unknown]> = {};
+    // ORACLE-EDIT P3-1 (ผู้คุม 19 พ.ย.): quote ไม่นับถังอ่าน (มติ L6 · L6-3) ⇒ ลำดับจริงของหน้ายกเลิก = ตัวเปิดหน้า (นับ) แล้ว quote (อ่านอย่างเดียว) · ที่ 120 ทั้งคู่ผ่าน · ที่ 121 ทั้งคู่ถูกปฏิเสธ
+    const openP = () => bcall("openBookReservation", { shop: b.shop, token: b.token, lang: "th", acceptLanguage: "th", clientKey: b.ck }, T);
     await setRead(key, 119, T);
-    const q1 = await cancelQ(b, g, T), q2 = await cancelQ(b, g, T);
+    await openP(); const q1 = await cancelQ(b, g, T); await openP(); const q2 = await cancelQ(b, g, T);
     out.cancel = [q1.ok, q2.ok === true ? true : q2.code];
     await setRead(key, 119, T);
     const o1 = await bcall("openBookReservation", { shop: b.shop, token: b.token, lang: "th", acceptLanguage: "th", clientKey: b.ck }, T), o2 = await bcall("openBookReservation", { shop: b.shop, token: b.token, lang: "th", acceptLanguage: "th", clientKey: b.ck }, T);
