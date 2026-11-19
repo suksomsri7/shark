@@ -1,0 +1,175 @@
+// probe-trips-w1.3-hunt-1 — target 1 (happy paths th/en × JS on/off) + target 7 (headers / leakage on g pages) — real browser (puppeteer-core · chromium)
+// rows under temp shop `trips-w13h-*` · removed in finally
+import * as L from "./probe-trips-w1.3-hunt-lib.mjs";
+const { line, info, guard, freshIp, sleep } = L;
+
+L.boot("probe-w1.3-hunt-1");
+try {
+  await L.sweepStale();
+  const A = await L.mkShop("a", { contact: { phone: "076-131-313", line: "@w13hunt", address: "1 ถนนล่า ภูเก็ต" } });
+  const P = await L.mkProd(A, "A");
+  const today = L.ymdBkk(new Date());
+  const D45 = L.addDays(today, 45), D20 = L.addDays(today, 20);
+  const d45 = await L.mkDep(P, D45, { capacity: 60 });
+  const d20 = await L.mkDep(P, D20, { capacity: 60 });
+  info("setup", `shop ${A.slug} · d45 ${D45} · d20 ${D20}`);
+
+  // CONFIRMED unpaid (staff PAY_LATER)
+  const mkConfirmed = async (dep: string, phone: string): Promise<L.Bk> => {
+    const lineQ = { productKind: "TRIP", unitId: A.unit, productId: P.id, slotId: dep, optionId: P.opt, pax: [{ paxTypeId: P.pt.ADULT, qty: 1 }] };
+    const qt = await L.tcall("quoteTrips", L.staffCtx(A), { lines: [lineQ] });
+    const qv = qt.value as L.Rec;
+    const r = await L.tcall("bookTripsNow", L.staffCtx(A), { idempotencyKey: `w13hnow_${L.hex(8)}`, quoteId: qv?.quoteId, quoteExpiresAt: qv?.expiresAt, booker: { name: `ผู้จอง ${L.hex(2)}`, phone }, pay: { method: "PAY_LATER" }, quote: { lines: [lineQ] } });
+    const ref = (r.value as L.Rec[] | undefined)?.[0];
+    if (r.ok !== true || typeof ref?.publicToken !== "string") throw new Error(`bookTripsNow ${JSON.stringify(r).slice(0, 300)}`);
+    const token = String(ref.publicToken);
+    return { token, id: String(ref.bookingId), phone, path: `/book/${A.slug}/my/${token}`, ip: freshIp(), total: 0, dep };
+  };
+
+  const headerNotes: string[] = [];
+  const foreign = new Set<string>();
+  for (const js of [true, false]) for (const lang of ["th", "en"] as const) {
+    const tag = `${js ? "js" : "nojs"}-${lang}`;
+    // ── 1a HOLD → cancel ──
+    await guard(`hold-${tag}`, async () => {
+      const b = await L.mkHold(A, P, d20, D20, { ADULT: 2 });
+      const before = await L.depRow(d20);
+      const t = await L.tab(b.ip, { js: true });
+      try {
+        await L.go(t, `${b.path}?lang=${lang}`);
+        const manage = await L.has(t, "book-manage-cancel");
+        await L.clickNav(t, '[data-testid="book-manage-cancel"]');
+        const onVerify = await L.has(t, "book-verify");
+        await L.verifyIn(t, b.phone); if (!js) { await t.page.setJavaScriptEnabled(false); await L.go(t, L.url(t).replace(L.BASE, '')); }
+        const u1 = L.url(t);
+        const onCancel = await L.has(t, "book-cancel-quote");
+        const kind = await t.page.evaluate(`document.querySelector('[data-testid="book-cancel-quote"]')?.getAttribute('data-kind')`);
+        const warn = await L.textOf(t, "book-cancel-paid-warning");
+        // headers of the g page (last document response)
+        const doc = [...t.responses].reverse().find((r) => r.url.includes("g=") && r.status === 200);
+        headerNotes.push(`${tag} g-page: cache-control=${doc?.headers["cache-control"]} · referrer-policy=${doc?.headers["referrer-policy"]}`);
+        line(`1a-${tag}-headers`, "g page: Cache-Control has no-store + Referrer-Policy present", `${doc?.headers["cache-control"]} · ${doc?.headers["referrer-policy"]}`, !!doc && /no-store/.test(doc.headers["cache-control"] ?? "") && !!doc.headers["referrer-policy"]);
+        const h = await L.html(t);
+        L.save(`1a-${tag}-cancel.html`, h);
+        for (const m of h.matchAll(/(?:href|src|action)="([^"]+)"/g)) { const v = m[1] ?? ""; if (/^(https?:)?\/\//.test(v) && !v.startsWith(L.BASE)) foreign.add(v.slice(0, 120)); }
+        for (const r of t.requests) if (!r.startsWith(L.BASE) && !r.startsWith("data:")) foreign.add(`req:${r.slice(0, 120)}`);
+        const g = new URL(u1).searchParams.get("g") ?? "";
+        const gLinks = [...h.matchAll(/<a\b[^>]*href="([^"]*)"/g)].map((m) => m[1] ?? "").filter((x) => g && x.includes(g));
+        const canon = /<link[^>]+rel="canonical"[^>]*>/.exec(h)?.[0] ?? "";
+        const og = /property="og:/.test(h);
+        const title = L.titleOf(h);
+        line(`7-${tag}-grant-links`, "no <a href> / canonical / og / title carries g or token", `aHrefWithG=${gLinks.length} canonical=${canon.slice(0, 80) || "-"} og=${og} title=${title}`, gLinks.length === 0 && !canon.includes(g) && !og && !title.includes(b.token));
+        await L.shot(t, `1a-${tag}-cancel`);
+        const sc = await L.submitCancel(t); if (sc.ise) { line(`nojs-cancel-${tag}`, 'no-JS cancel POST → 303', `HTTP ${sc.status} origin=${sc.origin} → Internal Server Error`, false); return; }
+        const u2 = L.url(t);
+        const done = await L.has(t, "book-cancel-done");
+        const row = await L.bRow(b.id);
+        const after = await L.depRow(d20);
+        const okAll = manage && onVerify && onCancel && kind === "UNPAID" && !!warn && /done=CANCELLED/.test(u2) && !/[?&]g=/.test(u2) && done && row?.status === "CANCELLED" && (after?.held ?? -1) === (before?.held ?? 0) - 2 + 0;
+        line(`1a-${tag}`, "HOLD: manage→verify→cancel(UNPAID+warning)→done=CANCELLED no g · CANCELLED · held −2", `manage=${manage} verify=${onVerify} cancel=${onCancel}/${kind} warn=${!!warn} url=${u2.replace(L.BASE, "").replace(b.token, "<tok>")} done=${done} status=${row?.status} held ${before?.held}→${after?.held} sold ${before?.sold}→${after?.sold}`, okAll);
+        await L.shot(t, `1a-${tag}-done`);
+      } finally { await L.closeTab(t); }
+    });
+    // ── 1b PAID (45 d) → refund request ──
+    await guard(`paid-${tag}`, async () => {
+      const b = await L.mkHold(A, P, d45, D45, { ADULT: 1 }, { x: {} });
+      const gross = await L.dueOf(b);
+      await L.pay(A, b, gross);
+      const t = await L.tab(b.ip, { js: true });
+      try {
+        await L.go(t, `${b.path}?lang=${lang}&do=cancel`);
+        await L.verifyIn(t, b.phone); if (!js) { await t.page.setJavaScriptEnabled(false); await L.go(t, L.url(t).replace(L.BASE, '')); }
+        const kind = await t.page.evaluate(`document.querySelector('[data-testid="book-cancel-quote"]')?.getAttribute('data-kind')`);
+        const refundTxt = (await L.textOf(t, "book-cancel-refund")) ?? "";
+        const shown = Number((/([\d,]+)\.(\d{2})/.exec(refundTxt)?.[0] ?? "").replace(/,/g, "").replace(".", ""));
+        const note = await L.has(t, "book-cancel-request-note");
+        const sc = await L.submitCancel(t); if (sc.ise) { line(`nojs-cancel-${tag}`, 'no-JS cancel POST → 303', `HTTP ${sc.status} origin=${sc.origin} → Internal Server Error`, false); return; }
+        const u2 = L.url(t);
+        const rq = await L.refundsOf(b.id);
+        const row = await L.bRow(b.id);
+        const voucher = await L.has(t, "book-voucher");
+        const status = await L.textOf(t, "book-refund-status");
+        const done = await L.has(t, "book-cancel-done");
+        line(`1b-${tag}`, "PAID: REFUND_REQUEST · 1 row QUOTED/CUSTOMER amount = shown · booking PAID · voucher still shown · done banner · no g",
+          `kind=${kind} shown=${shown} gross=${gross} rows=${JSON.stringify(rq.map((r) => [r.status, r.by, r.amountSatang]))} status=${row?.status} voucher=${voucher} done=${done} note=${note} url=${u2.replace(L.BASE, "").replace(b.token, "<tok>")} txt=${(status ?? "").slice(0, 60)}`,
+          kind === "REFUND_REQUEST" && rq.length === 1 && rq[0]?.status === "QUOTED" && rq[0]?.by === "CUSTOMER" && rq[0]?.amountSatang === shown && shown === gross && row?.status === "PAID" && voucher && done && note && /done=REFUND_REQUESTED/.test(u2) && !/[?&]g=/.test(u2));
+        await L.shot(t, `1b-${tag}-done`);
+      } finally { await L.closeTab(t); }
+    });
+    // ── 1c CONFIRMED unpaid → cancel request 0 ──
+    await guard(`conf-${tag}`, async () => {
+      const ph = L.freshPhone();
+      const b = await mkConfirmed(d45, `+66${ph.slice(1)}`);
+      const t = await L.tab(b.ip, { js: true });
+      try {
+        await L.go(t, `${b.path}?lang=${lang}&do=cancel`);
+        const onVerify = await L.has(t, "book-verify");
+        await L.verifyIn(t, ph); if (!js) { await t.page.setJavaScriptEnabled(false); await L.go(t, L.url(t).replace(L.BASE, '')); }
+        const kind = await t.page.evaluate(`document.querySelector('[data-testid="book-cancel-quote"]')?.getAttribute('data-kind')`);
+        const pageTxt = L.visibleText(await L.html(t));
+        const sc = await L.submitCancel(t); if (sc.ise) { line(`nojs-cancel-${tag}`, 'no-JS cancel POST → 303', `HTTP ${sc.status} origin=${sc.origin} → Internal Server Error`, false); return; }
+        const u2 = L.url(t);
+        const rq = await L.refundsOf(b.id);
+        const row = await L.bRow(b.id);
+        const done = await L.has(t, "book-cancel-done");
+        const st = (await L.textOf(t, "book-refund-status")) ?? "";
+        const moneyWords = lang === "th" ? /คืนเงิน/.test(st) : /refund/i.test(st);
+        line(`1c-${tag}`, "CONFIRMED unpaid: CANCEL_REQUEST · 1 row QUOTED amount 0 by CUSTOMER · status unchanged · done banner · status text no refund wording",
+          `verify=${onVerify} kind=${kind} rows=${JSON.stringify(rq.map((r) => [r.status, r.by, r.amountSatang]))} status=${row?.status} done=${done} url=${u2.replace(L.BASE, "").replace(b.token, "<tok>")} st="${st.slice(0, 70)}" pageHasRefundWord=${lang === "th" ? /คืนเงิน/.test(pageTxt) : /refund/i.test(pageTxt)}`,
+          kind === "CANCEL_REQUEST" && rq.length === 1 && rq[0]?.status === "QUOTED" && rq[0]?.amountSatang === 0 && rq[0]?.by === "CUSTOMER" && row?.status === "CONFIRMED" && done && !moneyWords && !/[?&]g=/.test(u2));
+      } finally { await L.closeTab(t); }
+    });
+    // ── 1d PART_PAID → request + part-paid note ──
+    await guard(`part-${tag}`, async () => {
+      const b = await L.mkHold(A, P, d45, D45, { ADULT: 2 });
+      const gross = await L.dueOf(b);
+      await L.pay(A, b, Math.floor(gross / 3));
+      const t = await L.tab(b.ip, { js: true });
+      try {
+        await L.go(t, `${b.path}?lang=${lang}&do=cancel`);
+        await L.verifyIn(t, b.phone); if (!js) { await t.page.setJavaScriptEnabled(false); await L.go(t, L.url(t).replace(L.BASE, '')); }
+        const kind = await t.page.evaluate(`document.querySelector('[data-testid="book-cancel-quote"]')?.getAttribute('data-kind')`);
+        const txt = L.visibleText(await L.html(t));
+        const notePart = lang === "th" ? txt.includes("ยอดที่ยังค้างชำระ") : txt.includes("balance still due");
+        const refundTxt = (await L.textOf(t, "book-cancel-refund")) ?? "";
+        const shown = Number((/([\d,]+)\.(\d{2})/.exec(refundTxt)?.[0] ?? "").replace(/,/g, "").replace(".", ""));
+        const sc = await L.submitCancel(t); if (sc.ise) { line(`nojs-cancel-${tag}`, 'no-JS cancel POST → 303', `HTTP ${sc.status} origin=${sc.origin} → Internal Server Error`, false); return; }
+        const rq = await L.refundsOf(b.id);
+        const row = await L.bRow(b.id);
+        line(`1d-${tag}`, "PART_PAID: REFUND_REQUEST with part-paid note · 1 row QUOTED = shown (= paid)",
+          `kind=${kind} note=${notePart} shown=${shown} paid=${Math.floor(gross / 3)} rows=${JSON.stringify(rq.map((r) => [r.status, r.by, r.amountSatang]))} status=${row?.status}`,
+          kind === "REFUND_REQUEST" && notePart && rq.length === 1 && rq[0]?.amountSatang === shown && row?.status === "PART_PAID");
+      } finally { await L.closeTab(t); }
+    });
+  }
+  for (const lang of ["th", "en"]) await guard(`nojs-verify-${lang}`, async () => {
+    const b = await L.mkHold(A, P, d20, D20, { ADULT: 1 });
+    const t = await L.tab(b.ip, { js: false });
+    try {
+      await L.go(t, `${b.path}?lang=${lang}&do=cancel`);
+      const meta = await t.page.evaluate(`document.querySelector('meta[name="referrer"]')?.content ?? null`);
+      const v = await L.verifyIn(t, b.phone);
+      const onCancel = await L.has(t, "book-cancel-quote");
+      line(`nojs-verify-${lang}`, "JS disabled: verify form POST → 303 → cancel screen", `meta referrer=${meta} · POST HTTP ${v.status} · Origin sent=${v.origin} · ISE=${v.ise} · cancel screen=${onCancel}`, onCancel && !v.ise);
+      await L.shot(t, `nojs-verify-${lang}`);
+    } finally { await L.closeTab(t); }
+  });
+  for (const n of headerNotes) info("hdr", n);
+  line("7-foreign", "no link/img/font/script to another origin on g pages", [...foreign].join(" | ") || "none", foreign.size === 0);
+
+  // 7: curl -I equivalent on a page with g (no browser)
+  await guard("7-head", async () => {
+    const b = await L.mkHold(A, P, d20, D20, { ADULT: 1 });
+    const r = await L.req(`${b.path}?do=cancel&g=g1.9999999999.AAAAAAAAAAAAAAAAAAAAAA`, { ip: b.ip, headers: { "x-real-ip": b.ip } });
+    info("7-head", `status ${r.status} cache-control=${r.headers["cache-control"]} referrer-policy=${r.headers["referrer-policy"]} x-robots=${r.headers["x-robots-tag"]} set-cookie=${r.headers["set-cookie"] ?? "-"}`);
+    const meta = /<meta name="referrer" content="([^"]*)"/.exec(r.body)?.[1];
+    line("7-head", "GET g page: no-store · Referrer-Policy header (any) · meta referrer no-referrer · no Set-Cookie", `cc=${r.headers["cache-control"]} rp=${r.headers["referrer-policy"]} meta=${meta} cookie=${r.headers["set-cookie"] ? "yes" : "no"}`,
+      /no-store/.test(String(r.headers["cache-control"])) && !!r.headers["referrer-policy"] && meta === "no-referrer" && !r.headers["set-cookie"]);
+  });
+} catch (e) {
+  console.log(`FATAL ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await L.closeBrowser();
+  await L.cleanup();
+  L.summary("hunt-1");
+}

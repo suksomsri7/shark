@@ -1,0 +1,190 @@
+// probe-trips-w1.3-hunt-2 — target 2 (tampering · replay · other IP) + 9 (CSRF / bound args) + 10 (concurrency) — form POSTs exactly as a no-JS browser sends them
+// (raw HTTP with a correct same-origin Origin — the real no-JS browser path is broken by Origin:null, see hunt-1) + one JS-path tamper in the browser
+// rows under temp shop `trips-w13h-*` · removed in finally
+import * as L from "./probe-trips-w1.3-hunt-lib.mjs";
+const { line, info, guard, freshIp, sleep, req, submit, loc, postForm } = L;
+
+L.boot("probe-w1.3-hunt-2");
+const strip = (s: string, b: L.Bk) => s.replace(L.BASE, "").replace(b.token, "<tok>").replace(/g=g1\.[^&]+/, "g=<g>");
+try {
+  await L.sweepStale();
+  const A = await L.mkShop("a", { contact: { phone: "076-131-313", line: "@w13hunt", address: "1 ถนนล่า ภูเก็ต" } });
+  const P = await L.mkProd(A, "A");
+  const today = L.ymdBkk(new Date());
+  const D45 = L.addDays(today, 45), D20 = L.addDays(today, 20);
+  const d45 = await L.mkDep(P, D45, { capacity: 80 });
+  const d20 = await L.mkDep(P, D20, { capacity: 80 });
+
+  /** verify over HTTP (no-JS form) → Location */
+  const verifyHttp = async (b: L.Bk, phone: string, ip = b.ip, o: { lang?: string; headers?: Record<string, string> } = {}) => {
+    const path = `${b.path}?${o.lang ? `lang=${o.lang}&` : ""}do=cancel`;
+    const g = await req(path, { ip, headers: { "x-real-ip": ip, ...(o.headers ?? {}) } });
+    const f = postForm(g.body);
+    if (!f) return { loc: "", status: g.status, why: "no verify form", body: g.body };
+    await sleep(L.FORM_WAIT);
+    const fields = f.fields.filter(([k]) => k !== "phone");
+    fields.push(["phone", phone]);
+    const r = await submit(path, fields, ip, { headers: { "x-real-ip": ip, ...(o.headers ?? {}) } });
+    return { loc: loc(r), status: r.status, why: "", body: r.body };
+  };
+  const cancelForm = async (location: string, ip: string) => {
+    const r = await req(location, { ip, headers: { "x-real-ip": ip } });
+    return { r, form: postForm(r.body) };
+  };
+  const post = (path: string, fields: [string, string][], ip: string, o: { origin?: string | null; headers?: Record<string, string> } = {}) => submit(path, fields, ip, { origin: o.origin, headers: { "x-real-ip": ip, ...(o.headers ?? {}) } });
+  const set = (f: [string, string][], k: string, v: string | null) => (v === null ? f.filter(([x]) => x !== k) : f.map(([x, y]) => [x, x === k ? v : y] as [string, string]));
+  const withAccept = (f: [string, string][]) => [...f.filter(([k]) => k !== "accept"), ["accept", "on"]] as [string, string][];
+  const eCode = (l: string) => /[?&]e=([A-Z_]+)/.exec(l)?.[1] ?? (/done=([A-Z_]+)/.exec(l) ? `done:${/done=([A-Z_]+)/.exec(l)?.[1]}` : "-");
+  const paidBooking = async (dep = d45, date = D45) => { const b = await L.mkHold(A, P, dep, date, { ADULT: 1 }); await L.pay(A, b, await L.dueOf(b)); return b; };
+
+  // ═══ 2. tampering on a PAID booking ═══
+  await guard("2-tamper", async () => {
+    const b = await paidBooking();
+    const v = await verifyHttp(b, b.phone);
+    info("2", `verify → ${v.status} ${strip(v.loc, b)}`);
+    const cf = await cancelForm(v.loc, b.ip);
+    if (!cf.form) throw new Error(`no cancel form ${cf.r.status}`);
+    const base = withAccept(cf.form.fields);
+    const seen = L.fieldOf(cf.form, "seen") ?? "";
+    const ver = L.fieldOf(cf.form, "v") ?? "";
+    await sleep(L.FORM_WAIT);
+    const cases: [string, [string, string][], string[]][] = [
+      ["kind=UNPAID", set(base, "kind", "UNPAID"), ["INVALID"]],
+      ["kind=CANCEL_REQUEST", set(base, "kind", "CANCEL_REQUEST"), ["INVALID"]],
+      ["kind removed", set(base, "kind", null), ["INVALID"]],
+      ["v+1", set(base, "v", String(Number(ver) + 1)), ["INVALID"]],
+      ["v=01 (same number, other spelling)", set(base, "v", `0${ver}`), ["INVALID"]],
+      ["kv altered", set(base, "kv", "A".repeat(22)), ["INVALID"]],
+      ["seen −100", set(base, "seen", String(Number(seen) - 100)), ["AMOUNT_CHANGED"]],
+      ["seen +100", set(base, "seen", String(Number(seen) + 100)), ["AMOUNT_CHANGED"]],
+      ["seen=0", set(base, "seen", "0"), ["AMOUNT_CHANGED"]],
+      ["seen=' 410000'", set(base, "seen", ` ${seen}`), ["INVALID"]],
+      ["seen=410000.00", set(base, "seen", `${seen}.00`), ["INVALID"]],
+      ["nonce altered", set(base, "nonce", (L.fieldOf(cf.form, "nonce") ?? "").replace(/^./, (c) => (c === "A" ? "B" : "A"))), ["INVALID"]],
+      ["nonce from verify purpose", set(base, "nonce", "x"), ["INVALID"]],
+      ["accept removed", set(base, "accept", null), ["ACCEPT_REQUIRED"]],
+      ["accept=yes", set(base, "accept", "yes"), ["ACCEPT_REQUIRED"]],
+      ["dup kind (bad first)", [["kind", "UNPAID"], ...base], ["INVALID"]],
+    ];
+    for (const [name, f, exp] of cases) {
+      const r = await post(v.loc, f, b.ip);
+      const rq = await L.refundsOf(b.id);
+      const row = await L.bRow(b.id);
+      const code = eCode(loc(r));
+      line(`2-${name}`, `${exp.join("|")} · 0 request rows · PAID`, `HTTP ${r.status} → ${code} · rows=${rq.length} · ${row?.status}`, exp.includes(code) && rq.length === 0 && row?.status === "PAID" && r.status === 303);
+    }
+    // bound args: other booking's token with my grant / my token with other grant
+    const b2 = await paidBooking();
+    const v2 = await verifyHttp(b2, b2.phone, b.ip); // same IP verifies b2
+    const g2 = new URL(`${L.BASE}${v2.loc}`).searchParams.get("g") ?? "";
+    const bk = base.find(([k, val]) => k.startsWith("$ACTION_") && val.startsWith("["))?.[0] ?? "";
+    const bound = JSON.parse(base.find(([k]) => k === bk)?.[1] ?? "[]") as string[];
+    for (const [name, args] of [["token→other booking (my grant)", [bound[0], b2.token, bound[2]]], ["grant→other booking's grant", [bound[0], bound[1], g2]], ["shop→other slug", ["trips-w13h-nope", bound[1], bound[2]]]] as const) {
+      const r = await post(v.loc, set(base, bk, JSON.stringify(args)), b.ip);
+      const rq1 = await L.refundsOf(b.id), rq2 = await L.refundsOf(b2.id);
+      line(`9-bound-${name}`, "no request row on either booking", `HTTP ${r.status} → ${strip(loc(r), b)} rows ${rq1.length}/${rq2.length}`, rq1.length === 0 && rq2.length === 0);
+    }
+    // forged Origin / Origin null / no Origin
+    for (const [name, origin, extra] of [["Origin evil", "https://evil.example", {}], ["Origin null", "null", {}], ["Origin same host other port", "http://127.0.0.1:9999", {}], ["X-Forwarded-Host spoof = Origin", "https://evil.example", { "x-forwarded-host": "evil.example" }]] as const) {
+      const r = await post(v.loc, base, b.ip, { origin, headers: extra });
+      const rq = await L.refundsOf(b.id);
+      line(`9-${name}`, name.startsWith("X-Forwarded") ? "INFO only (browser cannot set XFH)" : "refused · no row", `HTTP ${r.status} rows=${rq.length}`, name.startsWith("X-Forwarded") ? true : r.status >= 400 && rq.length === 0);
+      if (rq.length) { info("9", `row created via ${name}`); break; }
+    }
+    // success (no Origin? no — same origin)
+    const ok1 = await post(v.loc, base, b.ip);
+    const rqA = await L.refundsOf(b.id);
+    line("2-success", "303 done=REFUND_REQUESTED · 1 row = seen", `HTTP ${ok1.status} ${strip(loc(ok1), b)} rows=${JSON.stringify(rqA.map((x) => [x.status, x.by, x.amountSatang]))} seen=${seen}`, /done=REFUND_REQUESTED/.test(loc(ok1)) && !/g=/.test(loc(ok1)) && rqA.length === 1 && rqA[0]?.amountSatang === Number(seen));
+    const rp = await post(v.loc, base, b.ip);
+    line("2-replay", "same form again ⇒ same result, still 1 row", `HTTP ${rp.status} ${strip(loc(rp), b)} rows=${(await L.refundsOf(b.id)).length}`, (await L.refundsOf(b.id)).length === 1);
+    const ipB = freshIp();
+    const rpB = await post(v.loc, base, ipB);
+    line("2-replay-otherIP", "replay from other IP ⇒ verify required, 1 row", `HTTP ${rpB.status} ${strip(loc(rpB), b)} rows=${(await L.refundsOf(b.id)).length}`, (await L.refundsOf(b.id)).length === 1 && /e=VERIFY_REQUIRED|do=cancel/.test(loc(rpB)) && !/done=/.test(loc(rpB)));
+    // replay with x-real-ip B but x-forwarded-for A (which header wins?)
+    const rpX = await submit(v.loc, base, null, { headers: { "x-real-ip": ipB, "x-forwarded-for": b.ip } });
+    info("2-header", `x-real-ip=B + x-forwarded-for=A → ${strip(loc(rpX), b)} (x-real-ip is trusted first: BOOK_IP_HEADERS)`);
+    const rpX2 = await submit(v.loc, base, null, { headers: { "x-forwarded-for": `${b.ip}, 9.9.9.9` } });
+    info("2-header", `only x-forwarded-for="A, other" → ${strip(loc(rpX2), b)} (first entry trusted)`);
+    // new form (fresh nonce) while request open ⇒ no 2nd row
+    const cf2 = await cancelForm(v.loc, b.ip);
+    info("2", `cancel page after request filed: ${cf2.r.status} form=${!!cf2.form} manage=${L.testid(cf2.r.body, "book-refund-status")}`);
+    line("2-rows-final", "exactly 1 request row", `rows=${(await L.refundsOf(b.id)).length}`, (await L.refundsOf(b.id)).length === 1);
+  });
+
+  // ═══ 2b. JS path: edit hidden kind in the DOM and submit in the browser ═══
+  await guard("2b-js-dom", async () => {
+    const b = await paidBooking();
+    const t = await L.tab(b.ip, { js: true });
+    try {
+      await L.go(t, `${b.path}?do=cancel`);
+      await L.verifyIn(t, b.phone);
+      for (const [fld, val] of [["kind", "UNPAID"], ["seen", "1"], ["v", "99"], ["nonce", "x.1.y"]] as const) {
+        await t.page.evaluate(`(() => { const i = document.querySelector('[data-testid="book-cancel-quote"] input[name="${fld}"]'); if (i) i.value = ${JSON.stringify(val)}; })()`);
+        const r = await L.submitCancel(t);
+        const err = await L.errOnPage(t);
+        const rq = await L.refundsOf(b.id);
+        line(`2b-js-${fld}`, "tampered hidden field (JS submit) ⇒ error box, no row", `POST ${r.status} url=${strip(L.url(t), b)} err=${err} rows=${rq.length}`, rq.length === 0 && !!err);
+        await L.go(t, L.url(t).replace(L.BASE, "")); // reload fresh form
+      }
+    } finally { await L.closeTab(t); }
+  });
+
+  // ═══ 10. concurrency ═══
+  await guard("10-same-form", async () => {
+    const b = await paidBooking();
+    const v = await verifyHttp(b, b.phone);
+    const cf = await cancelForm(v.loc, b.ip);
+    const base = withAccept(cf.form?.fields ?? []);
+    await sleep(L.FORM_WAIT);
+    const rs = await Promise.all(Array.from({ length: 10 }, () => post(v.loc, base, b.ip)));
+    const rq = await L.refundsOf(b.id);
+    const codes = rs.map((r) => `${r.status}:${eCode(loc(r))}`);
+    line("10-same-form×10", "exactly 1 row · no 5xx", `${[...new Set(codes)].join(",")} rows=${rq.length}`, rq.length === 1 && rs.every((r) => r.status < 500));
+  });
+  await guard("10-ten-forms", async () => {
+    const b = await paidBooking();
+    const v = await verifyHttp(b, b.phone);
+    const forms = await Promise.all(Array.from({ length: 10 }, () => cancelForm(v.loc, b.ip)));
+    await sleep(L.FORM_WAIT);
+    const rs = await Promise.all(forms.map((f) => post(v.loc, withAccept(f.form?.fields ?? []), b.ip)));
+    const rq = await L.refundsOf(b.id);
+    const codes = rs.map((r) => `${r.status}:${eCode(loc(r))}`);
+    line("10-ten-nonces×10", "exactly 1 row · no 5xx", `${[...new Set(codes)].join(",")} rows=${rq.length}`, rq.length === 1 && rs.every((r) => r.status < 500));
+  });
+  await guard("10-hold", async () => {
+    const b = await L.mkHold(A, P, d20, D20, { ADULT: 3 });
+    const before = await L.depRow(d20);
+    const v = await verifyHttp(b, b.phone);
+    const forms = await Promise.all(Array.from({ length: 10 }, () => cancelForm(v.loc, b.ip)));
+    await sleep(L.FORM_WAIT);
+    const rs = await Promise.all(forms.map((f) => post(v.loc, withAccept(f.form?.fields ?? []), b.ip)));
+    const after = await L.depRow(d20);
+    const audits = await L.q<{ n: string }>(`SELECT count(*)::text n FROM "AuditLog" WHERE "tenantId" = $1 AND action = 'trips.booking.cancel' AND "targetId" = $2`, [A.tenant, b.id]).catch(() => [{ n: "?" }]);
+    const codes = rs.map((r) => `${r.status}:${eCode(loc(r))}`);
+    line("10-hold×10", "CANCELLED once · held −3 exactly · 1 audit · no 5xx", `${[...new Set(codes)].join(",")} status=${(await L.bRow(b.id))?.status} held ${before?.held}→${after?.held} audits=${audits[0]?.n}`, (await L.bRow(b.id))?.status === "CANCELLED" && (after?.held ?? 0) === (before?.held ?? 0) - 3 && rs.every((r) => r.status < 500));
+  });
+  await guard("10-verify∥cancel∥payment", async () => {
+    for (let i = 0; i < 3; i++) {
+      const b = await L.mkHold(A, P, d20, D20, { ADULT: 1 });
+      const v = await verifyHttp(b, b.phone);
+      const cf = await cancelForm(v.loc, b.ip);
+      await sleep(L.FORM_WAIT);
+      const gross = await L.dueOf(b);
+      const [c, p, vv] = await Promise.all([
+        post(v.loc, withAccept(cf.form?.fields ?? []), b.ip),
+        L.tcall("recordTripPayment", L.staffCtx(A), { bookingId: b.id, amountSatang: gross, tender: "PROMPTPAY", idempotencyKey: `w13hrace_${L.hex(6)}` }),
+        verifyHttp(b, b.phone, freshIp()),
+      ]);
+      const row = await L.bRow(b.id);
+      const rq = await L.refundsOf(b.id);
+      const consistent = (row?.status === "CANCELLED" && p.ok !== true && row.paidSatang === 0) || (row?.status === "PAID" && row.paidSatang === gross && rq.length === 0);
+      line(`10-race-${i}`, "consistent: either CANCELLED+payment refused (paid 0) or PAID+no request · no 5xx", `cancel ${c.status}:${eCode(loc(c))} · pay ${String(p.ok)}${p.ok !== true ? `/${String((p as L.Rec).code ?? "")}` : ""} · verify ${vv.status} · status=${row?.status} paid=${row?.paidSatang} rows=${rq.length}`, consistent && c.status < 500 && vv.status < 500);
+    }
+  });
+} catch (e) {
+  console.log(`FATAL ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await L.closeBrowser();
+  await L.cleanup();
+  L.summary("hunt-2");
+}

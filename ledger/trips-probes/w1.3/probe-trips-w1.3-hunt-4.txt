@@ -1,0 +1,274 @@
+// probe-trips-w1.3-hunt-4 — target 4 (identity + limits) · 5 (link-only visitor) · 8 (shop without phone/LINE · 390 px overflow)
+// verify POSTs as a no-JS browser sends them (raw HTTP) · 390 px rendering in chromium · grant expiry via the platform function with an injected clock (oracle style)
+import * as L from "./probe-trips-w1.3-hunt-lib.mjs";
+const { line, info, guard, freshIp, sleep, req, submit, loc, postForm, visibleText } = L;
+
+L.boot("probe-w1.3-hunt-4");
+const CONTACT_PHONE = "076-131-313";
+try {
+  await L.sweepStale();
+  const A = await L.mkShop("a", { contact: { phone: CONTACT_PHONE, line: "@w13hunt", address: "1 ถนนล่า ภูเก็ต" } });
+  const N = await L.mkShop("n"); // no contact (X30 empty)
+  const P = await L.mkProd(A, "A");
+  const PN = await L.mkProd(N, "N");
+  const today = L.ymdBkk(new Date());
+  const D45 = L.addDays(today, 45), D20 = L.addDays(today, 20);
+  const d45 = await L.mkDep(P, D45, { capacity: 120 });
+  const n45 = await L.mkDep(PN, D45, { capacity: 40 });
+  const SELF = (await import("@/lib/platform/trips-self")) as L.Rec;
+  const PUB = (await import("@/lib/platform/trips-public")) as L.Rec;
+  const ck = (ip: string) => (PUB.bookClientKey as (x: string) => string)(ip);
+  const eCode = (l: string) => /[?&]e=([A-Z_]+)/.exec(l)?.[1] ?? (/g=g1/.test(l) ? "GRANT" : /do=cancel/.test(l) ? "cancel-page" : l ? "manage" : "none");
+  const verifyForm = async (b: L.Bk, ip = freshIp(), lang?: string) => {
+    const path = `${b.path}?${lang ? `lang=${lang}&` : ""}do=cancel`;
+    const g = await req(path, { ip, headers: { "x-real-ip": ip } });
+    return { path, f: postForm(g.body), body: g.body };
+  };
+  const verifyPost = (path: string, fields: [string, string][], phone: string, ip: string) => submit(path, [...fields.filter(([k]) => k !== "phone"), ["phone", phone]], ip, { headers: { "x-real-ip": ip } });
+  const bucket = async (tenant: string, prefix: "verifyb" | "verify") => (await L.q<{ key: string; count: number }>(`SELECT key, count FROM "ChatRateBucket" WHERE key LIKE $1`, [`trips:${prefix}:${tenant}:%`]));
+  const paid = async (s: L.Shop, p: L.Prod, dep: string, date: string, o: { phone?: string } = {}) => { const b = await L.mkHold(s, p, dep, date, { ADULT: 1 }, o); await L.pay(s, b, await L.dueOf(b)); return b; };
+  const staffBooking = async (phone: string): Promise<L.Bk> => {
+    const lineQ = { productKind: "TRIP", unitId: A.unit, productId: P.id, slotId: d45, optionId: P.opt, pax: [{ paxTypeId: P.pt.ADULT, qty: 1 }] };
+    const qt = await L.tcall("quoteTrips", L.staffCtx(A), { lines: [lineQ] });
+    const qv = qt.value as L.Rec;
+    const r = await L.tcall("bookTripsNow", L.staffCtx(A), { idempotencyKey: `w13hnow_${L.hex(8)}`, quoteId: qv?.quoteId, quoteExpiresAt: qv?.expiresAt, booker: { name: `ผู้จอง ${L.hex(2)}`, phone }, pay: { method: "PAY_LATER" }, quote: { lines: [lineQ] } });
+    const ref = (r.value as L.Rec[] | undefined)?.[0];
+    if (r.ok !== true) throw new Error(`bookTripsNow ${JSON.stringify(r).slice(0, 300)}`);
+    const token = String(ref?.publicToken);
+    return { token, id: String(ref?.bookingId), phone, path: `/book/${A.slug}/my/${token}`, ip: freshIp(), total: 0, dep: d45 };
+  };
+
+  // ═══ 4a sequential wrong phones from many IPs ═══
+  let lockedB: L.Bk | null = null;
+  await guard("4a-seq", async () => {
+    const b = await paid(A, P, d45, D45);
+    lockedB = b;
+    const vf = await verifyForm(b);
+    await sleep(L.FORM_WAIT);
+    const out: string[] = [];
+    for (let i = 0; i < 24; i++) { const r = await verifyPost(vf.path, vf.f?.fields ?? [], L.freshPhone(), freshIp()); out.push(eCode(loc(r))); }
+    const right = await verifyPost(vf.path, vf.f?.fields ?? [], b.phone, freshIp());
+    const vb = (await bucket(A.tenant, "verifyb"))[0]?.count;
+    const failed = out.filter((x) => x === "VERIFY_FAILED").length;
+    line("4a-seq", "24 wrong (fresh IPs) ⇒ 20 VERIFY_FAILED then LOCKED · right phone ⇒ LOCKED · bucket 20", `failed=${failed} locked=${out.filter((x) => x === "LOCKED").length} seq=${out.join(",").slice(0, 200)} right→${eCode(loc(right))} bucket=${vb}`, failed === 20 && eCode(loc(right)) === "LOCKED");
+    const lk = await req(loc(right), { ip: freshIp() });
+    const vt = visibleText(lk.body);
+    line("4a-lock-text", "lock screen mentions 24 hours + contact", `locked=${L.testid(lk.body, "book-self-locked")} 24h=${/24 ชั่วโมง/.test(vt)} contact=${vt.includes(CONTACT_PHONE)}`, L.testid(lk.body, "book-self-locked") && /24 ชั่วโมง/.test(vt) && vt.includes(CONTACT_PHONE));
+  });
+  // ═══ 4b one IP sequential: machine bucket (X8 5/15 min) ═══
+  await guard("4b-one-ip", async () => {
+    const b = await paid(A, P, d45, D45);
+    const ip = freshIp();
+    const vf = await verifyForm(b, ip);
+    await sleep(L.FORM_WAIT);
+    const out: string[] = [];
+    for (let i = 0; i < 7; i++) out.push(eCode(loc(await verifyPost(vf.path, vf.f?.fields ?? [], L.freshPhone(), ip))));
+    const right = eCode(loc(await verifyPost(vf.path, vf.f?.fields ?? [], b.phone, ip)));
+    info("4b-one-ip", `same IP 7 wrong: ${out.join(",")} · then right from same IP → ${right} (machine bucket X8 otpPer15Min=5)`);
+    line("4b-one-ip", "machine bucket stops at 5 per IP", out.join(","), out.filter((x) => x === "VERIFY_FAILED").length <= 5);
+  });
+  // ═══ 4c concurrent 50 wrong from 50 IPs ═══
+  await guard("4c-conc", async () => {
+    const b = await paid(A, P, d45, D45);
+    const vf = await verifyForm(b);
+    await sleep(L.FORM_WAIT);
+    const rs = await Promise.all(Array.from({ length: 50 }, () => verifyPost(vf.path, vf.f?.fields ?? [], L.freshPhone(), freshIp())));
+    const codes = rs.map((r) => (r.status >= 500 ? `HTTP${r.status}` : eCode(loc(r))));
+    const tally: Record<string, number> = {};
+    for (const c of codes) tally[c] = (tally[c] ?? 0) + 1;
+    const right = eCode(loc(await verifyPost(vf.path, vf.f?.fields ?? [], b.phone, freshIp())));
+    const vbs = await bucket(A.tenant, "verifyb");
+    line("4c-conc50", "≤ 20 VERIFY_FAILED · rest LOCKED · right ⇒ LOCKED · no 5xx", `${JSON.stringify(tally)} right→${right} buckets=${JSON.stringify(vbs.map((x) => x.count))}`, (tally.VERIFY_FAILED ?? 0) <= 20 && right === "LOCKED" && !codes.some((c) => c.startsWith("HTTP")));
+  });
+  await guard("4c2-conc-mixed", async () => {
+    // 30 wrong + right in the middle, concurrently: right must not be counted as wrong; wrong compares ≤ 20
+    const b = await paid(A, P, d45, D45);
+    const vf = await verifyForm(b);
+    await sleep(L.FORM_WAIT);
+    const jobs = Array.from({ length: 31 }, (_, i) => (i === 15 ? verifyPost(vf.path, vf.f?.fields ?? [], b.phone, freshIp()) : verifyPost(vf.path, vf.f?.fields ?? [], L.freshPhone(), freshIp())));
+    const rs = await Promise.all(jobs);
+    const codes = rs.map((r) => eCode(loc(r)));
+    const tally: Record<string, number> = {};
+    for (const c of codes) tally[c] = (tally[c] ?? 0) + 1;
+    line("4c2-mixed31", "≤ 20 VERIFY_FAILED", `${JSON.stringify(tally)} right→${codes[15]}`, (tally.VERIFY_FAILED ?? 0) <= 20);
+  });
+  // ═══ 4d malformed phone ═══
+  await guard("4d-malformed", async () => {
+    const b = await paid(A, P, d45, D45);
+    const before = JSON.stringify(await bucket(A.tenant, "verifyb"));
+    for (const ph of ["abc", "12", "+66", "0812", "08123456789012", "0066812345678"]) {
+      const ip = freshIp();
+      const vf = await verifyForm(b, ip);
+      await sleep(L.FORM_WAIT);
+      const r = await verifyPost(vf.path, vf.f?.fields ?? [], ph, ip);
+      const pg = await req(loc(r), { ip, headers: { "x-real-ip": ip } });
+      const desc = /<input[^>]*data-testid="book-verify-phone"[^>]*>/.exec(pg.body)?.[0] ?? "";
+      const ad = /aria-describedby="([^"]+)"/.exec(desc)?.[1];
+      const target = ad ? new RegExp(`id="${ad}"`).test(pg.body) : false;
+      const mb = (await L.q<{ count: number }>(`SELECT count FROM "ChatRateBucket" WHERE key = $1`, [`trips:verify:${A.tenant}:${ck(ip)}`]))[0]?.count ?? 0;
+      line(`4d-${ph}`, "INVALID_PHONE · aria-describedby → existing id · no try consumed (booking + machine bucket)", `→ ${eCode(loc(r))} aria=${ad}/${target} machineBucket=${mb}`, eCode(loc(r)) === "INVALID_PHONE" && target && mb === 0);
+    }
+    const after = JSON.stringify(await bucket(A.tenant, "verifyb"));
+    line("4d-booking-bucket", "booking bucket unchanged", `${before.length > 200 ? "…" : before} → ${after.length > 200 ? "…" : after}`, before === after);
+  });
+  // ═══ 4e Party phone 0066… ═══
+  await guard("4e-0066", async () => {
+    const digits = `8${String(Math.floor(Math.random() * 1e8)).padStart(8, "0")}`;
+    let b: L.Bk;
+    try { b = await staffBooking(`0066${digits}`); } catch (e) { info("4e", `staff booking with 0066 failed: ${String(e).slice(0, 200)}`); return; }
+    const pn = (await L.q<{ phone: string; phoneNorm: string }>(`SELECT p.phone, p."phoneNorm" FROM "Party" p JOIN "TripBooking" b ON b."bookerPartyId" = p.id WHERE b.id = $1`, [b.id]))[0];
+    info("4e", `Party stored phone=${pn?.phone} phoneNorm=${pn?.phoneNorm}`);
+    for (const typed of [`0${digits}`, `+66 ${digits.slice(0, 2)} ${digits.slice(2, 5)} ${digits.slice(5)}`, `0${digits.slice(0, 2)}-${digits.slice(2, 5)}-${digits.slice(5)}`, `(0${digits.slice(0, 2)}) ${digits.slice(2)}`]) {
+      const ip = freshIp();
+      const vf = await verifyForm(b, ip);
+      await sleep(L.FORM_WAIT);
+      const r = await verifyPost(vf.path, vf.f?.fields ?? [], typed, ip);
+      line(`4e-${typed}`, "0066-stored Party verifies with this format", `→ ${eCode(loc(r))}`, eCode(loc(r)) === "GRANT");
+    }
+  });
+  // ═══ 4f grant IP binding · other booking · clock ═══
+  await guard("4f-grant", async () => {
+    const b = await paid(A, P, d45, D45);
+    const b2 = await paid(A, P, d45, D45);
+    const ipA = freshIp();
+    const vf = await verifyForm(b, ipA);
+    await sleep(L.FORM_WAIT);
+    const r = await verifyPost(vf.path, vf.f?.fields ?? [], b.phone, ipA);
+    const gUrl = loc(r);
+    const g = new URL(`${L.BASE}${gUrl}`).searchParams.get("g") ?? "";
+    const fromA = await req(gUrl, { ip: ipA, headers: { "x-real-ip": ipA } });
+    const ipB = freshIp();
+    const fromB = await req(gUrl, { ip: ipB, headers: { "x-real-ip": ipB } });
+    line("4f-ipB", "grant from IP A used from IP B ⇒ verify form (no cancel screen)", `A cancel=${L.testid(fromA.body, "book-cancel-quote")} · B cancel=${L.testid(fromB.body, "book-cancel-quote")} verify=${L.testid(fromB.body, "book-verify")} err=${/data-code="([A-Z_]+)"/.exec(fromB.body)?.[1]}`, L.testid(fromA.body, "book-cancel-quote") && !L.testid(fromB.body, "book-cancel-quote") && L.testid(fromB.body, "book-verify"));
+    const other = await req(`${b2.path}?do=cancel&g=${encodeURIComponent(g)}`, { ip: ipA, headers: { "x-real-ip": ipA } });
+    line("4f-other-booking", "grant of booking X on booking Y (same IP) ⇒ verify form", `cancel=${L.testid(other.body, "book-cancel-quote")} verify=${L.testid(other.body, "book-verify")}`, !L.testid(other.body, "book-cancel-quote"));
+    const q = SELF.quoteBookSelfCancel as (i: unknown, o?: unknown) => Promise<L.Rec>;
+    const exp = Number(g.split(".")[1]) * 1000;
+    const r14 = await q({ shop: A.slug, token: b.token, grant: g, clientKey: ck(ipA) }, { now: new Date(exp - 60_000) });
+    const r15 = await q({ shop: A.slug, token: b.token, grant: g, clientKey: ck(ipA) }, { now: new Date(exp) });
+    const r16 = await q({ shop: A.slug, token: b.token, grant: g, clientKey: ck(ipA) }, { now: new Date(exp + 60_000) });
+    const rPast = await q({ shop: A.slug, token: b.token, grant: g, clientKey: ck(ipA) }, { now: new Date(exp - 16 * 60_000) });
+    line("4f-clock", "injected clock (platform fn, not HTTP): 14 min ok · at 15 min / 16 min VERIFY_REQUIRED · 'issued in the future' rejected", `14m=${String(r14.ok)} 15m=${String(r15.code ?? r15.ok)} 16m=${String(r16.code ?? r16.ok)} −1m-before-issue=${String(rPast.code ?? rPast.ok)}`,
+      r14.ok === true && r15.code === "VERIFY_REQUIRED" && r16.code === "VERIFY_REQUIRED" && rPast.code === "VERIFY_REQUIRED");
+    // forged grant with exp far future
+    const forged = await req(`${b.path}?do=cancel&g=g1.${Math.floor(Date.now() / 1000) + 600}.${g.split(".")[2]}`, { ip: ipA, headers: { "x-real-ip": ipA } });
+    line("4f-forged-exp", "grant with edited exp ⇒ verify form", `cancel=${L.testid(forged.body, "book-cancel-quote")}`, !L.testid(forged.body, "book-cancel-quote"));
+  });
+
+  // ═══ 5 link-only visitor ═══
+  await guard("5-pii", async () => {
+    const name = `ณัฐวุฒิพิเศษ${L.hex(2)}`;
+    const email = `w13hpii-${L.hex(3)}@example.com`;
+    const ip = freshIp();
+    const phone = L.freshPhone();
+    const r = await L.bookHttp(A, P, { d: D45, t: L.slotRef(A.tenant, d45), n: { ADULT: 1 } }, ip, { name, phone, email });
+    const token = decodeURIComponent(r.resPath.split("/my/")[1]?.split("?")[0] ?? "");
+    const id = (await L.q<{ id: string }>(`SELECT id FROM "TripBooking" WHERE "publicTokenHash" = $1`, [L.sha256hex(token)]))[0]?.id ?? "";
+    const b: L.Bk = { token, id, phone, path: `/book/${A.slug}/my/${token}`, ip, total: 0, dep: d45 };
+    const frags = [phone, phone.slice(1), phone.slice(-7), phone.slice(-6), `+66${phone.slice(1)}`, `66${phone.slice(1)}`, email, email.split("@")[0] ?? "", name, name.slice(0, 6), id, L.sha256hex(token)];
+    const states: [string, () => Promise<void>][] = [
+      ["HOLD", async () => undefined],
+      ["PART_PAID", async () => { await L.pay(A, b, Math.floor((await L.dueOf(b)) / 3)); }],
+      ["PAID", async () => { const row = await L.bRow(b.id); await L.pay(A, b, (await L.dueOf(b)) - (row?.paidSatang ?? 0)); }],
+      ["REFUND_QUOTED", async () => { const v = (await L.bRow(b.id))?.version ?? 0; await L.tcall("requestTripRefund", L.staffCtx(A), { bookingId: b.id, expectedVersion: v, reasonKind: "CUSTOMER", choice: "MONEY", reason: "pii", idempotencyKey: `w13hpii_${L.hex(5)}` }); }],
+    ];
+    for (const [st, act] of states) {
+      await act();
+      for (const path of [b.path, `${b.path}?do=cancel`, `${b.path}?lang=en`]) {
+        const x = await req(path, { ip: freshIp() });
+        const hit = frags.filter((f) => f && x.body.includes(f));
+        line(`5-pii-${st}${path.includes("do=") ? "-do" : path.includes("en") ? "-en" : ""}`, "no booker phone/email/name fragment, no booking id/token hash in raw HTML (incl. RSC payload)", hit.length ? hit.join(" | ") : "none", hit.length === 0);
+      }
+    }
+  });
+  await guard("5-exist-vs-not", async () => {
+    const b = await paid(A, P, d45, D45);
+    const rnd = () => Buffer.from(L.hex(32), "hex").toString("base64url").slice(0, 43);
+    const sample = async (path: () => string, n: number) => {
+      const out: { st: number; ms: number; hk: string; len: number }[] = [];
+      for (let i = 0; i < n; i++) { const ip = freshIp(); const r = await req(path(), { ip, headers: { "x-real-ip": ip } }); out.push({ st: r.status, ms: r.ms, hk: Object.keys(r.headers).filter((k) => !["date", "content-length", "etag", "x-nextjs-stale-time"].includes(k)).sort().join(","), len: r.body.length }); }
+      return out;
+    };
+    const ex = await sample(() => `${b.path}?do=cancel`, 50);
+    const no = await sample(() => `/book/${A.slug}/my/${rnd()}?do=cancel`, 50);
+    const med = (a: number[]) => { const s = [...a].sort((x, y) => x - y); return s[Math.floor(s.length / 2)] ?? 0; };
+    info("5-timing", `existing: status ${[...new Set(ex.map((x) => x.st))]} median ${med(ex.map((x) => x.ms)).toFixed(0)} ms p10 ${[...ex.map((x) => x.ms)].sort((a, b) => a - b)[5]?.toFixed(0)} · non-existing: status ${[...new Set(no.map((x) => x.st))]} median ${med(no.map((x) => x.ms)).toFixed(0)} ms p10 ${[...no.map((x) => x.ms)].sort((a, b) => a - b)[5]?.toFixed(0)}`);
+    info("5-headers", `existing header set: ${[...new Set(ex.map((x) => x.hk))].join(" ;; ")}`);
+    info("5-headers", `non-existing header set: ${[...new Set(no.map((x) => x.hk))].join(" ;; ")}`);
+    line("5-exist-status", "existing vs non-existing: page content differs by design; status 200 vs 404 is the W1.2 contract (NOT_FOUND page)", `${[...new Set(ex.map((x) => x.st))]} vs ${[...new Set(no.map((x) => x.st))]}`, true);
+    // guess bucket: one IP, random tokens
+    const ip = freshIp();
+    const seq: number[] = [];
+    let flipAt = -1;
+    for (let i = 0; i < 34; i++) { const r = await req(`/book/${A.slug}/my/${rnd()}`, { ip, headers: { "x-real-ip": ip } }); seq.push(r.status); if (flipAt < 0 && L.testid(r.body, "book-rate-limited")) flipAt = i; }
+    const real = await req(b.path, { ip, headers: { "x-real-ip": ip } });
+    info("5-guess", `one IP random tokens: statuses ${seq.join(",")} · rate-limited from #${flipAt} · real token after → ${real.status} rateLimited=${L.testid(real.body, "book-rate-limited")}`);
+    line("5-guess", "token guessing bucket limits one IP (≈30/h) — existing token also refused after", `flip=${flipAt} realAfter=${real.status}/${L.testid(real.body, "book-rate-limited")}`, flipAt > 0 && flipAt <= 31 && L.testid(real.body, "book-rate-limited"));
+  });
+
+  // ═══ 8 no-contact shop · 390 px ═══
+  await guard("8-nocontact", async () => {
+    const hold = await L.mkHold(N, PN, n45, D45);
+    const pd = await paid(N, PN, n45, D45);
+    const danglingTh = /ติดต่อร้าน\s*(พร้อม|$|\.|,|·)|ติดต่อ\s{2,}|ติดต่อร้าน\s+ร้าน/;
+    const danglingEn = /[Cc]ontact\s*(\(|and quote|\.|,|$|·)|[Cc]ontact\s{2,}/;
+    for (const lang of ["th", "en"] as const) {
+      const t = await L.tab(freshIp(), { js: true, width: 390 });
+      try {
+        // verify + cancel screen on the HOLD (UNPAID warning)
+        await L.go(t, `${hold.path}?lang=${lang}&do=cancel`);
+        const ov1 = await L.overflow(t);
+        await L.shot(t, `8-${lang}-verify-390`);
+        await L.verifyIn(t, hold.phone);
+        const ov2 = await L.overflow(t);
+        await L.shot(t, `8-${lang}-cancel-390`);
+        const warn = (await L.textOf(t, "book-cancel-paid-warning")) ?? "";
+        const manageTxt = L.visibleText(await L.html(t));
+        line(`8-${lang}-warning`, "K9 warning bare form (no contact, no lone shop name)", `"${warn}"`, !!warn && !warn.includes(N.name) && !(lang === "th" ? / ติดต่อร้าน [^ก-๙]/.test(warn) : /contact\s+\(/.test(warn)));
+        void manageTxt;
+        await L.submitCancel(t);
+        const ov3 = await L.overflow(t);
+        await L.shot(t, `8-${lang}-done-390`);
+        const manage = (await L.textOf(t, "book-manage")) ?? "";
+        line(`8-${lang}-done-text`, "done/cancelled manage block: no dangling contact phrase / lone shop name", `"${manage.replace(/\s+/g, " ").slice(0, 260)}"`, !manage.includes(N.name) && !(lang === "th" ? danglingTh : danglingEn).test(manage.replace(/รหัสการจอง/g, "")));
+        line(`8-${lang}-390-verify/cancel/done`, "no horizontal overflow at 390", `${JSON.stringify([ov1, ov2, ov3])}`, [ov1, ov2, ov3].every((o) => o.sw <= o.cw));
+        // paid booking: manage block + request-status text
+        await L.go(t, `${pd.path}?lang=${lang}`);
+        const m2 = (await L.textOf(t, "book-manage")) ?? "";
+        line(`8-${lang}-manage`, "manage block without contact: no lone shop name", `"${m2.replace(/\s+/g, " ").slice(0, 200)}"`, !m2.includes(N.name));
+      } finally { await L.closeTab(t); }
+    }
+  });
+  await guard("8-390-locked-rejected", async () => {
+    // locked screen (booking locked in 4a) + rejected screen, both shops
+    const rej = await paid(A, P, d45, D45);
+    const t0 = await L.tab(rej.ip, { js: true });
+    await L.go(t0, `${rej.path}?do=cancel`); await L.verifyIn(t0, rej.phone); await L.submitCancel(t0); await L.closeTab(t0);
+    const rq = await L.refundsOf(rej.id);
+    await L.tcall("decideTripRefund", L.staffCtx(A), { requestId: rq[0]?.id, decision: "REJECT", reason: "ล่า", idempotencyKey: `w13hdj_${L.hex(5)}` });
+    for (const lang of ["th", "en"] as const) {
+      const t = await L.tab(freshIp(), { js: true, width: 390 });
+      try {
+        const lb = lockedB as L.Bk | null;
+        if (lb) {
+          await L.go(t, `${lb.path}?lang=${lang}&do=cancel`);
+          await L.verifyIn(t, lb.phone);
+          const ovL = await L.overflow(t);
+          await L.shot(t, `8-${lang}-locked-390`);
+          const lt = (await L.textOf(t, "book-self-locked")) ?? "";
+          line(`8-${lang}-locked-390`, "locked screen: 24 h wording · no overflow", `locked=${!!lt} 24=${/24/.test(lt)} ${JSON.stringify(ovL)}`, !!lt && /24/.test(lt) && ovL.sw <= ovL.cw);
+        }
+        await L.go(t, `${rej.path}?lang=${lang}`);
+        const ovR = await L.overflow(t);
+        await L.shot(t, `8-${lang}-rejected-390`);
+        line(`8-${lang}-rejected-390`, "rejected screen no overflow", JSON.stringify(ovR), ovR.sw <= ovR.cw);
+      } finally { await L.closeTab(t); }
+    }
+  });
+} catch (e) {
+  console.log(`FATAL ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await L.closeBrowser();
+  await L.cleanup();
+  L.summary("hunt-4");
+}

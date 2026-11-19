@@ -1,0 +1,87 @@
+// probe-trips-w1.3-hunt-5 — re-fires: target 8 en (no-contact shop, own HOLD per language) · 390 px on the contact shop · CANCEL_REQUEST screen wording
+// + scope check of the Origin:null finding on the W1.2 checkout form (no-JS browser) · ?done replay after rejection (re-fire)
+import * as L from "./probe-trips-w1.3-hunt-lib.mjs";
+const { line, info, guard, freshIp, sleep } = L;
+
+L.boot("probe-w1.3-hunt-5");
+try {
+  await L.sweepStale();
+  const A = await L.mkShop("a", { contact: { phone: "076-131-313", line: "@w13hunt", address: "1 ถนนล่า ภูเก็ต" } });
+  const N = await L.mkShop("n");
+  const P = await L.mkProd(A, "A");
+  const PN = await L.mkProd(N, "N");
+  const today = L.ymdBkk(new Date());
+  const D45 = L.addDays(today, 45);
+  const d45 = await L.mkDep(P, D45, { capacity: 60 });
+  const n45 = await L.mkDep(PN, D45, { capacity: 60 });
+
+  for (const [shop, prod, dep, tag] of [[N, PN, n45, "nocontact"], [A, P, d45, "contact"]] as const) for (const lang of ["th", "en"] as const) {
+    await guard(`8-${tag}-${lang}`, async () => {
+      const hold = await L.mkHold(shop, prod, dep, D45);
+      const t = await L.tab(hold.ip, { js: true, width: 390 });
+      try {
+        await L.go(t, `${hold.path}?lang=${lang}`);
+        const ov0 = await L.overflow(t);
+        await L.go(t, `${hold.path}?lang=${lang}&do=cancel`);
+        const ov1 = await L.overflow(t);
+        await L.verifyIn(t, L.freshPhone()); // wrong ⇒ error screen
+        const ovE = await L.overflow(t);
+        await L.shot(t, `5-${tag}-${lang}-verify-error-390`);
+        await L.verifyIn(t, hold.phone);
+        const ov2 = await L.overflow(t);
+        const warn = (await L.textOf(t, "book-cancel-paid-warning")) ?? "";
+        await L.shot(t, `5-${tag}-${lang}-cancel-390`);
+        await L.submitCancel(t);
+        const ov3 = await L.overflow(t);
+        await L.shot(t, `5-${tag}-${lang}-done-390`);
+        const manage = ((await L.textOf(t, "book-manage")) ?? "").replace(/\s+/g, " ");
+        const lone = manage.includes(shop.name) && tag === "nocontact";
+        info(`8-${tag}-${lang}`, `warning="${warn}" · manage="${manage.slice(0, 240)}"`);
+        line(`8-${tag}-${lang}-text`, "no lone shop name / empty contact slot", `lone=${lone} emptySlot=${/ติดต่อร้าน\s{2,}|[Cc]ontact\s{2,}|\(\s*\)|·\s*·/.test(manage + warn)}`, !lone && !/ติดต่อร้าน\s{2,}|[Cc]ontact\s{2,}|\(\s*\)|·\s*·/.test(manage + warn));
+        line(`8-${tag}-${lang}-390`, "no overflow: page, verify, verify-error, cancel, done", JSON.stringify([ov0, ov1, ovE, ov2, ov3]), [ov0, ov1, ovE, ov2, ov3].every((o) => o.sw <= o.cw));
+      } finally { await L.closeTab(t); }
+    });
+  }
+  // CANCEL_REQUEST (CONFIRMED unpaid) screen wording: K10 "do not mention refund"
+  await guard("k10-wording", async () => {
+    const ph = L.freshPhone();
+    const lineQ = { productKind: "TRIP", unitId: A.unit, productId: P.id, slotId: d45, optionId: P.opt, pax: [{ paxTypeId: P.pt.ADULT, qty: 1 }] };
+    const qt = await L.tcall("quoteTrips", L.staffCtx(A), { lines: [lineQ] });
+    const qv = qt.value as L.Rec;
+    const r = await L.tcall("bookTripsNow", L.staffCtx(A), { idempotencyKey: `w13hnow_${L.hex(8)}`, quoteId: qv?.quoteId, quoteExpiresAt: qv?.expiresAt, booker: { name: "ก", phone: `+66${ph.slice(1)}` }, pay: { method: "PAY_LATER" }, quote: { lines: [lineQ] } });
+    const token = String((r.value as L.Rec[])[0]?.publicToken);
+    for (const lang of ["th", "en"] as const) {
+      const t = await L.tab(freshIp(), { js: true });
+      try {
+        await L.go(t, `/book/${A.slug}/my/${token}?lang=${lang}&do=cancel`);
+        await L.verifyIn(t, ph);
+        const q = ((await L.textOf(t, "book-cancel-quote")) ?? "").replace(/\s+/g, " ");
+        info(`k10-${lang}`, `cancel-request screen: "${q.slice(0, 400)}"`);
+        const word = lang === "th" ? /คืนเงิน|ยอดคืน/.test(q) : /refund/i.test(q);
+        line(`k10-${lang}`, "CANCEL_REQUEST screen does not talk about refunds", `refundWord=${word}`, !word);
+      } finally { await L.closeTab(t); }
+    }
+  });
+  // scope: Origin:null also on the W1.2 checkout (no-JS)
+  await guard("scope-checkout-nojs", async () => {
+    const ip = freshIp();
+    const h = await L.holdHttp(A, P, { d: D45, t: L.slotRef(A.tenant, d45), n: { ADULT: 1 } }, ip);
+    const t = await L.tab(ip, { js: false });
+    try {
+      await L.go(t, h.location.replace(L.BASE, ""));
+      await sleep(L.FORM_WAIT);
+      await t.page.type('input[name="name"]', "ทดสอบ");
+      await t.page.type('input[name="phone"]', L.freshPhone());
+      const acc = await t.page.$('input[name="accept"]');
+      if (acc) await (acc as { click: () => Promise<void> }).click();
+      const res = await L.postNav(t, 'form[method="POST"] button[type="submit"]');
+      line("scope-W1.2-checkout-nojs", "INFO: W1.2 checkout confirm without JS (same meta referrer=no-referrer)", `POST ${res.status} Origin=${res.origin} ISE=${res.ise} url=${L.url(t).replace(L.BASE, "").slice(0, 60)}`, !res.ise);
+    } finally { await L.closeTab(t); }
+  });
+} catch (e) {
+  console.log(`FATAL ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await L.closeBrowser();
+  await L.cleanup();
+  L.summary("hunt-5");
+}
