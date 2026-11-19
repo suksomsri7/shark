@@ -5,7 +5,7 @@ import { formatYmd } from "@/components/trips/trips-shared";
 import { BOOK_TERMS_VERSION, type BookCheckoutVM, type BookErrorCode, type BookFormField } from "@/lib/platform/trips-book-core";
 import type { BookBrandVM, BookLocale } from "@/lib/platform/trips-public-core";
 import { BookUntranslated } from "./BookContent";
-import { BookError, BookHidden, BookLines, BookShopBox, BookSteps, bookContactText } from "./BookFlowParts";
+import { BookError, BookHidden, BookLines, BookShopBox, BookSteps, bookReachText } from "./BookFlowParts";
 import { bookMoney } from "./BookPrices";
 import { BookShell } from "./BookShell";
 import { bookDateNames, bookT } from "./book-i18n";
@@ -41,7 +41,7 @@ export function BookCheckout({
               {t("checkout.holdUntil", { time: vm.confirmByLocal })}
             </p>
           </header>
-          {error ? <BookError code={error.code} fields={error.fields} locale={vm.locale} wait={error.wait} contact={bookContactText(vm.shop)} /> : null}
+          {error ? <BookError code={error.code} fields={error.fields} locale={vm.locale} wait={error.wait} contact={bookReachText(vm.shop)} /> : null}
           <form action={action} className="flex flex-col gap-4 rounded-2xl border bg-[color:var(--color-surface)] p-5">
             <BookHidden q={{ nonce: vm.form.nonce, seen: String(vm.summary.totalSatang), lang: vm.locale }} />
             <label className="flex flex-col gap-1.5">

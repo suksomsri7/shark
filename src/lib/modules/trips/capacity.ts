@@ -31,6 +31,7 @@ import {
 import {
   HOLD_PURPOSES,
   PUBLIC_CHANNELS,
+  PUBLIC_IDEM_PREFIX,
   QTY_MAX,
   QTY_MIN,
   WAITLIST_CHANNEL,
@@ -630,8 +631,6 @@ async function phase1HoldInTx(tx: Tx, g: Gate, c: Ctx, a: Phase1): Promise<{ dep
   return { dep: d, counters: await holdSeatsSql(tx, g, d.id, a.qty, c.clock) };
 }
 
-/** T0.4d D3 (มติ E1): คำนำหน้าคีย์กันซ้ำของผู้กระทำ PUBLIC — ได้จาก idemKeyFor เอง (แหล่งเดียว · ไม่พิมพ์ซ้ำ) */
-const PUBLIC_IDEM_PREFIX = ((k: string) => k.slice(0, k.indexOf("\u0000")))(idemKeyFor({ kind: "PUBLIC", clientKey: "" }, "", "\u0000"));
 /**
  * T0.4c เพดานที่ถือไม่จ่ายของผู้กระทำ PUBLIC ต่อรอบ (X31) — เรียกใต้ล็อก 1a ของรอบนี้เท่านั้น (SELECT ไม่ล็อก · ทุกเส้นทางที่ INSERT hold PUBLIC
  * ของรอบถือล็อกแถวรอบอยู่ ⇒ นับ+เพิ่มเป็นลำดับเดียว) · hold ที่นับ: ACTIVE · expiresAt > ctx.now · ผู้กระทำ PUBLIC (คำนำหน้าคีย์กันซ้ำ · T0.4d D3) · PAYMENT|SHOP_CONFIRM

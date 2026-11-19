@@ -119,10 +119,12 @@ export function sortCapacityRows(rows: readonly CapacityRowRef[]): CapacityRowRe
 
 // ───────────────────────── คีย์กันซ้ำ (CC §C ข้อ 3 · m-8) ─────────────────────────
 /** pub:<basketTokenHash>:<key> · ag:<agentAccountId>:<key> · st:<userId>:<key> · sys:<job>:<key> */
+/** คำนำหน้าคีย์กันซ้ำของผู้กระทำ PUBLIC (แหล่งเดียว · T0.4d G2: เพดาน PUBLIC นับตามคำนำหน้านี้) */
+export const PUBLIC_IDEM_PREFIX = "pub:";
 export function idemKeyFor(actor: SellActor, key: string, basketTokenHash?: string): string {
   switch (actor.kind) {
     case "PUBLIC":
-      return `pub:${basketTokenHash ?? ""}:${key}`;
+      return `${PUBLIC_IDEM_PREFIX}${basketTokenHash ?? ""}:${key}`;
     case "AGENT":
       return `ag:${actor.agentAccountId}:${key}`;
     case "STAFF":

@@ -481,8 +481,10 @@ async function insertHoldsInTx(tx: Tx, sc: SellCtx, lines: readonly { departureI
  * advisory lock ของ trips ในรูปสองอาร์กิวเมนต์ (int4, int4) — ไม่มีโมดูลใดใช้รูปนี้ (ทั้ง repo ใช้รูป bigint หนึ่งอาร์กิวเมนต์) ⇒ ไม่ชนกับคีย์ของโมดูลอื่น (S9)
  * classid = hashtext('trips.booking.v1') · objid = hashtext('<ชนิด>:<id>')
  */
-const lockTripsKey = (tx: Tx, kind: "approval" | "change" | "booker", id: string) =>
+const lockTripsKey = (tx: Tx, kind: "approval" | "change", id: string) =>
   tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips.booking.v1'), hashtext(${`${kind}:${id}`}))`;
+/** T0.4d D2/G3: ล็อกผู้จอง (ก่อนหา/สร้าง Party) — คลาส trips.booker.v1 ของตัวเอง ไม่ปนกับ pay/change/refund/approval */
+const lockBookerKey = (tx: Tx, key: string) => tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips.booker.v1'), hashtext(${key}))`;
 /** แถวบันทึกการใช้คำอนุมัติ (S4): action นี้ + targetId = approvalId — ค้นผ่าน index "AuditLog_action_idx" (action เป็นของการใช้คำอนุมัติอย่างเดียว) */
 const APPROVAL_CONSUMED = "trips.approval.consumed";
 /**
@@ -1001,9 +1003,10 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
   // T0.4d D2: ผู้จองใหม่คนเดียวกันยืนยันพร้อมกัน ⇒ เรียงคิวต่อ (ร้าน + เบอร์ normalize · ไม่มีเบอร์ ⇒ อีเมลตัวเล็ก) ก่อนหา/สร้าง Party ทุกผู้กระทำ
   // (มติ E2: ล็อกที่ตามมา = เลขจอง · promo · CAS ตะกร้า ขอหลังล็อกนี้เสมอ) — ไม่มีทั้งคู่ ⇒ ไม่ล็อก
   if (!("partyId" in P.booker)) {
+    // G1: ตรงกับการจับคู่ของ Party (เบอร์ ≥ 8 หลัก · ชื่อ+อีเมล) — p ก่อน e เสมอ · G3: คลาสของตัวเอง
     const ph = normalizePartyPhone(P.booker.phone), em = P.booker.email?.trim().toLowerCase() ?? "";
-    const who = ph ? `p:${ph}` : em ? `e:${em}` : "";
-    if (who) await lockTripsKey(t, "booker", `${c.tenantId}:${who}`);
+    if (ph.length >= 8) await lockBookerKey(t, `p:${c.tenantId}:${ph}`);
+    if (em) await lockBookerKey(t, `e:${c.tenantId}:${em}`);
   }
   const bookerPartyId = "partyId" in P.booker ? P.booker.partyId : await safeFindOrCreate(c.tenantId, { name: P.booker.name, phone: P.booker.phone, email: P.booker.email }, t);
   if (!bookerPartyId) throw new BookingAbort("BUSY", { reason: "BOOKER_UNAVAILABLE" });
