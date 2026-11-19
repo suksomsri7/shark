@@ -3,6 +3,10 @@
 // มองไม่เห็น = null แบบเดียวกับ "ไม่มีอยู่"
 // S1.4 (R-K1) ▸ ห้องเลขาร่วม: ผู้สร้าง ∪ สมาชิกห้อง (`AiRoomMember`) ∪ เจ้าของร้าน (role OWNER · เฉพาะห้องที่มีแถว `AiRoom`)
 //   อ่าน DB ที่นี่ที่เดียว (conversation-owner.ts ยังเบา) · ห้องเดิมที่ไม่มี AiRoom = กติกาเดิมทุกตัวอักษร ◂
+// Lekaa FAB (15 พ.ย. เจ้าของสั่ง "Lekaa = งานของใครของมัน") ▸ ทาง "อ่านห้อง" (roomSightFor · findVisibleConversation · canSeeConversationById)
+//   = ผู้สร้าง ∪ สมาชิกห้องเท่านั้น — OWNER ไม่อ่านห้องเลขาของคนอื่นแล้ว (ไม่ตั้ง `tenantRooms`) · ห้องที่ผู้สร้างปัดลบ (hiddenAt) = มองไม่เห็น
+//   ทาง "ผู้อนุมัติ" (canConfirmerSeeConversation → กล่องรออนุมัติ · executeProposal/executePlan · canActOnApproval → ปฏิเสธ) คง OWNER ไว้:
+//   ผู้อนุมัติเห็นและกดรายการรออนุมัติได้ โดยไม่ได้อ่านทั้งห้อง (กล่องรออนุมัติส่งแค่สรุปของรายการ) ◂
 
 import { tenantDb } from "@/lib/core/db";
 import type { MembershipCtx } from "@/lib/core/rbac";
@@ -23,7 +27,7 @@ export async function roomSightFor(ctx: ConvCtx): Promise<ConvSight> {
     where: { userId: ctx.actor.userId },
     select: { room: { select: { conversationId: true } } },
   });
-  return withRoomSight(s, { memberOf: rows.map((r) => r.room.conversationId), tenantRooms: ctx.actor.membership.role === "OWNER" });
+  return withRoomSight(s, { memberOf: rows.map((r) => r.room.conversationId) }); // Lekaa FAB: ไม่มี tenantRooms (OWNER) แล้ว
 }
 
 /** บทสนทนารหัสนี้ ถ้าผู้ดูเห็น (ไม่เห็น / ไม่มี / ร้านอื่น = null) — แถวมี `room` (null = ห้องแชท AI เดิม) */
@@ -35,6 +39,7 @@ export async function findVisibleConversation(ctx: ConvCtx, conversationId: stri
   const s = canSeeConversationId(base, id) ? base : await roomSightFor(ctx);
   if (!canSeeConversationId(s, id) && s.tenantRooms !== true) return null;
   const row = await tenantDb({ tenantId: ctx.tenantId }).aiConversation.findFirst({ where: { id }, include: { room: true } });
+  if (row?.room?.hiddenAt) return null; // Lekaa FAB: ห้องที่ผู้สร้างปัดลบแล้ว = เหมือนไม่มี
   return row && canSeeConversation(s, row) ? row : null;
 }
 
@@ -45,7 +50,17 @@ export async function findVisibleConversation(ctx: ConvCtx, conversationId: stri
 export async function canSeeConversationById(ctx: ConvCtx, conversationId: string | null | undefined): Promise<boolean> {
   if (canSeeConversationId(sightOf(ctx), conversationId)) return true;
   if (actorProblem(ctx) || ctx.actor.kind !== "member") return false;
-  return roomAllows(ctx.tenantId, ctx.actor.membership?.role, ctx.actor.userId, conversationId);
+  return roomAllows(ctx.tenantId, ctx.actor.membership?.role, ctx.actor.userId, conversationId, false);
+}
+
+/**
+ * Lekaa FAB ▸ ผู้กระทำนี้ "จัดการรายการรออนุมัติ" ของบทสนทนานี้ได้ไหม (ปฏิเสธข้อเสนอ/แผน) = อ่านห้องได้ || ด่านผู้อนุมัติ (`canConfirmerSeeConversation`)
+ *   — เจ้าของร้านปฏิเสธรายการของพนักงานจากกล่องรออนุมัติได้เหมือนเดิม แม้อ่านห้องนั้นไม่ได้แล้ว ◂
+ */
+export async function canActOnApproval(ctx: ConvCtx, conversationId: string | null | undefined): Promise<boolean> {
+  if (await canSeeConversationById(ctx, conversationId)) return true;
+  if (actorProblem(ctx) || ctx.actor.kind !== "member") return false;
+  return canConfirmerSeeConversation(ctx.tenantId, ctx.actor.membership, ctx.actor.userId, conversationId);
 }
 
 /**
@@ -59,21 +74,21 @@ export async function canConfirmerSeeConversation(
   conversationId: string | null | undefined,
 ): Promise<boolean> {
   if (canSeeConversationId(sightOfConfirmer(m, userId ?? null), conversationId)) return true;
-  return roomAllows(tenantId, m?.role, userId, conversationId);
+  return roomAllows(tenantId, m?.role, userId, conversationId, true); // ผู้อนุมัติ: OWNER ยังเห็นรายการรออนุมัติของทุกห้องเลขา
 }
 
-/** ห้องเลขาของร้านนี้ (ตามรหัสบทสนทนา) เปิดให้ผู้ใช้นี้ไหม — OWNER ทุกห้อง · คนอื่นต้องเป็นสมาชิก (1 query) */
-async function roomAllows(tenantId: string, role: string | undefined, userId: string | null | undefined, conversationId: string | null | undefined): Promise<boolean> {
+/** ห้องเลขาของร้านนี้ (ตามรหัสบทสนทนา) เปิดให้ผู้ใช้นี้ไหม — `ownerAll` (ทางผู้อนุมัติเท่านั้น) = OWNER ทุกห้อง · อื่น ๆ ต้องเป็นสมาชิก (1 query) · ห้องที่ปัดลบ = ไม่ */
+async function roomAllows(tenantId: string, role: string | undefined, userId: string | null | undefined, conversationId: string | null | undefined, ownerAll: boolean): Promise<boolean> {
   const id = typeof conversationId === "string" ? conversationId : "";
   if (!id || !tenantId) return false;
-  const owner = role === "OWNER";
+  const owner = ownerAll && role === "OWNER";
   const uid = typeof userId === "string" && userId ? userId : null;
   if (!owner && !uid) return false;
   const room = await tenantDb({ tenantId }).aiRoom.findFirst({
     where: { conversationId: id },
-    select: { id: true, members: { where: { userId: uid ?? "", tenantId }, select: { id: true }, take: 1 } },
+    select: { id: true, hiddenAt: true, members: { where: { userId: uid ?? "", tenantId }, select: { id: true }, take: 1 } },
   });
-  if (!room) return false;
+  if (!room || room.hiddenAt) return false;
   return owner || room.members.length > 0;
 }
 

@@ -79,7 +79,10 @@ console.log("── P: persona ──");
 {
   const ctxA = { tenantName: "QC Sec Café", systems: [{ type: "POS", name: "ขายหน้าร้าน" }, { type: "ACCOUNT", name: "บัญชี" }], dna: "- เปิด 9 โมง", memories: "- ลูกค้าประจำชื่อสมชาย", promptTweaks: "- ตอบสั้น" };
   const ctxB = { tenantName: "QC Sec Café", systems: [] as { type: string; name: string }[] };
-  chk("P-1", "ไม่มี secretary ⇒ buildSystemPrompt เท่า snapshot 5973db2e ทุกไบต์ (ctx เต็ม + ctx ว่าง)", sha(persona.buildSystemPrompt(ctxA)) === SNAP_A && sha(persona.buildSystemPrompt(ctxB)) === SNAP_B, `A=${sha(persona.buildSystemPrompt(ctxA)).slice(0, 8)} B=${sha(persona.buildSystemPrompt(ctxB)).slice(0, 8)}`);
+  // 17 พ.ย. (เจ้าของสั่ง · แบรนด์ SHARK → เลขา): บรรทัดแรกเปลี่ยนคำเดียว "บนแพลตฟอร์ม SHARK" → "บนแพลตฟอร์มเลขา" — ที่เหลือต้องเท่า snapshot เดิมทุกไบต์
+  const legacy = (p: string) => p.replace("บนแพลตฟอร์มเลขา (shark.in.th)", "บนแพลตฟอร์ม SHARK (shark.in.th)");
+  const pA = persona.buildSystemPrompt(ctxA), pB = persona.buildSystemPrompt(ctxB);
+  chk("P-1", "ไม่มี secretary ⇒ buildSystemPrompt เท่า snapshot 5973db2e ทุกไบต์ เว้นคำแบรนด์ (17 พ.ย. SHARK→เลขา) (ctx เต็ม + ctx ว่าง)", pA.includes("บนแพลตฟอร์มเลขา (shark.in.th)") && !/SHARK/.test(pA) && sha(legacy(pA)) === SNAP_A && sha(legacy(pB)) === SNAP_B, `A=${sha(legacy(pA)).slice(0, 8)} B=${sha(legacy(pB)).slice(0, 8)}`);
   const id = { name: "น้องปลา", suffix: "ค่ะ", tone: "friendly", languages: ["th", "en"] };
   const p = persona.buildSystemPrompt({ ...ctxA, secretary: id } as never);
   chk("P-2", "มี secretary ⇒ บรรทัดแรก = คุณคือ \"น้องปลา\" เลขา AI ประจำกิจการ \"QC Sec Café\" …", p.split("\n")[0].startsWith('คุณคือ "น้องปลา" เลขา AI ประจำกิจการ "QC Sec Café"'), p.split("\n")[0].slice(0, 90));
@@ -118,7 +121,7 @@ try {
   if (!sec || !hasTables) { for (const i of [1, 2, 3, 4, 5, 6]) skip(`A-${i}`, "secretary.ts", sec ? "ไม่มีตาราง AiSecretary (S1.1 ยังไม่ merge)" : "ไม่มีไฟล์/import ไม่ได้"); }
   else {
     const s1 = await sec.ensureSecretary(U.owner);
-    chk("A-1", "ensureSecretary สร้างค่าเริ่มต้น Shark/ครับ/polite/[th]", s1?.name === "Shark" && s1?.suffix === "ครับ" && s1?.tone === "polite" && JSON.stringify(s1?.languages) === '["th"]', JSON.stringify(s1).slice(0, 160));
+    chk("A-1", "ensureSecretary สร้างค่าเริ่มต้น เลขา/ครับ/polite/[th] (17 พ.ย. Shark→เลขา)", s1?.name === "เลขา" && s1?.suffix === "ครับ" && s1?.tone === "polite" && JSON.stringify(s1?.languages) === '["th"]', JSON.stringify(s1).slice(0, 160));
     const s2 = await sec.ensureSecretary(U.owner);
     chk("A-2", "ensureSecretary ซ้ำ = แถวเดิม (idempotent) · secretaryOf คืนแถว · secretaryOf ผู้ใช้ไม่มีแถว = null", s2?.id === s1?.id && (await sec.secretaryOf(U.owner))?.id === s1?.id && (await sec.secretaryOf(U.staff)) === null && (await prisma.aiSecretary.count({ where: { userId: U.staff } })) === 0, "ดู id/null");
     const u = await sec.updateSecretary(U.owner, { name: "  น้องปลา ", suffix: "ค่ะ", tone: "friendly", languages: ["th", "en", "th"] });

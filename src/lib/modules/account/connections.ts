@@ -124,7 +124,7 @@ export const CONNECTION_CATALOG: readonly ConnectionCatalogItem[] = [
 
 /** การ์ด "ยังไม่มีระบบ" ที่ §9.5 พูดถึงแต่แพลตฟอร์มยังไม่มี — แสดงจาง กดไม่ได้ (เฟรม g14 การ์ด "โรงแรม") */
 export const CONNECTION_SOON: readonly { label: string; icon: string; hint: string }[] = [
-  { label: "โรงแรม", icon: "shop", hint: "ยังไม่ได้เปิดใช้งานระบบโรงแรมของ SHARK" },
+  { label: "โรงแรม", icon: "shop", hint: "ยังไม่ได้เปิดใช้งานระบบโรงแรมของเลขา" },
 ];
 
 /** รหัสบัญชีของ mapping key (โชว์ท้ายการ์ด "บัญชีที่ใช้ 4000 / 1100") */

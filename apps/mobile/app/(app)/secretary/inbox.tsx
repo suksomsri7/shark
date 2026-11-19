@@ -3,6 +3,7 @@
 //   อนุมัติ/ตีกลับ: POST secretary/proposals/[id]/approve|reject หรือ secretary/plans/[id]/approve|reject ด้วย x-tenant-id = tenantId ของรายการ
 //     (ไม่สลับกิจการ active) · ยืนยัน 2 ชั้น + ชีตตีกลับ C4 = useApprovalFlow เดิมของห้องงาน (S2.4)
 //   canApprove=false ⇒ ปุ่มปิด + บรรทัดเหตุผล · แตะรายการ ⇒ สลับกิจการ (ถ้าต่าง) แล้วเปิด /secretary/room/[roomId]
+//   Lekaa FAB (15 พ.ย.): `canOpenRoom=false` (งานของคนอื่น — ผู้อนุมัติไม่อ่านห้อง) ⇒ แตะแล้วขึ้นข้อความแทนการเปิดห้อง (อนุมัติ/ตีกลับในกล่องนี้ได้ตามเดิม)
 //   แท็บ 4: ทั้งหมด / เงิน / ส่งลูกค้า / ลบ-ยกเลิก (ชั้นของรายการ — class ของเซิร์ฟเวอร์ถ้ามี ไม่งั้นจาก kind/risk) · จัดกลุ่มตามกิจการ
 // ข้อความผ่าน i18n (sec.inbox.*) · สีจากธีม · สเกล R-UI1
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -152,6 +153,11 @@ export default function SecretaryInboxScreen() {
   // แตะรายการ: กิจการต่างจาก active ⇒ switchTenant ก่อน (รายการของร้านที่เป็นสมาชิกเท่านั้น) แล้วเปิดห้องงาน
   const open = async (r: InboxRow) => {
     setOpenErr(null);
+    // Lekaa FAB ▸ งานของคนอื่น (ผู้อนุมัติไม่ได้อ่านห้อง) — อนุมัติ/ตีกลับจากกล่องนี้ได้ แต่ไม่เปิดห้อง
+    if (!r.canOpenRoom) {
+      setOpenErr(t("sec.inbox.notYours"));
+      return;
+    }
     const target = r.roomId ? `/secretary/room/${r.roomId}` : r.conversationId ? `/chat/${r.conversationId}` : null;
     if (!target) {
       setOpenErr(t("sec.inbox.noRoom"));

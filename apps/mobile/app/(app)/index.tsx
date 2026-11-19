@@ -1,30 +1,68 @@
 // หน้าแรกหลัง login = dashboard ของกิจการ (WebView /app) — เปิดด้วย one-time code (60 วิ ใช้ครั้งเดียว)
 // ⚠️ ห้ามใส่ Bearer/token ใน URL หรือ header ของ WebView เด็ดขาด — ส่งแค่ ?code=
-// ⚠️ ห้ามมี native header — เว็บมี top bar ของตัวเอง · SafeAreaView กันชนติ่งจอ
+// 14 พ.ย. (เจ้าของสั่ง): แถบบน native แบบหน้าเลขา (SecTopBar zone="systems") อยู่เหนือ WebView · UA เพิ่ม "SharkTopBar/1" ⇒ เว็บไม่วาดแถบบนของตัวเอง
+//   ไม่มีปุ่มลอย "เลขา AI" แล้ว (เข้าเลขาจากแถบบน)
+// 14 พ.ย. รอบ 3 (bizsheet4): ไม่มีปุ่มระบบบนแถบบนแล้ว (zone="systems" = ไม่มีปุ่มโซนใดทึบ) · เว็บปิดท่าปัดขอบซ้ายเมื่อมี SharkTopBar
+//   เข้าระบบจากชีตกิจการ (แตะไอคอนกิจการ → ตาราง "เปิดระบบ") ⇒ navigate("/", { open: <href>, t }) → WebView ไปพาธนั้น (OPEN_PATH_RE รับ /app เปล่าด้วย = หน้าหลัก)
+//   สลับกิจการจากชีต ⇒ ไปหน้าเลขา /secretary (WebView ยัง reload ตาม activeTenantId เมื่อกลับมา)
+//   แอปเปิดครั้งแรกไปหน้าเลขา (/secretary) ไม่ใช่จอนี้ (app/_layout.tsx) · SafeAreaView กันชนติ่งจอ
 // UA ต่อท้าย "SharkApp/1" → ฝั่งเว็บซ่อน orb ของตัวเอง (กัน orb ซ้อน) · ปุ่ม orb AI ลอยมุมล่างขวา → /sessions
 // เปลี่ยนกิจการ (activeTenantId) → ขอ code ใหม่ reload อัตโนมัติ
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
 import { AnimatedOrb } from "@/src/components/ui/orb";
+import { LekaaLoader } from "@/src/components/brand/LekaaLoader";
 import { WebView } from "react-native-webview";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { api, apiErrorText, BASE_URL } from "@/src/api/client";
 import { useAuth } from "@/src/lib/auth-context";
 import { C, R, S } from "@/src/theme";
+import { BusinessSwitcherHost } from "@/src/components/secretary/BusinessSwitcherSheet";
+import { SecTopBar } from "@/src/components/secretary/SecTopBar";
+import { refreshZoneBadges, useSecretaryZone, type PageContext } from "@/src/api/secretary";
+import { useLekaaPageContext } from "@/src/components/lekaa/core";
 
 // M3.11 — จอ native อื่น (สรุปสมาชิก: ใช้สิทธิ์/ให้แต้ม/ออก voucher) ขอให้เปิดหน้าเว็บของร้านใน WebView นี้
 // ด้วย `?open=/app/...&t=<nonce>` · รับเฉพาะพาธใต้ /app ของโดเมนเดียวกัน (กันพาไปเว็บอื่นด้วยพารามิเตอร์)
-const OPEN_PATH_RE = /^\/app\/[A-Za-z0-9_\-/]*(\?[A-Za-z0-9_=&\-]*)?$/;
+// 14 พ.ย.: รับ "/app" เปล่า (ช่อง "หน้าหลัก" ของชีตกิจการ) + ตัว %XX (slug ที่ encodeURI แล้ว) · ยังห้าม "." (กัน ..) · ":" (กัน scheme) — เปิดได้แค่โดเมนเดียวกันเสมอ
+const OPEN_PATH_RE = /^\/app(\/[A-Za-z0-9_\-%/]*)?(\?[A-Za-z0-9_=&\-%]*)?$/;
+
+/** ข้อความ page-context ของเว็บ → PageContext (ตัดสตริงยาว · ค่าแปลก = ทิ้ง · เซิร์ฟเวอร์ตรวจ entity ใหม่ด้วยสิทธิ์ผู้สั่งอยู่แล้ว) */
+function webPageContext(d: { system?: unknown; systemId?: unknown; path?: unknown; title?: unknown; entity?: unknown }): PageContext | null {
+  const s = (v: unknown, n: number) => (typeof v === "string" && v ? v.slice(0, n) : undefined);
+  const path = s(d.path, 300);
+  if (!path || !path.startsWith("/app")) return null;
+  const e = d.entity && typeof d.entity === "object" ? (d.entity as Record<string, unknown>) : null;
+  const type = s(e?.type, 40);
+  const id = s(e?.id, 80);
+  return {
+    route: "index",
+    path,
+    system: s(d.system, 40),
+    systemId: s(d.systemId, 64),
+    title: s(d.title, 120),
+    ...(type && id ? { entity: { type, id, label: s(e?.label, 120) } } : {}),
+  };
+}
 
 export default function DashboardScreen() {
+  useSecretaryZone(); // secretary/me + badge ของแถบบน (focus/foreground)
+  useEffect(() => {
+    void refreshZoneBadges();
+  }, []);
   const router = useRouter();
   const { activeTenantId, signOut, switchTenant } = useAuth();
   const { open, t: openNonce } = useLocalSearchParams<{ open?: string; t?: string }>();
   const webRef = useRef<WebView>(null);
   const [webReady, setWebReady] = useState(false);
   const openedKey = useRef("");
+  // Lekaa FAB (17 พ.ย. · ปิดข้อค้างของ handoff ข้อ 1): หน้าเว็บที่เปิดอยู่จากข้อความ {ev:"page-context"} ของ AppShell → ปุ่ม Lekaa ส่งไปกับคำสั่งแรก
+  //   ยังไม่ได้ข้อความ = null (Host เดาจากเส้นทาง "/" = หน้าหลักร้าน) · path ใช้ไฮไลต์ไอคอนระบบที่เปิดอยู่บนแถบบนด้วย (แบบ topbar2)
+  const [webCtx, setWebCtx] = useState<PageContext | null>(null);
+  useLekaaPageContext(webCtx);
+  useEffect(() => setWebCtx(null), [activeTenantId]);
 
   const [code, setCode] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -135,20 +173,36 @@ export default function DashboardScreen() {
   );
 
   return (
-    <SafeAreaView style={styles.screen}>
+    <BusinessSwitcherHost>
+    <SafeAreaView style={styles.screen} edges={["top", "left", "right"]}>
+      {hideOrb ? null : (
+        <View style={styles.bar}>
+          <SecTopBar zone="systems" center="none" activePath={webCtx?.path ?? "/app"} />
+        </View>
+      )}
       <View style={styles.flex}>
         {uri && (
           <WebView
             ref={webRef}
             source={{ uri }}
-            applicationNameForUserAgent="SharkApp/1"
+            applicationNameForUserAgent="SharkApp/1 SharkTopBar/1"
             onShouldStartLoadWithRequest={onShouldStartLoadWithRequest}
             style={styles.webview}
             onMessage={(ev) => {
               // สัญญาจากเว็บ (AppShell): {ev:"chat-fullscreen", on:boolean} · (NavDrawer): {ev:"open-ai"}
               try {
-                const d = JSON.parse(ev.nativeEvent.data) as { ev?: string; on?: boolean };
-                if (d.ev === "chat-fullscreen") setHideOrb(d.on === true);
+                const d = JSON.parse(ev.nativeEvent.data) as { ev?: string; on?: boolean; system?: unknown; systemId?: unknown; path?: unknown; title?: unknown; entity?: unknown };
+                if (d.ev === "page-context") {
+                  setWebCtx(webPageContext(d));
+                  return;
+                }
+                if (d.ev === "chat-fullscreen") {
+                  // 15 พ.ย. (เจ้าของสั่ง): เลิกใช้หน้าแชทลูกค้าแบบเว็บในแอป — เว็บเข้ากล่องแชทเต็มจอเมื่อไหร่ = ถอยหน้าเว็บ แล้วไปจอแชท native
+                  if (d.on === true) {
+                    webRef.current?.goBack();
+                    router.navigate("/customers");
+                  } else setHideOrb(false);
+                }
                 if (d.ev === "open-ai") void openAssistant(); // เมนูเว็บ "ผู้ช่วย AI" (แอปปิดเมนูสไลด์แล้ว 6 ก.ย.)
                 // M3.11 — จอสมาชิกของพนักงาน (ค้น/สแกน QR · ประทับ PIN) · ฝั่งเว็บส่ง {ev:"open-member"} เมื่อพร้อม (หนี้ใน wo-notes)
                 if (d.ev === "open-member") router.push("/member");
@@ -178,7 +232,7 @@ export default function DashboardScreen() {
 
         {loading && !error && (
           <View style={styles.overlay}>
-            <AnimatedOrb size={72} />
+            <LekaaLoader size={72} testID="home-loading" />
           </View>
         )}
 
@@ -203,27 +257,16 @@ export default function DashboardScreen() {
         </Pressable>
         )}
 
-        {/* S2.1 เลขา AI ▸ ทางเข้าเดียวจากหน้าแรก 1.0 → /secretary · ลอยมุมล่างขวา (ที่เดิมของ orb ที่ซ่อนไว้ · ถ้าเปิด orb คืน ปุ่มนี้ขยับขึ้นเหนือ orb)
-            โชว์ตลอด (ระหว่างโหลด/พลาดด้วย) ยกเว้นตอนเว็บขอเต็มจอ (chat-fullscreen) · สีจาก C ของ 1.0 (ไม่ใช้ธีมใหม่ในจอนี้) ◂ */}
-        {!hideOrb && (
-          <Pressable
-            testID="home-open-secretary"
-            onPress={() => router.push("/secretary")}
-            accessibilityRole="button"
-            hitSlop={8}
-            style={[styles.secBtn, !ORB_HIDDEN_FOR_NOW && styles.secBtnAboveOrb]}
-          >
-            <Text style={styles.secText}>เลขา AI</Text>
-          </Pressable>
-        )}
       </View>
     </SafeAreaView>
+    </BusinessSwitcherHost>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: C.bg },
   flex: { flex: 1, backgroundColor: C.bg },
+  bar: { paddingHorizontal: 18, paddingTop: 6, paddingBottom: 4, backgroundColor: C.bg },
   webview: { flex: 1, backgroundColor: C.bg },
   overlay: {
     position: "absolute",
@@ -246,19 +289,6 @@ const styles = StyleSheet.create({
     right: S.lg,
     bottom: S.lg,
   },
-  // S2.1 ปุ่มเข้าเลขา AI (ลอยมุมล่างขวา · แคปซูลทึบ)
-  secBtn: {
-    position: "absolute",
-    right: S.lg,
-    bottom: S.lg,
-    minHeight: 44,
-    justifyContent: "center",
-    paddingHorizontal: S.lg,
-    borderRadius: R.full,
-    backgroundColor: C.text,
-  },
-  secBtnAboveOrb: { bottom: S.lg + 64 + S.md },
-  secText: { color: C.bg, fontSize: 15, fontFamily: "IBMPlexSansThai_700Bold" },
   // spinner เล็กทับ orb ระหว่างรอ welcome (ห้ามค้างเงียบ)
   orbSpinner: {
     position: "absolute",

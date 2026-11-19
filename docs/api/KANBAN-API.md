@@ -1,4 +1,4 @@
-# SHARK Task Board API
+# Lekaa Task Board API
 
 Machine readable contract: `/api/v1/kanban/openapi.json` (OpenAPI 3.1.0, no API key needed).
 Base URL: `https://shark.in.th/api/v1/kanban` - contract version 1.0.0 - 88 operations.
@@ -41,7 +41,7 @@ A key is normally bound to one task board system. If it is not, every call must 
 
 These are the rules of the module, copied verbatim from the contract description in `/api/v1/kanban/openapi.json`:
 
-REST API for the SHARK task board module (Kanban). One API key works inside one task board system (AppSystem of type KANBAN) and sees every board of that system.
+REST API for the Lekaa task board module (Kanban). One API key works inside one task board system (AppSystem of type KANBAN) and sees every board of that system.
 
 Conventions that apply to every operation:
 1. Authentication is `Authorization: Bearer <api key>`. The key carries its own scopes; an operation returns 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope`.
@@ -396,7 +396,7 @@ curl -sS -X GET "https://shark.in.th/api/v1/kanban/cards/123/comments" \
 
 #### `cards.detail`
 
-**GET /cards/{id}/detail** - Read one card in full: description as plain text, board and column, assignees, due date, labels, checklists with their items, recent comments and the SHARK records the card is linked to. · scope: `kanban.board.read` · read · AI tool: `kanban_card_detail`
+**GET /cards/{id}/detail** - Read one card in full: description as plain text, board and column, assignees, due date, labels, checklists with their items, recent comments and the Lekaa records the card is linked to. · scope: `kanban.board.read` · read · AI tool: `kanban_card_detail`
 
 Path parameters: `id` (required).
 
@@ -1040,13 +1040,13 @@ curl -sS -X DELETE "https://shark.in.th/api/v1/kanban/cards/123/links" \
 
 #### `cards.links.add`
 
-**POST /cards/{id}/links** - Link this card to an object elsewhere in SHARK, or to an external URL. Linking the same object twice returns the existing link instead of creating a second one. The target must exist in this shop. · scope: `kanban.card.update` · write
+**POST /cards/{id}/links** - Link this card to an object elsewhere in Lekaa, or to an external URL. Linking the same object twice returns the existing link instead of creating a second one. The target must exist in this shop. · scope: `kanban.card.update` · write
 
 Path parameters: `id` (required).
 
 | Field | Type | Required | Rules |
 | --- | --- | --- | --- |
-| `linkType` | enum("PARTY", "CRM_CONTACT", "CHAT_CONVERSATION", "ACCOUNT_DOC", "APPROVAL_REQUEST", "HR_LEAVE", "HR_EMPLOYEE", "APPOINTMENT", "HOTEL_RESERVATION", "RENTAL_BOOKING", "SCHOOL_CLASS", "INV_ITEM", "QUEUE_TICKET", "TICKET_EVENT", "FORM_SUBMISSION", "KB_ARTICLE", "POS_SALE", "SHOP_ORDER", "RESTAURANT_ORDER", "URL", "DEAL", "COMPANY", "CUSTOM_RECORD") | yes | What kind of SHARK object the card points at. Use URL for a plain web link. |
+| `linkType` | enum("PARTY", "CRM_CONTACT", "CHAT_CONVERSATION", "ACCOUNT_DOC", "APPROVAL_REQUEST", "HR_LEAVE", "HR_EMPLOYEE", "APPOINTMENT", "HOTEL_RESERVATION", "RENTAL_BOOKING", "SCHOOL_CLASS", "INV_ITEM", "QUEUE_TICKET", "TICKET_EVENT", "FORM_SUBMISSION", "KB_ARTICLE", "POS_SALE", "SHOP_ORDER", "RESTAURANT_ORDER", "URL", "DEAL", "COMPANY", "CUSTOM_RECORD") | yes | What kind of Lekaa object the card points at. Use URL for a plain web link. |
 | `linkId` | string | yes | Id of the target object in this shop. For linkType URL this is the URL itself and must start with http:// or https://. · min length 1 · max length 2000 |
 | `role` | enum("SOURCE", "RELATED", "RESULT") | no | SOURCE = the card was created out of this, RELATED = it refers to it, RESULT = it is the outcome of the work. |
 | `label` | string | no | Short caption typed by a person. Mostly used with URL links. · max length 120 |

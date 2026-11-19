@@ -686,6 +686,13 @@ export async function restoreStaffAccess(input: RevokeStaffAccessInput): Promise
     where: { id: target.id, tenantId: input.tenantId },
     data: { acceptedAt: new Date() },
   });
+  // CAL review M5 ▸ เตือนส่วนตัวที่ถูกพักระหว่างระงับ — ปลุกให้คิดใหม่ทันที (ไม่รอรอบตรวจ 1 ชม.) ◂
+  try {
+    const { wakeMemberCalendar } = await import("@/lib/modules/calendar/items");
+    await wakeMemberCalendar({ userId: target.userId, tenantId: input.tenantId });
+  } catch {
+    /* ไม่บล็อกการคืนสิทธิ์ — job ตรวจใหม่เองภายใน 1 ชม. */
+  }
 
   await writeStaffAudit({
     tenantId: input.tenantId,

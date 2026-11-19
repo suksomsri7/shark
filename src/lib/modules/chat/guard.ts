@@ -27,6 +27,7 @@ export {
   CHAT_SET_STATUS_ACTION,
   CHAT_MARK_READ_ACTION,
   CHAT_CUSTOMER_LINK_ACTION,
+  CHAT_SETTING_ACTION,
 } from "./guard-keys";
 
 type Auth = Awaited<ReturnType<typeof requireTenant>>;

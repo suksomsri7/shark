@@ -343,7 +343,7 @@ const routingGet = defineCrmOp({
   kind: "read",
   action: "crm.email.settings",
   summary:
-    "How this shop's CRM sends and receives e-mail: mode (SHARED = the shared SHARK address, DOMAIN = the shop's verified domain), " +
+    "How this shop's CRM sends and receives e-mail: mode (SHARED = the shared Lekaa address, DOMAIN = the shop's verified domain), " +
     "from name and address, reply-to and copy rules, whether the inbox is on and the address customers reply to. The raw inbox key is never returned.",
   label: "ที่อยู่ส่ง/รับอีเมลของร้าน",
   input: z.object({}).strict(),

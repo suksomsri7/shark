@@ -535,7 +535,7 @@ function cleanAddrPatch(value: unknown, label: string, opts: { outsideShark?: bo
   //   (`crm+<key>@` ของระบบนี้หรือร้านอื่น · `งาน+`/`tasks+` ของบอร์ด · `<slug>@`) — ที่อยู่เหล่านี้วิ่งเข้ากล่องขาเข้าของเรา
   //   ⇒ สำเนาขาเข้าวนกลับเป็นจดหมายใหม่ไม่รู้จบ (แถว/กิจกรรม/การส่งบนบัญชีผู้ให้บริการกลางของทุกร้าน) หรือแปะคำตอบของลูกค้าลงร้านอื่น ◂
   if (opts.outsideShark && isSystemMailAddress(value)) {
-    throw fail("VALIDATION", `${label}ต้องเป็นกล่องจดหมายนอก SHARK — ที่อยู่ @${CRM_EMAIL_SHARK_DOMAIN} (กล่อง CRM · บอร์ดงาน · ที่อยู่ร้าน) จะส่งจดหมายวนกลับเข้าระบบ ใช้อีเมลของร้านหรือของพนักงานแทน`);
+    throw fail("VALIDATION", `${label}ต้องเป็นกล่องจดหมายนอกเลขา — ที่อยู่ @${CRM_EMAIL_SHARK_DOMAIN} (กล่อง CRM · บอร์ดงาน · ที่อยู่ร้าน) จะส่งจดหมายวนกลับเข้าระบบ ใช้อีเมลของร้านหรือของพนักงานแทน`);
   }
   return bareEmail(value);
 }
@@ -883,7 +883,7 @@ function cleanDomain(raw: unknown): string {
     throw fail("VALIDATION", "ชื่อโดเมนยังไม่ถูกต้อง — พิมพ์เฉพาะชื่อโดเมน เช่น example.com (ไม่ต้องมี https:// หรือเส้นทางต่อท้าย)");
   }
   if (d === CRM_EMAIL_SHARK_DOMAIN || d.endsWith(`.${CRM_EMAIL_SHARK_DOMAIN}`)) {
-    throw fail("VALIDATION", `โดเมน ${CRM_EMAIL_SHARK_DOMAIN} เป็นของระบบอยู่แล้ว — ใช้ที่อยู่ผู้ส่งของ SHARK ได้เลยโดยไม่ต้องเพิ่มโดเมน`);
+    throw fail("VALIDATION", `โดเมน ${CRM_EMAIL_SHARK_DOMAIN} เป็นของระบบอยู่แล้ว — ใช้ที่อยู่ผู้ส่งของเลขาได้เลยโดยไม่ต้องเพิ่มโดเมน`);
   }
   return d;
 }

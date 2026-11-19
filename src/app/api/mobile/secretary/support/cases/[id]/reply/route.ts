@@ -2,9 +2,10 @@
 import { z } from "zod";
 import { addShopMessage } from "@/lib/support/service";
 import { gate, idParam, notFound, ok, readBody, withRateLimit, type RouteCtx, withErrors } from "../../../../_shared";
-import { AttachmentsSchema, visibleCase } from "../../../_case";
+import { AttachmentsSchema, FilesSchema, resolveCaseFiles, visibleCase } from "../../../_case";
 
-const Body = z.object({ body: z.string().trim().min(1).max(4000), attachments: AttachmentsSchema.optional() }).strict();
+// help-cases: `files` = ไฟล์ส่วนตัวจาก support/attachments · ขั้นของเคสเลื่อนตาม shopReplyStage (ใน addShopMessage)
+const Body = z.object({ body: z.string().trim().min(1).max(4000), attachments: AttachmentsSchema.optional(), files: FilesSchema.optional() }).strict();
 
 async function POST_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, null);
@@ -16,7 +17,9 @@ async function POST_(req: Request, ctx: RouteCtx) {
   const id = await idParam(ctx, "id");
   const c = id ? await visibleCase(a.c, id) : null;
   if (!c) return notFound("ไม่พบเรื่องนี้");
-  if (!(await addShopMessage({ tenantId: a.c.tenantId }, c.id, a.c.userId, b.v.body, b.v.attachments))) return notFound("ไม่พบเรื่องนี้");
+  const f = await resolveCaseFiles(a.c.tenantId, b.v.files, b.v.attachments?.length ?? 0);
+  if (!f.ok) return f.res;
+  if (!(await addShopMessage({ tenantId: a.c.tenantId }, c.id, a.c.userId, b.v.body, b.v.attachments, f.files))) return notFound("ไม่พบเรื่องนี้");
   return ok({ ok: true });
 }
 

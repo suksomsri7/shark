@@ -27,9 +27,9 @@ import type { CrmEmailSettingsData, CrmEmailUserRow } from "@/components/crm/ema
 //    — ถ้าไม่ทำตรงนี้ หน้าจะโชว์ที่อยู่รับจดหมายไม่ได้เลยจนกว่าจะมีคนกดอะไรสักอย่าง
 // 🔴 ด่าน F2.3: `src/components/**` ล้วงโมดูล CRM ไม่ได้ ⇒ ทะเบียนโหมด/ป้ายไทย/เพดาน แปลงเป็น props ที่นี่
 
-const FROM_MODE_TH: Record<string, string> = { SHARK: "ใช้กล่อง SHARK — @shark.in.th (ไม่ต้องตั้งค่า DNS)", DOMAIN: "โดเมนของร้านเอง (ต้องยืนยัน DNS ก่อน)" };
+const FROM_MODE_TH: Record<string, string> = { SHARK: "ใช้กล่องเลขา — @shark.in.th (ไม่ต้องตั้งค่า DNS)", DOMAIN: "โดเมนของร้านเอง (ต้องยืนยัน DNS ก่อน)" };
 const REPLY_MODE_TH: Record<string, string> = {
-  SHARK: "กล่อง SHARK (แนะนำ — คำตอบเข้า CRM อัตโนมัติ)",
+  SHARK: "กล่องเลขา (แนะนำ — คำตอบเข้า CRM อัตโนมัติ)",
   STAFF: "อีเมลของพนักงานผู้ส่ง",
   SELF: "อีเมลของพนักงานผู้ส่ง (ตัวเอง)",
   CUSTOM: "กำหนดเอง",

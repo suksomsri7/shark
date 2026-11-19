@@ -5,32 +5,36 @@
 //   ลิงก์หน้าในแอปจากทีม (`sharkai://…` / path ภายใน) = ปุ่ม "เปิดหน้า" ใต้ฟอง → router.push ตามเส้นทาง (helpRouteOf — path นอกรายการปลอดภัยไม่เป็นปุ่ม)
 //   ห้องงานที่แนบ (case.roomId) = การ์ดระบบใต้ข้อความแรก แตะ → /secretary/room/<roomId> · ชื่อห้องจาก GET secretary/rooms/[id]
 //   polling 15 วิ ขณะจออยู่ (focus + แอปอยู่หน้า) · push "ทีมงานตอบกลับแล้ว" (S1.23) เปิดจอนี้ผ่าน deep link /secretary/help/<id> (push-register.ts)
+//   help-cases (15 พ.ย. 2026 · จอ 3 ของแบบ secretary-help/help.png): หัวห้อง = "#SHARK-000124 · หมวด" + หัวเรื่อง · การ์ดติดตาม (ป้ายขั้น + stepper 5 ขั้น
+//     รับเรื่อง → ตรวจสอบ → แก้ไข → รอยืนยัน → ปิดเคส · "รอข้อมูลจากคุณ" ชมพู) · บรรทัดระบบในไทม์ไลน์เมื่อขั้นเปลี่ยน ("15 พ.ย. 09:40 · สถานะ → กำลังแก้ไข")
+//     การ์ด "ปัญหาแก้แล้วหรือยัง" = ขั้น AWAITING_CONFIRM (เดิม status PENDING) · ช่องพิมพ์มีปุ่ม + ข้างหน้า = แผ่นแนบ รูปภาพ/ถ่ายรูป/ไฟล์ (SecAttach
+//     → POST secretary/support/attachments · ส่วนตัว) แทน HelpAttach (รูปอย่างเดียว) · ไฟล์ไปกับ reply เป็น `files:[{id,name}]`
 // ข้อความผ่าน i18n (help.*) · สีจากธีม · สเกล R-UI1
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AppState, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Dot, Glass, Icon, IconBtn, InputBar, LoadError, Loading, Sheet } from "@/src/components/airy";
+import { AiryScreen, Glass, Icon, IconBtn, InputBar, LoadError, Loading, Sheet } from "@/src/components/airy";
 import { CaseBubble, type CaseBubbleIds } from "@/src/components/secretary/CaseBubble";
-import { caseStatusLine } from "@/src/components/secretary/CaseRow";
-import { AttachedRow, useHelpAttach } from "@/src/components/secretary/HelpAttach";
-import { hhmmBkk } from "@/src/components/secretary/bkk";
+import { StageTracker, stageColor, stageLabelKey } from "@/src/components/secretary/HelpStage";
+import { AttachSheet, AttachTray, useSecAttach, type PendingAttach } from "@/src/components/secretary/SecAttach";
+import { dateBkk, hhmmBkk } from "@/src/components/secretary/bkk";
 import { ApiError } from "@/src/api/client";
 import {
   caseNoText,
-  helpDot,
   normalizeHelpDetail,
   normalizeRoomDetail,
   scheduleZoneBadges,
   secGetId,
   secPostId,
-  secUpload,
   serverNote,
-  type HelpAttachment,
+  type AttachRef,
   type HelpCase,
   type HelpLink,
   type HelpMsg,
+  type HelpStageEvent,
 } from "@/src/api/secretary";
+import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
 import { useT, type I18nKey } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
 import { cardGap, radii, size, spacing, type as T } from "@/src/theme/tokens";
@@ -48,6 +52,7 @@ export default function SecretaryHelpCaseScreen() {
 
   const [kase, setKase] = useState<HelpCase | null>(null);
   const [msgs, setMsgs] = useState<HelpMsg[]>([]);
+  const [events, setEvents] = useState<HelpStageEvent[]>([]);
   const [gone, setGone] = useState(false);
   const [offline, setOffline] = useState(false);
   // R-S2.14h: 403 = การ์ดล็อก (LoadError denied) แทนเธรด · ปิดช่องพิมพ์
@@ -60,8 +65,8 @@ export default function SecretaryHelpCaseScreen() {
   const [focusKey, setFocusKey] = useState(0);
   const busy = useRef(false);
   const scroll = useRef<ScrollView>(null);
-  const upload = useCallback((form: FormData) => secUpload("secretary/support/upload", form), []);
-  const att = useHelpAttach(upload);
+  const [attachOpen, setAttachOpen] = useState(false);
+  const att = useSecAttach("secretary/support/attachments");
   // R-S2.13f: badge ทีม (support unread) โหลดใหม่เฉพาะโหลดแรก หรือเมื่อข้อความ/สถานะเปลี่ยน — poll 15 วิ ไม่ลาก badge ตามทุกรอบ
   const seenSig = useRef<string | null>(null);
 
@@ -72,10 +77,11 @@ export default function SecretaryHelpCaseScreen() {
       if (!r.case) throw new ApiError(404, "not_found");
       setKase(r.case);
       setMsgs(r.messages);
+      setEvents(r.stageEvents);
       setGone(false);
       setOffline(false);
       setDenied(false);
-      const sig = `${r.case.id}|${r.case.status}|${r.messages.length}|${r.messages[r.messages.length - 1]?.id ?? ""}`;
+      const sig = `${r.case.id}|${r.case.status}|${r.case.stage}|${r.messages.length}|${r.messages[r.messages.length - 1]?.id ?? ""}`;
       if (seenSig.current !== sig) {
         seenSig.current = sig;
         scheduleZoneBadges();
@@ -119,13 +125,13 @@ export default function SecretaryHelpCaseScreen() {
   };
 
   /** ตอบในเรื่อง (ใช้ร่วม ช่องพิมพ์ · ปุ่ม "ยังไม่แก้") */
-  const reply = async (text: string, attachments: HelpAttachment[]): Promise<boolean> => {
+  const reply = async (text: string, files: AttachRef[]): Promise<boolean> => {
     if (busy.current || !kase) return false;
     busy.current = true;
     setSending(true);
     setFlash(null);
     try {
-      await secPostId("secretary/support/cases/[id]/reply", kase.id, attachments.length ? { body: text, attachments } : { body: text });
+      await secPostId("secretary/support/cases/[id]/reply", kase.id, files.length ? { body: text, files } : { body: text });
       await load();
       return true;
     } catch (e) {
@@ -138,12 +144,12 @@ export default function SecretaryHelpCaseScreen() {
   };
 
   const send = async () => {
-    const text = draft.trim().slice(0, 4000) || (att.atts.length ? t("help.attach.subject") : "");
+    if (!att.ready) return;
+    const text = draft.trim().slice(0, 4000) || (att.items.length ? t("help.attach.subject") : "");
     if (!text) return;
-    if (await reply(text, att.atts)) {
-      setDraft("");
-      att.clear();
-    }
+    const taken: PendingAttach[] = att.take();
+    if (await reply(text, att.refs(taken))) setDraft("");
+    else att.restore(taken);
   };
 
   const resolveYes = async () => {
@@ -176,12 +182,21 @@ export default function SecretaryHelpCaseScreen() {
     if (roomId) router.push(`/secretary/room/${encodeURIComponent(roomId)}`);
   };
 
-  const dot = kase ? helpDot(kase.status, 0) : "wait";
-  const statusText = kase ? (kase.status === "RESOLVED" ? caseStatusLine(t, kase.status, 0, kase.updatedAt) : t(`help.head.${kase.status}` as I18nKey)) : "";
   const nonce = String(focusKey);
   const opened = kase ? t(roomId ? "help.opened.room" : "help.opened", { no: caseNoText(kase.caseNo), title: roomTitle ?? t("help.roomUnnamed"), time: hhmmBkk(kase.createdAt) }) : "";
-  const attNote = att.note ? ("key" in att.note ? t(att.note.key) : att.note.text) : null;
-  const note = flash ?? (attNote ? { text: attNote, warn: true } : null);
+  const note = flash;
+  const headNo = kase ? [`#${caseNoText(kase.caseNo)}`, kase.category && kase.category !== "other" ? t(`help.cat.${kase.category}` as I18nKey) : ""].filter(Boolean).join(" · ") : "";
+  /** "15 พ.ย. 09:40" เวลาไทย */
+  const when = (iso: string) => {
+    const d = dateBkk(iso);
+    return d ? `${d.date} ${t(`sec.month.${d.month}` as I18nKey)} ${hhmmBkk(iso)}` : hhmmBkk(iso);
+  };
+  // ไทม์ไลน์: ข้อความ + บรรทัดระบบเมื่อขั้นเปลี่ยน (ข้ามแถวเปิดเคส — มีบรรทัด "เปิดเรื่อง" อยู่แล้ว) เรียงตามเวลา
+  type Row = { kind: "msg"; at: number; m: HelpMsg; i: number } | { kind: "stage"; at: number; e: HelpStageEvent };
+  const timeline: Row[] = [
+    ...msgs.map((m, i) => ({ kind: "msg" as const, at: Date.parse(m.at) || 0, m, i })),
+    ...events.filter((e) => e.from).map((e) => ({ kind: "stage" as const, at: Date.parse(e.at) || 0, e })),
+  ].sort((a, b) => a.at - b.at || (a.kind === "msg" ? -1 : 1));
 
   return (
     <AiryScreen testID="help-room">
@@ -189,22 +204,24 @@ export default function SecretaryHelpCaseScreen() {
         <View style={styles.bar}>
           <IconBtn testID="help-back" icon="chevron-left" label={t("help.back")} onPress={back} />
           <View style={styles.center}>
+            {kase ? (
+              <Text testID="help-room-no" style={[styles.status, { color: c.textMuted }]} numberOfLines={1}>
+                {headNo}
+              </Text>
+            ) : null}
             <Text testID="help-room-title" style={[styles.title, { color: c.text }]} numberOfLines={1}>
               {kase?.subject ?? ""}
             </Text>
-            {kase ? (
-              <View style={styles.statusRow}>
-                <Text style={[styles.status, { color: c.textMuted }]}>{`${caseNoText(kase.caseNo)} ·`}</Text>
-                <Dot status={dot} testID={`help-room-dot-${dot}`} />
-                <Text testID="help-room-status" style={[styles.status, styles.statusT, { color: c.textMuted }]} numberOfLines={1}>
-                  {statusText}
-                </Text>
-              </View>
-            ) : null}
           </View>
           {/* R-S2.14o: ไม่มีสิทธิ์ (403) = ไม่มีเมนู ⋯ (ไม่มีอะไรให้ทำกับเรื่องที่เปิดไม่ได้) */}
           {denied ? <View style={styles.barSpacer} /> : <IconBtn testID="help-menu" icon="more-horizontal" label={t("help.menu")} onPress={() => setMenu(true)} />}
         </View>
+
+        {kase && !gone && !denied ? (
+          <View style={styles.trkWrap}>
+            <StageTracker stage={kase.stage} step={kase.stageStep} testID="help-tracker" />
+          </View>
+        ) : null}
 
         {gone ? (
           <Glass testID="help-gone" style={styles.gone}>
@@ -228,10 +245,18 @@ export default function SecretaryHelpCaseScreen() {
             keyboardShouldPersistTaps="handled"
             onContentSizeChange={() => scroll.current?.scrollToEnd({ animated: false })}
           >
-            {msgs.map((m, i) => (
-              <View key={m.id}>
-                <CaseBubble msg={m} ids={BUBBLE_IDS} nonce={nonce} onOpenLink={openLink} />
-                {i === 0 && kase ? (
+            {timeline.map((row) =>
+              row.kind === "stage" ? (
+                <View key={row.e.id} testID="help-sys-stage" style={styles.sysWrap}>
+                  <Text style={[styles.sysLine, { color: c.textMuted }]}>
+                    {t("help.sysStage", { when: when(row.e.at) })}
+                    <Text style={[styles.sysB, { color: stageColor(c, row.e.to) }]}>{t(stageLabelKey(row.e.to))}</Text>
+                  </Text>
+                </View>
+              ) : (
+              <View key={row.m.id}>
+                <CaseBubble msg={row.m} ids={BUBBLE_IDS} nonce={nonce} onOpenLink={openLink} />
+                {row.i === 0 && kase ? (
                   roomId ? (
                     <Pressable testID="help-room-card" accessibilityRole="button" accessibilityLabel={t("help.openRoom")} onPress={openRoom} style={styles.sysWrap}>
                       <Text style={[styles.sysT, { color: c.textMuted, backgroundColor: c.chip.bg }]}>{opened}</Text>
@@ -243,9 +268,10 @@ export default function SecretaryHelpCaseScreen() {
                   )
                 ) : null}
               </View>
-            ))}
+              ),
+            )}
 
-            {kase?.status === "PENDING" ? (
+            {kase?.stage === "AWAITING_CONFIRM" ? (
               <>
                 <Glass testID="help-resolved-card" pad={{ v: 14, h: 16 }} radius={radii.sugg} style={styles.ask}>
                   <View style={[styles.askIcon, { backgroundColor: c.surface }]}>
@@ -278,7 +304,7 @@ export default function SecretaryHelpCaseScreen() {
                 </View>
               </>
             ) : null}
-            {kase?.status === "RESOLVED" ? (
+            {kase?.stage === "CLOSED" ? (
               <Text testID="help-closed" style={[styles.closed, { color: c.textMuted }]}>
                 {t("help.closedNote")}
               </Text>
@@ -296,7 +322,9 @@ export default function SecretaryHelpCaseScreen() {
         ) : null}
         {gone || denied ? null : (
           <>
-            <AttachedRow testID="help-attached" atts={att.atts} uploading={att.uploading} onRemove={att.remove} />
+            <AttachTray items={att.items} note={att.note} onRemove={att.remove} testID="help-attached" />
+            {/* Lekaa FAB (17 พ.ย.) ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (แบบ team4 จอ 4) — ปุ่มลอยซ่อนเองบนจอนี้ */}
+            <View style={styles.inputRow}>
             <InputBar
               key={focusKey}
               testID="help-input"
@@ -310,16 +338,19 @@ export default function SecretaryHelpCaseScreen() {
                 if (flash?.warn) setFlash(null);
               }}
               onSend={() => void send()}
-              onPlus={() => void att.attach()}
-              plusDisabled={att.uploading || sending || !kase}
-              sendDisabled={(!draft.trim() && att.atts.length === 0) || sending || att.uploading || !kase}
+              onPlus={() => setAttachOpen(true)}
+              plusDisabled={sending || !kase}
+              sendDisabled={(!draft.trim() && att.items.length === 0) || sending || !att.ready || !kase}
               maxLength={4000}
-              style={styles.input}
+              style={styles.flex}
             />
+            <LekaaFabSlot />
+            </View>
           </>
         )}
       </KeyboardAvoidingView>
 
+      <AttachSheet visible={attachOpen} onClose={() => setAttachOpen(false)} onPick={(k) => void att.pick(k)} name={t("help.attachFor")} testID="help-attach-sheet" />
       <Sheet visible={menu} onClose={() => setMenu(false)} testID="help-menu-sheet" top={560}>
         <Text style={[styles.menuH, { color: c.text }]}>{kase ? caseNoText(kase.caseNo) : t("help.menu")}</Text>
         {roomId ? (
@@ -336,7 +367,7 @@ export default function SecretaryHelpCaseScreen() {
             <Text style={[styles.menuT, { color: c.text }]}>{t("help.openRoom")}</Text>
           </Pressable>
         ) : null}
-        {kase && kase.status !== "RESOLVED" ? (
+        {kase && kase.stage !== "CLOSED" ? (
           <Pressable
             testID="help-menu-resolve"
             accessibilityRole="button"
@@ -371,11 +402,12 @@ const styles = StyleSheet.create({
   barSpacer: { width: size.iconBtn, height: size.iconBtn },
   flex: { flex: 1 },
   bar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: spacing.page, paddingTop: 14, paddingBottom: 6 },
-  center: { flex: 1, minWidth: 0, alignItems: "center" },
-  title: { fontSize: T.h - 1, fontWeight: "700", lineHeight: 22 },
-  statusRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3, maxWidth: "100%" },
+  center: { flex: 1, minWidth: 0, alignItems: "flex-start" },
+  title: { fontSize: T.h - 1, fontWeight: "700", lineHeight: 22, marginTop: 1 },
   status: { fontSize: T.cap, lineHeight: 16 },
-  statusT: { flexShrink: 1 },
+  trkWrap: { paddingHorizontal: spacing.page, paddingTop: 6, paddingBottom: 4 },
+  sysLine: { fontSize: T.cap - 0.5, lineHeight: 17, textAlign: "center" },
+  sysB: { fontWeight: "700" },
   page: { paddingHorizontal: spacing.page, paddingBottom: cardGap * 2 },
   sysWrap: { alignItems: "center", marginTop: F.v(22) },
   sysT: { fontSize: T.cap - 0.5, lineHeight: 17, textAlign: "center", paddingVertical: 5, paddingHorizontal: 12, borderRadius: 12, overflow: "hidden", maxWidth: "100%" },
@@ -395,7 +427,7 @@ const styles = StyleSheet.create({
   goneBtn: { marginTop: spacing.sm, height: size.iconBtn, borderRadius: size.iconBtn / 2, paddingHorizontal: spacing.xl, alignItems: "center", justifyContent: "center" },
   goneBtnT: { fontSize: T.sub, fontWeight: "600" },
   flash: { marginHorizontal: spacing.page, marginBottom: spacing.sm, fontSize: 13, lineHeight: 19, borderRadius: radii.k + 2, paddingVertical: 8, paddingHorizontal: 12, overflow: "hidden", textAlign: "center" },
-  input: { marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: LEKAA_SLOT_GAP, marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
   menuH: { fontSize: T.h + 1, fontWeight: "700", lineHeight: 26, marginBottom: 4 },
   menuRow: { flexDirection: "row", alignItems: "center", gap: 12, minHeight: size.iconBtn + 8, borderBottomWidth: StyleSheet.hairlineWidth },
   menuT: { fontSize: T.body - 1 },

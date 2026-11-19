@@ -405,7 +405,7 @@ export function LockScreen(p: {
     >
       {/* หัวจอ */}
       <header className="flex shrink-0 flex-wrap items-center gap-x-4 gap-y-2 border-b px-4 py-3 md:h-[66px] md:flex-nowrap md:px-7">
-        <span className="text-[15px] font-bold tracking-tight">SHARK</span>
+        <span className="text-[15px] font-bold tracking-tight">Lekaa</span>
         <span className="min-w-0 truncate text-[13px] text-[color:var(--color-ink-soft)]">
           {[p.tenantName, p.unitName, p.deviceLabel].filter(Boolean).join(" · ")}
         </span>

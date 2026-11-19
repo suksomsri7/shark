@@ -23,7 +23,7 @@ import { accountToolOps } from "../account-ops";
 import { actorProblem, type AiMemberActor } from "../actor";
 import { contactDataRefusal, findContactData } from "../contact-data";
 import { canForgetMemory, canSeeMemory, memoryAuthorOf, memorySightOf, type ConvCtx } from "../conversation-owner";
-import { canSeeConversationById } from "../conversations";
+import { canActOnApproval } from "../conversations";
 import { kanbanToolOps } from "../kanban-ops";
 import { MEMORY_PENDING, rememberFact } from "../memory";
 import { noteLesson, recordOutcome } from "./learn";
@@ -68,7 +68,7 @@ async function visibleProposal(ctx: ConvCtx, id: string) {
   });
   if (!row) return null;
   if (await isDoorRow(ctx.tenantId, row)) return null; // CRM C3.4 — เหมือน rejectProposal · SEC S3a.1-S2 R-Z13: ห้องเลขา = ทางทั่วไป ◂
-  if (!(await canSeeConversationById(ctx, row.conversationId))) return null; // S1.4 R-K1
+  if (!(await canActOnApproval(ctx, row.conversationId))) return null; // S1.4 R-K1 · Lekaa FAB: ผู้อนุมัติ (OWNER) ตีกลับ/แก้รายการจากกล่องรออนุมัติได้โดยไม่อ่านห้อง
   if (!withinSight(await visibleSinceFor(ctx, row.conversationId), row.createdAt)) return null; // S1.6 R-S1.6a
   return row;
 }

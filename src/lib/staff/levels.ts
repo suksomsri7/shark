@@ -253,6 +253,9 @@ export async function removeStaff(ctx: LevelCtx, membershipId: string): Promise<
   const userId = g.target.userId;
   await prisma.pushDevice.updateMany({ where: { userId, tenantId: ctx.tenantId }, data: { tenantId: null } }); // ถอนไปก่อนหน้าแล้ว (revoke คืนเร็ว) ก็ยังล้าง
   await prisma.aiRoomMember.deleteMany({ where: { tenantId: ctx.tenantId, userId } });
+  // CAL1.2 ▸ ปฏิทินส่วนตัวของคนที่ออกจากร้าน (เตือน/นัด/ค่าตั้ง ของร้านนี้) — สัญญา §2.5/§2.6 ◂
+  const { purgeMemberCalendar } = await import("@/lib/modules/calendar/items");
+  await purgeMemberCalendar({ userId, tenantId: ctx.tenantId });
   const phone = await prisma.userPhone.findUnique({ where: { userId }, select: { phone: true } });
   if (phone) await prisma.staffInvite.deleteMany({ where: { tenantId: ctx.tenantId, phone: phone.phone, acceptedAt: null } });
   return r;

@@ -8,7 +8,7 @@ const schema = z.object({
   APP_ENV: z.enum(["development", "preview", "production"]).default("development"),
   SESSION_SECRET: z.string().min(32),
   RESEND_API_KEY: z.string().default(""),
-  EMAIL_FROM: z.string().default("SHARK <noreply@shark.in.th>"),
+  EMAIL_FROM: z.string().default("Lekaa <noreply@shark.in.th>"),
   STORAGE_PROVIDER: z.enum(["local", "bunny", "vercel-blob"]).default("local"),
   CRON_SECRET: z.string().default("dev-cron-secret"),
   // ── K3.9: อีเมลเข้าบอร์ดงาน (`POST /api/email/inbound`) ──

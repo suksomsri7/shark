@@ -71,7 +71,7 @@ export function permissionSubLabel(key: string): string {
 
 /** หัวข้อย่อยของ "การเชื่อมต่อ" (WO 8.3 · §9.5 — เฟรม g14 เมนูซ้าย) */
 export const CONNECTION_SETTINGS_SUBS: { key: string; label: string; soon?: boolean }[] = [
-  { key: "shark", label: "ระบบใน SHARK" },
+  { key: "shark", label: "ระบบในเลขา" },
   { key: "etax", label: "e-Tax Invoice", soon: true },
   { key: "api", label: "แอปภายนอก/API" },
 ];

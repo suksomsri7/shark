@@ -12,7 +12,7 @@ export default function BusinessLayout() {
   const { c } = useTheme();
   useSecretaryZone(); // R-S2.1b/e: secretary/me ต่อ user.id + badge ของโซน (focus/foreground)
   return (
-    <BusinessSwitcherHost root="/secretary">
+    <BusinessSwitcherHost>
       <ThemedStatusBar />
       <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: c.bg.base }, animation: "slide_from_right" }} />
     </BusinessSwitcherHost>

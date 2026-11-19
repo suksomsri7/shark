@@ -779,7 +779,7 @@ const KIND_SECTIONS: { kind: ApiOpKind; title: string; blurb: string }[] = [
 export function renderEndpointsReference(ops: ApiOp[] = MEMBER_OPS): string {
   const out: string[] = [];
   out.push(
-    "# SHARK Member API — endpoint reference",
+    "# Lekaa Member API — endpoint reference",
     "",
     "Generated from the operation registry by `scripts/gen-member-api-docs.mts` (`--check` covers this file too). Do not edit by hand.",
     "",

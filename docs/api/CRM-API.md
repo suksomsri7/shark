@@ -1,4 +1,4 @@
-# SHARK CRM API
+# Lekaa CRM API
 
 <!-- Generated from the operation registry (src/lib/modules/crm/api/registry.ts) by `pnpm exec tsx scripts/gen-crm-api-docs.mts`. Do not edit by hand: fitness F13.11 fails when this file and the generator disagree. -->
 
@@ -6,7 +6,7 @@ Base URL: `https://shark.in.th/api/v1/crm` · OpenAPI 3.1: `https://shark.in.th/
 
 ## Conventions
 
-REST API for the SHARK CRM module (contacts, companies, deals and pipelines, activities, custom object records, sales teams). One API key works inside one CRM system (AppSystem of type CRM) and sees what its bundle and filters allow.
+REST API for the Lekaa CRM module (contacts, companies, deals and pipelines, activities, custom object records, sales teams). One API key works inside one CRM system (AppSystem of type CRM) and sees what its bundle and filters allow.
 
 Conventions that apply to every operation:
 1. Authentication is `Authorization: Bearer <api key>`. An operation answers 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope`. A key with no `crm.*` scope at all (a key of another module, or an empty legacy key) is refused on every CRM operation.
@@ -1022,7 +1022,7 @@ Archive a team (members and history are kept; it no longer appears in lists). (�
 | `emails.draft` | `POST /emails/draft` | read | `crm.email.read` | Build a draft e-mail for one contact WITHOUT sending anything: the suggested subject, an empty body with the sender's signature, and the shop's templates to choose from. Nothing is written and no message is created - feed the result to POST /emails/send when the person agrees. |
 | `emails.userSettings.get` | `GET /emails/user-settings` | read | `crm.email.settings` | The sender settings of the person this key acts for (from name, from address, reply-to mode, copy-to and the HTML signature). null = never set. |
 | `emails.userSettings.set` | `PUT /emails/user-settings` | write | `crm.email.settings` | Change the sender settings of the person this key acts for: from name, from address, reply-to mode (SHARK, STAFF, SELF, CUSTOM) and address, copy mode (NONE, IN, OUT, BOTH) and address, and the signature (field `signature`, HTML, sanitised before it is stored). |
-| `emails.routing.get` | `GET /emails/routing` | read | `crm.email.settings` | How this shop's CRM sends and receives e-mail: mode (SHARED = the shared SHARK address, DOMAIN = the shop's verified domain), from name and address, reply-to and copy rules, whether the inbox is on and the address customers reply to. The raw inbox key is never returned. |
+| `emails.routing.get` | `GET /emails/routing` | read | `crm.email.settings` | How this shop's CRM sends and receives e-mail: mode (SHARED = the shared Lekaa address, DOMAIN = the shop's verified domain), from name and address, reply-to and copy rules, whether the inbox is on and the address customers reply to. The raw inbox key is never returned. |
 | `emails.routing.set` | `PUT /emails/routing` | write | `crm.email.settings` | Change how the shop sends e-mail: mode (SHARED or DOMAIN - DOMAIN needs a verified domain), from name and address, reply-to mode and address, copy mode and address, whether the CRM inbox is on, open and click tracking, and how many days message bodies are kept. |
 | `emails.inbound.rotate` | `POST /emails/inbound/rotate-key` | **danger** | `crm.email.settings` | Give the CRM inbox a new address. The old address stops accepting mail at once, so anything a customer replies to it is lost - needs confirm: true and a reason. The answer carries the new address; put it in the shop's forwarding rule right away. |
 | `emails.templates.list` | `GET /emails/templates` | read | `crm.email.read` | The shop's e-mail templates (name, subject, body with {{contact.firstName}}-style variables, category and whether they are active). |
@@ -1146,7 +1146,7 @@ Body:
 
 #### `GET /emails/routing` — emails.routing.get
 
-How this shop's CRM sends and receives e-mail: mode (SHARED = the shared SHARK address, DOMAIN = the shop's verified domain), from name and address, reply-to and copy rules, whether the inbox is on and the address customers reply to. The raw inbox key is never returned. (ที่อยู่ส่ง/รับอีเมลของร้าน)
+How this shop's CRM sends and receives e-mail: mode (SHARED = the shared Lekaa address, DOMAIN = the shop's verified domain), from name and address, reply-to and copy rules, whether the inbox is on and the address customers reply to. The raw inbox key is never returned. (ที่อยู่ส่ง/รับอีเมลของร้าน)
 
 #### `PUT /emails/routing` — emails.routing.set
 
@@ -1409,7 +1409,7 @@ Body:
 | Operation | Method and path | Kind | Scope | Summary |
 | --- | --- | --- | --- | --- |
 | `tracking.links.list` | `GET /tracking/links` | read | `crm.tracking.manage` | The shop's tracked short links (newest first): code, destination, name, channel, whether it is on, total clicks and unique clicks. |
-| `tracking.links.create` | `POST /tracking/links` | write | `crm.tracking.manage` | Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. The destination host must be on the shop's allowed destination list (Settings > Tracked links: exact hosts or *.domain), one of the shop's web-tracking domains, or the SHARK host itself; IP addresses, local/internal hosts and URLs with a user name are refused (422 validation). A link whose host is later removed from the list stops redirecting. |
+| `tracking.links.create` | `POST /tracking/links` | write | `crm.tracking.manage` | Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. The destination host must be on the shop's allowed destination list (Settings > Tracked links: exact hosts or *.domain), one of the shop's web-tracking domains, or the Lekaa host itself; IP addresses, local/internal hosts and URLs with a user name are refused (422 validation). A link whose host is later removed from the list stops redirecting. |
 | `tracking.links.stats` | `GET /tracking/links/{id}/stats` | read | `crm.tracking.manage` | Clicks of one tracked link: the totals and the clicks per day (Thai calendar day) over the last `days` days (1-365, 30 by default). |
 
 #### `GET /tracking/links` — tracking.links.list
@@ -1425,7 +1425,7 @@ Query:
 
 #### `POST /tracking/links` — tracking.links.create
 
-Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. The destination host must be on the shop's allowed destination list (Settings > Tracked links: exact hosts or *.domain), one of the shop's web-tracking domains, or the SHARK host itself; IP addresses, local/internal hosts and URLs with a user name are refused (422 validation). A link whose host is later removed from the list stops redirecting. (สร้างลิงก์ติดตาม)
+Make a tracked short link to an http or https address. A code of 6-32 letters, digits, - and _ can be asked for; otherwise one is generated. Clicks are counted per link and, when the visitor is known, land on the contact's timeline. The destination host must be on the shop's allowed destination list (Settings > Tracked links: exact hosts or *.domain), one of the shop's web-tracking domains, or the Lekaa host itself; IP addresses, local/internal hosts and URLs with a user name are refused (422 validation). A link whose host is later removed from the list stops redirecting. (สร้างลิงก์ติดตาม)
 
 Body:
 
@@ -1734,13 +1734,13 @@ Body:
 
 | Operation | Method and path | Kind | Scope | Summary |
 | --- | --- | --- | --- | --- |
-| `integrations.status` | `GET /integrations` | read | `crm.settings.manage` | Connection status of the 24 SHARK systems with this CRM (enabled, last event time and events in the last 7 days per system) and the health of the background jobs. Event types and counts only - never an event payload. |
+| `integrations.status` | `GET /integrations` | read | `crm.settings.manage` | Connection status of the 24 Lekaa systems with this CRM (enabled, last event time and events in the last 7 days per system) and the health of the background jobs. Event types and counts only - never an event payload. |
 | `integrations.targets.get` | `GET /integrations/targets` | read | `crm.settings.manage` | Which member, account, task-board, chat and inventory system this CRM works with: the stored choice, the system used right now and why (chosen, linked unit, only system), and the shop's systems of each kind to choose from. |
 | `integrations.targets.set` | `PUT /integrations/targets` | write | `crm.settings.manage` | Choose the member, account, task-board, chat or inventory system this CRM works with (only the keys sent change; null = back to automatic). Each id must be an active system of that kind in this shop; the account book must already be linked to this CRM. |
 
 #### `GET /integrations` — integrations.status
 
-Connection status of the 24 SHARK systems with this CRM (enabled, last event time and events in the last 7 days per system) and the health of the background jobs. Event types and counts only - never an event payload. (สถานะการเชื่อมต่อ) Uses the report rate bucket.
+Connection status of the 24 Lekaa systems with this CRM (enabled, last event time and events in the last 7 days per system) and the health of the background jobs. Event types and counts only - never an event payload. (สถานะการเชื่อมต่อ) Uses the report rate bucket.
 
 #### `GET /integrations/targets` — integrations.targets.get
 

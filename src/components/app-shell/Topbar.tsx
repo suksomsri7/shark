@@ -130,8 +130,8 @@ export function Topbar({
             type="button"
             data-testid="ai-orb"
             onClick={openAi}
-            aria-label={aiUnread > 0 ? `SHARK AI (${aiUnread} แจ้งเตือนใหม่)` : "SHARK AI"}
-            title="SHARK AI"
+            aria-label={aiUnread > 0 ? `เลขา AI (${aiUnread} แจ้งเตือนใหม่)` : "เลขา AI"}
+            title="เลขา AI"
             className="ai-orb-breathe relative h-9 w-9 shrink-0"
           >
             <span aria-hidden className="ai-orb" />

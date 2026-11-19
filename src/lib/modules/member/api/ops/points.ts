@@ -271,7 +271,7 @@ const reverse = defineMemberOp({
   kind: "write",
   action: "member.point.adjust",
   summary:
-    "Undo every point movement caused by one document, putting points back into the lots they came from. Use this when a sale or booking is cancelled outside SHARK.",
+    "Undo every point movement caused by one document, putting points back into the lots they came from. Use this when a sale or booking is cancelled outside Lekaa.",
   label: "กลับรายการแต้มของเอกสาร",
   input: z
     .object({

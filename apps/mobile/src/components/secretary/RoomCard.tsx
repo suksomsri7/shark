@@ -1,5 +1,6 @@
 // การ์ดห้องงานของรายการ A1 (sec-a.jpg หน้า 1) — กระจก · จุดสถานะ + ชื่องาน (≤ 2 บรรทัด) · เวลา + badge รออนุมัติทางขวา
 // บรรทัดรอง = สถานะ (+ "สั่งโดย <ชื่อ>" เมื่อไม่ใช่เรา · testID sec-home-by) · แถวล่าง = ป้ายระบบ ≤ 3 + "ร่วมกับ …"
+// 17 พ.ย. ▸ งานล่าสุดไม่สำเร็จ (`room.failed`) ⇒ จุดแดง + บรรทัดรอง "ไม่สำเร็จ" (สถานะห้องจากเซิร์ฟเวอร์คงเดิม = OPEN) ◂
 // testID: กรอบ = `testID` (ทุกการ์ด) · ปุ่ม = `<testID>-<roomId>` · เวลาเป็นเวลาไทย (Asia/Bangkok · UTC+7 ไม่มี DST)
 import { Pressable, StyleSheet, View } from "react-native";
 import { Text } from "@/src/components/ui/text";
@@ -49,8 +50,12 @@ export function sysName(t: TFn, module: string): string {
 export function RoomCard({ room, testID, nowMs, onPress }: { room: Room; testID: string; nowMs: number; onPress: () => void }) {
   const { c } = useTheme();
   const t = useT();
-  const line =
-    room.status === "WAITING" && room.pending > 0 ? t("sec.home.line.waitingN", { n: room.pending }) : t(`sec.home.line.${room.status}` as I18nKey);
+  const failed = room.failed && room.status !== "DONE" && room.status !== "RUNNING";
+  const line = failed
+    ? t("sec.home.line.FAILED")
+    : room.status === "WAITING" && room.pending > 0
+      ? t("sec.home.line.waitingN", { n: room.pending })
+      : t(`sec.home.line.${room.status}` as I18nKey);
   const by = room.startedByMe ? null : room.starterName ? t("sec.home.by", { name: room.starterName }) : t("sec.home.byUnknown");
   const named = room.others.filter((o) => o.name);
   const withText =
@@ -69,7 +74,7 @@ export function RoomCard({ room, testID, nowMs, onPress }: { room: Room; testID:
       >
         <View style={styles.top}>
           <View style={styles.dot}>
-            <Dot status={DOT[room.status]} />
+            <Dot status={failed ? "fail" : DOT[room.status]} />
           </View>
           <Text style={[styles.title, { color: c.text }]} numberOfLines={2}>
             {room.title}
@@ -85,7 +90,7 @@ export function RoomCard({ room, testID, nowMs, onPress }: { room: Room; testID:
             <View accessibilityLabel={t("sec.home.unread")} style={[styles.unread, { backgroundColor: c.status.run }]} />
           ) : null}
         </View>
-        <Text style={[styles.line, { color: c.textDim }]} numberOfLines={1}>
+        <Text testID={failed ? "sec-home-failed" : undefined} style={[styles.line, { color: failed ? c.bad.fg : c.textDim }]} numberOfLines={1}>
           {line}
           {/* R-S2.14k: "สั่งโดย <ชื่อ>" ของห้องที่คนอื่นเริ่ม (ขอบเขต "ทุกคนในกิจการ" ของ OWNER / ห้องที่แชร์มา) */}
           {by ? <Text testID="sec-home-by">{` · ${by}`}</Text> : null}

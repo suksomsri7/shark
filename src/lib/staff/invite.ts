@@ -54,7 +54,7 @@ export type InviteFailReason =
   | "accepted"
   | "not_found";
 export type InviteResult =
-  | { ok: true; inviteId: string; link: string; sms: "sent" | "mocked" | "unavailable"; expiresAt: Date }
+  | { ok: true; inviteId: string; link: string; sms: "sent" | "mocked" | "unavailable" | "app"; expiresAt: Date }
   | { ok: false; reason: InviteFailReason; message: string };
 export type InviteRow = {
   id: string;
@@ -204,7 +204,7 @@ async function sendInviteSms(tenantId: string, invitee: string, phone: string, l
   const provider = getSmsProvider();
   if (!provider) return "unavailable";
   const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true } });
-  const text = `SHARK: ${smsSafe(tenant?.name ?? "") || "ร้าน"} เชิญคุณ ${smsSafe(invitee) || "พนักงาน"} เข้าใช้ SHARK · เปิดลิงก์ ${link} (หมดอายุ ${INVITE_TTL_DAYS} วัน)`;
+  const text = `เลขา: ${smsSafe(tenant?.name ?? "") || "ร้าน"} เชิญคุณ ${smsSafe(invitee) || "พนักงาน"} เข้าใช้เลขา · เปิดลิงก์ ${link} (หมดอายุ ${INVITE_TTL_DAYS} วัน)`;
   const r = await sendSms({ to: phone, text });
   if (!r.ok) return "unavailable";
   return provider.name === "mock" ? "mocked" : "sent";
@@ -225,14 +225,18 @@ export async function inviteStaff(
   ctx: InviteCtx,
   input: { name: string; phone: string; role: InviteRole; unitIds?: string[]; permissions?: PermissionMap },
   now: Date = new Date(),
+  // B27 แชททีม ▸ `channel: "app"` = ผู้ใช้ Lekaa เดิม (เบอร์ verified) — ไม่ส่ง SMS (ผู้เรียกแจ้ง push เอง · รับผ่าน pendingInvitesForUser/acceptInvite) ·
+  //   ปริยาย "sms" = พฤติกรรมเดิมทุกไบต์ (เส้นของแอปรุ่นเก่า) ◂
+  opts: { channel?: "sms" | "app" } = {},
 ): Promise<InviteResult> {
+  const viaApp = opts.channel === "app";
   const actor = await loadInviter(ctx.tenantId, ctx.actorUserId);
   if (!actor) return failR("forbidden", MSG.forbidden);
   const checked = await checkGrant(ctx.tenantId, actor, { role: input?.role, unitAccess: input?.unitIds, permissions: input?.permissions });
   const phone = normalizeThaiMobile(input?.phone);
   if (!phone) return failR("bad_phone", MSG.badPhone);
   if (!checked.ok) return failR(checked.reason, checked.message);
-  if (smsBlocked()) return failR("sms_unavailable", MSG.smsUnavailable);
+  if (!viaApp && smsBlocked()) return failR("sms_unavailable", MSG.smsUnavailable);
   const name = String(input?.name ?? "").trim().slice(0, NAME_MAX) || "พนักงานใหม่";
 
   const code = randomCode(INVITE_CODE_LEN, INVITE_ALPHABET);
@@ -273,7 +277,7 @@ export async function inviteStaff(
     throw e;
   }
   const link = `${INVITE_LINK_BASE}${code}`;
-  const sms = await sendInviteSms(ctx.tenantId, name, phone, link);
+  const sms = viaApp ? ("app" as const) : await sendInviteSms(ctx.tenantId, name, phone, link);
   return { ok: true, inviteId: row.id, link, sms, expiresAt };
 }
 

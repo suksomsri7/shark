@@ -13,7 +13,7 @@ import { logOps } from "@/lib/core/ops";
 import type { MembershipCtx } from "@/lib/core/rbac";
 import * as crmSvc from "@/lib/modules/crm";
 import { aiMemberActor } from "../actor";
-import { canConfirmerSeeConversation } from "../conversations";
+import { canConfirmerSeeConversation, canSeeConversationById } from "../conversations";
 import { actorCanConfirmKind } from "../tool-access";
 import { getAccess, kindAllowedByAccess } from "./access";
 import { approvalGate, planApprovalGate } from "./approval-gate";
@@ -35,6 +35,8 @@ export type InboxItem = {
   why?: string;
   /** S1.14 R-S1.14e ▸ แผน: kind ของทุกขั้น (ไม่มี payload) ◂ */
   kinds?: string[];
+  /** Lekaa FAB ▸ ผู้ใช้อ่านห้องนี้ได้ไหม (ผู้สั่ง/สมาชิก) — false = ผู้อนุมัติเห็นแค่รายการ (แอปไม่เปิดห้อง) ◂ */
+  canOpenRoom: boolean;
 };
 
 const TAKE_DEFAULT = 50;
@@ -100,13 +102,15 @@ async function tenantItems(t: Tenancy, userId: string, kind: "proposal" | "plan"
   const actor = { kind: "member" as const, tenantId: t.tenantId, userId, membership: t.m };
 
   // การมองเห็นต่อบทสนทนา (คำนวณครั้งเดียวต่อห้อง)
-  const sight = new Map<string, { visible: boolean; since: { gte: Date } | null }>();
+  const sight = new Map<string, { visible: boolean; since: { gte: Date } | null; readable: boolean }>();
   for (let i = 0; i < convIds.length; i += SIGHT_BATCH) {
     const batch = await Promise.all(
       convIds.slice(i, i + SIGHT_BATCH).map(async (c) => {
         const visible = await canConfirmerSeeConversation(t.tenantId, t.m, userId, c);
         const since = visible && roomOf.has(c) ? await visibleSinceForUser(t.tenantId, t.m.role, userId, c) : null;
-        return [c, { visible, since }] as const;
+        // Lekaa FAB ▸ ผู้อนุมัติเห็นรายการได้ แต่ "อ่านห้อง" ได้เฉพาะผู้สั่ง/สมาชิก (OWNER ไม่อ่านห้องคนอื่นแล้ว)
+        const readable = visible && (await canSeeConversationById({ tenantId: t.tenantId, actor }, c));
+        return [c, { visible, since, readable }] as const;
       }),
     );
     for (const [c, v] of batch) sight.set(c, v);
@@ -145,6 +149,7 @@ async function tenantItems(t: Tenancy, userId: string, kind: "proposal" | "plan"
       createdAt: p.createdAt,
       expiresAt: p.expiresAt,
       canApprove,
+      canOpenRoom: sight.get(p.conversationId)?.readable === true,
       ...(why ? { why } : {}),
     });
   }
@@ -167,6 +172,7 @@ async function tenantItems(t: Tenancy, userId: string, kind: "proposal" | "plan"
       createdAt: p.createdAt,
       expiresAt: p.expiresAt,
       canApprove,
+      canOpenRoom: sight.get(p.conversationId)?.readable === true,
       kinds,
     });
   }

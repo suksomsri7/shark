@@ -1,5 +1,716 @@
 [
  {
+  "testID": "loader-qc",
+  "files": [
+   "app/(app)/secretary/_loader.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-device",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-dev-back",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "IconBtn",
+  "handler": "() => (router.canGoBack() ? router.back() : router.navigate(\"/secretary/calendar/settings\"))",
+  "action": "route back · route /secretary/calendar/settings"
+ },
+ {
+  "testID": "cal-dev-loading",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-dev-unsupported",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-dev-denied",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-dev-settings",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void Linking.openSettings()",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-dev-connect",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void connect()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-dev-export",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "() => void save({ ...prefs, exportEvents: !prefs.exportEvents })",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-dev-target",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setPickTarget((v) => !v)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-dev-disconnect",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setAsk(true)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-dev-ask",
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "ConfirmSheet",
+  "handler": null,
+  "action": "ปุ่มของคอมโพเนนต์ (handler ภายใน)"
+ },
+ {
+  "testID": "cal-dev-cal-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "() => void save({ ...prefs, calendarIds: on ? prefs.calendarIds.filter((y) => y !== x.id) : [...prefs.calendarIds, x.id] })",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-dev-target-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/device.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => { setPickTarget(false); void save({ ...prefs, exportCalendarId: x.id, map: x.id === prefs.exportCalendarId ? prefs.map : {} }); }",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-google",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-g-back",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "IconBtn",
+  "handler": "() => (router.canGoBack() ? router.back() : router.navigate(\"/secretary/calendar/settings\"))",
+  "action": "route back · route /secretary/calendar/settings"
+ },
+ {
+  "testID": "cal-g-note",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-g-error",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-g-loading",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-g-none",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-g-connect",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void connect()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-g-reconnect",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-g-reconnect-btn",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void connect()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-g-ex-",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-g-target",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setPickTarget((v) => !v)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-g-disconnect",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setAsk(true)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-g-ask",
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "ConfirmSheet",
+  "handler": null,
+  "action": "ปุ่มของคอมโพเนนต์ (handler ภายใน)"
+ },
+ {
+  "testID": "cal-g-cal-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "() => void put({ calendars: [{ id: x.id, import: !x.import }] }, (s) => ({ ...s, calendars: (s.calendars ?? []).map((y) => (y.id === x.id ? { ...y, import: !y.import } : y)) }))",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-g-ex-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "() => void put({ exportKinds: next }, (s) => ({ ...s, exportKinds: next }))",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-g-target-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/google.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => { setPickTarget(false); void put({ exportCalendarId: x.id }, (s0) => ({ ...s0, exportCalendarId: x.id, exportCalendarName: x.name })); }",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-screen",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-title",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-month-prev",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setYm((m) => addMonths(m, -1))",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-month-next",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setYm((m) => addMonths(m, 1))",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-settings",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => router.push(\"/secretary/calendar/settings\")",
+  "action": "route /secretary/calendar/settings"
+ },
+ {
+  "testID": "cal-seg",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Segment",
+  "handler": "(k) => { const v = k as View3; setView(v); if (v === \"month\") setYm(ymOf(day)); }",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-note",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-week",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "WeekStrip",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-error",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-loading",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-empty",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-day-list",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-month",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "MonthGrid",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-month-list",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-rem-ask",
+  "files": [
+   "app/(app)/secretary/calendar/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "ConfirmSheet",
+  "handler": null,
+  "action": "ปุ่มของคอมโพเนนต์ (handler ภายใน)"
+ },
+ {
+  "testID": "cal-settings-screen",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-set-back",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "IconBtn",
+  "handler": "() => (router.canGoBack() ? router.back() : router.navigate(\"/secretary/calendar\"))",
+  "action": "route back · route /secretary/calendar"
+ },
+ {
+  "testID": "cal-set-note",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-set-error",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-set-loading",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-set-morning",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "() => void put({ morning: { on: !prefs.morning.on } }, (p) => ({ ...p, morning: { ...p.morning, on: !p.morning.on } }))",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-set-morning-time",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Row",
+  "handler": "() => setPickFor(\"morning\")",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-set-evening",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "() => void put({ evening: { on: !prefs.evening.on } }, (p) => ({ ...p, evening: { ...p.evening, on: !p.evening.on } }))",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-set-evening-time",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Row",
+  "handler": "() => setPickFor(\"evening\")",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-tr-rules",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-set-google",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Row",
+  "handler": "() => router.push(\"/secretary/calendar/google\")",
+  "action": "route /secretary/calendar/google"
+ },
+ {
+  "testID": "cal-set-iphone",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Row",
+  "handler": "() => router.push(\"/secretary/calendar/device\")",
+  "action": "route /secretary/calendar/device"
+ },
+ {
+  "testID": "cal-tr-edit",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-tr-edit-minus",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => editRule && void putRule(editRule, Math.max(0, editRule.minutes - 5))",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-tr-edit-plus",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => editRule && void putRule(editRule, Math.min(240, editRule.minutes + 5))",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-tr-edit-done",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setEditRule(null)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-tr-del",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "ConfirmSheet",
+  "handler": null,
+  "action": "ปุ่มของคอมโพเนนต์ (handler ภายใน)"
+ },
+ {
+  "testID": "cal-set-pick",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-set-pick-done",
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setPickFor(null)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-set-src-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "() => void put({ sources: { [s.key]: !s.on } }, (p) => ({ ...p, sources: p.sources.map((x) => (x.key === s.key ? { ...x, on: !x.on } : x)) }))",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-tr-rule-swipe-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "SwipeRow",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cal-tr-rule-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setEditRule(r)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-tr-edit-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => editRule && void putRule(editRule, m)",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cal-set-hour-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => { if (!pickFor || !prefs) return; const minute = h * 60 + ((prefs[pickFor].minute ?? 0) % 60); setMinute(pickFor, minute); }",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "cal-set-min-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/calendar/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => { if (!pickFor || !prefs) return; const minute = Math.floor(prefs[pickFor].minute / 60) * 60 + m; setMinute(pickFor, minute); }",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
   "testID": "help-room",
   "files": [
    "app/(app)/secretary/help/[caseId].tsx"
@@ -20,7 +731,7 @@
   "action": "route back · route /secretary/help"
  },
  {
-  "testID": "help-room-title",
+  "testID": "help-room-no",
   "files": [
    "app/(app)/secretary/help/[caseId].tsx"
   ],
@@ -30,7 +741,7 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "help-room-status",
+  "testID": "help-room-title",
   "files": [
    "app/(app)/secretary/help/[caseId].tsx"
   ],
@@ -48,6 +759,16 @@
   "tag": "IconBtn",
   "handler": "() => setMenu(true)",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "help-tracker",
+  "files": [
+   "app/(app)/secretary/help/[caseId].tsx"
+  ],
+  "kind": "view",
+  "tag": "StageTracker",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "help-gone",
@@ -86,6 +807,16 @@
   ],
   "kind": "view",
   "tag": "ScrollView",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "help-sys-stage",
+  "files": [
+   "app/(app)/secretary/help/[caseId].tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -183,19 +914,17 @@
  {
   "testID": "help-attached",
   "files": [
-   "app/(app)/secretary/help/[caseId].tsx",
-   "app/(app)/secretary/help/index.tsx"
+   "app/(app)/secretary/help/[caseId].tsx"
   ],
   "kind": "view",
-  "tag": "AttachedRow",
+  "tag": "AttachTray",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "help-input",
   "files": [
-   "app/(app)/secretary/help/[caseId].tsx",
-   "app/(app)/secretary/help/index.tsx"
+   "app/(app)/secretary/help/[caseId].tsx"
   ],
   "kind": "view",
   "tag": "InputBar",
@@ -205,8 +934,7 @@
  {
   "testID": "help-send",
   "files": [
-   "app/(app)/secretary/help/[caseId].tsx",
-   "app/(app)/secretary/help/index.tsx"
+   "app/(app)/secretary/help/[caseId].tsx"
   ],
   "kind": "button",
   "tag": "InputBar",
@@ -221,9 +949,20 @@
   ],
   "kind": "button",
   "tag": "InputBar",
-  "handler": "() => void att.attach()",
-  "action": "handler ในจอ",
+  "handler": "() => setAttachOpen(true)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)",
   "via": "InputBar plusTestID"
+ },
+ {
+  "testID": "help-attach-sheet",
+  "files": [
+   "app/(app)/secretary/help/[caseId].tsx",
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "AttachSheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "help-menu-sheet",
@@ -266,17 +1005,6 @@
   "action": "route /secretary/help"
  },
  {
-  "testID": "help-room-dot-*",
-  "template": true,
-  "files": [
-   "app/(app)/secretary/help/[caseId].tsx"
-  ],
-  "kind": "view",
-  "tag": "Dot",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
   "testID": "help-home",
   "files": [
    "app/(app)/secretary/help/index.tsx"
@@ -297,33 +1025,23 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "help-chip",
+  "testID": "help-search",
   "files": [
    "app/(app)/secretary/help/index.tsx"
   ],
-  "kind": "button",
-  "tag": "Chip",
-  "handler": "() => setCategory((cur) => (cur === x.category ? null : x.category))",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setQ",
+  "action": "handler ในจอ"
  },
  {
-  "testID": "help-room-attached",
-  "files": [
-   "app/(app)/secretary/help/index.tsx"
-  ],
-  "kind": "view",
-  "tag": "Glass",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "help-room-detach",
+  "testID": "help-search-clear",
   "files": [
    "app/(app)/secretary/help/index.tsx"
   ],
   "kind": "button",
   "tag": "Pressable",
-  "handler": "() => setRoomId(null)",
+  "handler": "() => setQ(\"\")",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
@@ -357,16 +1075,6 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "help-empty",
-  "files": [
-   "app/(app)/secretary/help/index.tsx"
-  ],
-  "kind": "view",
-  "tag": "Note",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
   "testID": "help-case-row",
   "files": [
    "app/(app)/secretary/help/index.tsx"
@@ -377,15 +1085,95 @@
   "action": "route /secretary/help/${encodeURIComponent(x.id)}"
  },
  {
-  "testID": "help-home-attach",
+  "testID": "help-new",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "help-room-attached",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Glass",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "help-room-detach",
   "files": [
    "app/(app)/secretary/help/index.tsx"
   ],
   "kind": "button",
-  "tag": "InputBar",
-  "handler": "() => void att.attach()",
-  "action": "handler ในจอ",
-  "via": "InputBar plusTestID"
+  "tag": "Pressable",
+  "handler": "() => setRoomId(null)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "help-new-body",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "(v) => { setDraft(v); if (err) setErr(null); }",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "help-new-camera",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void attach.pick(\"camera\")",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "help-new-attach",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setAttachOpen(true)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "help-new-tray",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "AttachTray",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "help-new-send",
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "PrimaryButton",
+  "handler": "() => void send()",
+  "action": "route /secretary/help/${encodeURIComponent(r.id)} · endpoint secretary/support/cases"
+ },
+ {
+  "testID": "help-filter-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/help/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setFilter(f.key)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
   "testID": "sec-inbox",
@@ -608,22 +1396,12 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "sec-home-new",
+  "testID": "sec-new-lead",
   "files": [
-   "app/(app)/secretary/index.tsx"
-  ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "newTask",
-  "action": "route /secretary/new"
- },
- {
-  "testID": "sec-input",
-  "files": [
-   "app/(app)/secretary/index.tsx"
+   "app/(app)/secretary/new.tsx"
   ],
   "kind": "view",
-  "tag": "InputBar",
+  "tag": "View",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -728,12 +1506,12 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "sec-new-system",
+  "testID": "sec-new-attach",
   "files": [
    "app/(app)/secretary/new.tsx"
   ],
   "kind": "view",
-  "tag": "View",
+  "tag": "AttachTray",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
@@ -755,8 +1533,18 @@
   "kind": "button",
   "tag": "InputBar",
   "handler": "() => void send()",
-  "action": "route /secretary/room/${r.roomId} · endpoint secretary/rooms",
+  "action": "endpoint secretary/rooms",
   "via": "InputBar sendTestID"
+ },
+ {
+  "testID": "sec-new-attach-sheet",
+  "files": [
+   "app/(app)/secretary/new.tsx"
+  ],
+  "kind": "view",
+  "tag": "AttachSheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
   "testID": "sec-new-frequent-*",
@@ -878,297 +1666,6 @@
   "tag": "PrimaryButton",
   "handler": "() => void save()",
   "action": "route /secretary"
- },
- {
-  "testID": "sec-room-bubble",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Bubble",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-steps",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "StepList",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-background",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Glass",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "AiryScreen",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-back",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "IconBtn",
-  "handler": "back",
-  "action": "route back · route /secretary"
- },
- {
-  "testID": "sec-room-title",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-status",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-add-member",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "IconBtn",
-  "handler": "() => setAddOpen(true)",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "sec-room-menu",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "IconBtn",
-  "handler": "() => { setMenuNote(null); setMenu(true); }",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "sec-room-gone",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Glass",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-gone-home",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => router.navigate(\"/secretary\")",
-  "action": "route /secretary"
- },
- {
-  "testID": "sec-room-list",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "ScrollView",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-error",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "LoadError",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-loading",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Loading",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-flash",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-closed",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-input",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "InputBar",
-  "handler": "(v) => { setDraft(v); if (sendErr) setSendErr(null); }",
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-send",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "InputBar",
-  "handler": "() => void send()",
-  "action": "endpoint secretary/rooms/[id]/send",
-  "via": "InputBar sendTestID"
- },
- {
-  "testID": "sec-room-menu-sheet",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Sheet",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-menu-close",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "MenuRow",
-  "handler": "() => { setMenu(false); setConfirmClose(true); }",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "sec-room-menu-members",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "MenuRow",
-  "handler": "() => { setMenu(false); setAddOpen(true); }",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "sec-room-menu-help",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "MenuRow",
-  "handler": "() => { setMenu(false); router.push({ pathname: \"/secretary/help\", params: { roomId: id } }); }",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "sec-room-close-confirm",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Sheet",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-close-confirm-cancel",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => setConfirmClose(false)",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "sec-room-close-confirm-ok",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => void closeRoom()",
-  "action": "endpoint secretary/rooms/[id]/close"
- },
- {
-  "testID": "sec-room-undo-confirm",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Sheet",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-undo-confirm-item",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-room-undo-confirm-cancel",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => setUndoAsk(null)",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "sec-room-undo-confirm-ok",
-  "files": [
-   "app/(app)/secretary/room/[id].tsx"
-  ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => void undo()",
-  "action": "endpoint secretary/log/[id]/undo"
  },
  {
   "testID": "sec-sched",
@@ -1784,6 +2281,76 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "cust-set-ai",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-set-ai-cost",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-set-ai-readonly",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-set-ai-suggest",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "(v) => saveAi({ aiSuggestEnabled: v })",
+  "action": "endpoint inbox/ai-settings"
+ },
+ {
+  "testID": "cust-set-ai-translate",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "(v) => saveAi({ translateEnabled: v })",
+  "action": "endpoint inbox/ai-settings"
+ },
+ {
+  "testID": "cust-set-ai-lang",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-set-ai-note",
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "cust-set-channels",
   "files": [
    "app/(app)/secretary/settings/customers.tsx"
@@ -1964,6 +2531,17 @@
   "action": "endpoint inbox/shift · endpoint inbox/routing"
  },
  {
+  "testID": "cust-set-ai-lang-*",
+  "template": true,
+  "files": [
+   "app/(app)/secretary/settings/customers.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => !on && saveAi({ staffLang: code })",
+  "action": "endpoint inbox/ai-settings"
+ },
+ {
   "testID": "sec-settings",
   "files": [
    "app/(app)/secretary/settings/index.tsx"
@@ -1991,7 +2569,7 @@
   ],
   "kind": "button",
   "tag": "SettingRow",
-  "handler": "() => (r.path ? router.push(r.path) : switcher.open())",
+  "handler": "() => (r.path ? router.push(r.path) : switcher.open(\"switch\"))",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
@@ -2716,6 +3294,16 @@
   "action": "handler ในจอ"
  },
  {
+  "testID": "perm-chat-only",
+  "files": [
+   "app/(app)/secretary/staff/[membershipId].tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "perm-unit",
   "files": [
    "app/(app)/secretary/staff/[membershipId].tsx"
@@ -2847,7 +3435,7 @@
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
-  "testID": "sec-staff",
+  "testID": "team",
   "files": [
    "app/(app)/secretary/staff/index.tsx"
   ],
@@ -2857,37 +3445,7 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "sec-staff-denied",
-  "files": [
-   "app/(app)/secretary/staff/index.tsx"
-  ],
-  "kind": "view",
-  "tag": "Glass",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-staff-error",
-  "files": [
-   "app/(app)/secretary/staff/index.tsx"
-  ],
-  "kind": "view",
-  "tag": "LoadError",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-staff-loading",
-  "files": [
-   "app/(app)/secretary/staff/index.tsx"
-  ],
-  "kind": "view",
-  "tag": "Loading",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-staff-search",
+  "testID": "team-search",
   "files": [
    "app/(app)/secretary/staff/index.tsx"
   ],
@@ -2897,7 +3455,27 @@
   "action": "handler ในจอ"
  },
  {
-  "testID": "sec-staff-note",
+  "testID": "team-plus",
+  "files": [
+   "app/(app)/secretary/staff/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "onPlus",
+  "action": "route /secretary/team/new-group"
+ },
+ {
+  "testID": "team-received",
+  "files": [
+   "app/(app)/secretary/staff/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "ReceivedInvites",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-note",
   "files": [
    "app/(app)/secretary/staff/index.tsx"
   ],
@@ -2907,99 +3485,9 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "sec-staff-empty",
+  "testID": "team-error",
   "files": [
    "app/(app)/secretary/staff/index.tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-staff-invite",
-  "files": [
-   "app/(app)/secretary/staff/index.tsx"
-  ],
-  "kind": "button",
-  "tag": "PrimaryButton",
-  "handler": "() => router.push(\"/secretary/staff/invite\")",
-  "action": "route /secretary/staff/invite"
- },
- {
-  "testID": "sec-staff-cancel-sheet",
-  "files": [
-   "app/(app)/secretary/staff/index.tsx"
-  ],
-  "kind": "view",
-  "tag": "Sheet",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "sec-staff-cancel-sheet-no",
-  "files": [
-   "app/(app)/secretary/staff/index.tsx"
-  ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => setCancelling(null)",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "sec-staff-cancel-sheet-ok",
-  "files": [
-   "app/(app)/secretary/staff/index.tsx"
-  ],
-  "kind": "button",
-  "tag": "Pressable",
-  "handler": "() => void cancel()",
-  "action": "endpoint secretary/staff/invites/[id]"
- },
- {
-  "testID": "inv",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "AiryScreen",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-top",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "TopBar",
-  "handler": "close",
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-close",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "button",
-  "tag": "IconBtn",
-  "handler": "close",
-  "action": "route back · route /secretary/staff"
- },
- {
-  "testID": "inv-denied",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "Glass",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-error",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
   ],
   "kind": "view",
   "tag": "LoadError",
@@ -3007,49 +3495,59 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "inv-name",
+  "testID": "team-loading",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "input",
-  "tag": "TextInput",
-  "handler": "setName",
-  "action": "handler ในจอ"
- },
- {
-  "testID": "inv-phone",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "input",
-  "tag": "TextInput",
-  "handler": "(v) => setPhone(formatThaiMobileInput(v))",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
- },
- {
-  "testID": "inv-phone-error",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "view",
-  "tag": "Note",
+  "tag": "Loading",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "inv-role",
+  "testID": "team-row",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "button",
-  "tag": "Segment",
-  "handler": "(k) => setInviteRole(k === \"MANAGER\" ? \"MANAGER\" : \"STAFF\")",
+  "tag": "TeamRow",
+  "handler": "() => router.push(`/secretary/team/${r.th.id}`)",
+  "action": "route /secretary/team/${r.th.id}"
+ },
+ {
+  "testID": "team-person",
+  "files": [
+   "app/(app)/secretary/staff/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "TeamRow",
+  "handler": "busy ? undefined : () => void openPerson(r.p)",
+  "action": "route /secretary/team/${p.directThreadId} · route /secretary/team/${r.threadId}"
+ },
+ {
+  "testID": "team-pending",
+  "files": [
+   "app/(app)/secretary/staff/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "TeamRow",
+  "handler": "manage ? () => setCancelling(r.inv) : undefined",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
-  "testID": "inv-unit",
+  "testID": "team-empty",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-plus-menu",
+  "files": [
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "view",
   "tag": "View",
@@ -3057,109 +3555,39 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "inv-unit-all",
+  "testID": "team-plus-menu-dim",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "button",
-  "tag": "Chip",
-  "handler": "() => toggleUnit(ALL)",
+  "tag": "Pressable",
+  "handler": "() => setPlusMenu(false)",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
-  "testID": "inv-unit-pick",
+  "testID": "team-menu-add",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-manager-full",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "Note",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-chat",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "button",
-  "tag": "ChatLevelPicker",
-  "handler": "setChat",
+  "tag": "Pressable",
+  "handler": "() => go(\"/secretary/team/add\")",
   "action": "handler ในจอ"
  },
  {
-  "testID": "inv-level",
+  "testID": "team-menu-group",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "button",
-  "tag": "LevelGrid",
-  "handler": "(m, l) => setLevels((x) => ({ ...x, [m]: l }))",
-  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+  "tag": "Pressable",
+  "handler": "() => go(\"/secretary/team/new-group\")",
+  "action": "handler ในจอ"
  },
  {
-  "testID": "inv-sms-preview",
+  "testID": "team-cancel-sheet",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "Glass",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-note",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "Note",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-result",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "Glass",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-result-link",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
-  "testID": "inv-submit",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
-  ],
-  "kind": "button",
-  "tag": "PrimaryButton",
-  "handler": "() => void submit()",
-  "action": "endpoint secretary/staff/invite"
- },
- {
-  "testID": "inv-cancel-sheet",
-  "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "view",
   "tag": "Sheet",
@@ -3167,9 +3595,9 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "inv-cancel-sheet-no",
+  "testID": "team-cancel-no",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "button",
   "tag": "Pressable",
@@ -3177,9 +3605,9 @@
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
-  "testID": "inv-cancel-sheet-ok",
+  "testID": "team-cancel-ok",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/staff/index.tsx"
   ],
   "kind": "button",
   "tag": "Pressable",
@@ -3187,15 +3615,716 @@
   "action": "endpoint secretary/staff/invites/[id]"
  },
  {
-  "testID": "inv-unit-*",
-  "template": true,
+  "testID": "team-room",
   "files": [
-   "app/(app)/secretary/staff/invite.tsx"
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-back",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
   ],
   "kind": "button",
-  "tag": "Chip",
-  "handler": "() => toggleUnit(u.id)",
+  "tag": "IconBtn",
+  "handler": "back",
+  "action": "route back · route /secretary/staff"
+ },
+ {
+  "testID": "team-room-head",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => thread && setMenu(true)",
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-room-name",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-sub",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-gear",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "IconBtn",
+  "handler": "() => router.push(gearTo)",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-room-gone",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Glass",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-gone-back",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => router.navigate(\"/secretary/staff\")",
+  "action": "route /secretary/staff"
+ },
+ {
+  "testID": "team-thread",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "ScrollView",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-error",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-loading",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-msg",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "TeamBubble",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-flash",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-attached",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "AttachTray",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-input",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "InputBar",
+  "handler": "(v) => { setDraft(v); if (flash) setFlash(null); }",
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-send",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => void send()",
+  "action": "handler ในจอ",
+  "via": "InputBar sendTestID"
+ },
+ {
+  "testID": "team-attach",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "InputBar",
+  "handler": "() => setAttachOpen(true)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)",
+  "via": "InputBar plusTestID"
+ },
+ {
+  "testID": "team-attach-sheet",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "AttachSheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-menu",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-room-mute",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void toggleMute()",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-msg-menu",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-msg-delete",
+  "files": [
+   "app/(app)/secretary/team/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void del()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-group-settings",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-top",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "TopBar",
+  "handler": "back",
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-back",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "IconBtn",
+  "handler": "back",
+  "action": "route back · route /secretary/team/${id}"
+ },
+ {
+  "testID": "team-gs-gone",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Glass",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-gone-back",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "PrimaryButton",
+  "handler": "() => router.navigate(\"/secretary/staff\")",
+  "action": "route /secretary/staff"
+ },
+ {
+  "testID": "team-gs-error",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-loading",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-photo",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "GroupPhotoButton",
+  "handler": "admin ? pickPhoto : undefined",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-gs-name",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setName",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-gs-name-ro",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-note",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-add",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void openAdd()",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-gs-member",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "MemberRow",
+  "handler": "() => setActOn(m)",
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-more",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setActOn(m)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-gs-mute",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "toggleMute",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-gs-leave",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setLeaving(true)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-gs-member-menu",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-admin",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void doAdmin()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-gs-remove",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void doRemove()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-gs-leave-sheet",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-leave-no",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => setLeaving(false)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-gs-leave-ok",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void doLeave()",
+  "action": "route /secretary/staff"
+ },
+ {
+  "testID": "team-gs-add-sheet",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-gs-add-person",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "MemberRow",
+  "handler": "() => setAddPick((cur) => { const next = new Set(cur); if (next.has(p.userId)) next.delete(p.userId); else next.add(p.userId); return next; })",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-gs-add-ok",
+  "files": [
+   "app/(app)/secretary/team/[id]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "PrimaryButton",
+  "handler": "() => void confirmAdd()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-add",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-add-top",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "view",
+  "tag": "TopBar",
+  "handler": "close",
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-add-close",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "button",
+  "tag": "IconBtn",
+  "handler": "close",
+  "action": "route back · route /secretary/staff"
+ },
+ {
+  "testID": "team-add-phone",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "(v) => setPhone(formatThaiMobileInput(v))",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-add-contacts",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void pickContact()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-add-found",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-add-notfound",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-add-share",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "share",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-add-note",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-add-submit",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "button",
+  "tag": "PrimaryButton",
+  "handler": "() => void add()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-add-phones",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-add-phone-choice",
+  "files": [
+   "app/(app)/secretary/team/add.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => applyPhone(ph.local)",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-new-group",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-new-group-top",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "view",
+  "tag": "TopBar",
+  "handler": "close",
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-new-group-close",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "button",
+  "tag": "IconBtn",
+  "handler": "close",
+  "action": "route back · route /secretary/staff"
+ },
+ {
+  "testID": "team-new-group-photo",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "button",
+  "tag": "GroupPhotoButton",
+  "handler": "() => void photo.pick()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-new-group-name",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setName",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "team-new-group-photo-note",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-new-group-error",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-new-group-loading",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-new-group-person",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "button",
+  "tag": "MemberRow",
+  "handler": "() => toggle(p.userId)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "team-new-group-pending",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "view",
+  "tag": "MemberRow",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-new-group-note",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "team-new-group-submit",
+  "files": [
+   "app/(app)/secretary/team/new-group.tsx"
+  ],
+  "kind": "button",
+  "tag": "PrimaryButton",
+  "handler": "() => void save()",
+  "action": "route /secretary/team/${r.threadId}"
  },
  {
   "testID": "cust-room",
@@ -3509,6 +4638,16 @@
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
+  "testID": "cust-translate-send",
+  "files": [
+   "app/(app)/customers/[id]/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void translateDraft()",
+  "action": "endpoint inbox/conversations/[id]/translate-draft"
+ },
+ {
   "testID": "cust-input",
   "files": [
    "app/(app)/customers/[id]/index.tsx"
@@ -3551,14 +4690,14 @@
   "action": "สถานะจอ (เปิด/ปิด/เลือก)"
  },
  {
-  "testID": "cust-translate-send",
+  "testID": "cust-draft-ask",
   "files": [
    "app/(app)/customers/[id]/index.tsx"
   ],
   "kind": "button",
   "tag": "Pressable",
-  "handler": "() => void translateDraft()",
-  "action": "endpoint inbox/conversations/[id]/translate-draft"
+  "handler": "onSuggest",
+  "action": "handler ในจอ"
  },
  {
   "testID": "cust-info-note",
@@ -3961,16 +5100,6 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
-  "testID": "cust-counts",
-  "files": [
-   "app/(app)/customers/index.tsx"
-  ],
-  "kind": "view",
-  "tag": "Text",
-  "handler": null,
-  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
- },
- {
   "testID": "cust-system-chip",
   "files": [
    "app/(app)/customers/index.tsx"
@@ -4041,6 +5170,16 @@
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },
  {
+  "testID": "cust-row-swipe",
+  "files": [
+   "app/(app)/customers/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "SwipeRow",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
   "testID": "cust-row-waiting",
   "files": [
    "app/(app)/customers/index.tsx"
@@ -4059,6 +5198,509 @@
   "tag": "Pressable",
   "handler": "() => void loadMore()",
   "action": "endpoint inbox/conversations"
+ },
+ {
+  "testID": "cust-del-sheet",
+  "files": [
+   "app/(app)/customers/index.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "cust-del-sheet-no",
+  "files": [
+   "app/(app)/customers/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "cancelDelete",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "cust-del-sheet-ok",
+  "files": [
+   "app/(app)/customers/index.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void confirmDelete()",
+  "action": "endpoint inbox/conversations/[id]"
+ },
+ {
+  "testID": "biz-set",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-top",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "SettingsTop",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-denied",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-loading",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Loading",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-error",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "LoadError",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-logo",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => openAction(\"photo\")",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-photo-link",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => openAction(\"photo\")",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-name",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Text",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-pending-delete",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-undelete",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => openAction(\"undelete\")",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-note",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-row-basic",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "() => open(\"basic\")",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-row-docs",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "docs && canTax ? () => open(\"docs\") : undefined",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-row-hours",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "profile.hours.available ? () => open(\"hours\") : undefined",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-row-systems",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "openSystems",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-row-cal-booking-export",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "SettingRow",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-cal-booking-export-toggle",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Toggle",
+  "handler": "(v) => void toggleCalPolicy(v)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-danger-label",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "SectionLabel",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-danger",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "View",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-row-export",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "() => void doExport()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-row-delete",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "() => openAction(\"delete\")",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-sheet",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-in-name",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setName",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-in-address",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setAddress",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-in-phone",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setPhone",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-in-tax",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setTaxId",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-tax-error",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-branch",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Segment",
+  "handler": "(k) => setHq(k === \"hq\")",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-in-branch",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setBranchCode",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-in-branch-name",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setBranchName",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-hours-error",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-sheet-note",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-save",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "PrimaryButton",
+  "handler": "() => void save()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-action",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Sheet",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-photo-camera",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void pickLogo(\"camera\")",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-photo-library",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void pickLogo(\"library\")",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-photo-initials",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void removeLogo()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-del-name",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "setConfirmName",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-del-note",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-del-confirm",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "() => void doDelete()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-del-keep",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "closeAction",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-undel-note",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "view",
+  "tag": "Note",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "biz-set-undel-confirm",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "PrimaryButton",
+  "handler": "() => void doUndelete()",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-undel-keep",
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Pressable",
+  "handler": "closeAction",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-row-*",
+  "template": true,
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "SettingRow",
+  "handler": "() => void goActive(r.path)",
+  "action": "handler ในจอ"
+ },
+ {
+  "testID": "biz-set-type-*",
+  "template": true,
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "button",
+  "tag": "Chip",
+  "handler": "() => setType(k)",
+  "action": "สถานะจอ (เปิด/ปิด/เลือก)"
+ },
+ {
+  "testID": "biz-set-day-*",
+  "template": true,
+  "files": [
+   "app/(app)/business/[tenantId]/settings.tsx"
+  ],
+  "kind": "input",
+  "tag": "TextInput",
+  "handler": "(v) => set({ open: v })",
+  "action": "handler ในจอ"
  },
  {
   "testID": "biz-new",
@@ -4199,6 +5841,16 @@
   ],
   "kind": "view",
   "tag": "AiryScreen",
+  "handler": null,
+  "action": "แสดงผล (ไม่ใช่ปุ่ม)"
+ },
+ {
+  "testID": "login-logo",
+  "files": [
+   "app/login.tsx"
+  ],
+  "kind": "view",
+  "tag": "LekaaLoader",
   "handler": null,
   "action": "แสดงผล (ไม่ใช่ปุ่ม)"
  },

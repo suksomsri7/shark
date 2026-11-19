@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "คู่มือนักพัฒนา — SHARK API",
-  description: "REST API สำหรับดึงข้อมูลร้านของคุณจาก SHARK แบบอ่านอย่างเดียว",
+  title: "คู่มือนักพัฒนา — Lekaa API",
+  description: "REST API สำหรับดึงข้อมูลร้านของคุณจากเลขาแบบอ่านอย่างเดียว",
 };
 
 const BASE = "https://shark.in.th";
@@ -77,9 +77,9 @@ export default function DevelopersPage() {
   return (
     <main className="mx-auto flex w-full max-w-3xl flex-col gap-8 px-4 py-10">
       <header className="flex flex-col gap-2">
-        <h1 className="text-2xl font-bold">คู่มือนักพัฒนา — SHARK API</h1>
+        <h1 className="text-2xl font-bold">คู่มือนักพัฒนา — Lekaa API</h1>
         <p className="text-sm text-neutral-600">
-          REST API สำหรับดึงข้อมูลร้านของคุณจาก SHARK แบบ <strong>อ่านอย่างเดียว</strong> (read-only)
+          REST API สำหรับดึงข้อมูลร้านของคุณจากเลขาแบบ <strong>อ่านอย่างเดียว</strong> (read-only)
           เหมาะสำหรับเชื่อมกับระบบบัญชี เว็บไซต์ หรือแอปภายในองค์กร ข้อมูลทุกอย่างเป็น JSON
         </p>
       </header>
@@ -137,7 +137,7 @@ export default function DevelopersPage() {
         <p className="text-sm text-neutral-700">
           ถ้าร้านของคุณเปิดใช้ระบบขายหน้าร้าน (POS) มี API แยกต่างหากที่ขายได้จริงด้วยราคาเดียวกับหน้าขาย: คิดราคาตะกร้า ขาย ตัดสต็อก ลงบัญชี
           ออกใบเสร็จ คืนเงิน ยกเลิกบิล รับออเดอร์จากแอปหรือแพลตฟอร์มเดลิเวอรี แจ้งของหมด และดึงรายงานทุกชนิด (ส่งออก CSV ได้) คีย์ของโมดูลนี้มี{" "}
-          <strong>scope</strong> ของตัวเอง (เลือกได้ 3 ชุด: อ่านอย่างเดียว / งานหน้าเคาน์เตอร์ / ผู้ดูแล ที่หน้าขาย › ตั้งค่า › การเชื่อมต่อระบบ SHARK)
+          <strong>scope</strong> ของตัวเอง (เลือกได้ 3 ชุด: อ่านอย่างเดียว / งานหน้าเคาน์เตอร์ / ผู้ดูแล ที่หน้าขาย › ตั้งค่า › การเชื่อมต่อระบบเลขา)
         </p>
         <p className="text-sm">
           <a className="font-medium text-emerald-700 underline" href="/developers/pos">

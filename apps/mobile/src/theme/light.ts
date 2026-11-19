@@ -49,6 +49,7 @@ export const light = {
   iconDim: "#8e8e93", // .lt svg (ลูกศรลง)
   accent: "#16161c",
   onAccent: "#ffffff",
+  danger: { bg: "#e5484d", fg: "#ffffff" }, // ปุ่มลบแดง (ปัดซ้าย "ลบแชท" K1 + ปุ่มยืนยันลบ · mock secretary-1114 จอ ③ · 14 พ.ย.)
   accentShadow: "0px 14px 30px rgba(20,20,40,0.22)", // .btn1
   tabShadow: "0px 6px 14px rgba(20,20,40,0.18)", // .tabs .a
   status: {
@@ -58,6 +59,9 @@ export const light = {
     waitHalo: "rgba(255,176,32,0.22)",
     done: "#c5c8d4",
     doneHalo: "rgba(0,0,0,0)",
+    // 17 พ.ย. ▸ งานที่ล้ม (ห้อง/การ์ด "ไม่สำเร็จ")
+    fail: "#e5484d",
+    failHalo: "rgba(229,72,77,0.20)",
   },
   // สีระบบ = KC ใน gen_sec.py
   sys: {
@@ -71,6 +75,13 @@ export const light = {
     dorm: "#6a4fd8",
   },
   onSys: "#ffffff",
+  // ปฏิทินเลขา (CAL2.x · ColorKey ของสัญญา §4.1): สีเดียวกับตาราง "เปิดระบบ" ในชีตกิจการ (SYS_LOOK ของ BusinessSwitcherSheet: QUEUE/ACCOUNT/KANBAN/CRM/HR/HOTEL/TICKET)
+  //   + remind/personal/google/device ตามภาพ cal-*.png · มืด = hue เดิมยกความสว่าง (dsys ของ gen.py)
+  cal: { booking: "#3a7bd5", account: "#1e7a8f", kanban: "#b8860b", crm: "#c2456b", hr: "#8a5cd1", dorm: "#6a4fd8", ticket: "#c2456b", trips: "#178a99", remind: "#e07a1f", personal: "#2f9e5b", google: "#4285f4", device: "#ff3b30" },
+  calTagAlpha: "1f", // พื้นป้ายระบบ = สีระบบ + alpha (แบบ 12%)
+  // help-cases (15 พ.ย. · แบบ /root/mockups/secretary-help/help.html): สีขั้นของเคส · ร่องแถบความคืบหน้า · ตัวเลขยังไม่อ่าน (แดง) · วงรอบขั้นปัจจุบัน
+  helpStage: { RECEIVED: "#5a64d8", CHECKING: "#3a7bd5", FIXING: "#e07a1f", NEED_INFO: "#c2456b", AWAITING_CONFIRM: "#2f9e5b", CLOSED: "#8e8e9c", track: "#e4e4ea", unread: "#e5484d", onStage: "#ffffff", haloAlpha: "33" },
+  team: { tagBg: "rgba(58,123,213,0.1)", tagFg: "#3a6fc4", unreadBg: "#2f9e5b", unreadFg: "#ffffff", read: "#8e8e93", pendingAlpha: 0.55 }, // B27 แชททีม (team2.png): ป้ายบทบาทฟ้า · ตัวเลขยังไม่อ่านเขียว · แถวรอรับคำเชิญจาง
   sysTag: { bg: "rgba(150,150,185,0.14)", fg: "#55556a" }, // .sysp
   // สีโซนของไอคอนซ้ายบนตอน active (มติ 16) — เลขา = accent · ลูกค้า = เขียว · พนักงาน = คราม (เหมือนกันทั้งสองโหมด)
   zone: {
@@ -96,6 +107,15 @@ export const light = {
   btnOff: { bg: "rgba(150,150,185,0.25)", fg: "#8e8e93" }, // .btn1.off
   dim: "rgba(40,40,60,0.28)",
   sheet: { from: "rgba(255,255,255,0.95)", to: "rgba(248,248,253,0.9)", grab: "#d1d1d6" },
+  // Lekaa FAB (15 พ.ย. · แบบ fab6): ปุ่มลอยวงกลมขาว + วงแหวน/เงาม่วงอ่อน · ชิป 📍 อ้างอิงหน้า
+  lekaa: { fabBg: "#ffffff", ring: "rgba(124,102,234,0.15)", shadow: "0px 8px 24px rgba(124,102,234,0.35)", refBg: "#eef2ff", refFg: "#2a3a8f", logoRing: "0px 2px 8px rgba(124,102,234,0.25)" },
+  // แถบบน topbar2 (17 พ.ย. · เจ้าของอนุมัติ): สีของแต่ละระบบตามรหัส (fg = ไอคอนบนแถบ/ในแผ่น · bg = พื้นช่องในแผ่น) — ค่าจาก gen.py ของแบบ · รหัสที่แบบไม่มี = สี SYS_LOOK เดิม + พื้นจาง 12%
+  // 17 พ.ย. (เจ้าของสั่งจากเครื่องจริง: ทีม/ปฏิทิน จัดลำดับได้ · เว้นที่เหนือแถวแรก): TEAM/CALENDAR = ช่องในตัวของแถบบน (สีเข้มเรียบแบบปุ่มโซนเดิม · แบบ topbar2 stroke #1b1b20)
+  navSys: { HOME: { fg: "#44444c", bg: "#ededf0" }, TEAM: { fg: "#12a0c4", bg: "#e2f4f9" }, CALENDAR: { fg: "#e2622b", bg: "#fdebe3" }, QUEUE: { fg: "#3b6fd9", bg: "#e8eefc" }, HR: { fg: "#8a5bd6", bg: "#f0eafb" }, CHAT: { fg: "#2f9e5e", bg: "#e6f4ec" }, ACCOUNT: { fg: "#1f8a9a", bg: "#e3f1f3" }, INVENTORY: { fg: "#e08a2b", bg: "#fcefe0" }, CRM: { fg: "#c2416b", bg: "#fae6ec" }, KANBAN: { fg: "#c9951a", bg: "#faf1dc" }, MEMBER: { fg: "#5a5fd6", bg: "#e9eafb" }, COUPON: { fg: "#e5484d", bg: "#fde8e8" }, REWARD: { fg: "#d6458f", bg: "#fbe6f1" }, KB: { fg: "#2a6fd6", bg: "#e5eefb" }, PAGES: { fg: "#66666e", bg: "#ededf0" }, HOTEL: { fg: "#6a4fd8", bg: "#edeafa" }, RESTAURANT: { fg: "#e07a1f", bg: "#fbefe4" }, SHOP: { fg: "#d9488f", bg: "#fae9f2" }, BOOKING: { fg: "#178a99", bg: "#e3f1f3" }, TICKET: { fg: "#c2456b", bg: "#f8e9ed" }, POINT: { fg: "#e08a00", bg: "#fbf1e0" }, MEETING: { fg: "#3a7bd5", bg: "#e7effa" }, POS: { fg: "#e07a1f", bg: "#fbefe4" }, MARKETING: { fg: "#e5484d", bg: "#fce9ea" }, RENTAL: { fg: "#2f9e5b", bg: "#e6f3eb" }, SCHOOL: { fg: "#5b5fd6", bg: "#ebecfa" }, CLINIC: { fg: "#e5484d", bg: "#fce9ea" }, other: { fg: "#666666", bg: "#ededed" } },
+  // ไอคอนกิจการวงกลม (BizIcon · bizsheet4): ชุดสีพื้นเมื่อร้านไม่ได้ตั้งสีแบรนด์ (เลือกตามชื่อ คงที่ต่อร้าน) · ตัวอักษร · เงาลูกศรเล็ก — ย้ายจาก SecTopBar (17 พ.ย. · ห้ามสีฝังในคอมโพเนนต์)
+  biz: { palette: ["#1E7A8F", "#E07A1F", "#5B5FD6", "#2F9E5B", "#C2456B", "#8A5CD1", "#B8860B", "#3A7BD5"], fg: "#FFFFFF", chevShadow: "#000000" },
+  // แผ่นดึงลงจากแถบบน (topbar2 จอ 2–4): พื้นแผ่น · เงา · กรอบเส้นประของช่องที่จะวาง · เงาไอคอนที่ยก · ลิงก์ "จัดลำดับ" · ขอบจางของแถบเลื่อน · ปุ่มกลมบนแถบ
+  topPanel: { panelFade: "rgba(251,251,253,0)", bg: "#fbfbfd", shadow: "0px 18px 40px rgba(0,0,0,0.2)", slot: "#b9b9c6", lift: "0px 14px 26px rgba(0,0,0,0.28)", link: "#5a5fd6", fade: "rgba(251,251,253,0)", fadeTo: "#fbfbfd", btn: "#ffffff", btnShadow: "0px 2px 8px rgba(0,0,0,0.07)" },
   divider: "rgba(150,150,185,0.2)",
   // ลูกแก้ว .ao.o1
   orb: {

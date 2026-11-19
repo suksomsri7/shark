@@ -28,7 +28,7 @@ export default async function BrandingSettingsPage() {
     <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
       <PageHeader
         title="ตราสินค้าและธีมกิจการ"
-        desc="โลโก้ สีหลัก และแถบเมนูซ้าย — ใช้ทั้งในระบบ SHARK · แอปมือถือ · หน้าร้านออนไลน์ · ใบเสนอราคา/อีเมล"
+        desc="โลโก้ สีหลัก และแถบเมนูซ้าย — ใช้ทั้งในระบบเลขา · แอปมือถือ · หน้าร้านออนไลน์ · ใบเสนอราคา/อีเมล"
       />
       {!canWrite && (
         <p className="rounded-lg border border-dashed p-3 text-sm text-[color:var(--color-muted)]">

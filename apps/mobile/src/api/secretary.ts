@@ -2,7 +2,9 @@
 // ทุกเส้นของ /api/mobile/secretary/* อยู่ในไฟล์นี้ไฟล์เดียว (ตาราง PATH) — ชื่อเส้นเปลี่ยนหลัง S1.14 = แก้ PATH ที่เดียว
 // จอเรียกด้วยชื่อเส้น เช่น secGet("secretary/rooms") · DTO ที่ยังไม่นิ่ง (S1.14 ยังไม่ merge) ผ่านตัว normalize* ที่รับได้หลายรูป
 // ทุกเส้นพลาดได้ — จอใช้ค่าปริยาย/สถานะของตัวเอง (isDenied / startErrorKind)
-import { useCallback, useEffect, useSyncExternalStore } from "react";
+// 14 พ.ย. ▸ ไฟล์แนบของคำสั่ง: secUpload("secretary/attachments") · AttachRef ใน body ของ POST rooms / rooms/[id]/send · MsgRow.attachments (+ pending ของฟองที่กำลังส่ง)
+//   รูปในฟองโหลดผ่านเส้นแอปที่ตรวจสิทธิ์ห้อง (secFileSource + useSecAuthHeaders — ไฟล์ส่วนตัว ไม่มี URL CDN) ◂
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 import { AppState } from "react-native";
 import { useFocusEffect } from "expo-router";
 import { api, ApiError, BASE_URL } from "@/src/api/client";
@@ -10,6 +12,7 @@ import { getTenantId, getToken } from "@/src/lib/session";
 import { useAuth } from "@/src/lib/auth-context";
 import { langFrom, setLang } from "@/src/i18n";
 import { resetInboxState } from "@/src/api/inbox";
+import type { CalItemDto } from "@/src/api/calendar";
 
 // ───────── ตารางเส้น (ชื่อที่จอใช้ → path จริง) ─────────
 const PATH = {
@@ -41,6 +44,12 @@ const PATH = {
   // S2.15 ช่วยเหลือ H1/H2 (S1.14 · R-K12 · R-S1.14c) — เรื่องเป็นของกิจการ (ส่ง x-tenant-id)
   "secretary/support/cases": "/api/mobile/secretary/support/cases",
   "secretary/support/upload": "/api/mobile/secretary/support/upload",
+  // help-cases (15 พ.ย.) ไฟล์แนบเรื่องช่วยเหลือ (รูป · PDF · Excel · CSV · ส่วนตัว) — multipart `file` → {id,name,mimeType,size,kind}
+  "secretary/support/attachments": "/api/mobile/secretary/support/attachments",
+  // 14 พ.ย. ไฟล์แนบของคำสั่ง (ปุ่ม + · รูปภาพ/ถ่ายรูป/ไฟล์) — multipart `file` → {id,name,mimeType,size,kind}
+  "secretary/attachments": "/api/mobile/secretary/attachments",
+  // B27 แชททีม ▸ ไฟล์แนบของแชททีม (สมาชิก "คุยอย่างเดียว" แนบได้) — multipart `file` → {id,name,mimeType,size,kind} ◂
+  "secretary/team/attachments": "/api/mobile/secretary/team/attachments",
   // S2.21/S2.22 กิจการ · เชิญพนักงาน · บัญชีของฉัน (ชื่อตาม S1.14 docs/api/SECRETARY-API.md)
   "secretary/tenants/create": "/api/mobile/secretary/tenants/create",
   "secretary/staff/invite": "/api/mobile/secretary/staff/invite",
@@ -53,6 +62,16 @@ const PATH = {
   "secretary/account/delete/preview": "/api/mobile/secretary/account/delete/preview",
   // เข้า/ออกเวร (เส้นแชทลูกค้า S1.24 · ไม่ใช่ secretary/*)
   "inbox/shift": "/api/mobile/inbox/shift",
+  // ตั้งค่ากิจการ (14 พ.ย. · แบบ bizgear Ⓑ) — ยิงในนามกิจการที่กด ⚙ (opts.tenantId) · OWNER/MANAGER เท่านั้น
+  "secretary/business": "/api/mobile/secretary/business",
+  "secretary/business/logo": "/api/mobile/secretary/business/logo",
+  // ส่วน "อันตราย" (14 พ.ย. · แบบ bizdelete) — OWNER เท่านั้น
+  "secretary/business/deletion": "/api/mobile/secretary/business/deletion",
+  "secretary/business/export": "/api/mobile/secretary/business/export",
+  // 14 พ.ย. (bizsheet4 ขั้น 2): ระบบของกิจการ active สำหรับตาราง "เปิดระบบ" ในชีตกิจการ — ทะเบียนเดียวกับเมนูเว็บ (navSystems)
+  "secretary/systems": "/api/mobile/secretary/systems",
+  // 17 พ.ย. (topbar2): ลำดับไอคอนระบบบนแถบบน "ต่อคน ต่อร้าน" (PUT {keys}) — GET secretary/systems คืน items เรียงแล้ว + `order` (รวม "home")
+  "secretary/systems/order": "/api/mobile/secretary/systems/order",
 } as const;
 export type SecPath = keyof typeof PATH;
 
@@ -63,6 +82,10 @@ const PATH_ID = {
   "secretary/rooms/[id]/proposals": "/api/mobile/secretary/rooms/[id]/proposals",
   "secretary/rooms/[id]/send": "/api/mobile/secretary/rooms/[id]/send",
   "secretary/rooms/[id]/close": "/api/mobile/secretary/rooms/[id]/close",
+  // 17 พ.ย. ▸ ปุ่ม "ลองอีกครั้ง" ของประกาศงานไม่สำเร็จในห้อง (job เดิมกลับคิว · ไม่สร้างข้อความซ้ำ)
+  "secretary/rooms/[id]/retry": "/api/mobile/secretary/rooms/[id]/retry",
+  // Lekaa FAB ▸ คำตอบการ์ด "หมายถึงหน้านี้ใช่ไหม" (CONTEXT_CONFIRM)
+  "secretary/rooms/[id]/page-context": "/api/mobile/secretary/rooms/[id]/page-context",
   "secretary/proposals/[id]/approve": "/api/mobile/secretary/proposals/[id]/approve",
   "secretary/proposals/[id]/reject": "/api/mobile/secretary/proposals/[id]/reject",
   "secretary/proposals/[id]/edit": "/api/mobile/secretary/proposals/[id]/edit",
@@ -117,6 +140,8 @@ export type RoomRaw = {
   pendingProposals?: number;
   badge?: { pendingProposals?: number; unread?: number } | null;
   updatedAt?: string;
+  /** 17 พ.ย. ▸ งานล่าสุดล้มและยังไม่มีคำตอบ (เซิร์ฟเวอร์เก่า = ไม่มี) */
+  failed?: boolean;
 };
 /** แถวห้องที่จอใช้ (ผ่าน normalizeRoom แล้ว) */
 export type RoomCard = {
@@ -131,6 +156,8 @@ export type RoomCard = {
   pending: number;
   unread: boolean;
   updatedAt: string;
+  /** 17 พ.ย. ▸ งานล่าสุดไม่สำเร็จ (การ์ด "ไม่สำเร็จ" · นับในชิป "กำลังทำ") */
+  failed: boolean;
 };
 
 export type Suggestion = { key: string; system: string; title: string; instruction: string };
@@ -138,10 +165,21 @@ export type Frequent = { title: string; instruction: string };
 export type AccessItem = { module: string; level: "OFF" | "READ" | "DRAFT" | "AUTO" | string };
 export type InboxCount = { total: number; canApprove: number };
 /** GET secretary/badges (S1.14c) — approvals = รออนุมัติของกิจการนี้ · customers = ห้องลูกค้าที่ยังไม่อ่าน · team = คำเชิญ + ขอให้ช่วย + เรื่องช่วยเหลือ */
-export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number }; total: number };
+export type ZoneBadgesRes = { approvals: number; customers: number; team: { invites: number; help: number; support: number; /** B27 ข้อความแชททีมที่ยังไม่อ่าน · เซิร์ฟเวอร์เก่าไม่ส่ง = 0 */ messages?: number }; total: number; /** CAL (R-CAL-19 · สัญญา 32 §8.1): เรื่องวันนี้ที่ยังไม่เสร็จ · ไม่รวมใน total · เซิร์ฟเวอร์เก่าไม่ส่ง = 0 */ calendar?: number };
 
-/** ชื่อเลขาปริยายก่อนโหลด/เมื่อโหลดไม่ได้ (ค่าเริ่มต้นของระบบ · C1) */
-export const DEFAULT_SECRETARY_NAME = "Shark";
+/** GET secretary/systems — 1 แถว = 1 ระบบในเมนูเว็บ (ลำดับเดียวกัน) · href ขึ้นต้น /app (เปิดใน WebView หน้าระบบ) · badge = แชทลูกค้าที่ยังไม่อ่าน (ระบบแชท) */
+export type NavSystemRow = { key: string; kind: "unit" | "system" | "fixed"; code: string; href: string; label: string; badge: number };
+
+/** ชื่อเลขาปริยายก่อนโหลด/เมื่อโหลดไม่ได้ (ค่าเริ่มต้นของระบบ · C1)
+ *  17 พ.ย. (เจ้าของสั่ง): ผู้ช่วยเปลี่ยนชื่อจาก "Shark" เป็น Lekaa — ภาษาไทยเรียก "เลขา" ⇒ ค่าปริยาย = "เลขา" */
+export const DEFAULT_SECRETARY_NAME = "เลขา";
+/** ชื่อปริยายเดิม (ก่อน 17 พ.ย.) — แถวที่บันทึกจากค่าเริ่มต้นเดิมยังเป็นคำนี้ ⇒ อ่านเป็นค่าปริยายใหม่ */
+export const LEGACY_SECRETARY_NAME = "Shark";
+/** ชื่อที่แสดง: ว่าง/ชื่อปริยายเดิม "Shark" ⇒ DEFAULT_SECRETARY_NAME (เซิร์ฟเวอร์รุ่นใหม่แปลงให้แล้ว · กันเซิร์ฟเวอร์รุ่นเก่า) */
+export const secretaryNameOf = (name: string | null | undefined): string => {
+  const n = (name ?? "").trim();
+  return !n || n === LEGACY_SECRETARY_NAME ? DEFAULT_SECRETARY_NAME : n;
+};
 
 type GetMap = {
   "secretary/me": SecretaryMe;
@@ -171,12 +209,15 @@ type GetMap = {
   "secretary/invites/pending": { items?: unknown[] } | unknown[];
   "secretary/notify": { prefs?: Partial<Record<string, string>>; kinds?: string[]; modes?: string[] };
   "secretary/account/delete/preview": DeletePreview;
+  "secretary/business": BusinessProfileRes;
+  "secretary/systems": { items?: NavSystemRow[]; order?: string[] };
 };
 type PostMap = {
   // S2.19 K3 "สั่ง Shark เรื่องลูกค้านี้": context = รหัสห้องแชทลูกค้า/ผู้ติดต่อ (ไม่ใส่ชื่อ/เบอร์ลูกค้า · เซิร์ฟเวอร์ resolve เอง)
-  "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string } }; res: { roomId: string; conversationId?: string; status?: string } };
+  // Lekaa FAB ▸ pageContext = หน้าที่ผู้ใช้เปิดอยู่ตอนเปิดแผ่น Lekaa (ส่งเงียบ ๆ · เซิร์ฟเวอร์ตรวจสิทธิ์/อ่านป้ายใหม่เอง)
+  "secretary/rooms": { body: { instruction: string; clientMessageId: string; systems?: string[]; context?: { chatConversationId?: string; contactId?: string }; attachments?: AttachRef[]; pageContext?: PageContext }; res: { roomId: string; conversationId?: string; status?: string } };
   "secretary/scheduled": { body: ScheduleBody; res: { id: string } };
-  "secretary/support/cases": { body: HelpOpenBody; res: { id: string; caseNo: number } };
+  "secretary/support/cases": { body: HelpOpenBody; res: { id: string; caseNo: number; caseNoText?: string } };
   "secretary/tenants/create": { body: { name: string; type: string; systems: string[] }; res: TenantCreateRes };
   "secretary/staff/invite": { body: InviteBody; res: InviteRes };
   "secretary/invites/accept": { body: { inviteId: string } | { code: string }; res: { ok: boolean; tenantId?: string } };
@@ -209,9 +250,9 @@ const USER_LEVEL: ReadonlySet<SecPath> = new Set<SecPath>([
   "secretary/account/delete/preview",
 ]);
 
-/** GET เส้นของเลขา · เส้นระดับผู้ใช้ไม่ส่ง x-tenant-id */
-export function secGet<P extends keyof GetMap>(path: P, q?: Query): Promise<GetMap[P]> {
-  return api<GetMap[P]>(url(path, q), { tenant: !USER_LEVEL.has(path) });
+/** GET เส้นของเลขา · เส้นระดับผู้ใช้ไม่ส่ง x-tenant-id · opts.tenantId = อ่านของกิจการนั้นแทนกิจการ active (ตั้งค่ากิจการ ⚙) */
+export function secGet<P extends keyof GetMap>(path: P, q?: Query, opts?: { tenantId?: string }): Promise<GetMap[P]> {
+  return api<GetMap[P]>(url(path, q), { tenant: !USER_LEVEL.has(path), ...(opts?.tenantId && !USER_LEVEL.has(path) ? { tenantId: opts.tenantId } : {}) });
 }
 
 export function secPost<P extends keyof PostMap>(path: P, body: PostMap[P]["body"]): Promise<PostMap[P]["res"]> {
@@ -265,8 +306,10 @@ type GetIdMap = {
   "secretary/support/cases/[id]": { case?: unknown; messages?: unknown[] };
 };
 type PostIdMap = {
-  "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
+  "secretary/rooms/[id]/send": { body: { text: string; clientMessageId: string; attachments?: AttachRef[] }; res: { ok?: boolean; messageId?: string; jobId?: string; duplicate?: boolean } };
   "secretary/rooms/[id]/close": { body: Record<string, never>; res: { ok: boolean } };
+  "secretary/rooms/[id]/retry": { body: { jobId?: string }; res: { ok: boolean; jobId?: string } };
+  "secretary/rooms/[id]/page-context": { body: { answer: "yes" | "no" }; res: { ok: boolean; state?: string } };
   "secretary/proposals/[id]/approve": { body: { confirm2x?: boolean }; res: ApproveRes };
   "secretary/proposals/[id]/reject": { body: RejectBody; res: { ok: boolean; memoryId?: string } };
   "secretary/proposals/[id]/edit": { body: { patch: Record<string, unknown> }; res: { ok: boolean; input?: Record<string, unknown> | null } };
@@ -277,12 +320,12 @@ type PostIdMap = {
   "secretary/memories/[id]/confirm": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/rooms/[id]/members": { body: { userId: string; seeHistory: boolean }; res: { ok: boolean; member?: unknown } };
   "secretary/staff/invites/[id]/resend": { body: Record<string, never>; res: { ok: boolean; sms?: string; expiresAt?: string; link?: string | null } };
-  "secretary/support/cases/[id]/reply": { body: { body: string; attachments?: HelpAttachment[] }; res: { ok: boolean } };
+  "secretary/support/cases/[id]/reply": { body: { body: string; attachments?: HelpAttachment[]; files?: AttachRef[] }; res: { ok: boolean } };
   "secretary/support/cases/[id]/resolve": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/staff/[id]/suspend": { body: Record<string, never>; res: { ok: boolean } };
   "secretary/staff/[id]/remove": { body: Record<string, never>; res: { ok: boolean } };
 };
-type DeleteIdMap = { "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean }; "secretary/scheduled/[id]": { ok: boolean } };
+type DeleteIdMap = { "secretary/rooms/[id]": { ok: boolean }; "secretary/lessons/[id]": { ok: boolean }; "secretary/memories/[id]": { ok: boolean }; "secretary/staff/invites/[id]": { ok: boolean }; "secretary/scheduled/[id]": { ok: boolean } };
 
 function urlId(path: SecIdPath, id: string, q?: Query): string {
   const base = PATH_ID[path].replace("[id]", encodeURIComponent(id));
@@ -403,6 +446,7 @@ export function normalizeRoom(r: RoomRaw, myUserId: string | null | undefined): 
     pending,
     unread,
     updatedAt: r.updatedAt ?? "",
+    failed: r.failed === true,
   };
 }
 
@@ -439,7 +483,23 @@ export function moduleOfKind(kind: string): string {
   return (kind.split(/[._]/)[0] ?? "").toLowerCase();
 }
 
-export type MsgRow = { id: string; role: "user" | "assistant" | "system"; content: string; authorId: string | null; at: string };
+/** ไฟล์แนบในฟอง — `url` = path ของเส้นแอป (โหลดด้วย Bearer · secFileSource) หรือ uri ในเครื่อง (`local` · ฟองที่ยังส่งไม่เสร็จ) */
+export type MsgAttachment = { id: string; name: string; mimeType: string; size: number; kind: AttachKind; url: string; local?: boolean };
+/** pending = ฟองของเราที่กำลังส่ง (ยังไม่มีในเซิร์ฟเวอร์ · 14 พ.ย. ส่งแล้วคุยต่อหน้าเดิม) */
+export type MsgRow = { id: string; role: "user" | "assistant" | "system"; content: string; authorId: string | null; at: string; attachments?: MsgAttachment[]; pending?: boolean };
+function attachmentsOfMsg(v: unknown): MsgAttachment[] {
+  return (Array.isArray(v) ? v : [])
+    .map((x) => rec(x))
+    .filter((a) => typeof a.id === "string" && typeof a.url === "string" && a.url)
+    .map((a) => ({
+      id: a.id as string,
+      name: str(a.name) || "file",
+      mimeType: str(a.mimeType),
+      size: Number(a.size) || 0,
+      kind: a.kind === "image" ? "image" : a.kind === "pdf" ? "pdf" : "sheet",
+      url: a.url as string,
+    }));
+}
 export function normalizeMessages(v: unknown): MsgRow[] {
   return listOf(v)
     .map((x) => {
@@ -452,9 +512,10 @@ export function normalizeMessages(v: unknown): MsgRow[] {
         content: typeof o.content === "string" ? o.content : "",
         authorId: typeof o.authorUserId === "string" && o.authorUserId !== "system" ? o.authorUserId : null,
         at: isoOf(o.createdAt),
+        ...(Array.isArray(o.attachments) && o.attachments.length ? { attachments: attachmentsOfMsg(o.attachments) } : {}),
       } as MsgRow;
     })
-    .filter((m) => m.id && m.content.trim());
+    .filter((m) => m.id && (m.content.trim() || (m.attachments?.length ?? 0) > 0));
 }
 
 /** สถานะขั้น (S1.14: PENDING|RUNNING|DONE|FAILED|SKIPPED) → done ✓ · run ● · wait ⏸ · fail ✕ · skip – */
@@ -589,7 +650,35 @@ export type RoomDetail = {
   members: { userId: string; name: string | null; role: string; seeHistory: boolean }[];
   /** ความคืบหน้าของแผนที่กำลังทำ (ถ้าเซิร์ฟเวอร์ส่ง `plans`) */
   plans: PlanItem[];
+  /** CAL2.7 (สัญญา 32 §8.1 · R-CAL-20): เตือน/นัดที่ผู้เรียกสั่งในห้องนี้ (เซิร์ฟเวอร์ส่งเฉพาะของผู้เรียก) · เซิร์ฟเวอร์เก่า = [] */
+  reminders: CalItemDto[];
+  /** B1 (cal-review-b · สัญญา §15.2): การ์ดปฏิทินของผู้เรียกในห้องนี้ (เลขาไม่ทวนรายการส่วนตัวในข้อความ · แอปดึงรายละเอียดเอง) · คนอื่นในห้อง = [] */
+  calendarCards: { id: string; kind: "AGENDA" | "LIST" | "TRAVEL"; fromDay: string; toDay: string; createdAt: string; pairKey?: string }[];
+  /** Lekaa FAB ▸ หน้าที่เปิดอยู่ตอนสั่ง: ป้าย · สถานะ (ASKED = การ์ดถามใต้ข้อความ askId) · ข้อความเลขาที่อ้าง (refIds → ชิป 📍) · null = ไม่มี */
+  pageContext: RoomPageContext | null;
+  /** 17 พ.ย. ▸ งานล่าสุดของห้องล้ม (ยังไม่มีคำตอบตามมา) — ประกาศในห้อง + ปุ่มลองอีกครั้ง (canRetry) · null = ไม่ล้ม/เซิร์ฟเวอร์เก่า */
+  failed: RoomFailed | null;
 };
+/** reason: ai_unavailable / gave_up = แอปแปลเอง (th/en) · other = แสดง `error` ไทยของเซิร์ฟเวอร์ */
+export type RoomFailed = { jobId: string; error: string; reason: "ai_unavailable" | "gave_up" | "other"; at: string; canRetry: boolean };
+function failedOf(v: unknown): RoomFailed | null {
+  const o = rec(v);
+  const jobId = str(o.jobId);
+  if (!jobId) return null;
+  const reason = o.reason === "ai_unavailable" || o.reason === "gave_up" ? o.reason : "other";
+  return { jobId, error: str(o.error), reason, at: isoOf(o.at), canRetry: o.canRetry === true };
+}
+export type RoomPageContext = { label: string; state: "PENDING" | "ASKED" | "CONFIRMED" | "REJECTED"; askId: string | null; refIds: string[]; entityType: string | null };
+/** Lekaa FAB ▸ หน้าที่ผู้ใช้เปิดอยู่ (จอ native = route + รหัส · หน้าระบบ WebView = ข้อความ page-context ของเว็บ) — label เป็นแค่คำใบ้ */
+export type PageContext = { system?: string; systemId?: string; path?: string; title?: string; route?: string; entity?: { type: string; id: string; label?: string } };
+function pageContextOf(v: unknown): RoomPageContext | null {
+  const o = rec(v);
+  const label = str(o.label);
+  if (!label) return null;
+  const st = str(o.state).toUpperCase();
+  const state = st === "ASKED" || st === "CONFIRMED" || st === "REJECTED" ? st : "PENDING";
+  return { label, state, askId: str(o.askId) || null, refIds: (Array.isArray(o.refIds) ? o.refIds : []).filter((x): x is string => typeof x === "string"), entityType: str(o.entityType) || null };
+}
 export function normalizeRoomDetail(v: unknown): RoomDetail {
   const o = rec(rec(v).room ?? v);
   const raw = str(o.status).toUpperCase();
@@ -603,12 +692,26 @@ export function normalizeRoomDetail(v: unknown): RoomDetail {
     updatedAt: isoOf(o.updatedAt),
     closed: !!o.closedAt || raw === "CLOSED",
     canManage: o.canManage === true,
+    pageContext: o.pageContext ? pageContextOf(o.pageContext) : null,
+    failed: o.closedAt ? null : failedOf(o.failed),
     members: (Array.isArray(o.members) ? o.members : [])
       .map((m) => rec(m))
       .filter((m) => str(m.userId))
       .map((m) => ({ userId: str(m.userId), name: str(m.name) || null, role: str(m.role), seeHistory: m.seeHistory === true })),
     // แผนของห้อง (S1.14: PENDING + RUNNING) — แผน PENDING ซ้ำกับการ์ดอนุมัติ จอกรองออกด้วย id
     plans: (Array.isArray(o.plans) ? o.plans : []).map((p) => planOf(rec(p), str(rec(p).status).toUpperCase() === "PENDING")).filter((p) => p.id && p.steps.length > 0),
+    calendarCards: (Array.isArray(o.calendarCards) ? o.calendarCards : [])
+      .map((x) => rec(x))
+      .filter((x) => str(x.id) && /^\d{4}-\d{2}-\d{2}$/.test(str(x.fromDay)))
+      .map((x) => ({
+        id: str(x.id),
+        kind: str(x.kind) === "LIST" ? ("LIST" as const) : str(x.kind) === "TRAVEL" ? ("TRAVEL" as const) : ("AGENDA" as const),
+        fromDay: str(x.fromDay),
+        toDay: /^\d{4}-\d{2}-\d{2}$/.test(str(x.toDay)) ? str(x.toDay) : str(x.fromDay),
+        createdAt: isoOf(x.createdAt),
+        ...(str(x.pairKey) ? { pairKey: str(x.pairKey) } : {}),
+      })),
+    reminders: (Array.isArray(o.reminders) ? o.reminders : []).filter((x): x is CalItemDto => !!x && typeof rec(x).id === "string" && typeof rec(x).title === "string" && typeof rec(x).startAt === "string"),
   };
 }
 
@@ -643,6 +746,7 @@ export function loadSecretaryMe(userId: string | null | undefined, force = false
     .then((r) => {
       if (inflight?.p !== p) return r; // ถูก reset ระหว่างรอ — ไม่เขียนทับ
       inflight = null;
+      if (r) r = { ...r, name: secretaryNameOf(r.name) }; // 17 พ.ย. ชื่อปริยายเดิม "Shark" ⇒ "เลขา"
       me = { userId, data: r };
       const l = langFrom(r.languages?.[0]);
       if (l) setLang(l);
@@ -677,8 +781,8 @@ export function useSecretaryMe(): SecretaryMe | null {
 }
 
 // ───────── badge 3 โซน — store กลาง (R-S2.1e) · โหลดที่ layout ของโซน (focus/foreground) ─────────
-export type ZoneCounts = { secretary: number; customers: number; team: number };
-const ZERO: ZoneCounts = { secretary: 0, customers: 0, team: 0 };
+export type ZoneCounts = { secretary: number; customers: number; team: number; calendar: number };
+const ZERO: ZoneCounts = { secretary: 0, customers: 0, team: 0, calendar: 0 };
 let badges: ZoneCounts = ZERO;
 const badgeListeners = new Set<() => void>();
 
@@ -692,7 +796,12 @@ const nonNeg = (v: unknown) => Math.max(0, Math.floor(Number(v ?? 0) || 0));
 export function zoneCountsOf(r: Partial<ZoneBadgesRes> | null | undefined): ZoneCounts {
   if (!r) return ZERO;
   const team = r.team ?? { invites: 0, help: 0, support: 0 };
-  return { secretary: nonNeg(r.approvals), customers: nonNeg(r.customers), team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support) };
+  return {
+    secretary: nonNeg(r.approvals),
+    customers: nonNeg(r.customers),
+    team: nonNeg(team.invites) + nonNeg(team.help) + nonNeg(team.support) + nonNeg((team as { messages?: number }).messages), // B27 + ข้อความทีมยังไม่อ่าน
+    calendar: nonNeg(r.calendar),
+  };
 }
 export async function refreshZoneBadges(): Promise<void> {
   const seq = ++badgeSeq;
@@ -869,6 +978,8 @@ export type StaffRow = {
   units?: string[];
   levels?: Record<string, string>;
   chat?: string;
+  /** B27: STAFF ไม่มีสิทธิ์ระบบใด = "คุยอย่างเดียว" */
+  chatOnly?: boolean;
   inviteId?: string;
   phoneMasked?: string | null;
   expiresAt?: string;
@@ -877,7 +988,7 @@ export type StaffRow = {
 /** ระดับแชทลูกค้าของพนักงาน (staffViewOf.chat · R-S1.25h) */
 export type ChatLevel = "NONE" | "VIEW" | "REPLY";
 export const CHAT_LEVELS: readonly ChatLevel[] = ["NONE", "VIEW", "REPLY"];
-export type StaffPerson = { membershipId: string; userId: string; name: string; role: string; active: boolean; me: boolean; units: string[]; levels: Record<string, string>; chat: ChatLevel; joinedAt?: string | null };
+export type StaffPerson = { membershipId: string; userId: string; name: string; role: string; active: boolean; me: boolean; units: string[]; levels: Record<string, string>; chat: ChatLevel; joinedAt?: string | null; /** B27 คุยอย่างเดียว */ chatOnly?: boolean };
 export type StaffInvite = { inviteId: string; name: string; phoneMasked: string; role: string; expiresAt: string; expired: boolean };
 export function chatLevelOf(v: unknown): ChatLevel {
   return v === "REPLY" || v === "VIEW" ? v : "NONE";
@@ -906,6 +1017,7 @@ export function normalizeStaff(v: unknown): { people: StaffPerson[]; invites: St
       levels: Object.fromEntries(Object.entries(lv).filter(([, l]) => typeof l === "string")) as Record<string, string>,
       chat: chatLevelOf(o.chat),
       joinedAt: isoOrNull(o.joinedAt),
+      chatOnly: o.chatOnly === true,
     });
   }
   return { people, invites };
@@ -928,6 +1040,7 @@ type PutMap = {
   "secretary/rules": { body: { key: RuleKey; enabled?: boolean; limitSatang?: number | null }; res: RulesView };
   "secretary/after-hours": { body: Partial<AfterHours>; res: AfterHours };
   "secretary/notify": { body: { kind: NotifyKind; mode: NotifyMode }; res: { prefs?: Partial<Record<string, string>>; scope?: string } };
+  "secretary/systems/order": { body: { keys: string[] }; res: { order?: string[] } };
 };
 /** บันทึกตัวตนเลขา (PUT secretary · ระดับผู้ใช้ — B2 + C1) */
 export function updateSecretary(body: PutMap["secretary"]["body"]): Promise<SecretaryIdentity> {
@@ -964,6 +1077,8 @@ export type InboxRow = {
   kind: string;
   module: string;
   canApprove: boolean;
+  /** Lekaa FAB ▸ อ่านห้องได้ไหม (ผู้สั่ง/สมาชิก) — false = ผู้อนุมัติเห็นแค่รายการ แตะแล้วไม่เปิดห้อง · เซิร์ฟเวอร์เก่าไม่ส่ง = true */
+  canOpenRoom: boolean;
   /** เหตุผลที่ต้องอนุมัติจากเซิร์ฟเวอร์ (มีเมื่อ canApprove) — ไม่มี = ไม่แสดง */
   why: string | null;
   cls: InboxClass;
@@ -1010,6 +1125,7 @@ export function normalizeInbox(v: unknown): InboxRow[] {
         kind,
         module: moduleOfKind(kind),
         canApprove: o.canApprove === true,
+        canOpenRoom: o.canOpenRoom !== false,
         why: whyOf(o.why),
         cls: inboxClassOf(kind, risk, o.class ?? o.classes),
         createdAt: isoOf(o.createdAt),
@@ -1115,51 +1231,109 @@ export type HelpCategory = "secretary_wrong" | "bug" | "question" | "billing" | 
 /** ไฟล์แนบของ cases/reply (AttachmentsSchema · ≤ 5 ชิ้น) */
 export type HelpAttachment = { name: string; url: string; kind: "image" | "file" };
 export const HELP_MAX_ATTACHMENTS = 5;
-export type HelpOpenBody = { subject: string; body: string; category?: HelpCategory; roomId?: string; attachments?: HelpAttachment[] };
+export type HelpOpenBody = { subject: string; body: string; category?: HelpCategory; roomId?: string; attachments?: HelpAttachment[]; files?: AttachRef[] };
 export type HelpStatus = "OPEN" | "PENDING" | "RESOLVED";
-export type HelpCaseRow = { id: string; caseNo: number; subject: string; status: HelpStatus; updatedAt: string; unread: number };
-export type HelpCase = { id: string; caseNo: number; subject: string; status: HelpStatus; category: string | null; roomId: string | null; createdAt: string; updatedAt: string };
+/** help-cases (15 พ.ย.) ขั้นของเคส — แถบ 5 ขั้น รับเรื่อง → ตรวจสอบ → แก้ไข → รอยืนยัน → ปิดเคส + "รอข้อมูลจากคุณ" (ชมพู) */
+export type HelpStage = "RECEIVED" | "CHECKING" | "FIXING" | "NEED_INFO" | "AWAITING_CONFIRM" | "CLOSED";
+export const HELP_STAGES: readonly HelpStage[] = ["RECEIVED", "CHECKING", "FIXING", "NEED_INFO", "AWAITING_CONFIRM", "CLOSED"];
+export type HelpCaseRow = { id: string; caseNo: number; subject: string; status: HelpStatus; stage: HelpStage; stageStep: number; updatedAt: string; unread: number };
+export type HelpCase = { id: string; caseNo: number; subject: string; status: HelpStatus; stage: HelpStage; stageStep: number; category: string | null; roomId: string | null; createdAt: string; updatedAt: string };
+/** ไฟล์แนบในเรื่อง — `private` = path ของเส้นแอป (โหลดด้วย Bearer) · ไม่ใช่ = URL/data URL เดิม (local ของ AttachList) */
+export type HelpMsgAttachment = { id: string; name: string; url: string; kind: AttachKind; mimeType: string; size: number; private: boolean };
 /** ข้อความในเรื่อง — ไม่มี id/ชื่อของทีมงานแพลตฟอร์ม (route ตัดออก) · `mine` = ผู้ใช้นี้พิมพ์เอง */
-export type HelpMsg = { id: string; side: "SHOP" | "PLATFORM"; mine: boolean; body: string; attachments: { name: string; url: string; kind: string }[]; at: string };
+export type HelpMsg = { id: string; side: "SHOP" | "PLATFORM"; mine: boolean; body: string; attachments: HelpMsgAttachment[]; at: string };
+/** ประวัติขั้น → บรรทัดระบบในห้อง ("15 พ.ย. 09:40 · สถานะ → กำลังแก้ไข") · from null = เปิดเคส */
+export type HelpStageEvent = { id: string; from: HelpStage | null; to: HelpStage; note: string | null; at: string };
 
 const helpStatusOf = (v: unknown): HelpStatus => (v === "PENDING" || v === "RESOLVED" ? v : "OPEN");
 const intOf = (v: unknown): number => Math.max(0, Math.floor(Number(v) || 0));
+/** ขั้นจากเซิร์ฟเวอร์ · เซิร์ฟเวอร์รุ่นก่อน (ไม่มี stage) = เดาจาก status */
+export function helpStageOf(v: unknown, status: HelpStatus = "OPEN"): HelpStage {
+  if (typeof v === "string" && (HELP_STAGES as readonly string[]).includes(v)) return v as HelpStage;
+  return status === "RESOLVED" ? "CLOSED" : status === "PENDING" ? "CHECKING" : "RECEIVED";
+}
+const STEP: Record<HelpStage, number> = { RECEIVED: 1, CHECKING: 2, FIXING: 3, NEED_INFO: 2, AWAITING_CONFIRM: 4, CLOSED: 5 };
+const stepOf = (v: unknown, stage: HelpStage) => {
+  const n = Math.floor(Number(v));
+  return n >= 1 && n <= 5 ? n : STEP[stage];
+};
 
 export function normalizeHelpCases(v: unknown): HelpCaseRow[] {
   return listOf(v)
     .map((x) => {
       const o = rec(x);
-      return { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status: helpStatusOf(o.status), updatedAt: isoOf(o.updatedAt), unread: intOf(o.unreadCount ?? o.unread) };
+      const status = helpStatusOf(o.status);
+      const stage = helpStageOf(o.stage, status);
+      return { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status, stage, stageStep: stepOf(o.stageStep, stage), updatedAt: isoOf(o.updatedAt), unread: intOf(o.unreadCount ?? o.unread) };
     })
     .filter((c) => c.id);
 }
 
-export function normalizeHelpDetail(v: unknown): { case: HelpCase | null; messages: HelpMsg[] } {
+function helpAttachmentsOf(v: unknown): HelpMsgAttachment[] {
+  return (Array.isArray(v) ? v : [])
+    .map((a) => rec(a))
+    .filter((a) => typeof a.url === "string" && a.url)
+    .map((a, i) => {
+      const k = a.kind === "image" || a.kind === "pdf" || a.kind === "sheet" ? (a.kind as AttachKind) : "pdf";
+      return { id: str(a.id) || `a${i}`, name: str(a.name) || "file", url: a.url as string, kind: k, mimeType: str(a.mimeType), size: Number(a.size) || 0, private: a.private === true };
+    });
+}
+
+export function normalizeHelpDetail(v: unknown): { case: HelpCase | null; messages: HelpMsg[]; stageEvents: HelpStageEvent[] } {
   const r = rec(v);
   const o = rec(r.case);
+  const status = helpStatusOf(o.status);
+  const stage = helpStageOf(o.stage, status);
   const kase: HelpCase | null = str(o.id)
-    ? { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status: helpStatusOf(o.status), category: str(o.category) || null, roomId: str(o.roomId) || null, createdAt: isoOf(o.createdAt), updatedAt: isoOf(o.updatedAt) }
+    ? { id: str(o.id), caseNo: intOf(o.caseNo), subject: str(o.subject), status, stage, stageStep: stepOf(o.stageStep, stage), category: str(o.category) || null, roomId: str(o.roomId) || null, createdAt: isoOf(o.createdAt), updatedAt: isoOf(o.updatedAt) }
     : null;
   const messages = listOf(r.messages ?? [])
     .map((x): HelpMsg => {
       const m = rec(x);
-      const atts = (Array.isArray(m.attachments) ? m.attachments : []).map((a) => rec(a)).filter((a) => typeof a.url === "string" && a.url);
       return {
         id: str(m.id),
         side: m.side === "PLATFORM" ? "PLATFORM" : "SHOP",
         mine: m.mine === true,
         body: typeof m.body === "string" ? m.body : "",
-        attachments: atts.map((a) => ({ name: str(a.name), url: a.url as string, kind: a.kind === "image" ? "image" : "file" })),
+        attachments: helpAttachmentsOf(m.attachments),
         at: isoOf(m.createdAt),
       };
     })
     .filter((m) => m.id && (m.body.trim() || m.attachments.length > 0));
-  return { case: kase, messages };
+  const stageEvents = (Array.isArray(r.stageEvents) ? r.stageEvents : [])
+    .map((x): HelpStageEvent => {
+      const e = rec(x);
+      return { id: str(e.id), from: e.from ? helpStageOf(e.from) : null, to: helpStageOf(e.to), note: str(e.note) || null, at: isoOf(e.at) };
+    })
+    .filter((e) => e.id);
+  return { case: kase, messages, stageEvents };
 }
 
-/** เลขเรื่องที่ผู้ใช้เห็น (แบบ H1/H2: SHARK-00042) */
+/** ไฟล์แนบในเรื่อง → รูปแบบของ AttachList (SecAttach) — ส่วนตัวโหลดด้วย Bearer · เดิม (URL/data) = uri ตรง */
+export function helpMsgAttachments(list: HelpMsgAttachment[]): MsgAttachment[] {
+  return list.map((a) => ({ id: a.id, name: a.name, mimeType: a.mimeType, size: a.size, kind: a.kind, url: a.url, ...(a.private ? {} : { local: true }) }));
+}
+
+/** ตัวกรองรายการเคส (จอ 1): ทั้งหมด · กำลังดำเนินการ (ทีมทำอยู่) · รอคุณ (รอข้อมูล/รอยืนยัน) · ปิดแล้ว */
+export type HelpFilter = "all" | "active" | "you" | "closed";
+export function helpFilterOf(stage: HelpStage): Exclude<HelpFilter, "all"> {
+  if (stage === "CLOSED") return "closed";
+  if (stage === "NEED_INFO" || stage === "AWAITING_CONFIRM") return "you";
+  return "active";
+}
+/** ค้นหาเลขเคส ("124" · "SHARK-000124" · "#SHARK-000124") หรือคำในหัวเรื่อง */
+export function helpMatches(row: Pick<HelpCaseRow, "caseNo" | "subject">, q: string): boolean {
+  const s = q.trim().toLowerCase();
+  if (!s) return true;
+  if (row.subject.toLowerCase().includes(s)) return true;
+  const digits = s.replace(/^#/, "").replace(/^shark-?/, "");
+  if (/^\d+$/.test(digits)) return String(row.caseNo) === String(Number(digits)) || caseNoText(row.caseNo).toLowerCase().includes(s.replace(/^#/, ""));
+  return caseNoText(row.caseNo).toLowerCase().includes(s.replace(/^#/, ""));
+}
+
+/** เลขเรื่องที่ผู้ใช้เห็น (help-cases: SHARK-000124 · 6 หลักตรงกับ backoffice) */
 export function caseNoText(n: number): string {
-  return `SHARK-${String(Math.max(0, Math.floor(n))).padStart(5, "0")}`;
+  return `SHARK-${String(Math.max(0, Math.floor(n))).padStart(6, "0")}`;
 }
 
 /** จุดสถานะ H1/H2: ส้ม = รอทีม (OPEN ไม่มีของใหม่) · เขียว = ทีมตอบแล้วรอคุณ (PENDING หรือมีข้อความทีมที่ยังไม่อ่าน) · เทา = ปิด (RESOLVED) */
@@ -1222,13 +1396,21 @@ export const HELP_UPLOAD_MAX_BYTES = 4 * 1024 * 1024;
 export const HELP_UPLOAD_TYPES: readonly string[] = ["image/jpeg", "image/png", "image/webp", "image/heic", "image/heif", "image/gif"];
 export type HelpUpload = { url: string; name: string; kind: "image"; mimeType: string; size: number };
 
-/** POST secretary/support/upload (multipart `file`) — api() ของ client.ts ส่ง JSON เท่านั้น จึงแยกตัวเรียก */
-export async function secUpload(path: "secretary/support/upload", form: FormData): Promise<HelpUpload> {
+/** หัว Bearer + x-tenant-id (อัปไฟล์ · โหลดไฟล์แนบส่วนตัวของห้อง) */
+export async function secAuthHeaders(): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
   const token = await getToken();
   if (token) headers.authorization = `Bearer ${token}`;
   const tid = await getTenantId();
   if (tid) headers["x-tenant-id"] = tid;
+  return headers;
+}
+
+/** POST secretary/support/upload · secretary/attachments (multipart `file`) — api() ของ client.ts ส่ง JSON เท่านั้น จึงแยกตัวเรียก */
+export async function secUpload(path: "secretary/support/upload", form: FormData): Promise<HelpUpload>;
+export async function secUpload(path: "secretary/attachments" | "secretary/support/attachments" | "secretary/team/attachments", form: FormData): Promise<SecAttachUpload>;
+export async function secUpload(path: "secretary/support/upload" | "secretary/attachments" | "secretary/support/attachments" | "secretary/team/attachments", form: FormData): Promise<HelpUpload | SecAttachUpload> {
+  const headers = await secAuthHeaders();
   const res = await fetch(`${BASE_URL}${PATH[path]}`, { method: "POST", headers, body: form });
   if (!res.ok) {
     let code = "error";
@@ -1242,7 +1424,37 @@ export async function secUpload(path: "secretary/support/upload", form: FormData
     }
     throw new ApiError(res.status, code, detail);
   }
-  return (await res.json()) as HelpUpload;
+  return (await res.json()) as HelpUpload | SecAttachUpload;
+}
+
+// ───────── ไฟล์แนบของคำสั่ง (14 พ.ย. · ปุ่ม + ของจอเริ่มงานใหม่/ห้องงาน) — เพดานเดียวกับเซิร์ฟเวอร์ (src/lib/ai/secretary/attachments-shared.ts) ─────────
+export const SEC_ATTACH_MAX_FILES = 5;
+export const SEC_ATTACH_MAX_BYTES = 4 * 1024 * 1024;
+export const SEC_ATTACH_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+/** ชนิดที่รับ (รูปที่โมเดลอ่านได้ · PDF · xlsx · CSV) — .xls ไม่รับ */
+export const SEC_ATTACH_TYPES: readonly string[] = ["image/jpeg", "image/png", "image/webp", "image/gif", "application/pdf", SEC_ATTACH_XLSX, "text/csv"];
+export type AttachKind = "image" | "pdf" | "sheet";
+export type AttachRef = { id: string; name: string };
+export type SecAttachUpload = { id: string; name: string; mimeType: string; size: number; kind: AttachKind };
+
+/** แหล่งรูปของไฟล์แนบในฟอง — url ของเส้นแอป ⇒ BASE_URL + หัว Bearer · ในเครื่อง ⇒ uri ตรง */
+export function secFileSource(a: Pick<MsgAttachment, "url" | "local">, headers: Record<string, string> | null): { uri: string; headers?: Record<string, string> } {
+  if (a.local) return { uri: a.url };
+  return { uri: `${BASE_URL}${a.url}`, ...(headers ? { headers } : {}) };
+}
+
+/** หัว Bearer สำหรับ <Image> ของไฟล์แนบ (อ่านครั้งเดียวต่อจอ · null = ยังไม่พร้อม) */
+export function useSecAuthHeaders(): Record<string, string> | null {
+  const { activeTenantId } = useAuth();
+  const [h, setH] = useState<Record<string, string> | null>(null);
+  useEffect(() => {
+    let live = true;
+    void secAuthHeaders().then((x) => live && setH(x));
+    return () => {
+      live = false;
+    };
+  }, [activeTenantId]);
+  return h;
 }
 // ───────── S2.21 G1 สร้างกิจการ · G2 เชิญพนักงาน · S2.22 G3 สิทธิ์ต่อคน · G4 บัญชีของฉัน (สัญญา S1.14 docs/api/SECRETARY-API.md) ─────────
 /** ประเภทกิจการ (TENANT_TYPES ของ createTenantFromApp · ไม่รู้จัก = other) */
@@ -1315,3 +1527,115 @@ export function normalizeNotify(v: unknown): NotifyPrefs {
 
 /** ผลกระทบก่อนลบบัญชี (previewAccountDeletion) */
 export type DeletePreview = { tenantsToDelete?: { id: string; name: string }[]; tenantsHandedOver?: { id: string; name: string; newOwner?: string | null }[]; tenantsLeftAlone?: { id: string; name: string }[] };
+
+// ───────── ตั้งค่ากิจการ (14 พ.ย. 2026 · แบบ bizgear Ⓑ) — GET/PATCH secretary/business · POST/DELETE secretary/business/logo ─────────
+// ที่เก็บจริงฝั่งเซิร์ฟเวอร์ (src/lib/mobile/business-profile.ts): ชื่อ = Tenant · โลโก้ = ธีมร้าน · ที่อยู่/เบอร์/เลขภาษี/สาขา = ตั้งค่าสมุดบัญชีหลัก
+//   (ชุดเดียวกับใบเสร็จ/ใบกำกับ · ไม่มีสมุด = docs null) · เวลาทำการ = เวลาทำการของระบบแชท (ไม่มีแชท = hours.available false)
+// ทุกเส้นส่ง x-tenant-id ของกิจการที่กด ⚙ (ไม่ต้องสลับกิจการ) · OWNER/MANAGER เท่านั้น · ชื่อ = OWNER เท่านั้น
+export type BusinessDay = { d: number; open: string; close: string };
+export type BusinessProfile = {
+  tenantId: string;
+  name: string;
+  logoUrl: string | null;
+  businessType: TenantType | null;
+  docs: { systemId: string; bookName: string; bookCount: number; orgName: string; address: string | null; phone: string | null; taxId: string | null; branchCode: string; branchName: string | null } | null;
+  hours: { available: boolean; tz: string | null; days: BusinessDay[] };
+  /** จำนวนระบบที่เปิดอยู่ (แถว "ระบบของร้าน") · เซิร์ฟเวอร์รุ่นเก่าไม่ส่ง = undefined */
+  systemCount?: number;
+  /** ขอลบกิจการไว้ (ISO) · null/undefined = ไม่ได้ขอลบ */
+  deletion?: BusinessDeletion | null;
+};
+export type BusinessDeletion = { requestedAt: string; purgeAt: string };
+/** can: สิทธิ์ของผู้เรียก (เซิร์ฟเวอร์ตรวจซ้ำตอน PATCH) · editTax = `account.settings.manage` แบบเว็บ · รุ่นเก่าไม่ส่ง = ถือว่าไม่ได้ */
+export type BusinessProfileRes = {
+  profile: BusinessProfile;
+  role: string;
+  can?: { editName: boolean; editTax: boolean; editCalendarPolicy?: boolean };
+  /** calendar_c ▸ นโยบายปฏิทินของร้าน (ค่าเริ่ม ปิด) — เซิร์ฟเวอร์เก่าไม่ส่ง ◂ */
+  calendar?: { allowBookingExport: boolean };
+};
+export type BusinessPatch = Partial<{
+  name: string;
+  businessType: string | null;
+  address: string | null;
+  phone: string | null;
+  taxId: string | null;
+  branchCode: string | null;
+  branchName: string | null;
+  hours: { days: BusinessDay[]; tz?: string | null } | null;
+  calendar: { allowBookingExport: boolean };
+}>;
+/** บทบาทที่เห็น ⚙ / เปิดตั้งค่ากิจการได้ */
+export const BIZ_SETTING_ROLES: readonly string[] = ["OWNER", "MANAGER"];
+export const BIZ_HQ_BRANCH = "00000";
+export const BIZ_LOGO_MAX_BYTES = 2 * 1024 * 1024;
+
+export function getBusiness(tenantId: string): Promise<BusinessProfileRes> {
+  return secGet("secretary/business", undefined, { tenantId });
+}
+export function patchBusiness(tenantId: string, body: BusinessPatch): Promise<BusinessProfileRes> {
+  return api<BusinessProfileRes>(PATH["secretary/business"], { method: "PATCH", body, tenantId });
+}
+export function deleteBusinessLogo(tenantId: string): Promise<{ logoUrl: null }> {
+  return api<{ logoUrl: null }>(PATH["secretary/business/logo"], { method: "DELETE", tenantId });
+}
+/** ขอลบกิจการ (OWNER · ต้องส่งชื่อที่พิมพ์ยืนยัน · ลบจริงหลัง 30 วัน) */
+export function requestBusinessDeletion(tenantId: string, confirmName: string): Promise<{ deletion: BusinessDeletion | null }> {
+  return api<{ deletion: BusinessDeletion | null }>(PATH["secretary/business/deletion"], { method: "POST", body: { confirmName }, tenantId });
+}
+/** ยกเลิกการขอลบกิจการ (OWNER) */
+export function cancelBusinessDeletion(tenantId: string): Promise<{ deletion: null }> {
+  return api<{ deletion: null }>(PATH["secretary/business/deletion"], { method: "DELETE", tenantId });
+}
+/** ขอลิงก์ดาวน์โหลดข้อมูลร้าน (OWNER · อายุ 5 นาที · แอปเปิดในเบราว์เซอร์ของเครื่อง) */
+export function businessExportLink(tenantId: string): Promise<{ url: string; expiresAt: string }> {
+  return api<{ url: string; expiresAt: string }>(PATH["secretary/business/export"], { method: "POST", tenantId });
+}
+/** วันที่แบบสั้นตามภาษา — ไทย = พ.ศ. ("14 ธ.ค. 2569") · อังกฤษ = "14 Dec 2026" (ไม่พึ่ง Intl ของ Hermes) */
+const TH_MON = ["ม.ค.", "ก.พ.", "มี.ค.", "เม.ย.", "พ.ค.", "มิ.ย.", "ก.ค.", "ส.ค.", "ก.ย.", "ต.ค.", "พ.ย.", "ธ.ค."];
+const EN_MON = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export function shortDate(iso: string, lang: "th" | "en"): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return lang === "th" ? `${d.getDate()} ${TH_MON[d.getMonth()]} ${d.getFullYear() + 543}` : `${d.getDate()} ${EN_MON[d.getMonth()]} ${d.getFullYear()}`;
+}
+/** จำนวนวันที่เหลือก่อนถึงเวลา (ปัดขึ้น · ไม่ต่ำกว่า 0) */
+export function daysUntil(iso: string, now = Date.now()): number {
+  const ms = new Date(iso).getTime() - now;
+  return Number.isFinite(ms) ? Math.max(0, Math.ceil(ms / 86_400_000)) : 0;
+}
+
+/** POST secretary/business/logo (multipart `file` · ≤ 2 MB · PNG/JPG/WEBP) — แยกตัวเรียกเพราะ api() ส่ง JSON เท่านั้น */
+export async function uploadBusinessLogo(tenantId: string, form: FormData): Promise<{ logoUrl: string }> {
+  const headers: Record<string, string> = { "x-tenant-id": tenantId };
+  const token = await getToken();
+  if (token) headers.authorization = `Bearer ${token}`;
+  const res = await fetch(`${BASE_URL}${PATH["secretary/business/logo"]}`, { method: "POST", headers, body: form });
+  if (!res.ok) {
+    let code = "error";
+    let detail: string | undefined;
+    try {
+      const b = (await res.json()) as { error?: string; message?: string };
+      code = b.error ?? "error";
+      detail = typeof b.message === "string" ? b.message : undefined;
+    } catch {
+      /* body ไม่ใช่ JSON */
+    }
+    throw new ApiError(res.status, code, detail);
+  }
+  return (await res.json()) as { logoUrl: string };
+}
+
+/** เลขผู้เสียภาษีไทย 13 หลัก + หลักตรวจ mod-11 (สูตรเดียวกับเซิร์ฟเวอร์ · ตรวจก่อนส่งให้รู้ทันที) */
+export function isThaiTaxId(v: string): boolean {
+  if (!/^\d{13}$/.test(v)) return false;
+  let sum = 0;
+  for (let i = 0; i < 12; i++) sum += Number(v[i]) * (13 - i);
+  return (11 - (sum % 11)) % 10 === Number(v[12]);
+}
+/** สรุปเวลาทำการ 1 บรรทัด: ทุกวันเท่ากัน = "10:00–20:00" · ต่างกัน = ช่วงของวันแรก + "…" · ไม่มี = null */
+export function hoursSummary(days: BusinessDay[]): string | null {
+  if (!days.length) return null;
+  const first = `${days[0].open}–${days[0].close}`;
+  return days.every((d) => d.open === days[0].open && d.close === days[0].close) ? first : `${first} …`;
+}

@@ -153,7 +153,7 @@ export type CrmLimitStatus = { rows: CrmLimitRow[]; warnRatio: number };
 
 /** ข้อความปฏิเสธ (ไทย · บอกทางออก) */
 export function crmLimitMessage(key: CrmLimitKey, limit: number): string {
-  return `ถึงเพดาน${CRM_LIMIT_LABEL[key]} ของระบบนี้แล้ว (${limit.toLocaleString("th-TH")} ${CRM_LIMIT_UNIT[key]}) — เก็บถาวร/ลบรายการที่ไม่ใช้ก่อน หรือติดต่อทีม SHARK เพื่อขยายเพดาน`;
+  return `ถึงเพดาน${CRM_LIMIT_LABEL[key]} ของระบบนี้แล้ว (${limit.toLocaleString("th-TH")} ${CRM_LIMIT_UNIT[key]}) — เก็บถาวร/ลบรายการที่ไม่ใช้ก่อน หรือติดต่อทีมเลขาเพื่อขยายเพดาน`;
 }
 
 /** ร้อยละสำหรับแถบการใช้งาน (0–100 · ปัดลง) */

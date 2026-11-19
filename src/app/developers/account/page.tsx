@@ -16,8 +16,8 @@ import { API_ERROR_CODES, type ApiErrorCode } from "@/lib/modules/account/api/re
 import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 
 export const metadata: Metadata = {
-  title: "SHARK Accounting API for developers",
-  description: "REST API for the SHARK accounting book: documents, payments, contacts, products, journal, reports, reconciliation and webhooks.",
+  title: "Lekaa Accounting API for developers",
+  description: "REST API for the Lekaa accounting book: documents, payments, contacts, products, journal, reports, reconciliation and webhooks.",
 };
 
 const BASE_URL = "https://shark.in.th/api/v1/account";
@@ -213,8 +213,8 @@ export default function AccountApiDevPage() {
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-10 px-4 py-10">
       <header className="flex flex-col gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">SHARK Developers</p>
-        <h1 className="text-2xl font-bold">SHARK Accounting API</h1>
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Lekaa Developers</p>
+        <h1 className="text-2xl font-bold">Lekaa Accounting API</h1>
         <p className="text-sm text-neutral-700">
           REST API for one shop&apos;s accounting book: documents, payments, contacts, products, chart of accounts,
           journal, financial reports, reconciliation, and outgoing webhooks. Every operation, field and scope on this
@@ -416,7 +416,7 @@ export default function AccountApiDevPage() {
           are also published as a skill manifest at <code>/api/v1/ai/skills/account</code>, so an outside agent
           (Claude, GPT, Gemini, an n8n flow) can drive the book with the shop owner&apos;s API key. Read tools run
           immediately; write and danger tools create a <strong>proposal</strong> that the shop owner confirms in the
-          SHARK app before anything changes. See the <a className="underline" href="/developers/account.md">full
+          Lekaa app before anything changes. See the <a className="underline" href="/developers/account.md">full
           reference</a>, section &quot;AI agents&quot;, for the manifest shape and calling convention. Anthropic users
           can instead point Claude at the <code>shark-account-api</code> skill, which wraps this same REST API.
         </p>

@@ -61,7 +61,7 @@ export function CardLinks({
     <div data-testid="card-links" className="flex flex-col gap-1.5">
       <div className="flex items-center gap-2">
         <KanbanIcon name="link" size="sm" className="text-[color:var(--color-muted)]" />
-        <span style={{ fontSize: 13, fontWeight: 700 }}>เชื่อมข้อมูล SHARK</span>
+        <span style={{ fontSize: 13, fontWeight: 700 }}>เชื่อมข้อมูลเลขา</span>
         <span className="flex-1" />
         {editable && (
           <button

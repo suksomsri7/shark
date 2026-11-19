@@ -1,4 +1,4 @@
-# SHARK Accounting API
+# Lekaa Accounting API
 
 Machine readable contract: `/api/v1/account/openapi.json` (OpenAPI 3.1.0, no API key needed).
 Base URL: `https://shark.in.th/api/v1/account` - contract version 1.0.0 - 199 operations.

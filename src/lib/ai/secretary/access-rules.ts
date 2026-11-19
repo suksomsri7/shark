@@ -94,7 +94,7 @@ const OK: LevelVerdict = { ok: true };
 export function levelVerdict(access: AccessMap, module: string | null, write: boolean): LevelVerdict {
   if (module === null || isAlwaysOn(module)) return OK;
   if (!isAiModule(module)) {
-    return { ok: false, reason: `ระบบ "${module}" ยังไม่อยู่ในรายการสิทธิ์ของเลขา จึงยังให้เลขาใช้ไม่ได้ — แจ้งทีมงาน SHARK ได้ที่เมนูช่วยเหลือ` };
+    return { ok: false, reason: `ระบบ "${module}" ยังไม่อยู่ในรายการสิทธิ์ของเลขา จึงยังให้เลขาใช้ไม่ได้ — แจ้งทีมงานเลขาได้ที่เมนูช่วยเหลือ` };
   }
   const level = access[module] ?? defaultLevelOf(module);
   if (level === "OFF") {

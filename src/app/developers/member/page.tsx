@@ -18,9 +18,9 @@ import { MEMBER_OPS } from "@/lib/modules/member/api/registry";
 import { webhookEventLabel } from "@/lib/webhooks/labels";
 
 export const metadata: Metadata = {
-  title: "SHARK Member API for developers",
+  title: "Lekaa Member API for developers",
   description:
-    "REST API ของระบบสมาชิกใน SHARK: สมาชิกและฟิลด์ที่ร้านสร้างเอง ความยินยอม/PDPA ช่องทางที่ผูก ที่มาของลูกค้า ระดับสมาชิก และ webhook",
+    "REST API ของระบบสมาชิกในเลขา: สมาชิกและฟิลด์ที่ร้านสร้างเอง ความยินยอม/PDPA ช่องทางที่ผูก ที่มาของลูกค้า ระดับสมาชิก และ webhook",
 };
 
 const BASE_URL = "https://shark.in.th/api/v1/member";
@@ -279,7 +279,7 @@ export default function MemberApiDocsPage() {
       <header className="flex flex-col gap-2">
         <h1 className="text-2xl font-bold">{spec.info.title}</h1>
         <p className="text-sm text-neutral-600">
-          REST API ของ <strong>ระบบสมาชิก</strong> ใน SHARK — สมาชิกและฟิลด์ที่ร้านสร้างเอง · ความยินยอมและ PDPA ·
+          REST API ของ <strong>ระบบสมาชิก</strong> ในเลขา — สมาชิกและฟิลด์ที่ร้านสร้างเอง · ความยินยอมและ PDPA ·
           ช่องทางที่ผูก · ที่มาของลูกค้า · ระดับสมาชิก · webhook ขาออก
         </p>
         <p className="text-sm text-neutral-600">

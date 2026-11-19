@@ -8,6 +8,20 @@ import { AuthProvider, useAuth } from "@/src/lib/auth-context";
 import { useAppFonts } from "@/src/lib/fonts";
 import { clearSignedUp, isFreshSignup } from "@/src/lib/post-signup";
 import { C } from "@/src/theme";
+import * as SplashScreen from "expo-splash-screen";
+import { LaunchOverlay } from "@/src/components/brand/LaunchOverlay";
+import { CrashOverlay, CrashScreen, installCrashGuard } from "@/src/lib/crash-guard";
+
+// 17 พ.ย. (build 28 หลุดตอนเข้าแชทลูกค้า): error ร้ายแรงของ JS ไม่ปิดแอป — แสดงข้อความบนจอให้ถ่ายภาพส่งทีมได้ (src/lib/crash-guard.tsx)
+installCrashGuard();
+
+/** error ตอนวาดจอ (expo-router ErrorBoundary ของ root) */
+export function ErrorBoundary({ error, retry }: { error: Error; retry: () => Promise<void> }) {
+  return <CrashScreen error={error} retry={retry} />;
+}
+
+// เปิดแอป (15 พ.ย. เจ้าของสั่ง): คง splash ของเครื่องไว้จนจอเปิดแอป (LaunchOverlay · โลโก้เคลื่อนไหวใหญ่) วาดทับตำแหน่งเดียวกันแล้วค่อยซ่อน
+void SplashScreen.preventAutoHideAsync().catch(() => {});
 
 
 function Gate({ children }: { children: React.ReactNode }) {
@@ -47,7 +61,9 @@ function Gate({ children }: { children: React.ReactNode }) {
       router.replace("/secretary/onboarding/name");
       return;
     }
-    if (atLogin || (!inApp && !atDna)) router.replace("/(app)");
+    // 15 พ.ย. (เจ้าของสั่ง · Lekaa FAB): เปิดแอป/login เสร็จ ⇒ หน้าหลักร้าน = dashboard "/" (WebView) · เลขาเข้าจากปุ่มลอย Lekaa ทุกจอ
+    //   (14 พ.ย. เคยเปลี่ยนเป็น /secretary — ถอยกลับตามแบบ fab6)
+    if (atLogin || (!inApp && !atDna)) router.replace("/");
   }, [ready, token, tenants.length, user?.phone, user?.id, segments, router]);
 
   return <>{children}</>;
@@ -55,23 +71,31 @@ function Gate({ children }: { children: React.ReactNode }) {
 
 export default function RootLayout() {
   const fontsReady = useAppFonts();
-  // ยังโหลดฟอนต์ไม่เสร็จ — คง splash ไว้ (อย่าเพิ่งวาด UI ด้วยฟอนต์ระบบ)
-  if (!fontsReady) return null;
-
+  // ยังโหลดฟอนต์ไม่เสร็จ — ยังไม่วาด UI (ฟอนต์ระบบ) · จอเปิดแอปทับอยู่จนฟอนต์ + auth พร้อม และวิ่งครบ 1 รอบ
   return (
     <GestureHandlerRootView style={{ flex: 1, backgroundColor: C.bg }}>
       <AuthProvider>
-        <Gate>
-          <StatusBar style="dark" />
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              contentStyle: { backgroundColor: C.bg },
-              animation: "fade",
-            }}
-          />
-        </Gate>
+        {fontsReady ? (
+          <Gate>
+            <StatusBar style="dark" />
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                contentStyle: { backgroundColor: C.bg },
+                animation: "fade",
+              }}
+            />
+          </Gate>
+        ) : null}
+        <LaunchGate fontsReady={fontsReady} />
+        <CrashOverlay />
       </AuthProvider>
     </GestureHandlerRootView>
   );
+}
+
+/** จอเปิดแอปรอ auth (bootstrap token/me) + ฟอนต์ */
+function LaunchGate({ fontsReady }: { fontsReady: boolean }) {
+  const { ready } = useAuth();
+  return <LaunchOverlay ready={fontsReady && ready} />;
 }

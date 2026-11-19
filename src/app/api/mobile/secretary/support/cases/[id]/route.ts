@@ -1,9 +1,10 @@
 // GET /api/mobile/secretary/support/cases/[id] — เคส + ข้อความ (เก่า→ใหม่) · เปิดอ่าน = ล้างตัวนับ (`markCaseRead`) · ไม่เห็น = 404
 //   ข้อความไม่มี id ของทีมงานแพลตฟอร์ม — มีแค่ฝั่ง (SHOP/PLATFORM) + `mine`
-import { listCaseMessages, markCaseRead } from "@/lib/support/service";
-import { attachmentsDto } from "@/lib/ai/secretary/dto";
+//   help-cases ▸ + stage · stageStep · caseNoText · stageEvents [{id, from, to, side, note, at}] (บรรทัดระบบในห้อง) · ไฟล์ส่วนตัว url = cases/[id]/files/[fileId] ◂
+import { listCaseMessages, listCaseStageEvents, markCaseRead, prevStageBeforeNeedInfo } from "@/lib/support/service";
+import { caseNoText, stageStep } from "@/lib/support/stage";
 import { gate, idParam, notFound, ok, type RouteCtx, withErrors } from "../../../_shared";
-import { visibleCase } from "../../_case";
+import { caseAttachmentsForApp, visibleCase } from "../../_case";
 
 async function GET_(req: Request, ctx: RouteCtx) {
   const a = await gate(req, null);
@@ -12,11 +13,25 @@ async function GET_(req: Request, ctx: RouteCtx) {
   const c = id ? await visibleCase(a.c, id) : null;
   if (!c) return notFound("ไม่พบเรื่องนี้");
   const tctx = { tenantId: a.c.tenantId };
-  const msgs = await listCaseMessages(tctx, c.id);
+  const [msgs, evs] = await Promise.all([listCaseMessages(tctx, c.id), listCaseStageEvents(tctx, c.id)]);
   await markCaseRead(tctx, c.id);
   return ok({
-    case: { id: c.id, caseNo: c.caseNo, subject: c.subject, status: c.status, category: c.category ?? null, roomId: c.roomId ?? null, createdAt: c.createdAt, updatedAt: c.updatedAt },
-    messages: msgs.map((m) => ({ id: m.id, side: m.authorSide, mine: m.authorSide === "SHOP" && m.authorId === a.c.userId, body: m.body, attachments: attachmentsDto(m.attachmentsJson), createdAt: m.createdAt })),
+    case: {
+      id: c.id,
+      caseNo: c.caseNo,
+      caseNoText: caseNoText(c.caseNo),
+      subject: c.subject,
+      status: c.status,
+      stage: c.stage,
+      stageStep: stageStep(c.stage, prevStageBeforeNeedInfo(evs)),
+      category: c.category ?? null,
+      roomId: c.roomId ?? null,
+      createdAt: c.createdAt,
+      updatedAt: c.updatedAt,
+    },
+    messages: msgs.map((m) => ({ id: m.id, side: m.authorSide, mine: m.authorSide === "SHOP" && m.authorId === a.c.userId, body: m.body, attachments: caseAttachmentsForApp(c.id, m.attachmentsJson), createdAt: m.createdAt })),
+    // ไม่มีรหัสทีมงานแพลตฟอร์ม/ผู้ใช้ — มีแค่ฝั่ง
+    stageEvents: evs.map((e) => ({ id: e.id, from: e.fromStage, to: e.toStage, side: e.actorSide, note: e.note, at: e.createdAt })),
   });
 }
 

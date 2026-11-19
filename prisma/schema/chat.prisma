@@ -184,6 +184,12 @@ model ChatConversation {
   pinnedAt       DateTime?
   pinnedByUserId String?
 
+  // ── ลบแชทออกจากรายการ (ปัดซ้ายในแอป · 14 พ.ย. 2026) ──
+  // 🔴 ซ่อนเท่านั้น ไม่ลบข้อมูล (เก็บข้อความลูกค้าตามกฎหมาย/PDPA) — ระดับร้าน: หายจากรายการ/ตัวนับของทุกคน
+  //    ลูกค้าทักใหม่ (ข้อความขาเข้า · announceInbound) ⇒ ล้างค่าทั้งคู่ ห้องกลับมาในรายการ (เหมือนลบแชทในแอปแชททั่วไป)
+  hiddenAt       DateTime?
+  hiddenByUserId String?
+
   // SLA
   firstCustomerMessageAt DateTime?
   firstResponseAt        DateTime?

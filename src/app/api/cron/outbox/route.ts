@@ -5,6 +5,7 @@ import { logOps } from "@/lib/core/ops";
 import { runMinuteJobs } from "@/lib/platform/minute-jobs";
 import "@/lib/ai/secretary/room-jobs-job"; // SEC S1.5 ▸ ลงทะเบียน "secretary.roomJobs" (ตัวเก็บตกคิวห้องเลขา · R-K8b) ◂
 import "@/lib/modules/chat/sla-job"; // SEC S1.24 ▸ ลงทะเบียน "chat.sla" (SLA แชทลูกค้า ทุก 5 นาที · R-K8b) ◂
+import "@/lib/modules/calendar/jobs"; // CAL1.4 ▸ ลงทะเบียน "calendar.fire" (+ CAL1.5 "calendar.brief") ◂
 
 // ระบาย outbox (~20 วิ) + งานรายนาที (งบ 20 วิ + บันทึกท้ายรอบ) ≈ 41–45 วิ — ค่าเริ่มต้นที่สั้นกว่าจะตัดคำตอบทิ้งพร้อมผลการระบาย
 export const maxDuration = 60;

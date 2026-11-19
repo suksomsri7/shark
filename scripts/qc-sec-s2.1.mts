@@ -25,9 +25,10 @@ const strip = (s: string) => s.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:]
 const walk = (d: string): string[] => (existsSync(d) ? readdirSync(d).flatMap((f) => { const q = join(d, f); return statSync(q).isDirectory() ? walk(q) : /\.tsx?$/.test(f) ? [q] : []; }) : []);
 
 console.log("── R: เส้นทาง ──");
+// B27 (17 พ.ย. 2026): จอเชิญ SMS staff/invite.tsx ถอดแล้ว (แทนด้วยแชททีม) ⇒ แทนในรายการด้วย team/add + จอกลุ่ม new-group · team/[id] · team/[id]/settings (แก้โดยตั้งใจ · ledger/B27-TEAM-HANDOFF.md)
 const ROUTES: [string, string][] = [
   ["/secretary", "secretary/index.tsx"], ["/secretary/new", "secretary/new.tsx"], ["/secretary/room/r1", "secretary/room/[id].tsx"], ["/secretary/inbox", "secretary/inbox.tsx"], ["/secretary/scheduled", "secretary/scheduled.tsx"],
-  ["/secretary/staff", "secretary/staff/index.tsx"], ["/secretary/staff/m1", "secretary/staff/[membershipId].tsx"], ["/secretary/staff/invite", "secretary/staff/invite.tsx"],
+  ["/secretary/staff", "secretary/staff/index.tsx"], ["/secretary/staff/m1", "secretary/staff/[membershipId].tsx"], ["/secretary/team/add", "secretary/team/add.tsx"], ["/secretary/team/new-group", "secretary/team/new-group.tsx"], ["/secretary/team/t1", "secretary/team/[id]/index.tsx"], ["/secretary/team/t1/settings", "secretary/team/[id]/settings.tsx"],
   ["/secretary/settings", "secretary/settings/index.tsx"], ["/secretary/settings/secretary", "secretary/settings/secretary.tsx"], ["/secretary/settings/access", "secretary/settings/access.tsx"], ["/secretary/settings/rules", "secretary/settings/rules.tsx"], ["/secretary/settings/log", "secretary/settings/log.tsx"], ["/secretary/settings/knowledge", "secretary/settings/knowledge.tsx"], ["/secretary/settings/customers", "secretary/settings/customers.tsx"], ["/secretary/settings/account", "secretary/settings/account.tsx"], ["/secretary/settings/quota", "secretary/settings/quota.tsx"],
   ["/secretary/onboarding/name", "secretary/onboarding/name.tsx"], ["/secretary/help", "secretary/help/index.tsx"], ["/secretary/help/c1", "secretary/help/[caseId].tsx"],
   ["/customers", "customers/index.tsx"], ["/customers/x1", "customers/[id]/index.tsx"], ["/customers/x1/info", "customers/[id]/info.tsx"], ["/business/new", "business/new.tsx"],

@@ -1,0 +1,274 @@
+{
+ "_about": "QC fixture จอช่วยเหลือ (help-cases 15 พ.ย.) สำหรับ qc/shoot-help.mjs — นาฬิกาปัก 15 พ.ย. 2569 09:50",
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "suk@qc.invalid",
+    "name": "สมชาย ใจดี",
+    "phone": "+66800000101",
+    "appleLinked": true
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "SIAM DIVE CENTER",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "OWNER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "เลขา",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 3,
+    "approvedClean": 3,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 0,
+   "customers": 40,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 1
+   },
+   "total": 40,
+   "calendar": 6
+  },
+  "GET /api/mobile/secretary/inbox/count": {
+   "total": 0,
+   "canApprove": 0
+  },
+  "GET /api/mobile/inbox/unread": {
+   "unread": 40
+  },
+  "GET /api/mobile/secretary/systems": {
+   "items": []
+  },
+  "GET /api/mobile/secretary/access": {
+   "items": [
+    {
+     "module": "booking",
+     "level": "READ"
+    },
+    {
+     "module": "account",
+     "level": "READ"
+    },
+    {
+     "module": "crm",
+     "level": "DRAFT"
+    },
+    {
+     "module": "kanban",
+     "level": "DRAFT"
+    }
+   ]
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  },
+  "GET /api/mobile/secretary/support/cases": {
+   "items": [
+    {
+     "id": "c124",
+     "caseNo": 124,
+     "caseNoText": "SHARK-000124",
+     "subject": "บันทึกใบเสร็จแล้วยอดไม่ขึ้น",
+     "status": "OPEN",
+     "stage": "FIXING",
+     "stageStep": 3,
+     "updatedAt": "2026-11-15T02:40:00Z",
+     "unreadCount": 1
+    },
+    {
+     "id": "c123",
+     "caseNo": 123,
+     "caseNoText": "SHARK-000123",
+     "subject": "เลขาตั้งนัดผิดวัน",
+     "status": "PENDING",
+     "stage": "NEED_INFO",
+     "stageStep": 3,
+     "updatedAt": "2026-11-15T00:50:00Z",
+     "unreadCount": 0
+    },
+    {
+     "id": "c121",
+     "caseNo": 121,
+     "caseNoText": "SHARK-000121",
+     "subject": "ขอเพิ่มรายงานยอดรายสัปดาห์",
+     "status": "OPEN",
+     "stage": "CHECKING",
+     "stageStep": 2,
+     "updatedAt": "2026-11-14T06:00:00Z",
+     "unreadCount": 0
+    },
+    {
+     "id": "c118",
+     "caseNo": 118,
+     "caseNoText": "SHARK-000118",
+     "subject": "ล็อกอินบน iPad ไม่ได้",
+     "status": "PENDING",
+     "stage": "AWAITING_CONFIRM",
+     "stageStep": 4,
+     "updatedAt": "2026-11-13T05:00:00Z",
+     "unreadCount": 0
+    },
+    {
+     "id": "c110",
+     "caseNo": 110,
+     "caseNoText": "SHARK-000110",
+     "subject": "พิมพ์ใบกำกับภาษีไม่ออก",
+     "status": "RESOLVED",
+     "stage": "CLOSED",
+     "stageStep": 5,
+     "updatedAt": "2026-11-05T05:00:00Z",
+     "unreadCount": 0
+    }
+   ],
+   "unread": 1,
+   "categories": [
+    "secretary_wrong",
+    "bug",
+    "question",
+    "billing",
+    "feature",
+    "other"
+   ]
+  },
+  "GET /api/mobile/secretary/support/cases/c124": {
+   "case": {
+    "id": "c124",
+    "caseNo": 124,
+    "caseNoText": "SHARK-000124",
+    "subject": "บันทึกใบเสร็จแล้วยอดไม่ขึ้น",
+    "status": "OPEN",
+    "stage": "FIXING",
+    "stageStep": 3,
+    "category": "bug",
+    "roomId": null,
+    "createdAt": "2026-11-14T02:58:00Z",
+    "updatedAt": "2026-11-15T02:40:00Z"
+   },
+   "messages": [
+    {
+     "id": "m1",
+     "side": "SHOP",
+     "mine": true,
+     "body": "บันทึกใบเสร็จ RE-0045 แล้วยอดในบัญชีไม่ขึ้นครับ",
+     "attachments": [],
+     "createdAt": "2026-11-14T02:58:00Z"
+    },
+    {
+     "id": "m2",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "ได้รับแล้วครับ กำลังดูให้",
+     "attachments": [],
+     "createdAt": "2026-11-14T03:05:00Z"
+    },
+    {
+     "id": "m3",
+     "side": "PLATFORM",
+     "mine": false,
+     "body": "พบว่าระบบบัญชีไม่ได้ลงงวดใหม่ กำลังแก้และจะแจ้งเมื่อเสร็จครับ",
+     "attachments": [],
+     "createdAt": "2026-11-15T02:41:00Z"
+    }
+   ],
+   "stageEvents": [
+    {
+     "id": "e1",
+     "from": null,
+     "to": "RECEIVED",
+     "side": "SHOP",
+     "note": null,
+     "at": "2026-11-14T02:58:00Z"
+    },
+    {
+     "id": "e2",
+     "from": "RECEIVED",
+     "to": "CHECKING",
+     "side": "PLATFORM",
+     "note": null,
+     "at": "2026-11-14T03:02:00Z"
+    },
+    {
+     "id": "e3",
+     "from": "CHECKING",
+     "to": "FIXING",
+     "side": "PLATFORM",
+     "note": "ทีมพบสาเหตุแล้ว",
+     "at": "2026-11-15T02:40:00Z"
+    }
+   ]
+  }
+ },
+ "shots": [
+  {
+   "name": "help-list",
+   "route": "/secretary/help",
+   "steps": [
+    {
+     "wait": "help-case-row"
+    },
+    {
+     "sleep": 800
+    }
+   ],
+   "mock": [
+    1
+   ]
+  },
+  {
+   "name": "help-new",
+   "route": "/secretary/help",
+   "steps": [
+    {
+     "wait": "help-case-row"
+    },
+    {
+     "tap": "sec-top-new"
+    },
+    {
+     "wait": "help-new-body"
+    },
+    {
+     "sleep": 800
+    }
+   ],
+   "mock": [
+    2
+   ]
+  },
+  {
+   "name": "help-room",
+   "route": "/secretary/help/c124",
+   "steps": [
+    {
+     "wait": "help-tracker"
+    },
+    {
+     "sleep": 1000
+    }
+   ],
+   "mock": [
+    3
+   ]
+  }
+ ]
+}

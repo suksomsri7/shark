@@ -9,6 +9,10 @@
 //   แจ้งเตือนแชท ทุกข้อความ/เฉพาะที่มอบหมาย/ปิด (GET/PUT secretary/notify kind=inbox) ·
 //   K5 กฎรับเรื่อง (GET/PUT inbox/routing · แก้ได้เฉพาะ OWNER/MANAGER — เซิร์ฟเวอร์ตรวจซ้ำ) + SLA (อ่านอย่างเดียว) + เข้า/ออกเวร (POST inbox/shift · คนที่ตอบลูกค้าได้)
 //   inbox/systems 403 ⇒ ไม่แสดงส่วนแชทลูกค้า
+// B27 (17 พ.ย. 2026 · เจ้าของหาปุ่มแปล/ร่างคำตอบในแอปไม่เจอ เพราะร้านปิดไว้และสวิตช์มีแต่บนเว็บ): ส่วน "AI และการแปลภาษา" ใน `InboxSettings`
+//   GET/PUT inbox/ai-settings (ระบบแชทที่เลือกอยู่) — สวิตช์ AI แนะนำคำตอบ · การแปลข้อความ · ภาษาที่ทีมอ่าน (ชุดเดียวกับฟอร์มเว็บ) + บรรทัดค่าใช้จ่ายต่อครั้ง
+//   แก้ได้เมื่อ `canEdit` (คีย์ตั้งค่าแชท · ด่านเดียวกับเว็บ) · ไม่มีสิทธิ์ = เห็นสถานะปัจจุบันแบบอ่านอย่างเดียว (สวิตช์จาง · แบบเดียวกับกฎรับเรื่อง)
+//   กดแล้วบันทึกทันที (แบบแจ้งเตือนแชท) · ล้ม = คืนค่าเดิม + แถบแจ้ง
 import { useCallback, useRef, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
@@ -25,6 +29,7 @@ import {
   inboxPut,
   setInboxCanReply,
   statusOf,
+  type AiSettings,
   type Connection,
   type NotifyMode,
   type QuickReply,
@@ -36,6 +41,7 @@ import { OwnerOnlyBadge, SettingRow, SettingsTop, Toggle } from "@/src/component
 import { DISCLOSURE_MAX, disclosureProblem, isDenied, secGet, secPut, serverNote, useActiveRole, type AfterHours } from "@/src/api/secretary";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
+import th from "@/src/i18n/th";
 import { F, useTheme } from "@/src/theme/index";
 import { radii, spacing, type as T } from "@/src/theme/tokens";
 
@@ -224,6 +230,11 @@ const MODE_LABEL: Record<string, I18nKey> = { ROUND_ROBIN: "cust.rule.ROUND_ROBI
 const NOTIFY_LABEL: Record<NotifyMode, I18nKey> = { ALL: "cust.notify.ALL", ASSIGNED: "cust.notify.ASSIGNED", OFF: "cust.notify.OFF" };
 const isNotify = (v: unknown): v is NotifyMode => typeof v === "string" && (NOTIFY_MODES as readonly string[]).includes(v);
 type Draft = Omit<RoutingRule, "id">;
+/** B27 ชื่อภาษา (`cust.lang.<code>` · ไม่รู้จัก = รหัสตัวใหญ่) */
+const langLabel = (t: ReturnType<typeof useT>, code: string) => {
+  const k = `cust.lang.${code}`;
+  return k in th ? t(k as I18nKey) : code.toUpperCase();
+};
 const sameRules = (a: Draft[], b: Draft[]) => JSON.stringify(a) === JSON.stringify(b);
 const toDraft = (r: Routing | null): Draft[] =>
   (r?.rules ?? [])
@@ -247,6 +258,9 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
   const [notify, setNotify] = useState<NotifyMode | null>(null);
   const [routing, setRouting] = useState<Routing | null>(null);
   const [rules, setRules] = useState<Draft[]>([]);
+  const [ai, setAi] = useState<AiSettings | null>(null);
+  /** B27: แถบแจ้งของส่วน AI (ใต้ส่วนนั้นเอง — แถบรวม cust-set-note อยู่ไกลลงไปใต้แจ้งเตือนแชท) */
+  const [aiNote, setAiNote] = useState<{ text: string; warn: boolean } | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [failed, setFailed] = useState(false);
   const [tick, setTick] = useState(0);
@@ -277,11 +291,12 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
               if (statusOf(e) !== 403) subFailed = true;
               return null;
             });
-          const [cn, qr, rt, nf] = await Promise.all([
+          const [cn, qr, rt, nf, ais] = await Promise.all([
             soft(inboxGet("inbox/connections", { systemId: sid })),
             soft(inboxGet("inbox/quick-replies", { systemId: sid })),
             soft(inboxGet("inbox/routing", { systemId: sid })),
             soft(inboxGet("secretary/notify")),
+            soft(inboxGet("inbox/ai-settings", { systemId: sid })),
           ]);
           if (!live) return;
           if (subFailed) {
@@ -293,6 +308,7 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
           setQuick(qr?.items ?? []);
           setRouting(rt);
           setRules(toDraft(rt));
+          setAi(ais);
           const m = nf?.prefs?.inbox;
           setNotify(isNotify(m) ? m : nf ? "ALL" : null);
           setLoaded(true);
@@ -342,6 +358,30 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
     });
   };
 
+  // B27: บันทึกทันทีทั้งชุด (PUT แทนที่ 3 ค่า) · ล้ม = คืนค่าเดิม
+  const saveAi = (patch: Partial<Pick<AiSettings, "aiSuggestEnabled" | "translateEnabled" | "staffLang">>) => {
+    if (!ai || !ai.canEdit || busyRef.current) return;
+    const prev = ai;
+    const next = { ...ai, ...patch };
+    setAi(next);
+    busyRef.current = true;
+    setBusy(true);
+    setAiNote(null);
+    void inboxPut("inbox/ai-settings", { systemId, aiSuggestEnabled: next.aiSuggestEnabled, translateEnabled: next.translateEnabled, staffLang: next.staffLang })
+      .then((r) => {
+        setAi(r);
+        setAiNote({ text: t("sec.set.savedShort"), warn: false });
+      })
+      .catch((e: unknown) => {
+        setAi(prev);
+        setAiNote({ text: inboxNote(e) ?? t("sec.set.saveFail"), warn: true });
+      })
+      .finally(() => {
+        busyRef.current = false;
+        setBusy(false);
+      });
+  };
+
   const onDuty = routing?.onDuty ?? [];
   const meOnDuty = !!myId && onDuty.some((d) => d.userId === myId);
   const toggleShift = () =>
@@ -378,6 +418,68 @@ function InboxSettings({ onWeb }: { onWeb: () => void }) {
   const dutyNames = onDuty.map((d) => firstName(d.name)).filter(Boolean).join(" · ");
   return (
     <>
+      {/* B27 (17 พ.ย.) AI และการแปลภาษา — 403/ไม่มีผล = ไม่แสดงส่วนนี้ */}
+      {ai ? (
+        <>
+          <SectionLabel style={styles.label}>{t("cust.ai.section")}</SectionLabel>
+          <View testID="cust-set-ai">
+            <Text testID="cust-set-ai-cost" style={[styles.intro, { color: c.textMuted }]}>
+              {t("cust.ai.cost")}
+            </Text>
+            {!ai.canEdit ? (
+              <Text testID="cust-set-ai-readonly" style={[styles.intro, { color: c.textMuted }]}>
+                {t("cust.ai.readOnly")}
+              </Text>
+            ) : null}
+            <Glass radius={radii.sugg} style={styles.card}>
+              <View style={styles.row}>
+                <View style={styles.body}>
+                  <Text style={[styles.title, { color: c.text }]}>{t("cust.ai.suggest.title")}</Text>
+                  <Text style={[styles.sub, { color: c.textMuted }]}>{t("cust.ai.suggest.sub")}</Text>
+                </View>
+                <Toggle testID="cust-set-ai-suggest" value={ai.aiSuggestEnabled} onChange={(v) => saveAi({ aiSuggestEnabled: v })} disabled={!ai.canEdit || busy} label={t("cust.ai.suggest.title")} />
+              </View>
+            </Glass>
+            <Glass radius={radii.sugg} style={styles.card}>
+              <View style={styles.row}>
+                <View style={styles.body}>
+                  <Text style={[styles.title, { color: c.text }]}>{t("cust.ai.translate.title")}</Text>
+                  <Text style={[styles.sub, { color: c.textMuted }]}>{t("cust.ai.translate.sub")}</Text>
+                </View>
+                <Toggle testID="cust-set-ai-translate" value={ai.translateEnabled} onChange={(v) => saveAi({ translateEnabled: v })} disabled={!ai.canEdit || busy} label={t("cust.ai.translate.title")} />
+              </View>
+            </Glass>
+            <Glass radius={radii.sugg} style={styles.card}>
+              <Text style={[styles.title, { color: c.text }]}>{t("cust.ai.lang")}</Text>
+              <Text style={[styles.sub, { color: c.textMuted }]}>{t("cust.ai.langSub")}</Text>
+              <View testID="cust-set-ai-lang" style={styles.langWrap}>
+                {ai.langs.map((code) => {
+                  const on = code === ai.staffLang;
+                  return (
+                    <Pressable
+                      testID={`cust-set-ai-lang-${code}`}
+                      key={code}
+                      onPress={() => !on && saveAi({ staffLang: code })}
+                      disabled={!ai.canEdit || busy}
+                      accessibilityRole="radio"
+                      accessibilityState={{ selected: on, checked: on, disabled: !ai.canEdit || busy }}
+                      style={[styles.chip, { backgroundColor: on ? c.accent : c.chip.bg }, !ai.canEdit && !on && styles.dimChip]}
+                    >
+                      <Text style={[styles.chipT, { color: on ? c.onAccent : c.chip.fg }, on && styles.chipOn]}>{langLabel(t, code)}</Text>
+                    </Pressable>
+                  );
+                })}
+              </View>
+            </Glass>
+            {aiNote ? (
+              <Note warn={aiNote.warn} testID="cust-set-ai-note">
+                {aiNote.text}
+              </Note>
+            ) : null}
+          </View>
+        </>
+      ) : null}
+
       {/* K4 ช่องทางที่เชื่อม */}
       <SectionLabel style={styles.label}>{t("cust.set.channels")}</SectionLabel>
       <View testID="cust-set-channels">
@@ -554,5 +656,8 @@ const styles = StyleSheet.create({
   chipT: { fontSize: T.cap },
   tool: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
   addRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  langWrap: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 12 },
+  chipOn: { fontWeight: "700" },
+  dimChip: { opacity: 0.5 },
   dutyRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 },
 });

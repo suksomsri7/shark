@@ -131,6 +131,7 @@ export async function setNotifyPref(userId: string, input: { tenantId?: string |
 /**
  * ตัวเลขบนไอคอนแอปของผู้ใช้ในร้านนี้ = (1) ห้องเลขาที่ผู้ใช้อยู่ (เปิดเอง/เป็นสมาชิก · **ไม่นับ** OWNER-เห็นทุกห้อง)
  *   ที่มีคำตอบเลขา (ไม่นับข้อความระบบ R-S1.6b) ใหม่กว่า `lastReadAt` — สมาชิก seeHistory=false นับเฉพาะคำตอบตั้งแต่ addedAt
+ *   + (4) B27 ข้อความแชททีมที่ยังไม่อ่าน (`teamUnreadTotal`)
  *   + (2) `unreadCount` ของทุกระบบ CHAT ที่เปิดอยู่ ถ้ามีสิทธิ์ `chat.conversation.read` + (3) `unreadCaseTotalForUser`
  *   ไม่มี Membership ที่รับแล้วในร้านนี้ = 0 · throw ได้ (ผู้เรียกดักเอง — `notifyUser` ดักแล้ว)
  */
@@ -195,7 +196,10 @@ export async function badgeTotalFor(userId: string, tenantId: string): Promise<n
 
   // (3) เรื่องที่แจ้งทีมงาน (ทีมตอบแล้วยังไม่อ่าน)
   const helpUnread = await unreadCaseTotalForUser({ tenantId: tid }, uid, m.role);
-  return roomsUnread + chatUnread + helpUnread;
+  // (4) B27 แชททีม — ข้อความทีมที่ยังไม่อ่าน (ห้องที่ปิดเสียงไม่นับ) · dynamic import กันวงตอนโหลด ◂
+  const { teamUnreadTotal } = await import("@/lib/team-chat/service");
+  const teamUnread = await teamUnreadTotal(tid, uid);
+  return roomsUnread + chatUnread + helpUnread + teamUnread;
 }
 
 // กันสแปม: `${userId}:${link}` → เวลาที่ส่งล่าสุด (ms) — ต่อโปรเซส

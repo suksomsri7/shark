@@ -18,7 +18,7 @@ const DAY_MS = 86_400_000;
 /** งาน QUEUED ที่รอเกินนี้ = "ค้าง" (แสดงในรายการให้ทีมงานดู) */
 export const STALE_QUEUED_MS = 5 * 60_000;
 /** ข้อความ error ของงานที่ทีมงานยกเลิก (oracle Q-2 ตรวจคำว่า cancelled) */
-export const CANCELLED_BY_SUPPORT = "cancelled by support — ทีมงาน SHARK ยกเลิกงานนี้";
+export const CANCELLED_BY_SUPPORT = "cancelled by support — ทีมงานเลขายกเลิกงานนี้";
 
 function guard(actor: PlatformUser | null | undefined): PlatformUser {
   return requirePlatformRole(actor ?? null, OPS_ROLES);

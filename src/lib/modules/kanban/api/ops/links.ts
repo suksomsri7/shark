@@ -16,7 +16,7 @@ import { defineKanbanOp, type ApiOp } from "../op";
 
 const linkTypeEnum = z
   .enum(LINK_TYPE_KINDS as [KanbanLinkKind, ...KanbanLinkKind[]])
-  .describe("What kind of SHARK object the card points at. Use URL for a plain web link.");
+  .describe("What kind of Lekaa object the card points at. Use URL for a plain web link.");
 
 const cardsLinksList = defineKanbanOp({
   id: "cards.links.list",
@@ -58,7 +58,7 @@ const cardsLinksAdd = defineKanbanOp({
   kind: "write",
   action: "kanban.card.update",
   summary:
-    "Link this card to an object elsewhere in SHARK, or to an external URL. Linking the same object twice returns the existing link instead of creating a second one. The target must exist in this shop.",
+    "Link this card to an object elsewhere in Lekaa, or to an external URL. Linking the same object twice returns the existing link instead of creating a second one. The target must exist in this shop.",
   label: "เชื่อมข้อมูลกับการ์ด",
   input: cardsLinksAddInput,
   test: "K3.1-S6.2",

@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "SHARK HUB",
+    "name": "Lekaa",
     "slug": "shark-th",
     "version": "2.0.0",
     "orientation": "portrait",
@@ -13,6 +13,7 @@
       "usesAppleSignIn": true,
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "CFBundleAllowMixedLocalizations": true,
         "UISupportedInterfaceOrientations~ipad": [
           "UIInterfaceOrientationPortrait",
           "UIInterfaceOrientationPortraitUpsideDown",
@@ -20,7 +21,7 @@
           "UIInterfaceOrientationLandscapeRight"
         ]
       },
-      "buildNumber": "25"
+      "buildNumber": "28"
     },
     "android": {
       "package": "th.in.shark.ai",
@@ -29,7 +30,10 @@
         "backgroundColor": "#ffffff",
         "foregroundImage": "./assets/adaptive-icon.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "blockedPermissions": [
+        "android.permission.WRITE_CONTACTS"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -40,16 +44,35 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/splash.png",
-          "resizeMode": "cover",
-          "backgroundColor": "#ffffff"
+          "image": "./assets/brand/logo-transparent-1024.png",
+          "imageWidth": 146,
+          "resizeMode": "contain",
+          "backgroundColor": "#ffffff",
+          "dark": {
+            "image": "./assets/brand/logo-transparent-1024.png",
+            "backgroundColor": "#0e0e15"
+          }
         }
       ],
       "expo-notifications",
       [
+        "expo-calendar",
+        {
+          "calendarPermission": "Lekaa ใช้ปฏิทินในเครื่องเพื่อแสดงนัดของคุณรวมกับงานร้าน และบันทึกนัดส่วนตัวที่คุณสร้าง — ข้อมูลไม่ถูกส่งออกจากเครื่อง",
+          "remindersPermission": "Lekaa ไม่ได้ใช้รายการเตือนของเครื่อง (Reminders) — ข้อมูลไม่ถูกส่งออกจากเครื่อง"
+        }
+      ],
+      [
         "expo-image-picker",
         {
-          "photosPermission": "แอปขอเข้าถึงรูปภาพเพื่อส่งรูปให้ผู้ช่วย AI ดู"
+          "photosPermission": "แอปขอเข้าถึงรูปภาพเพื่อส่งรูปให้ผู้ช่วย AI ดู",
+          "cameraPermission": "แอปขอใช้กล้องเพื่อถ่ายรูป (เช่น สลิป ใบเสร็จ สินค้า) ส่งให้ผู้ช่วย AI ดู"
+        }
+      ],
+      [
+        "expo-contacts",
+        {
+          "contactsPermission": "Lekaa ใช้รายชื่อในเครื่องเฉพาะตอนคุณกดเลือกเบอร์เพื่อเพิ่มคนเข้าทีม — รายชื่อไม่ถูกส่งออกจากเครื่อง"
         }
       ],
       "expo-font",
@@ -79,6 +102,10 @@
         }
       ]
     ],
+    "locales": {
+      "th": "./locales/th.json",
+      "en": "./locales/en.json"
+    },
     "scheme": "sharkai",
     "backgroundColor": "#ffffff",
     "extra": {

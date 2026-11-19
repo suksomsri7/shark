@@ -13,6 +13,7 @@ import type {
 } from "@prisma/client";
 import { prisma } from "@/lib/core/db";
 import { emitOutbox } from "@/lib/core/outbox";
+import { writeAudit } from "@/lib/core/audit";
 // `after()` = "ตอบคำขอไปก่อน แล้วค่อยทำงานที่เหลือ" (บน Vercel ผูกกับ waitUntil)
 import { after } from "next/server";
 import { scheduleDrain } from "@/lib/outbox-consumers";
@@ -572,6 +573,9 @@ async function announceInbound(args: AnnounceInboundArgs): Promise<void> {
     lastMessagePreview: args.previewText,
     lastMessageDirection: "IN",
     status: nextStatus,
+    // ลบแชท (ซ่อน · hideConversation) แล้วลูกค้าทักใหม่ ⇒ ห้องกลับมาในรายการ
+    hiddenAt: null,
+    hiddenByUserId: null,
   } satisfies Prisma.ChatConversationUpdateManyMutationInput;
 
   // 🔴 เจ้าของเจอจริง 30 ส.ค. 2026: "ข้อความมาแต่ไม่ได้รับ notification"
@@ -2119,6 +2123,7 @@ export async function listConversations(args: {
   const where: Prisma.ChatConversationWhereInput = {
     tenantId: args.tenantId,
     systemId: args.systemId,
+    hiddenAt: null, // ห้องที่ลบแชทแล้ว (hideConversation) ไม่อยู่ในรายการ
     ...unitAccessWhere(args.unitAccess),
   };
   const cur = args.page?.before; // SEC S1.21 ▸ ◂
@@ -2194,7 +2199,7 @@ export async function getThread(args: {
 
 export async function unreadCount(tenantId: string, systemId: string): Promise<number> {
   const rows = await prisma.chatConversation.aggregate({
-    where: { tenantId, systemId, staffUnreadCount: { gt: 0 } },
+    where: { tenantId, systemId, staffUnreadCount: { gt: 0 }, hiddenAt: null },
     _count: { _all: true },
   });
   return rows._count._all;
@@ -2253,6 +2258,44 @@ export async function setStatus(args: {
     });
   });
   scheduleDrain();
+  return { ok: true };
+}
+
+/**
+ * ลบแชทออกจากรายการ (ปัดซ้ายในแอป · 14 พ.ย. 2026) — **ซ่อน ไม่ลบ**: ข้อความ/ผู้ติดต่อ/ประวัติอยู่ครบ (กฎหมาย · PDPA)
+ *   ระดับร้าน: หายจากรายการ + ตัวนับ/badge ของทุกคน · ลูกค้าทักใหม่ (announceInbound) ⇒ ล้างค่า ห้องกลับมา
+ *   ซ่อนอยู่แล้ว = ok (ไม่เขียนซ้ำ) · เขียน AuditLog `chat.conversation.hide` (เก็บแค่ id/สถานะ ไม่มีชื่อ/ข้อความลูกค้า)
+ */
+export async function hideConversation(args: {
+  tenantId: string;
+  systemId: string;
+  conversationId: string;
+  actorUserId: string;
+  unitAccess?: string[]; // M11
+}): Promise<{ ok: boolean; reason?: string }> {
+  const conv = await prisma.chatConversation.findFirst({
+    where: { id: args.conversationId, tenantId: args.tenantId, systemId: args.systemId },
+    select: { id: true, unitId: true, status: true, hiddenAt: true },
+  });
+  if (!conv) return { ok: false, reason: "ไม่พบบทสนทนา" };
+  if (!canAccessConvUnit(args.unitAccess, conv.unitId)) return { ok: false, reason: "ไม่มีสิทธิ์เข้าถึงบทสนทนานี้" }; // M11
+  if (conv.hiddenAt) return { ok: true };
+  // conditional: ยิงซ้ำ/พร้อมกันได้แถว audit แถวเดียว
+  const r = await prisma.chatConversation.updateMany({
+    where: { id: conv.id, hiddenAt: null },
+    data: { hiddenAt: new Date(), hiddenByUserId: args.actorUserId },
+  });
+  if (r.count === 1) {
+    await writeAudit({
+      tenantId: args.tenantId,
+      actorId: args.actorUserId,
+      action: "chat.conversation.hide",
+      targetType: "ChatConversation",
+      targetId: conv.id,
+      before: { hidden: false, status: conv.status },
+      after: { hidden: true, systemId: args.systemId },
+    });
+  }
   return { ok: true };
 }
 
