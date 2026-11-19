@@ -55,6 +55,20 @@ const BOOK_RACHA = "racha-yai-day-trip";
 const LADDER = '[role="dialog"] [data-setting-key="trips.cancel.ladder"]';
 const LADDER_DAYS = `${LADDER} [data-table-cell="fromDaysBefore"] input`;
 const LADDER_PCT = `${LADDER} [data-table-cell="refundPct"] input`;
+// TRIPS W1.3 ▸ วันของรอบชั่วคราว (วันนี้ตามเวลาไทย + 45 วัน → ≥ 30 วัน = คืน 100% · d2 = วันถัดไปในเดือนเดียวกัน) + ขั้นยืนยันเบอร์ที่ทุกฉากแก้ใช้ร่วมกัน ◂
+const W13_PHONE = "0890001313";
+const W13_DATES = (() => {
+  const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+  let base = Date.parse(`${ymd(Date.now() + 7 * 3_600_000)}T00:00:00.000Z`) + 45 * 86_400_000;
+  if (Number(ymd(base).slice(8, 10)) >= 28) base += 5 * 86_400_000;
+  return { d1: ymd(base), d2: ymd(base + 86_400_000) };
+})();
+const W13_VERIFY: Action[] = [
+  { waitFor: '[data-testid="book-verify"]' },
+  { pause: 1_500 }, // nonce ของฟอร์มต้องอายุ ≥ 1 วิ (TOO_FAST)
+  { fill: { selector: '[data-testid="book-verify-phone"]', value: W13_PHONE } },
+  { click: { selector: '[data-testid="book-verify-submit"]' } },
+];
 export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
   "t1.1": [
     // ภาพ 16 — ตัวแก้ราชา · รอบตัวอย่างปัก ?ex= (ปริยาย ส. 14 พ.ย. ⇒ ลูกค้าจะเห็น 11,450.00 · --ex-date เปลี่ยนได้)
@@ -188,6 +202,38 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     //   (เขียนฐานเลนเหมือนฉากอื่นของกลุ่มนี้ · ตัวกวาดปล่อยที่ตามปกติ) · ไม่มีฉาก AWAIT_SHOP ใน a (ย้ายไป W1.2b) ◂
     { name: "book-expired", mockup: "07", public: true, path: () => `/book/${SHOP_DIVE.tenant.slug}/my/${W12_EXPIRED_TOKEN}?lang=th`, actions: [{ waitFor: '[data-testid="book-res-expired"]' }] },
   ],
+  // TRIPS W1.3 ▸ การจองของฉัน (ภาพ 01ง ปุ่มเลื่อน/ยกเลิก · 07ง แถบวัน · 15 ยอดคืน) — ทุกฉาก public 1440 + 390
+  //   🔴 เขียนฐาน: w13Prepare สร้าง "รอบชั่วคราว 2 รอบ" ของราชาบนร้าน seed (วันนี้ + 45/46 วัน · เวลา 06:13 ไม่ชนรอบของ seed) + การจองของตัวเอง (ผ่านเส้นจริง W1.2a + ร้านรับเงิน)
+  //      ฉากที่เขียน (ยกเลิก/เลื่อน) ใช้การจองแยกต่ออุปกรณ์ · w13Cleanup ลบทุกแถวที่ผูกการจอง/รอบของตัวเอง + รอบ + Party ผู้จองทดสอบ + ถังของเครื่องที่ใช้ ใน finally (ไม่แตะรอบ/การจองของ seed)
+  //      ผู้จองทุกการจองใช้เบอร์ W13_PHONE (ฉากกรอกเบอร์นี้ในช่องยืนยัน) · ไม่ฝัง token (สร้างตอนรัน) ◂
+  "w1.3": [
+    { name: "self-manage", mockup: "01", public: true, path: () => w13Path("paid", "th"), actions: [{ waitFor: '[data-testid="book-manage"]' }, { reveal: '[data-testid="book-manage"]' }] },
+    { name: "self-manage-en", mockup: "01", public: true, path: () => w13Path("paid", "en"), actions: [{ waitFor: '[data-testid="book-manage"]' }, { reveal: '[data-testid="book-manage"]' }] },
+    { name: "self-verify", mockup: "01", public: true, path: () => w13Path("paid", "th", "cancel"), actions: [{ waitFor: '[data-testid="book-verify"]' }] },
+    { name: "self-cancel-quote", mockup: "15", public: true, path: () => w13Path("paid", "th", "cancel"), actions: [...W13_VERIFY, { waitFor: '[data-testid="book-cancel-quote"]' }] },
+    {
+      name: "self-cancel-requested",
+      mockup: "15",
+      public: true,
+      path: () => w13Path("cancel", "th", "cancel"),
+      actions: [...W13_VERIFY, { waitFor: '[data-testid="book-cancel-quote"]' }, { pause: 1_500 }, { click: { selector: '[data-testid="book-cancel-accept"]' } }, { click: { selector: '[data-testid="book-cancel-submit"]' } }, { waitFor: '[data-testid="book-refund-status"]' }],
+    },
+    {
+      name: "self-unpaid-cancelled",
+      mockup: "07",
+      public: true,
+      path: () => w13Path("hold", "th", "cancel"),
+      actions: [...W13_VERIFY, { waitFor: '[data-testid="book-cancel-quote"]' }, { pause: 1_500 }, { click: { selector: '[data-testid="book-cancel-accept"]' } }, { click: { selector: '[data-testid="book-cancel-submit"]' } }, { waitFor: '[data-testid="book-cancel-done"]' }],
+    },
+    { name: "self-move-pick", mockup: "07", public: true, path: () => w13Path("paid", "th", "move"), actions: [...W13_VERIFY, { waitFor: '[data-testid="book-move"]' }] },
+    {
+      name: "self-move-done",
+      mockup: "07",
+      public: true,
+      path: () => w13Path("move", "th", "move"),
+      actions: [...W13_VERIFY, { waitFor: `[data-testid="book-move-day-${W13_DATES.d2}"]` }, { click: { selector: `[data-testid="book-move-day-${W13_DATES.d2}"]` } }, { waitFor: '[data-testid="book-move-summary"]' }, { pause: 1_500 }, { click: { selector: '[data-testid="book-move-submit"]' } }, { waitFor: '[data-testid="book-move-done"]' }],
+    },
+  ],
 };
 // TRIPS W1.2 ▸ token ของการจอง 0142 (ฉาก book-voucher) — เติมก่อนถ่ายเมื่อใบ = w1.2 · ไม่มีกุญแจเซิร์ฟเวอร์/ไม่พบการจอง ⇒ หยุด ◂
 let W12_VOUCHER_TOKEN = "";
@@ -209,6 +255,97 @@ async function w12ExpireLatestWebBooking(): Promise<string> {
   const t = typeof trips.bookingPublicToken === "function" ? trips.bookingPublicToken(b.id) : null;
   if (!t) throw new Fatal("ทำ token การจองไม่ได้ (ไม่มี SESSION_SECRET ใน .env.qc-trips?)");
   return t;
+}
+
+// TRIPS W1.3 ▸ ของที่ฉาก w1.3 สร้าง (ลบใน finally ด้วย w13Cleanup) · W13_DEV = อุปกรณ์ของฉากที่กำลังถ่าย (ฉากที่เขียนฐานใช้การจองแยกต่ออุปกรณ์) ◂
+const W13 = { deps: [] as string[], bookingIds: [] as string[], basketIds: [] as string[], clientKeys: [] as string[], tokens: {} as Record<string, string> };
+let W13_DEV = "";
+function w13Path(kind: "paid" | "cancel" | "hold" | "move", lang: "th" | "en", act?: "cancel" | "move"): string {
+  const token = W13.tokens[kind === "paid" ? "paid" : `${kind}:${W13_DEV}`];
+  if (!token) throw new Fatal(`ไม่มีการจองของฉาก ${kind}:${W13_DEV} — w13Prepare ยังไม่รัน`);
+  return `/book/${SHOP_DIVE.tenant.slug}/my/${token}?lang=${lang}${act ? `&do=${act}` : ""}`;
+}
+type W13Fn = (input: unknown, opts?: unknown) => Promise<Record<string, unknown>>;
+async function w13Prepare(ids: Ids): Promise<void> {
+  const tenantId = SHOP_DIVE.tenant.id;
+  const unitId = SHOP_DIVE.units.trips.id;
+  const staff = await prisma.user.findUnique({ where: { email: owner.email }, select: { id: true } });
+  const opt = await prisma.tripOption.findFirst({ where: { tenantId, productId: ids.racha, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true } });
+  if (!staff || !opt) throw new Fatal("ไม่พบเจ้าของร้าน/ตัวเลือกของราชา — รัน scripts/seed-trips-qc.mts ก่อน");
+  for (const d of [W13_DATES.d1, W13_DATES.d2]) {
+    const startsAt = new Date(`${d}T06:13:00+07:00`);
+    const dep = await prisma.tripDeparture.create({
+      data: { tenantId, unitId, productId: ids.racha, optionId: opt.id, localDate: new Date(`${d}T00:00:00.000Z`), startsAt, endsAt: new Date(startsAt.getTime() + 8.5 * 3_600_000), status: "OPEN", capacity: 30, cutoffAt: startsAt },
+      select: { id: true },
+    });
+    W13.deps.push(dep.id);
+  }
+  const book = (await import("@/lib/platform/trips-book")) as unknown as Record<string, W13Fn> & { issueBookFormNonce: (o: unknown) => string | null };
+  const pub = (await import("@/lib/platform/trips-public")) as unknown as { bookClientKey: (ip: string) => string | null; bookSlotToken: (t: string, d: string) => string | null };
+  const trips = (await import("@/lib/modules/trips")) as unknown as { recordTripPayment: W13Fn };
+  const t = pub.bookSlotToken(tenantId, W13.deps[0] ?? "");
+  if (!t) throw new Fatal("ทำตัวอ้างรอบชั่วคราวไม่ได้ (ไม่มี SESSION_SECRET?)");
+  let n = 0;
+  const one = async (key: string, pay: boolean) => {
+    n++;
+    const clientKey = pub.bookClientKey(`198.51.101.${n}`);
+    if (!clientKey) throw new Fatal("ทำกุญแจเครื่องไม่ได้");
+    W13.clientKeys.push(clientKey);
+    const nonce = (purpose: "hold" | "confirm") => book.issueBookFormNonce({ now: new Date(Date.now() - 60_000), scope: { tenantId, purpose } });
+    const sel = { "n.ADULT": "2", "n.CHILD": "1" };
+    const qs = await book.quoteBookSelection({ shop: SHOP_DIVE.tenant.slug, productSlug: BOOK_RACHA, query: { d: W13_DATES.d1, t, ...sel }, acceptLanguage: "th", clientKey });
+    const total = Number((qs.summary as { totalSatang?: unknown } | null | undefined)?.totalSatang);
+    if (qs.ok !== true || !Number.isSafeInteger(total)) throw new Fatal(`ฉาก w1.3: คิดยอดไม่ได้ (${JSON.stringify(qs).slice(0, 160)})`);
+    const h = await book.startBookHold({ shop: SHOP_DIVE.tenant.slug, productSlug: BOOK_RACHA, form: { d: W13_DATES.d1, t, ...sel, nonce: nonce("hold"), seen: String(total) }, acceptLanguage: "th", clientKey });
+    if (h.ok !== true) throw new Fatal(`ฉาก w1.3: ถือที่ไม่ได้ (${JSON.stringify(h).slice(0, 160)})`);
+    const c = await book.confirmBookHold({ shop: SHOP_DIVE.tenant.slug, basketToken: h.basketToken, sel: h.sel, form: { name: `ภาพทดสอบ W1.3 ${key}`, phone: W13_PHONE, email: "", accept: "on", nonce: nonce("confirm"), seen: String(total) }, clientKey });
+    if (c.ok !== true || typeof c.token !== "string") throw new Fatal(`ฉาก w1.3: ยืนยันการจองไม่ได้ (${JSON.stringify(c).slice(0, 160)})`);
+    const b = await prisma.tripBooking.findFirst({ where: { tenantId, publicTokenHash: sha256(c.token) }, select: { id: true, basketId: true } });
+    if (!b) throw new Fatal("ฉาก w1.3: ไม่พบการจองที่เพิ่งสร้าง");
+    W13.bookingIds.push(b.id);
+    if (b.basketId) W13.basketIds.push(b.basketId);
+    if (pay) {
+      const p = await trips.recordTripPayment({ tenantId, unitId, channel: "COUNTER", actor: { kind: "STAFF", userId: staff.id } }, { bookingId: b.id, amountSatang: total, tender: "PROMPTPAY", idempotencyKey: `w13vis_${b.id}`.slice(0, 90) });
+      if (p.ok !== true) throw new Fatal(`ฉาก w1.3: รับเงินไม่ได้ (${JSON.stringify(p).slice(0, 160)})`);
+    }
+    W13.tokens[key] = c.token;
+  };
+  await one("paid", true);
+  for (const dev of DEVICES) { await one(`cancel:${dev.device}`, true); await one(`move:${dev.device}`, true); }
+  for (const dev of DEVICES) await one(`hold:${dev.device}`, false); // ที่ยังไม่จ่ายสร้างท้ายสุด (เพดานถือพร้อมกันต่อเบอร์ X10 = 3)
+  console.log(`🧪 w1.3: รอบชั่วคราว ${W13_DATES.d1}/${W13_DATES.d2} · การจองทดสอบ ${W13.bookingIds.length}`);
+}
+/** ลบของที่ฉาก w1.3 สร้าง: ทุกตารางที่มี bookingId ของการจองบนรอบชั่วคราว · ที่ถือ · ตะกร้า · audit · outbox · การจอง · รอบ · Party ผู้จองทดสอบที่ไม่มีการจองอื่น · ถังของเครื่องที่ใช้ — คืนจำนวนแถว */
+async function w13Cleanup(): Promise<number> {
+  if (!W13.deps.length && !W13.bookingIds.length) return 0;
+  const tenantId = SHOP_DIVE.tenant.id;
+  let n = 0;
+  const run = async (sql: string, ...args: unknown[]) => {
+    try {
+      n += await prisma.$executeRawUnsafe(sql, ...args);
+    } catch {
+      /* ตารางอ้างกันอยู่ — รอบถัดไป */
+    }
+  };
+  const onDeps = await prisma.tripBooking.findMany({ where: { tenantId, departureId: { in: W13.deps } }, select: { id: true, basketId: true } });
+  const bids = [...new Set([...W13.bookingIds, ...onDeps.map((b) => b.id)])];
+  const baskets = [...new Set([...W13.basketIds, ...onDeps.flatMap((b) => (b.basketId ? [b.basketId] : []))])];
+  const refundIds = bids.length ? (await prisma.$queryRawUnsafe<{ id: string }[]>(`SELECT id FROM "TripRefundRequest" WHERE "tenantId" = $1 AND "bookingId" = ANY($2::text[])`, tenantId, bids)).map((r) => r.id) : [];
+  const tables = (await prisma.$queryRawUnsafe<{ t: string }[]>(`SELECT c.table_name AS t FROM information_schema.columns c JOIN information_schema.columns k ON k.table_name = c.table_name AND k.table_schema = c.table_schema AND k.column_name = 'tenantId' WHERE c.table_schema = current_schema() AND c.column_name = 'bookingId' AND c.table_name <> 'TripBooking'`)).map((r) => r.t);
+  for (let pass = 0; pass < 6; pass++) {
+    for (const t of tables) await run(`DELETE FROM "${t}" WHERE "tenantId" = $1 AND "bookingId" = ANY($2::text[])`, tenantId, bids);
+    await run(`DELETE FROM "TripHold" WHERE "tenantId" = $1 AND "departureId" = ANY($2::text[])`, tenantId, W13.deps);
+    await run(`DELETE FROM "AuditLog" WHERE "tenantId" = $1 AND "targetId" = ANY($2::text[])`, tenantId, [...bids, ...refundIds, ...W13.deps]);
+    await run(`DELETE FROM "OutboxEvent" WHERE "tenantId" = $1 AND (payload->>'bookingId' = ANY($2::text[]) OR payload->>'id' = ANY($2::text[]) OR payload->>'requestId' = ANY($3::text[]) OR payload->>'departureId' = ANY($4::text[]))`, tenantId, bids, refundIds, W13.deps);
+    await run(`DELETE FROM "TripBooking" WHERE "tenantId" = $1 AND id = ANY($2::text[])`, tenantId, bids);
+    await run(`DELETE FROM "SellBasket" WHERE "tenantId" = $1 AND id = ANY($2::text[])`, tenantId, baskets);
+    await run(`DELETE FROM "TripDeparture" WHERE "tenantId" = $1 AND id = ANY($2::text[])`, tenantId, W13.deps);
+  }
+  await run(`DELETE FROM "Party" p WHERE p."tenantId" = $1 AND p."phoneNorm" = $2 AND NOT EXISTS (SELECT 1 FROM "TripBooking" b WHERE b."bookerPartyId" = p.id)`, tenantId, W13_PHONE);
+  if (W13.clientKeys.length) await run(`DELETE FROM "ChatRateBucket" WHERE key LIKE ANY($1::text[])`, W13.clientKeys.map((k) => `%:${k}`));
+  const left = await prisma.tripDeparture.count({ where: { id: { in: W13.deps } } });
+  if (left) console.error(`⚠️ w1.3: ลบรอบชั่วคราวไม่หมด (${left}) — ตรวจ ${W13.deps.join(", ")}`);
+  return n;
 }
 
 const argv = process.argv.slice(2);
@@ -388,6 +525,7 @@ const profile = `/tmp/chr-trips-${process.pid}`;
 try {
   const ids = await idsFromSeed();
   if (WO === "w1.2") W12_VOUCHER_TOKEN = await w12VoucherToken(ids.booking0142); // TRIPS W1.2 ▸ ◂
+  if (WO === "w1.3") await w13Prepare(ids); // TRIPS W1.3 ▸ รอบ/การจองของตัวเอง (ลบใน finally) ◂
   const cookies = specs.some((s) => !s.public) ? await mintSession() : [];
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e})`);
@@ -399,6 +537,7 @@ try {
   try {
     for (const spec of specs) for (const dev of DEVICES) {
       if (spec.name === "book-expired" && !W12_EXPIRED_TOKEN) W12_EXPIRED_TOKEN = await w12ExpireLatestWebBooking(); // TRIPS W1.2 รอบ 2 ▸ ◂
+      W13_DEV = dev.device; // TRIPS W1.3 ▸ ◂
       // หน้าสาธารณะ: บริบทใหม่ (ไม่มีคุกกี้ของฉากอื่น) + หัว IP ของผู้ใช้ (ไม่พึ่งว่า server เติมให้)
       const ctx = spec.public && browser.createBrowserContext ? await browser.createBrowserContext() : null;
       const page = await (ctx ?? browser).newPage();
@@ -440,6 +579,8 @@ try {
   fatal = e instanceof Fatal ? e.message : `ผิดพลาดกลางคัน — ${e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)}`;
 } finally {
   let count = 0;
+  let cleaned: number | null = null;
+  if (WO === "w1.3") cleaned = await w13Cleanup().catch((e: unknown) => { console.error(`⚠️ w1.3: ล้างไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`); return -1; }); // TRIPS W1.3 ▸ ◂
   if (MINE.sessionIds.length) count = (await prisma.session.deleteMany({ where: { id: { in: MINE.sessionIds } } })).count;
   const stale = await prisma.session.deleteMany({ where: { userAgent: UA, expiresAt: { lt: new Date() } } });
   await prisma.$disconnect();
@@ -450,7 +591,7 @@ try {
       /* ไม่มี/ไม่มีสิทธิ์ */
     }
   }
-  writeFileSync(join(OUT, "summary.json"), JSON.stringify({ wo: WO, at: new Date().toISOString(), results }, null, 2));
+  writeFileSync(join(OUT, "summary.json"), JSON.stringify({ wo: WO, at: new Date().toISOString(), results, ...(cleaned === null ? {} : { cleaned }) }, null, 2));
   console.log(`\n🧹 ลบ session ของรอบนี้ ${count}${stale.count ? ` (+ซากหมดอายุ ${stale.count})` : ""} · ภาพ ${shots.length} ใบใน ${OUT}`);
 }
 if (fatal) console.error(`❌ ${fatal}`);
