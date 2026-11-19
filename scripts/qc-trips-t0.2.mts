@@ -1028,7 +1028,8 @@ try {
     const rows = await q<{ payload: Rec }>(`SELECT payload FROM "OutboxEvent" WHERE "tenantId" = $1 AND type LIKE 'trips.product.%'`, [tA]);
     ok(rows.length >= 3, `event น้อย (${rows.length})`);
     const names = [...FX.DIVE_PARTIES.map((p) => p.name), "ผู้ทดสอบ"];
-    const bad = rows.map((r) => JSON.stringify(r.payload)).filter((s) => /@|\+?\d{9,}/.test(s) || names.some((n) => s.includes(n)) || THAI.test(s));
+    // ORACLE-EDIT EV-2 (ผู้คุม 19 พ.ย.): รูปเบอร์ต้องมีขอบทั้งสองข้าง (ไม่ติดตัวเลข/ตัวอักษร) — /\+?\d{9,}/ เดิมชนเลขในรหัสสุ่มของฟิกซ์เจอร์ (cuid/hex) โดยบังเอิญ (แบบเดียวกับ t0.7 EV-4) · เบอร์จริง (+66… / 0…) ยังจับได้
+    const bad = rows.map((r) => JSON.stringify(r.payload)).filter((s) => /@|(?<![0-9A-Za-z])\+?\d{9,}(?![0-9A-Za-z])/.test(s) || names.some((n) => s.includes(n)) || THAI.test(s));
     ok(bad.length === 0, `payload มีข้อมูลต้องห้าม: ${bad[0]?.slice(0, 120)}`);
   });
   await st("EV-3", "publish ไม่ผ่าน (ขาดตัวเลือก) / ถูกปฏิเสธสิทธิ์ ⇒ ไม่มี event · ไม่มี audit publish", async () => {
