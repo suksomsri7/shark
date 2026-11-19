@@ -462,4 +462,6 @@ export type BookReservationVM = {
   manage: SelfManageVM;
   /** TRIPS W1.3 ▸ nonce ของฟอร์มยืนยันเบอร์ (เมื่อปุ่มเปิด · นอก manage · มติ L6) ◂ */
   selfVerifyNonce: string | null;
+  /** TRIPS W1.3 ▸ การยกเลิกเป็นของเส้นลูกค้าเอง (แบนเนอร์หลังยกเลิก · V2) ◂ */
+  selfCancelled: boolean;
 };

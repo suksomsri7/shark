@@ -501,3 +501,24 @@ export async function cancelBookSelf(input: { shop: unknown; token: unknown; gra
     return fail("BUSY");
   }
 }
+
+// ═══════════════ 4) จอล็อกจากพารามิเตอร์ของหน้า (มติ V3) ═══════════════
+/**
+ * `?e=LOCKED` เชื่อไม่ได้ (ใครก็พิมพ์ได้) ⇒ หน้าถามที่นี่ว่าถังลองผิดของการจองนี้เต็มจริงไหม — อ่านอย่างเดียว (ไม่นับถังใด ๆ · ไม่เขียน)
+ * ร้าน/token ผิดรูป · อ่านไม่ได้ ⇒ false (หน้าแสดงฟอร์มยืนยันตามปกติ ซึ่งมีด่านของตัวเอง)
+ */
+export async function isBookSelfLocked(input: { shop: unknown; token: unknown }, opts?: SelfOpts): Promise<boolean> {
+  try {
+    const token = field(input, "token");
+    if (typeof token !== "string" || !BOOK_RES_TOKEN_RE.test(token)) return false;
+    const r = await resolveBookShop(field(input, "shop"));
+    if (!r.ok) return false;
+    const now = nowOf(opts);
+    const key = `trips:verifyb:${r.shop.tenantId}:${sha256hex(sha256hex(token)).slice(0, 24)}`;
+    const row = await runGate([], [{ name: "lk", key, windowMs: SELF_WRONG_WINDOW_SEC * 1000 }], now, opts);
+    const c = row ? peekOf(row, "lk") : null;
+    return c !== null && c >= SELF_WRONG_PER_BOOKING;
+  } catch {
+    return false;
+  }
+}

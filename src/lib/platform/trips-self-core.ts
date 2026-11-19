@@ -54,6 +54,8 @@ const ENDED_STATUSES: ReadonlySet<string> = new Set(["EXPIRED", "CANCELLED", "TR
 const SOLD_STATUSES: ReadonlySet<string> = new Set(["CONFIRMED", "PART_PAID", "PAID"]);
 const REFUND_OPEN: ReadonlySet<string> = new Set(["REQUESTED", "QUOTED", "APPROVED", "EXECUTING", "FAILED", "DONE"]);
 const REFUND_KNOWN: ReadonlySet<string> = new Set([...REFUND_OPEN, "REJECTED", "WITHDRAWN"]);
+/** คำขอที่ยังรอ/กำลังดำเนินการ (ไม่รวม DONE) — แบนเนอร์ "ยื่นแล้ว" แสดงเฉพาะสถานะนี้ (V2) */
+const SELF_REFUND_OPEN: ReadonlySet<string> = new Set(["REQUESTED", "QUOTED", "APPROVED", "EXECUTING", "FAILED"]);
 const ENDED: SelfManage = { cancel: null, block: "ENDED" };
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -116,7 +118,7 @@ export function selfManageOf(input: unknown): SelfManage {
 }
 
 /** ข้อเท็จจริงของการจองที่ก้อนจัดการใช้ (จากตัวอ่านของโมดูล · ไม่ออกจากเซิร์ฟเวอร์) */
-export type SelfFactsLike = { channel: string; collectMode: string; agentAccountId: string | null; refund: { status: string; amountSatang: number; by: string } | null };
+export type SelfFactsLike = { channel: string; collectMode: string; agentAccountId: string | null; refund: { status: string; amountSatang: number; by: string } | null; cancelledBySelf?: boolean };
 /** "ผ่านเอเจนซี่" (มติ K13): channel ขึ้นต้น AGENT_ · collectMode AGENT · มี agentAccountId */
 export function selfIsAgent(f: Pick<SelfFactsLike, "channel" | "collectMode" | "agentAccountId">): boolean {
   return (typeof f.channel === "string" && f.channel.startsWith("AGENT_")) || f.collectMode === "AGENT" || (typeof f.agentAccountId === "string" && f.agentAccountId !== "");
@@ -198,9 +200,10 @@ export function selfRefundView(r: SelfRefundVM): SelfRefundView {
   return { kind: satang === 0 ? "cancelRequested" : "QUOTED", satang };
 }
 /** ผลที่เพิ่งทำ (จาก ?done) ตรงกับสภาพจริงไหม — ไม่เชื่อพารามิเตอร์อย่างเดียว */
-export function selfDoneShown(done: SelfOutcome | null, state: string, r: SelfRefundVM | null): SelfOutcome | null {
-  if (done === "CANCELLED") return state === "CANCELLED" ? done : null;
-  if (!r || !r.mine) return null;
+export function selfDoneShown(done: SelfOutcome | null, state: string, r: SelfRefundVM | null, cancelledBySelf = false): SelfOutcome | null {
+  // V2: ยกเลิก = เส้นลูกค้าเท่านั้น (ไม่ใช่ร้านยกเลิก) · คำขอ = ของลูกค้าที่ยังเปิดอยู่เท่านั้น (ถูกปฏิเสธ/ถอน/จบ ⇒ ข้อความตามสถานะจริง ไม่มีแบนเนอร์)
+  if (done === "CANCELLED") return state === "CANCELLED" && cancelledBySelf ? done : null;
+  if (!r || !r.mine || !SELF_REFUND_OPEN.has(r.status)) return null;
   if (done === "REFUND_REQUESTED") return r.amountSatang > 0 ? done : null;
   if (done === "CANCEL_REQUESTED") return r.amountSatang === 0 ? done : null;
   return null;

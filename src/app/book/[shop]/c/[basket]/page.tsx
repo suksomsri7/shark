@@ -1,6 +1,6 @@
 // /book/[shop]/c/[basket] — หน้ายืนยันการจอง (ผู้จอง + สรุป + ผู้ขาย + ยอมรับ) · RUN TRIPS W1.2a (ภาพ 01ค · 19)
 // ทางเข้าเดียวคือ loadBookCheckout (กุญแจเครื่อง → ร้าน → ด่านอัตรา → token ตะกร้า + sel ที่เซ็นแล้ว → ราคาเทียบตอนถือ) · หน้าไม่ส่งเวลาเข้าไป
-// 🔴 หน้านี้มี nonce + token ใน URL ⇒ dynamic (no-store) · ไม่ติดดัชนี · no-referrer · ชื่อหน้าทั่วไป (ไม่มีรหัส/สินค้า/วันที่ · มติ R14) · ไม่มี og:*
+// 🔴 หน้านี้มี nonce + token ใน URL ⇒ dynamic (no-store) · ไม่ติดดัชนี · Referrer-Policy จากหัวของ proxy (strict-origin-when-cross-origin · path/query ไม่ออกนอกโดเมน · ไม่ใช้ metadata no-referrer เพราะฟอร์มปิด JS จะส่ง Origin: null แล้ว server action ล่ม · มติ W1.3 V1) · ชื่อหน้าทั่วไป (ไม่มีรหัส/สินค้า/วันที่ · มติ R14) · ไม่มี og:*
 // ยืนยันไปแล้ว ⇒ ไปหน้าการจองเดิม · ไม่พบ ⇒ 404 รูปเดียว · ถี่เกิน ⇒ หน้าแจ้ง
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -30,7 +30,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   const sp = await props.searchParams;
   const h = await headers();
   const t = bookT(bookLocaleOf(parseBookQuery(sp).lang, h.get("accept-language")));
-  return { title: t("page.titleCheckout"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+  return { title: t("page.titleCheckout"), robots: { index: false, follow: false } };
 }
 
 export default async function BookCheckoutPage(props: Props) {

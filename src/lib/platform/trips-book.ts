@@ -1131,6 +1131,7 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
         cancelRows: cancelRowsOf(ladder),
         cancelUntil: cancelDeadlinesOf(ladder, dep.localDate, utcToLocal(unit.tz, o.now).ymd),
         manage,
+        selfCancelled: facts?.cancelledBySelf === true,
         selfVerifyNonce: manage.cancel !== null ? issueSelfFormNonce({ now: o.now, scope: { tenantId: o.shop.tenantId, purpose: "verify", token } }) : null,
       },
     };

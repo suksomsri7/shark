@@ -221,13 +221,16 @@ export type BookSelfFacts = {
   version: number;
   bookerPhoneNorm: string | null;
   refund: { status: string; amountSatang: number; by: string } | null;
+  /** ยกเลิกแล้วโดยเส้นลูกค้า (audit trips.booking.cancel ของ trips.public.self · V2) */
+  cancelledBySelf: boolean;
 };
 export async function findBookSelfFacts(ref: { tenantId: string; unitId: string }, bookingId: string): Promise<BookSelfFacts | null> {
   if (!isId(bookingId) || !isId(ref.unitId)) return null;
   const { tenantId, unitId } = ref;
   const db = dbOf(tenantId, unitId);
-  const rows = await db.$queryRaw<{ channel: string; collectMode: string; agentAccountId: string | null; version: number; purged: boolean; phoneNorm: string | null }[]>`
-    SELECT b."channel", b."collectMode", b."agentAccountId", b."version", (b."piiPurgedAt" IS NOT NULL) AS "purged", p."phoneNorm"
+  const rows = await db.$queryRaw<{ channel: string; collectMode: string; agentAccountId: string | null; version: number; purged: boolean; phoneNorm: string | null; self: boolean }[]>`
+    SELECT b."channel", b."collectMode", b."agentAccountId", b."version", (b."piiPurgedAt" IS NOT NULL) AS "purged", p."phoneNorm",
+      (b."status" = 'CANCELLED' AND EXISTS (SELECT 1 FROM "AuditLog" a WHERE a."tenantId" = b."tenantId" AND a."createdAt" >= b."createdAt" - interval '1 day' AND a."targetId" = b."id" AND a."action" = 'trips.booking.cancel' AND a."actorId" = 'trips.public.self')) AS "self"
     FROM "TripBooking" b LEFT JOIN "Party" p ON p."id" = b."bookerPartyId" AND p."tenantId" = b."tenantId"
     WHERE b."id" = ${bookingId} AND b."tenantId" = ${tenantId} AND b."unitId" = ${unitId} LIMIT 1`;
   const b = rows[0];
@@ -243,6 +246,7 @@ export async function findBookSelfFacts(ref: { tenantId: string; unitId: string 
     version: Number(b.version),
     bookerPhoneNorm: b.purged || typeof b.phoneNorm !== "string" || !b.phoneNorm ? null : b.phoneNorm,
     refund: r ? { status: String(r.status), amountSatang: Number(r.amountSatang), by: String(r.by) } : null,
+    cancelledBySelf: b.self === true,
   };
 }
 /** ผลเดิมของคีย์ฟอร์มลูกค้า (K5 · คีย์อย่างเดียว): คำขอคืนเงินของคีย์ หรือแถว audit ยกเลิกที่จด idemKeyHash (ช่วงเผื่อ 24 ชม. ก่อนเวลาสร้างการจอง แบบ T0.6 F1) — ไม่เคยทำ ⇒ null */

@@ -57,13 +57,14 @@ export function BookSelfError({ code, locale, id }: { code: SelfPageError; local
 }
 
 /** ก้อน "จัดการการจอง" บนหน้าการจอง: ปุ่มยกเลิก (ลิงก์ GET ?do=cancel) / เหตุที่ปิด / สถานะคำขอ / ผลที่เพิ่งทำ — ช่องทางติดต่อร้านขึ้นครั้งเดียว */
-export function BookSelfManage({ manage, shop, code, locale, cancelHref, done, state }: { manage: SelfManageVM; shop: BookShopInfo; code: string; locale: BookLocale; cancelHref: string; done: SelfOutcome | null; state: string }) {
+/** `cancelledBySelf` = การยกเลิกเป็นของเส้นลูกค้า (แบนเนอร์ ?done=CANCELLED · V2 · ไม่ส่ง = ไม่ใช่) */
+export function BookSelfManage({ manage, shop, code, locale, cancelHref, done, state, cancelledBySelf }: { manage: SelfManageVM; shop: BookShopInfo; code: string; locale: BookLocale; cancelHref: string; done: SelfOutcome | null; state: string; cancelledBySelf?: boolean }) {
   const t = bookT(locale);
   const reach = bookReachText(shop);
   const rf = manage.refund;
   const view = rf ? selfRefundView(rf) : null;
   // ผลที่เพิ่งทำ (จาก ?done) แสดงเมื่อสภาพจริงตรงเท่านั้น — ไม่เชื่อพารามิเตอร์อย่างเดียว
-  const shown = selfDoneShown(done, state, rf);
+  const shown = selfDoneShown(done, state, rf, cancelledBySelf === true);
   const statusText = view ? refundText(t, reach, view, code, shown) : null;
   return (
     <section data-testid="book-manage" data-block={manage.block ?? ""} className={BOX}>

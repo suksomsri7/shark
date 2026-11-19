@@ -1,6 +1,6 @@
 // /book/[shop]/my/[token] — หน้าการจองของลูกค้า (จ่าย QR ยอดล็อก · วอเชอร์ · สิ่งที่ต้องทำ · หมดเวลา) · RUN TRIPS W1.2a (ภาพ 01ง · 07)
 // ทางเข้าเดียวคือ openBookReservation (กุญแจเครื่อง → ร้าน → ด่านอัตรา + ถังเดา token → การจองจาก sha256(token) ผูกร้านใน URL) · หน้าไม่ส่งเวลาเข้าไป
-// 🔴 token อยู่ใน URL ⇒ dynamic (no-store) · ไม่ติดดัชนี · no-referrer · ชื่อหน้าทั่วไป (ไม่มีรหัส/สินค้า/วันที่ · มติ R14) · ไม่มี og:*
+// 🔴 token อยู่ใน URL ⇒ dynamic (no-store) · ไม่ติดดัชนี · Referrer-Policy จากหัวของ proxy (strict-origin-when-cross-origin · path/query ไม่ออกนอกโดเมน · ไม่ใช้ metadata no-referrer เพราะฟอร์มปิด JS จะส่ง Origin: null แล้ว server action ล่ม · มติ W1.3 V1) · ชื่อหน้าทั่วไป (ไม่มีรหัส/สินค้า/วันที่ · มติ R14) · ไม่มี og:*
 // ไม่พบ/ร้านอื่น ⇒ 404 รูปเดียว · ถี่เกิน ⇒ หน้าแจ้ง
 // TRIPS W1.3a ▸ การจองของฉัน: ก้อนจัดการ (vm.manage) · `?do=cancel` = ยืนยันเบอร์ผู้จอง (ไม่มี grant) / หน้ายกเลิก (มี `g` ที่ตรวจรูปแล้ว · grant 15 นาที ผูกเครื่อง · K7)
 //   ยอดคืนจาก quoteBookSelfCancel (snapshot) · ฟอร์ม POST ไป actions ของ my/ (ไม่ต้องมี JS) · `?done` แสดงเมื่อสภาพจริงตรงเท่านั้น ◂
@@ -17,7 +17,7 @@ import { bookT } from "@/components/book/book-i18n";
 import { openBookReservation } from "@/lib/platform/trips-book";
 import { bookReservationHref } from "@/lib/platform/trips-book-core";
 import { bookRequestFromHeaders } from "@/lib/platform/trips-public";
-import { quoteBookSelfCancel } from "@/lib/platform/trips-self";
+import { isBookSelfLocked, quoteBookSelfCancel } from "@/lib/platform/trips-self";
 import { selfPageErrorOf, selfPageParams, selfReservationHref, selfShowsManage, type SelfPageError } from "@/lib/platform/trips-self-core";
 import { cancelSelfAction, verifySelfAction } from "../actions";
 import { bookHref, bookLocaleOf, parseBookQuery } from "@/lib/platform/trips-public-core";
@@ -37,7 +37,7 @@ export async function generateMetadata(props: Props): Promise<Metadata> {
   const sp = await props.searchParams;
   const h = await headers();
   const t = bookT(bookLocaleOf(parseBookQuery(sp).lang, h.get("accept-language")));
-  return { title: t(selfPageParams(sp).act ? "page.titleManage" : "page.titleReservation"), robots: { index: false, follow: false }, referrer: "no-referrer" };
+  return { title: t(selfPageParams(sp).act ? "page.titleManage" : "page.titleReservation"), robots: { index: false, follow: false } };
 }
 
 export default async function BookReservationPage(props: Props) {
@@ -82,7 +82,7 @@ export default async function BookReservationPage(props: Props) {
       selfTop={top}
       selfManage={
         top ? null : (
-          <BookSelfManage manage={vm.manage} shop={vm.shop} code={vm.code} locale={vm.locale} cancelHref={selfReservationHref(slug, token, lang, { act: "cancel" })} done={self.done} state={vm.state} />
+          <BookSelfManage manage={vm.manage} shop={vm.shop} code={vm.code} locale={vm.locale} cancelHref={selfReservationHref(slug, token, lang, { act: "cancel" })} done={self.done} state={vm.state} cancelledBySelf={vm.selfCancelled} />
         )
       }
     />
@@ -94,8 +94,9 @@ type Vm = Extract<Awaited<ReturnType<typeof openBookReservation>>, { ok: true }>
 async function selfPanel(shop: string, token: string, self: ReturnType<typeof selfPageParams>, vm: Vm) {
   const h = await headers();
   const req = bookRequestFromHeaders((name) => h.get(name));
-  if (self.error === "LOCKED") return <BookSelfLocked shop={vm.shop} code={vm.code} locale={vm.locale} />;
-  let error: SelfPageError | null = self.error;
+  // V3: ?e=LOCKED จาก URL แสดงจอล็อกเฉพาะเมื่อถังลองผิดของการจองเต็มจริง (อ่านอย่างเดียว) · ไม่จริง ⇒ ฟอร์มยืนยันตามปกติ
+  if (self.error === "LOCKED" && (await isBookSelfLocked({ shop, token }))) return <BookSelfLocked shop={vm.shop} code={vm.code} locale={vm.locale} />;
+  let error: SelfPageError | null = self.error === "LOCKED" ? null : self.error;
   if (self.grant) {
     const q = await quoteBookSelfCancel({ shop, token, grant: self.grant, clientKey: req.clientKey });
     if (q.ok) return <BookSelfCancel vm={q.vm} action={cancelSelfAction.bind(null, shop, token, self.grant)} shop={vm.shop} code={vm.code} locale={vm.locale} error={error} />;
