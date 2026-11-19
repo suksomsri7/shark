@@ -15,7 +15,7 @@ import {
 } from "@/lib/platform/trips-book-core";
 import type { BookLocale } from "@/lib/platform/trips-public-core";
 import { BookUntranslated, shopLang } from "./BookContent";
-import { BookError, BookHidden, BookLines, bookContactText } from "./BookFlowParts";
+import { BookError, BookHidden, BookLines, bookContactText, bookReachText } from "./BookFlowParts";
 import { bookMoney } from "./BookPrices";
 import { bookT } from "./book-i18n";
 
@@ -27,7 +27,7 @@ export type BookSelectData = {
   /** nonce ของฟอร์มถือที่ (null = ไม่มีกุญแจเซิร์ฟเวอร์ ⇒ ไม่มีปุ่มถือ) */
   nonce: string | null;
   /** holdLimited = ถังถือ/ถังต่อรอบของเครื่องนี้เต็มจริง (`e=HOLD_LIMITED` · มติ Y5) */
-  error: { code: BookErrorCode; fields: BookFormField[]; holdLimited?: true } | null;
+  error: { code: BookErrorCode; fields: BookFormField[]; holdLimited?: true; wait?: number } | null;
   /** พารามิเตอร์ของหน้าที่ต้องพาไปทุกฟอร์ม (lang · m · d · t) */
   base: Record<string, string>;
   shop: string;
@@ -72,7 +72,7 @@ export function BookSelectPanel({ data, locale }: { data: BookSelectData; locale
           <p>{t(data.error.holdLimited ? "select.holdLimited" : "select.holdUnavailable", { contact: bookContactText(data.seller) })}</p>
         </div>
       ) : data.error ? (
-        <BookError code={data.error.code} fields={data.error.fields} locale={locale} />
+        <BookError code={data.error.code} fields={data.error.fields} locale={locale} wait={data.error.wait} contact={bookReachText(data.seller)} />
       ) : null}
 
       <div className="flex flex-col gap-2">

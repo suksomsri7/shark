@@ -502,10 +502,13 @@ const payableOfQuote = (q: unknown): number | null => {
 function mapService(r: SellFailLike): BookFail {
   const d = isRec(r.details) ? r.details : {};
   switch (r.code) {
+    case "HOLD_LIMIT":
+      // T0.4d D1: เพดานที่ถือยังไม่จ่ายของรอบ (ไม่ใช่เพดานของเบอร์) ⇒ SLOT_BUSY + เวลารอ (ไม่บอกจำนวนที่นั่ง) · ทั้งเส้นถือและเส้นยืนยัน
+      if (d.reason === "PUBLIC_UNPAID_SHARE") return fail("SLOT_BUSY", isInt(d.retryAfterSec) && d.retryAfterSec > 0 ? { retryAfterSec: d.retryAfterSec } : undefined);
+      return fail(r.code);
     case "SOLD_OUT":
     case "CUTOFF_PASSED":
     case "SLOT_CLOSED":
-    case "HOLD_LIMIT":
     case "HOLD_EXPIRED":
       return fail(r.code);
     case "PRICE_CHANGED": {

@@ -1,0 +1,232 @@
+// hunt-2 — T0.4d D3 (cap counts PUBLIC-actor holds only) + D4 (whole-basket cap) + reviewer extras (3)(4)(5)
+// run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-t0.4d-hunt-2.mts
+import { addMin, BAD, fmt, hex, HOLD_MIN, huntSetup, NOW0, R, sha256hex, tally, tok, type Rec } from "./probe-trips-t0.4d-hunt-lib.mjs";
+
+const H = await huntSetup("probe-t0.4d-hunt-2");
+const { call, check, note, q } = H;
+const CH = ["WEB", "LIFF", "EMBED", "CHAT_AI"];
+const shareOk = (r: Rec) => r.ok === false && r.code === "HOLD_LIMIT" && R(r.details).reason === "PUBLIC_UNPAID_SHARE";
+const code = (r: Rec) => (r.ok === true ? "ok" : `${String(r.code ?? r.ok)}${R(r.details).reason ? `:${String(R(r.details).reason)}` : ""}`);
+const holdsOf = async (d: string) => q<{ k: string; qty: number; purpose: string; status: string; channel: string; expiresAt: Date }>(`SELECT split_part("idempotencyKey", ':', 1) AS k, "qtyPublic" + "qtyAllot" AS qty, purpose, status, channel, "expiresAt" FROM "TripHold" WHERE "departureId" = $1 ORDER BY "createdAt"`, [d]);
+const placeStaff = (d: string, qty: number, ch: string) => call("placeHold", H.staff({ ch }), { departureId: d, qty, idempotencyKey: `p${hex(6)}` });
+const LN = async (d: string, a: number) => H.line(d, a);
+
+try {
+  // ═════ (5) derived PUBLIC prefix at runtime ═════
+  {
+    const idemKeyFor = (H.TRM.idemKeyFor as (a: Rec, k: string, b?: string) => string);
+    const derived = ((k: string) => k.slice(0, k.indexOf("\u0000")))(idemKeyFor({ kind: "PUBLIC", clientKey: "" }, "", "\u0000"));
+    const d = await H.mkDep({ capacity: 60 });
+    await H.holdT(H.pub(), [await LN(d, 1)]);
+    await H.placeHoldPub(d, 1);
+    for (const ch of CH) { await H.holdT(H.staff({ ch }), [await LN(d, 1)]); await placeStaff(d, 1, ch); }
+    await H.bookNow(H.staff({ ch: "WEB" }), [await LN(d, 1)]);
+    await call("placeHold", H.sys(), { departureId: d, qty: 1, idempotencyKey: `y${hex(6)}`, purpose: "SUPPLIER_REQUEST" });
+    const ag = await call("placeHold", { ...H.staff({ ch: "WEB" }), actor: { kind: "AGENT", agentAccountId: `t04dh_ag${hex(3)}` } }, { departureId: d, qty: 1, idempotencyKey: `a${hex(6)}` });
+    const rows = await q<{ key: string; ch: string }>(`SELECT "idempotencyKey" AS key, channel AS ch FROM "TripHold" WHERE "departureId" = $1`, [d]);
+    const pubRows = rows.filter((r) => r.key.startsWith(derived));
+    const nonPub = rows.filter((r) => !r.key.startsWith("pub:"));
+    check("5 derived prefix === 'pub:' · both real PUBLIC rows (holdTrips · placeHold) start with it · no STAFF/SYSTEM row starts with it", derived === "pub:" && pubRows.length === 2 && nonPub.every((r) => !r.key.startsWith(derived)),
+      "pub: · 2 · 0", `derived ${JSON.stringify(derived)} · rows ${fmt(rows.map((r) => `${r.ch}/${r.key.split(":")[0]}`))} · AGENT placeHold ${code(ag)}`);
+  }
+
+  // ═════ 2a STAFF holds via each public channel are not counted ═════
+  {
+    const out: string[] = []; let okAll = true;
+    for (const ch of CH) {
+      const d = await H.mkDep({ capacity: 20 }); // cap 10
+      const s1 = await H.holdT(H.staff({ ch }), [await LN(d, 6)]);
+      const s2 = await placeStaff(d, 4, ch);
+      const p1 = await H.holdT(H.pub({ ch }), [await LN(d, 1)]);
+      const p2 = await H.holdT(H.pub({ ch }), [await LN(d, 9)]); // 1 + 9 = 10 = cap (staff 10 not counted)
+      const p3 = await H.holdT(H.pub({ ch }), [await LN(d, 1)]); // 11 > cap
+      const counted = await H.publicHeld(d, NOW0);
+      const good = s1.r.ok === true && s2.ok === true && p1.r.ok === true && p2.r.ok === true && shareOk(p3.r) && counted === 10;
+      okAll &&= good;
+      out.push(`${ch}: staff ${code(s1.r)}/${code(s2)} · pub 1 ${code(p1.r)} · +9 ${code(p2.r)} · +1 ${code(p3.r)} · counted ${counted} · byChannel ${await H.channelHeld(d, NOW0)}`);
+    }
+    check("2a per public channel: STAFF holdTrips 6 + placeHold 4 not counted · PUBLIC 1 + 9 = cap ok · +1 refused", okAll, "4 channels", out.join(" | "));
+  }
+
+  // ═════ 2b PUBLIC per channel: boundary cap-1/cap/cap+1 sequential + 40-way concurrency ═════
+  {
+    const seqOut: string[] = []; let seqOk = true;
+    for (const ch of CH) {
+      for (const pre of [8, 9, 10]) { // cap 10: next 1-seat ⇒ 9→ok(9+1=10) etc
+        const d = await H.mkDep({ capacity: 20 });
+        await H.holdT(H.pub({ ch }), [await LN(d, pre - 3)]); await H.holdT(H.pub({ ch }), [await LN(d, 3)]);
+        const r1 = await H.holdT(H.pub({ ch }), [await LN(d, 1)]);
+        const want = pre + 1 <= 10;
+        if ((r1.r.ok === true) !== want || (!want && !shareOk(r1.r))) seqOk = false;
+        seqOut.push(`${ch} pre${pre}+1 ${code(r1.r)}`);
+      }
+      const d = await H.mkDep({ capacity: 20 });
+      await H.holdT(H.pub({ ch }), [await LN(d, 8)]);
+      const pl = await H.placeHoldPub(d, 2, H.pub({ ch })); const pl2 = await H.placeHoldPub(d, 1, H.pub({ ch }));
+      if (pl.ok !== true || !shareOk(pl2)) seqOk = false;
+      seqOut.push(`${ch} placeHold 8+2 ${code(pl)} +1 ${code(pl2)}`);
+    }
+    check("2b-seq PUBLIC each channel (holdTrips + placeHold): counted 9+1 ok · 10+1 refused · 8+2 ok then +1 refused", seqOk, "all", seqOut.join(" · "));
+    const conc: string[] = []; let concOk = true;
+    for (const ch of CH) for (let rep = 0; rep < 2; rep++) {
+      const d = await H.mkDep({ capacity: 40 }); // cap 20
+      await H.holdT(H.pub({ ch }), [await LN(d, 1)]);
+      const rs = await Promise.all(Array.from({ length: 40 }, async (_, i) => (i % 4 === 0 ? H.placeHoldPub(d, 1, H.pub({ ch })) : (await H.holdT(H.pub({ ch }), [await LN(d, 1)])).r)));
+      const t = tally(rs); const counted = await H.publicHeld(d, NOW0);
+      if (t.ok !== 19 || counted !== 20 || rs.some(BAD) || (await H.inv([d], NOW0)).length) concOk = false;
+      conc.push(`${ch}#${rep} ${fmt(t)} counted ${counted}`);
+    }
+    check("2b-conc PUBLIC 40-way 1-seat per channel ×2 (counted 1, cap 20) ⇒ exactly 19 ok · counted 20 · invariants", concOk, "19 ok ×8", conc.join(" · "));
+  }
+
+  // ═════ 2c escape paths: every way a PUBLIC customer's unpaid seats get a hold row ═════
+  {
+    const res: string[] = [];
+    // (i) SHOP_CONFIRMS product: PUBLIC confirm ⇒ SHOP_CONFIRM hold (pub:) counted; staff approve ⇒ PAYMENT (pub:) counted
+    await H.setV([{ key: "trips.sell.confirmMode", scope: "PRODUCT", scopeId: H.PRD.D.id, value: "SHOP_CONFIRMS" }]);
+    {
+      const d = await H.mkDep({ key: "D", capacity: 20 });
+      const h = await H.holdT(H.pub(), [await LN(d, 4)]);
+      const c = await H.confirmT(h);
+      const c1 = await H.publicHeld(d, NOW0);
+      const bid = String(R((c.value as Rec[] | undefined)?.[0]).bookingId ?? "");
+      const v = Number((await q<{ v: number }>(`SELECT version v FROM "TripBooking" WHERE id = $1`, [bid]))[0]?.v ?? 0);
+      const ap = await call("approveTripBooking", H.staff({ now: addMin(NOW0, 5) }), { bookingId: bid, expectedVersion: v, decision: "APPROVE" });
+      const c2 = await H.publicHeld(d, addMin(NOW0, 5));
+      res.push(`(i) shop-confirm: confirm ${code(c)} counted ${c1}/4 · approve ${code(ap)} counted ${c2}/4 rows ${fmt((await holdsOf(d)).map((x) => `${x.k}/${x.purpose}/${x.status}`))}`);
+    }
+    // (ii) expired + re-hold (same customer, new basket) ⇒ new pub: hold counted; expired not counted
+    {
+      const d = await H.mkDep({ capacity: 20 });
+      await H.holdT(H.pub(), [await LN(d, 6)]);
+      const T = addMin(NOW0, HOLD_MIN + 1);
+      const c0 = await H.publicHeld(d, T);
+      const re = await H.holdT(H.pub({ now: T }), [await LN(d, 6)]);
+      res.push(`(ii) expired+re-hold: counted at T before ${c0} · re-hold ${code(re.r)} counted ${await H.publicHeld(d, T)}/6`);
+    }
+    // (iii) staff REHOLD of a WEB (PUBLIC) basket after expiry
+    {
+      const d = await H.mkDep({ capacity: 20 });
+      const h = await H.holdT(H.pub(), [await LN(d, 6)]);
+      const late = addMin(NOW0, HOLD_MIN + 2);
+      const r1 = await H.confirmT(h, { ctx: H.withNow(h.ctx, late), onExpired: "REHOLD" });
+      const r2 = await H.confirmT(h, { ctx: H.staff({ now: late, ch: "WEB" }), onExpired: "REHOLD", pay: "PAY_LATER" });
+      res.push(`(iii) PUBLIC confirm onExpired REHOLD ${code(r1)} · STAFF(WEB) REHOLD of the PUBLIC basket ${code(r2)} · rows ${fmt((await holdsOf(d)).map((x) => `${x.k}/${x.purpose}/${x.status}/${x.qty}`))} · counted ${await H.publicHeld(d, late)}`);
+      // staff WEB basket REHOLD (staff-owned basket on WEB)
+      const s = await H.holdT(H.staff({ ch: "WEB" }), [await LN(d, 5)]);
+      const r3 = await H.confirmT(s, { ctx: H.withNow(s.ctx, late), onExpired: "REHOLD", booker: H.booker() });
+      res.push(`STAFF WEB basket REHOLD ${code(r3)} counted ${await H.publicHeld(d, late)} rows ${fmt((await holdsOf(d)).map((x) => `${x.k}/${x.status}/${x.qty}`))}`);
+    }
+    // (iv) change booking: PUBLIC unpaid booking (HOLD) moved / grown by STAFF
+    {
+      const d = await H.mkDep({ capacity: 20 }), e = await H.mkDep({ capacity: 20 });
+      const h = await H.holdT(H.pub(), [await LN(d, 4)]);
+      const c = await H.confirmT(h);
+      const bid = String(R((c.value as Rec[] | undefined)?.[0]).bookingId ?? "");
+      const st = (await q<{ s: string; v: number }>(`SELECT status s, version v FROM "TripBooking" WHERE id = $1`, [bid]))[0];
+      const before = await H.publicHeld(d, NOW0);
+      const l = await LN(e, 6); const qr = R((await call("quoteTrips", H.staff(), { lines: [l] }, {})).value);
+      const ch = await call("changeTripBooking", H.staff({ now: addMin(NOW0, 1) }), { bookingId: bid, expectedVersion: st?.v ?? 0, line: l, quoteId: qr.quoteId, quoteExpiresAt: qr.expiresAt, idempotencyKey: `cg${hex(6)}` }, {});
+      res.push(`(iv) change: PUBLIC booking ${st?.s} 4 seats on d (counted ${before}) → change to e 6 seats ${code(ch)} · counted d ${await H.publicHeld(d, addMin(NOW0, 1))} e ${await H.publicHeld(e, addMin(NOW0, 1))} · rows e ${fmt((await holdsOf(e)).map((x) => `${x.k}/${x.purpose}/${x.status}/${x.qty}`))} · dep e ${fmt(await H.depRow(e))}`);
+    }
+    // (v) waitlist offer (purpose WAITLIST_OFFER — excluded by purpose, key wl:)
+    {
+      const d = await H.mkDep({ capacity: 4 });
+      await H.holdT(H.staff(), [await LN(d, 4)]);
+      const jw = await call("joinWaitlist", H.pub(), { departureId: d, qty: 2, contact: { name: "t04dh wl", phone: "0891112222" } });
+      res.push(`(v) waitlist: PUBLIC joinWaitlist ${code(jw)} ${jw.ok === true ? "" : fmt(jw.details)} (offer holds carry key wl:/purpose WAITLIST_OFFER — not counted by purpose, as T0.4c §3.1)`);
+    }
+    // (vi) AGENT actor on a public channel (reviewer 4)
+    {
+      const d = await H.mkDep({ capacity: 20 });
+      const ag = { ...H.staff({ ch: "WEB" }), actor: { kind: "AGENT", agentAccountId: `t04dh_ag${hex(3)}` } };
+      const a1 = await call("placeHold", ag, { departureId: d, qty: 8, idempotencyKey: `a${hex(6)}` });
+      const a2 = await H.holdT(ag, [await LN(d, 8)]);
+      const p1 = await H.holdT(H.pub(), [await LN(d, 1)]); const p2 = await H.holdT(H.pub(), [await LN(d, 9)]);
+      res.push(`(vi) AGENT on WEB: placeHold 8 ${code(a1)} · holdTrips 8 ${code(a2.r)} · then PUBLIC 1 ${code(p1.r)} + 9 ${code(p2.r)} · counted ${await H.publicHeld(d, NOW0)} rows ${fmt((await holdsOf(d)).map((x) => `${x.k}/${x.channel}/${x.qty}`))}`);
+    }
+    for (const r of res) note("2c", r);
+  }
+
+  // ═════ 3 whole-basket cap ═════
+  {
+    const res: string[] = []; let ok = true;
+    const exp = (label: string, r: Rec, wantOk: boolean, d: string[], snap: Rec[]) => async () => {
+      const after = await Promise.all(d.map((x) => H.depRow(x)));
+      const holds = (r.ok === true ? 0 : (await q<{ n: number }>(`SELECT count(*)::int n FROM "TripHold" WHERE "basketId" = $1`, [String(R(r.value).basketId ?? "-")]))[0]?.n ?? 0);
+      const good = wantOk ? r.ok === true : shareOk(r) && JSON.stringify(after) === JSON.stringify(snap) && holds === 0;
+      if (!good) ok = false;
+      res.push(`${label} ${code(r)}${good ? "" : " ✗"}`);
+    };
+    const pre = async (d: string, n: number) => { while (n > 0) { const k = Math.min(n, 10); await H.holdT(H.pub(), [await LN(d, k)]); n -= k; } };
+    // cap 60 (capacity 120), 5 counted
+    const cases: [string, number[], boolean][] = [["30+30", [30, 30], false], ["20+20+20", [20, 20, 20], false], ["50+1", [50, 1], true], ["50+5 (=cap)", [50, 5], true], ["50+6 (cap+1)", [50, 6], false], ["25+30 (=cap)", [25, 30], true], ["25+31 (cap+1)", [25, 31], false], ["10+45+1 (cap+1)", [10, 45, 1], false]];
+    for (const [label, parts, want] of cases) {
+      const d = await H.mkDep({ capacity: 120 }); await pre(d, 5);
+      const snap = [await H.depRow(d)];
+      const h = await H.holdT(H.pub(), await Promise.all(parts.map((p) => LN(d, p))));
+      await exp(`cap60 pre5 ${label}`, h.r, want, [d], snap)();
+    }
+    // non-adjacent same departure + two departures interleaved
+    {
+      const d = await H.mkDep({ key: "A", capacity: 120 }), e = await H.mkDep({ key: "B", capacity: 120 });
+      await pre(d, 5); await pre(e, 5);
+      const snap = [await H.depRow(d), await H.depRow(e)];
+      const h = await H.holdT(H.pub(), [await LN(d, 30), await LN(e, 1), await LN(d, 26)]); // d: 5+56 = 61
+      await exp("non-adjacent d30,e1,d26 (d=61)", h.r, false, [d, e], snap)();
+      const h2 = await H.holdT(H.pub(), [await LN(d, 30), await LN(e, 30), await LN(d, 25), await LN(e, 26)]); // d 60 ok, e 61
+      await exp("interleaved d30,e30,d25,e26 (d=60 e=61)", h2.r, false, [d, e], snap)();
+      const h3 = await H.holdT(H.pub(), [await LN(d, 30), await LN(e, 30), await LN(d, 25), await LN(e, 25)]);
+      await exp("interleaved d30,e30,d25,e25 (both =60)", h3.r, true, [d, e], snap)();
+    }
+    // reviewer (3): first basket of 120 seats (3 chunks) on an empty departure; 3-departure basket each above chunk size
+    {
+      const d = await H.mkDep({ capacity: 200 }); // cap 100
+      const h = await H.holdT(H.pub(), [await LN(d, 50), await LN(d, 50), await LN(d, 20)]);
+      await exp("first basket 120 (50+50+20) on empty cap100", h.r, true, [d], [await H.depRow(d)])();
+      const ds = [await H.mkDep({ key: "A", capacity: 200 }), await H.mkDep({ key: "B", capacity: 200 }), await H.mkDep({ key: "C", capacity: 200 })];
+      for (const x of ds) await pre(x, 5);
+      const h1 = await H.holdT(H.pub(), (await Promise.all(ds.map(async (x) => [await LN(x, 50), await LN(x, 10)]))).flat()); // 65 each ≤ 100
+      await exp("3 deps × 60 (pre 5 each, cap 100)", h1.r, true, ds, [])();
+      const snap = await Promise.all(ds.map((x) => H.depRow(x)));
+      const h2 = await H.holdT(H.pub(), [await LN(ds[0], 30), await LN(ds[1], 30), await LN(ds[2], 36)]); // ds2: 65+36 = 101
+      await exp("3 deps 30/30/36 after (third = 101)", h2.r, false, ds, snap)();
+    }
+    check("3a whole-basket cap cases (boundary = cap ok · cap+1 refused · refused ⇒ no holds, counters unchanged)", ok, "all", res.join(" · "));
+    // 3b 20 baskets of 30+30 racing at the boundary: capacity 400 (cap 200), 5 counted ⇒ exactly 3 ok (5+180=185; +60 > 200)
+    const out: string[] = []; let raceOk = true;
+    for (let rep = 0; rep < 3; rep++) {
+      const d = await H.mkDep({ capacity: 400 }); await pre(d, 5);
+      const rs = await Promise.all(Array.from({ length: 20 }, async () => (await H.holdT(H.pub(), [await LN(d, 30), await LN(d, 30)])).r));
+      const t = tally(rs); const counted = await H.publicHeld(d, NOW0);
+      if (t.ok !== 3 || counted !== 185 || rs.some(BAD) || (await H.inv([d], NOW0)).length) raceOk = false;
+      out.push(`${fmt(t)} counted ${counted}`);
+    }
+    check("3b 20× (30+30) racing, cap 200, 5 counted ×3 ⇒ exactly 3 ok · counted 185 · invariants", raceOk, "3 ok", out.join(" · "));
+    // 3c first-basket exception race: 10 baskets of 30+30 on empty departure capacity 100 (cap 50) ⇒ exactly one ok, no oversell
+    const out2: string[] = []; let fbOk = true;
+    for (let rep = 0; rep < 5; rep++) {
+      const d = await H.mkDep({ capacity: 100 });
+      const rs = await Promise.all(Array.from({ length: 10 }, async () => (await H.holdT(H.pub(), [await LN(d, 30), await LN(d, 30)])).r));
+      const t = tally(rs); const row = await H.depRow(d);
+      if (t.ok !== 1 || row.held !== 60 || rs.some(BAD)) fbOk = false;
+      out2.push(`${fmt(t)} held ${row.held}`);
+    }
+    check("3c first-basket race 10× (30+30) on empty cap-50 departure ×5 ⇒ exactly 1 ok · held 60", fbOk, "1 ok ×5", out2.join(" · "));
+    // 3d two departures interleaved racing (d,e alternately first) 20-way at the boundary
+    const out3: string[] = []; let ilOk = true;
+    for (let rep = 0; rep < 3; rep++) {
+      const d = await H.mkDep({ key: "A", capacity: 200 }), e = await H.mkDep({ key: "B", capacity: 200 }); await pre(d, 5); await pre(e, 5);
+      const rs = await Promise.all(Array.from({ length: 20 }, async (_, i) => (await H.holdT(H.pub(), i % 2 ? [await LN(d, 20), await LN(e, 20), await LN(d, 20)] : [await LN(e, 20), await LN(d, 20), await LN(e, 20)])).r));
+      const cd = await H.publicHeld(d, NOW0), ce = await H.publicHeld(e, NOW0);
+      if (cd > 100 || ce > 100 || rs.some(BAD) || (await H.inv([d, e], NOW0)).length) ilOk = false;
+      out3.push(`${fmt(tally(rs))} counted d${cd} e${ce}`);
+    }
+    check("3d 20 interleaved two-departure baskets (40+20 / 20+40) racing ⇒ counted ≤ cap on both · invariants · no BAD", ilOk, "≤100", out3.join(" · "));
+  }
+} catch (e) {
+  console.log(`💥 probe crashed: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await H.finish();
+}
+void sha256hex; void tok;

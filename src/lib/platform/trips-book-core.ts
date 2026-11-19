@@ -49,6 +49,7 @@ export const BOOK_ERROR_CODES = [
   "CUTOFF_PASSED",
   "SLOT_CLOSED",
   "HOLD_LIMIT",
+  "SLOT_BUSY",
   "HOLD_EXPIRED",
   "STALE_FORM",
   "TOO_FAST",
@@ -322,20 +323,28 @@ export function bookerEmailOf(v: unknown): string | null {
 const enc = encodeURIComponent;
 const SELECT_ORDER = ["lang", "m", "d", "t"] as const;
 /** หน้าสินค้าพร้อมการเลือก (ปุ่ม "ถือใหม่" · กลับไปแก้เมื่อถือไม่สำเร็จ) — query จาก platform (ค่าที่ตรวจรูปแล้ว) + รหัสผิดพลาด */
-export function bookSelectHref(shopSlug: string, back: { productSlug: string; query: Record<string, string> }, e?: BookErrorCode | typeof BOOK_HOLD_LIMITED | null): string {
+/** T0.4d D1: นาทีที่ให้รอของ SLOT_BUSY = ceil(วินาที/60) ขั้นต่ำ 1 · พารามิเตอร์ `r` รับเฉพาะจำนวนเต็ม 1–1440 (อื่น ⇒ ไม่มี) */
+export function bookWaitMinutes(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" && /^[1-9]\d{0,3}$/.test(v) ? Number(v) : NaN;
+  return Number.isInteger(n) && n >= 1 && n <= 1440 ? n : null;
+}
+export const bookWaitOfSec = (sec: unknown): number | null => (typeof sec === "number" && Number.isFinite(sec) && sec > 0 ? Math.min(1440, Math.max(1, Math.ceil(sec / 60))) : null);
+export function bookSelectHref(shopSlug: string, back: { productSlug: string; query: Record<string, string> }, e?: BookErrorCode | typeof BOOK_HOLD_LIMITED | null, r?: number | null): string {
   const parts: string[] = [];
   const q = isRec(back.query) ? back.query : {};
   for (const k of SELECT_ORDER) if (typeof q[k] === "string" && q[k] !== "") parts.push(`${k}=${enc(q[k])}`);
   for (const k of Object.keys(q).filter((x) => x.startsWith("n.") || x.startsWith("x.")).sort(byStr)) parts.push(`${enc(k)}=${enc(q[k] ?? "")}`);
   if (typeof q.z === "string" && q.z !== "") parts.push(`z=${enc(q.z)}`);
   if (e && (isBookErrorCode(e) || e === BOOK_HOLD_LIMITED)) parts.push(`e=${e}`);
+  if (e === "SLOT_BUSY" && bookWaitMinutes(r)) parts.push(`r=${r}`);
   const path = `/book/${enc(shopSlug)}/t/${enc(back.productSlug)}`;
   return parts.length ? `${path}?${parts.join("&")}` : path;
 }
 /** หน้ายืนยัน: token ตะกร้าใน path · `sel` · (ผิด) `e` + `f` เท่านั้น (มติ R11) · `lang` เฉพาะลิงก์สลับภาษาของหน้าเอง */
-export function bookCheckoutHref(shopSlug: string, basketToken: string, sel: string, err?: { e: BookErrorCode; f?: readonly string[] } | null, lang?: BookLocale | null): string {
+export function bookCheckoutHref(shopSlug: string, basketToken: string, sel: string, err?: { e: BookErrorCode; f?: readonly string[]; r?: number | null } | null, lang?: BookLocale | null): string {
   const fields = (err?.f ?? []).filter(isBookFormField);
-  const tail = err && isBookErrorCode(err.e) ? `&e=${err.e}${fields.length ? `&f=${enc(fields.join(","))}` : ""}` : "";
+  const wait = err?.e === "SLOT_BUSY" ? bookWaitMinutes(err.r) : null;
+  const tail = err && isBookErrorCode(err.e) ? `&e=${err.e}${fields.length ? `&f=${enc(fields.join(","))}` : ""}${wait ? `&r=${wait}` : ""}` : "";
   return `/book/${enc(shopSlug)}/c/${enc(basketToken)}?sel=${enc(sel)}${tail}${lang === "th" || lang === "en" ? `&lang=${lang}` : ""}`;
 }
 /** หน้าการจองของลูกค้า (`lang` เฉพาะลิงก์สลับภาษาของหน้าเอง) */
@@ -362,14 +371,15 @@ export function bookRedirectOk(v: { shopSlug?: unknown; basketToken?: unknown; s
  */
 export const BOOK_HOLD_LIMITED = "HOLD_LIMITED";
 /** รหัสผิดพลาด/ช่องจากพารามิเตอร์ของหน้า (`e` `f`) — เฉพาะค่าที่อยู่ในรายการ (ไม่สะท้อนค่าอื่น) · `e=HOLD_LIMITED` ⇒ RATE_LIMITED + holdLimited */
-export function bookErrorParam(sp: unknown): { code: BookErrorCode; fields: BookFormField[]; holdLimited?: true } | null {
+export function bookErrorParam(sp: unknown): { code: BookErrorCode; fields: BookFormField[]; holdLimited?: true; wait?: number } | null {
   try {
     if (!isRec(sp)) return null;
     const e = sp.e;
     if (e === BOOK_HOLD_LIMITED) return { code: "RATE_LIMITED", fields: [], holdLimited: true };
     if (!isBookErrorCode(e)) return null;
     const f = typeof sp.f === "string" && sp.f.length <= 80 ? sp.f.split(",").filter(isBookFormField) : [];
-    return { code: e, fields: f };
+    const wait = e === "SLOT_BUSY" ? bookWaitMinutes(sp.r) : null;
+    return { code: e, fields: f, ...(wait ? { wait } : {}) };
   } catch {
     return null;
   }

@@ -45,6 +45,8 @@ export function BookShopBox({ shop, licenseNo, locale }: { shop: BookShopInfo; l
 }
 
 /** ข้อความติดต่อร้านบรรทัดเดียว (ชื่อ · เบอร์ · LINE) */
+/** T0.4d G4: ทางติดต่อร้านของ SLOT_BUSY — ไม่มีทั้งเบอร์และ LINE (X30) ⇒ "" (BookError ตัดวลีติดต่อ · ไม่ส่งชื่อร้านลอย ๆ) */
+export const bookReachText = (shop: BookShopInfo): string => (shop.contact.phone || shop.contact.line ? bookContactText(shop) : "");
 export function bookContactText(shop: BookShopInfo): string {
   return [shop.name, shop.contact.phone, shop.contact.line ? `LINE ${shop.contact.line}` : null].filter((x): x is string => typeof x === "string" && x !== "").join(" · ");
 }
@@ -71,9 +73,11 @@ export function BookLines({ lines, locale }: { lines: BookLineVM[]; locale: Book
 }
 
 /** กล่องผิดพลาด (รหัสในรายการเท่านั้น · ข้อความจากไฟล์ภาษา · ไม่มีรหัสดิบบนจอ) */
-export function BookError({ code, fields, locale }: { code: BookErrorCode; fields?: readonly BookFormField[]; locale: BookLocale }) {
+export function BookError({ code, fields, locale, wait, contact }: { code: BookErrorCode; fields?: readonly BookFormField[]; locale: BookLocale; wait?: number; contact?: string }) {
   const t = bookT(locale);
-  const msg = code === "DONE" ? t("err.BUSY") : t(`err.${code}`);
+  // T0.4d D1/G4: SLOT_BUSY = นาทีที่รอ (พารามิเตอร์ r ที่ตรวจแล้ว · ไม่มี ⇒ ไม่มีนาที) + ทางติดต่อร้าน (ไม่มีเบอร์/LINE ⇒ ตัดวลีติดต่อทั้งวลี)
+  const busyKey = contact ? (wait ? "err.SLOT_BUSY" : "err.slotBusyLater") : wait ? "err.slotBusyBare" : "err.slotBusyLaterBare";
+  const msg = code === "DONE" ? t("err.BUSY") : code === "SLOT_BUSY" ? t(busyKey, { minutes: wait ?? "", contact: contact ?? "" }) : t(`err.${code}`);
   return (
     <div data-testid="book-error" data-code={code} role="alert" className="rounded-xl border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-4 py-3 text-sm text-[color:var(--color-danger)]">
       <p>{msg}</p>
