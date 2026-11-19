@@ -772,7 +772,13 @@ try {
     ok(!/\bfetch\(/.test(uiSrc), "จอมี fetch(");
     for (const f of [PAGE_CHECKOUT, PAGE_RES]) {
       const s = stripComments(read(f));
-      ok(/referrer\s*:\s*["']no-referrer["']/.test(s), `${f}: ต้องตั้ง metadata referrer: "no-referrer" (token อยู่ใน URL)`);
+      // ORACLE-EDIT S-7 (ผู้คุม 19 พ.ย. · W1.3a มติ V1/V4): metadata referrer no-referrer ทำให้ฟอร์ม POST ปิด JS ส่ง Origin: null ⇒ Next ตีกลับ server action (500)
+      //   ⇒ ห้าม no-referrer ใน metadata · token ใน URL ต้องไม่รั่วข้ามโดเมนด้วยหัว Referrer-Policy ของ proxy ที่ไม่ส่ง path/query ข้าม origin (strict-origin-when-cross-origin · เหตุผลเดียวกับ w1.3 L10-1)
+      ok(!/referrer\s*:\s*["']no-referrer["']/.test(s), `${f}: ห้ามตั้ง metadata referrer: "no-referrer" (ฟอร์มปิด JS ⇒ Origin: null)`);
+      const px = stripComments(read("src/proxy.ts"));
+      ok(/headers\.set\(\s*["']Referrer-Policy["']\s*,[^)]*["']strict-origin-when-cross-origin["']/.test(px), "proxy ไม่ตั้ง Referrer-Policy strict-origin-when-cross-origin");
+      const pd = /const\s+publicDoc\s*=\s*\/((?:\\.|[^/])+)\/(\w*)\.test/.exec(px);
+      ok(!pd || !new RegExp(pd[1] ?? "", pd[2]).test("/book/shop/my/token"), "proxy ใส่ no-referrer ให้เส้น /book");
       ok(/robots\s*:\s*\{\s*index\s*:\s*false\s*,\s*follow\s*:\s*false\s*\}/.test(s), `${f}: ต้อง robots noindex/nofollow`);
       // R14: dynamic (Next ส่ง Cache-Control: private, no-cache, no-store ให้หน้า dynamic) · ไม่มี og:* · <title> ทั่วไป (ไม่มีรหัส/สินค้า/วันที่)
       ok(/export\s+const\s+dynamic\s*=\s*["']force-dynamic["']/.test(s), `${f}: ต้อง export const dynamic = "force-dynamic" (R14 no-store)`);

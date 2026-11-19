@@ -148,7 +148,7 @@ const FORBIDDEN_PATHS = ["prisma", "src/proxy.ts", "src/lib/core", "src/i18n", "
   ...["p0.1", "t0.1", "t0.2", "t0.3", "t0.4", "t0.5", "t0.6", "t0.7", "t0.8", "t1.1", "t1.2", "t1.3", "t1.4", "a1.1", "a1.2", "a1.3", "w1.1", "w1.2"].map((w) => `scripts/qc-trips-${w}.mts`),
   `:(exclude)${SCORE}`, `:(exclude)${SSVC}`, `:(exclude)${BSVC}`, `:(exclude)${BCORE}`, `:(exclude)${PUBMOD}`, `:(exclude)${FACADE}`, `:(exclude)${BOOKING}`, `:(exclude)${REFUND}`, `:(exclude)${MONEY}`, `:(exclude)${CAPACITY}` /* ORACLE-EDIT S-10 (มติ L5) */];
 /** ไฟล์ที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด] — ใบสั่ง §2 + K3 (money.ts) */
-const LIMITED: [string, number, number | null][] = [[BSVC, 10, 60], [BCORE, 0, 20], [PUBMOD, 0, 60], [FACADE, 0, 20], [BOOKING, 10, 84] /* ORACLE-EDIT S-10 (มติ L1 → P4): +84/−10 */, [REFUND, 4, 30], [MONEY, 2, 12], [CAPACITY, 1, 4] /* L5 */, [NEXT_CONFIG, 0, 10] /* L10 */, ["scripts/visual-trips.mts", 0, 10]];
+const LIMITED: [string, number, number | null][] = [[BSVC, 10, 60], [BCORE, 0, 20], [PUBMOD, 0, 60], [FACADE, 0, 20], [BOOKING, 10, 84] /* ORACLE-EDIT S-10 (มติ L1 → P4): +84/−10 */, [REFUND, 4, 30], [MONEY, 2, 12], [CAPACITY, 1, 4] /* L5 */, [NEXT_CONFIG, 0, 10] /* L10 */, ["src/app/book/[shop]/c/[basket]/page.tsx", 2, 2] /* ORACLE-EDIT S-10 (มติ V1): เอา referrer no-referrer ออก */, ["scripts/visual-trips.mts", 0, 10]];
 const VISUAL_SCENES = ["self-manage", "self-manage-en", "self-verify", "self-cancel-quote", "self-cancel-requested", "self-unpaid-cancelled", "self-refund-rejected", "self-locked"];
 // ราคาราชาจากฟิกซ์เจอร์ (ภาพ 01 · 15) — คิดเอง
 const R = FX.PRODUCT_RACHA;
@@ -619,7 +619,8 @@ try {
     needOwn();
     const s = stripComments(read(PAGE_RES));
     ok(/export\s+const\s+dynamic\s*=\s*["']force-dynamic["']/.test(s), "ต้อง force-dynamic");
-    ok(/robots\s*:\s*\{\s*index\s*:\s*false\s*,\s*follow\s*:\s*false\s*\}/.test(s) && /referrer\s*:\s*["']no-referrer["']/.test(s), "ต้อง noindex + no-referrer");
+    // ORACLE-EDIT S-6 (ผู้คุม 19 พ.ย. รอบ 4 · มติ V1): ห้าม metadata referrer no-referrer (ฟอร์มปิด JS ส่ง Origin: null ⇒ 500) — กันรั่วด้วยหัว Referrer-Policy ของ proxy (ตรวจใน V1-1 · L10-1)
+    ok(/robots\s*:\s*\{\s*index\s*:\s*false\s*,\s*follow\s*:\s*false\s*\}/.test(s) && !/referrer\s*:\s*["']no-referrer["']/.test(s), "ต้อง noindex และห้าม metadata referrer: no-referrer");
     ok(!/cookies\(\)[\s\S]{0,40}\.set\(|Set-Cookie/.test(uiSrc), "ห้ามตั้งคุกกี้");
     ok(!/dangerouslySetInnerHTML/.test(uiSrc) && !/\bfetch\(/.test(uiSrc), "ห้าม dangerouslySetInnerHTML/fetch");
     ok(/<form[^>]*action=\{/.test(selfComp.map((f) => read(f)).join("\n") + read(PAGE_RES)), "ไม่มี <form action={serverAction}> ในจอของใบ");
@@ -1986,6 +1987,116 @@ try {
     eq(done.sort(), ["openBookReservation", "quoteBookSelfCancel", "serviceQuote"], "จบโดยไม่รอล็อก");
   });
   groupLine("P3");
+
+  // ═══════════════ V. มติผู้คุมรอบ 4 (V1–V5 · ท้าย ledger/trips-briefs/W1.3.md) — ผู้เขียนข้อสอบ 19 พ.ย. ═══════════════
+  //   V2/V3 ตรวจที่ชั้นที่ตัดสินจริง = หน้า my/[token]/page.tsx (เรียก default export ในขอบเขตคำขอของ Next แบบ P1 · นาฬิกาจริง) แล้วเรนเดอร์ต้นไม้ที่คืนด้วย renderToStaticMarkup
+  console.log("\n── V: ฟอร์มปิด JS (referrer) · แบนเนอร์ตรงสถานะจริง · ?e=LOCKED ──");
+  await st("V1-1", "ไม่มีหน้าใต้ src/app/book ตั้ง metadata referrer เป็น no-referrer (เบราว์เซอร์ส่ง Origin: null กับฟอร์ม POST ปิด JS ⇒ Next ตีกลับ server action) · proxy ไม่ตั้ง Referrer-Policy no-referrer ให้เส้น /book (ใช้ strict-origin-when-cross-origin · ข้ามโดเมนไม่ส่ง path/query)", () => {
+    const pages = walk("src/app/book").filter((f) => /\/(page|layout)\.tsx?$/.test(f));
+    ok(pages.length >= 3, `หาหน้าใต้ /book ไม่พบ (${pages.length})`);
+    const bad = pages.filter((f) => /referrer\s*:\s*["']no-referrer["']/.test(stripComments(read(f))));
+    eq(bad, [], "หน้าที่ตั้ง referrer: no-referrer");
+    const px = stripComments(read("src/proxy.ts"));
+    ok(/["']strict-origin-when-cross-origin["']/.test(px), "proxy ไม่มี strict-origin-when-cross-origin");
+    const reSrc = /const\s+publicDoc\s*=\s*\/((?:\\.|[^/])+)\/(\w*)\.test/.exec(px);
+    if (reSrc) ok(!new RegExp(reSrc[1] ?? "", reSrc[2]).test("/book/shop/my/token"), `proxy ใส่ no-referrer ให้ /book (${reSrc[0]})`);
+  });
+  const PAGEI = await tryImport("@/app/book/[shop]/my/[token]/page");
+  const pageHtml = async (b: Bk, sp: Record<string, string>): Promise<string> => {
+    const Page = PAGEI.mod?.default;
+    ok(typeof Page === "function", `โหลดหน้า my/[token] ไม่ได้ (${PAGEI.err.slice(0, 100)})`);
+    const ws = asRec(nWork?.workAsyncStorage), us = asRec(nUnit?.workUnitAsyncStorage), RC = nCookies?.RequestCookies;
+    ok(ws && us && typeof RC === "function", "หาขอบเขตคำขอของ Next ไม่ได้");
+    const req = new Request(`http://qc.local/book/${b.shop}/my/${b.token}`, { headers: { "x-real-ip": IP_OF.get(b.ck) ?? "100.66.250.1", "accept-language": "th", "user-agent": "qc-w13-page" } });
+    const jar = new (RC as new (h: Headers) => unknown)(req.headers);
+    const workStore = { route: "/book/[shop]/my/[token]", page: "/book/[shop]/my/[token]/page", forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [] };
+    const unit = { type: "request", phase: "render", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname: `/book/${b.shop}/my/${b.token}`, search: "" } };
+    const el = await (ws?.run as AnyFn).call(ws, workStore, () => (us?.run as AnyFn).call(us, unit, () => (Page as AnyFn)({ params: Promise.resolve({ shop: b.shop, token: b.token }), searchParams: Promise.resolve(sp) })));
+    return renderToStaticMarkup(el as never);
+  };
+  const BANNER = 'data-testid="book-cancel-done"';
+  const hd = (k: string) => head(String(th[k] ?? "∅"));
+  /** แบนเนอร์/ข้อความของหน้า: ไม่มีแบนเนอร์ · มีข้อความสถานะจริง (มี) · ไม่มีข้อความ "ยื่นแล้ว" (ไม่มี) */
+  const noBanner = (h: string, has: string | null, not: string[], what: string) => {
+    const t = unent(h);
+    ok(!h.includes(BANNER), `${what}: มีแบนเนอร์ "ทำรายการแล้ว" · ${t.slice(0, 220)}`);
+    if (has) ok(t.includes(has), `${what}: ไม่มีข้อความสถานะจริง "${has.slice(0, 30)}" · ${t.slice(0, 220)}`);
+    for (const n of not) ok(!t.includes(n), `${what}: มีข้อความ "${n.slice(0, 30)}" · ${t.slice(0, 220)}`);
+  };
+  await st("V2-1", "คำขอคืนเงินของลูกค้า: ขณะเปิด ?done=REFUND_REQUESTED ⇒ มีแบนเนอร์ (ตัวควบคุม) · หลังร้านปฏิเสธ ⇒ ไม่มีแบนเนอร์ · แสดงข้อความ REJECTED · ไม่มีข้อความ \"ยื่นคำขอแล้ว\"", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    const b = await mkBooking("bV2a", "gen", "A", { adults: 1 }, { pay: true });
+    await fileViaPage(b);
+    ok((await pageHtml(b, { done: "REFUND_REQUESTED" })).includes(BANNER), "ตัวควบคุม: คำขอเปิดอยู่แต่ไม่มีแบนเนอร์");
+    const rq = (await refunds(b.id))[0];
+    const d = await tcall("decideTripRefund", staffCtx(tA, ACT), { requestId: rq?.id, decision: "REJECT", reason: "ร้านปฏิเสธ (V2)", idempotencyKey: `w13v2_${hex(6)}` });
+    ok(d.ok === true, `ร้านปฏิเสธ: ${fmt(d)}`);
+    noBanner(await pageHtml(b, { done: "REFUND_REQUESTED" }), hd("self.refund.REJECTED"), [hd("self.cancel.requested")], "หลังปฏิเสธ");
+  });
+  await st("V2-2", "คำขอยกเลิกยอด 0 (CONFIRMED ยังไม่จ่าย) ถูกร้านปฏิเสธ ⇒ ?done=CANCEL_REQUESTED ไม่มีแบนเนอร์ · ไม่มีข้อความ \"ส่งคำขอยกเลิกแล้ว\"", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    const b = await mkConfirmed("bV2b", "gen");
+    await fileViaPage(b);
+    const rq = (await refunds(b.id))[0];
+    eq(rq?.amountSatang, 0, "คำขอยอด 0");
+    const d = await tcall("decideTripRefund", staffCtx(tA, ACT), { requestId: rq?.id, decision: "REJECT", reason: "ร้านปฏิเสธ (V2 ยอด 0)", idempotencyKey: `w13v2_${hex(6)}` });
+    ok(d.ok === true, `ร้านปฏิเสธ: ${fmt(d)}`);
+    noBanner(await pageHtml(b, { done: "CANCEL_REQUESTED" }), null, [hd("self.cancel.cancelRequested")], "คำขอยอด 0 ที่ถูกปฏิเสธ");
+  });
+  await st("V2-3", "คำขอของลูกค้าที่ร้านถอน (WITHDRAWN) / จบแล้ว (DONE) ⇒ ?done=REFUND_REQUESTED ไม่มีแบนเนอร์ · ไม่มีข้อความ \"ยื่นคำขอแล้ว\" · DONE แสดงข้อความ self.refund.DONE", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    await mkDep("v2w", "B", "2027-04-21");
+    const bw = await mkBooking("bV2w", "v2w", "B", { adults: 1 }, { pay: true });
+    const bd = await mkBooking("bV2d", "v2w", "B", { adults: 1 }, { pay: true });
+    await fileViaPage(bw); await fileViaPage(bd);
+    const w = await tcall("withdrawTripRefund", staffCtx(tB, at(300_000)), { requestId: (await refunds(bw.id))[0]?.id, reason: "ถอน (V2)", idempotencyKey: `w13v2_${hex(6)}` });
+    ok(w.ok === true, `ร้านถอน: ${fmt(w)}`);
+    // ฟิกซ์เจอร์: คำขอจบแล้ว (DONE) — ทดสอบปฏิกิริยาของหน้า ไม่ใช่เส้นโอนคืน
+    await pool.query(`UPDATE "TripRefundRequest" SET status = 'DONE' WHERE "bookingId" = $1`, [bd.id]);
+    noBanner(await pageHtml(bw, { done: "REFUND_REQUESTED" }), null, [hd("self.cancel.requested")], "คำขอที่ถูกถอน");
+    noBanner(await pageHtml(bd, { done: "REFUND_REQUESTED" }), hd("self.refund.DONE"), [hd("self.cancel.requested")], "คำขอที่จบแล้ว");
+  });
+  await st("V2-4", "?done=CANCELLED: การจองที่ลูกค้ายกเลิกเอง (audit trips.public.self) ⇒ มีแบนเนอร์ · การจองที่ร้านยกเลิก (STAFF) ⇒ ไม่มีแบนเนอร์", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    const [mine] = needBk("bHold");
+    eq((await bRow(mine.id)).status, "CANCELLED", "ฟิกซ์เจอร์ลูกค้ายกเลิกเอง (CN-6)");
+    ok((await pageHtml(mine, { done: "CANCELLED" })).includes(BANNER), "ลูกค้ายกเลิกเองแต่ไม่มีแบนเนอร์");
+    await mkDep("v2s", "A", "2027-05-07");
+    const bs = await mkBooking("bV2s", "v2s", "A", { adults: 1 });
+    const x = await tcall("cancelTripBooking", staffCtx(tA, ACT), { bookingId: bs.id, mode: "EXECUTE", reason: "ร้านยกเลิก (V2)", idempotencyKey: `w13v2s_${hex(6)}` });
+    ok(x.ok === true && (await bRow(bs.id)).status === "CANCELLED", `ร้านยกเลิก: ${fmt(x)}`);
+    noBanner(await pageHtml(bs, { done: "CANCELLED" }), null, [String(th["self.cancel.unpaidDone"] ?? "∅")], "ร้านยกเลิก");
+  });
+  await st("V2-5", "ผ่าน action (P1): ยื่นคำขอ → ร้านปฏิเสธ → ส่งฟอร์มเดิมซ้ำผ่าน cancelSelfAction ⇒ redirect ปลายทาง แล้วหน้าที่ปลายทางนั้นไม่มีแบนเนอร์ · แสดง REJECTED", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    const b = await mkBooking("bV2r", "p1b", "B", { adults: 1 }, { pay: true });
+    const g = await grantViaAction(b);
+    const qq = await call("quoteBookSelfCancel", { shop: b.shop, token: b.token, grant: g, clientKey: b.ck });
+    ok(qq.ok === true, `quote: ${fmt(qq)}`);
+    const formHtml = html("BookSelfCancel", { vm: asRec(qq.vm) ?? {}, action: NOOP, shop: SHOP_SET, code: "TR-0000-0001", locale: "th", error: null });
+    await sleep(1_200);
+    const r1 = await runAction("cancelSelfAction", IP_OF.get(b.ck) ?? "", [b.shop, b.token, g, formDataOf(formHtml)]);
+    ok(r1.kind === "REDIRECT" && r1.q.get("done") === "REFUND_REQUESTED", `ยื่น: ${fmt([r1.kind, r1.url, r1.err])}`);
+    const d = await tcall("decideTripRefund", staffCtx(tB, ACT), { requestId: (await refunds(b.id))[0]?.id, decision: "REJECT", reason: "ร้านปฏิเสธ (V2 action)", idempotencyKey: `w13v2r_${hex(6)}` });
+    ok(d.ok === true, `ร้านปฏิเสธ: ${fmt(d)}`);
+    const r2 = await runAction("cancelSelfAction", IP_OF.get(b.ck) ?? "", [b.shop, b.token, g, formDataOf(formHtml)]);
+    ok(r2.kind === "REDIRECT", `ส่งซ้ำ: ${fmt([r2.kind, r2.url, r2.err])}`);
+    const sp = Object.fromEntries([...r2.q.entries()]);
+    noBanner(await pageHtml(b, sp), hd("self.refund.REJECTED"), [hd("self.cancel.requested")], `ปลายทางของการส่งซ้ำ (${r2.url.split("?")[1] ?? ""})`);
+  });
+  await st("V3-1", "?do=cancel&e=LOCKED บนการจองที่ไม่ได้ถูกล็อก ⇒ ฟอร์มยืนยันเบอร์ (ไม่มีจอล็อก) · ถังลองผิดของการจองเต็มจริง (20) ⇒ จอล็อก", async () => {
+    needSelf(); needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`);
+    const b = await mkBooking("bV3", "gen", "A", { adults: 1 }, { pay: true });
+    const h0 = await pageHtml(b, { do: "cancel", e: "LOCKED" });
+    ok(h0.includes('data-testid="book-verify"') && !h0.includes('data-testid="book-self-locked"'), `e=LOCKED ปลอม: ${unent(h0).slice(0, 200)}`);
+    await pool.query(`DELETE FROM "ChatRateBucket" WHERE key = $1`, [lockKeyOf(b)]);
+    await insertRow("ChatRateBucket", { key: lockKeyOf(b), count: WRONG_LIMIT, windowStart: new Date(), updatedAt: new Date() });
+    const h1 = await pageHtml(b, { do: "cancel", e: "LOCKED" });
+    ok(h1.includes('data-testid="book-self-locked"'), `ถังเต็มจริงแต่ไม่มีจอล็อก: ${unent(h1).slice(0, 200)}`);
+    const before = Number((await q<{ c: number }>(`SELECT "count" AS c FROM "ChatRateBucket" WHERE key = $1`, [lockKeyOf(b)]))[0]?.c ?? -1);
+    eq(before, WRONG_LIMIT, "อ่านอย่างเดียว (ถังไม่ขยับ)");
+  });
+  groupLine("V");
 
   // ═══════════════ PII ═══════════════
   console.log("\n── PII ──");
