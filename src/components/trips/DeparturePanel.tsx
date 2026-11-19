@@ -2,7 +2,7 @@
 // TRIPS T1.2 ▸ แผงรอบ (ภาพ 11 :47–:58) + การ์ด "ต้องตัดสินใจ" (:60–:63)
 //   จอ ≥ md: การ์ดข้างตาราง · มือถือ: แผ่นเต็มจอ (Escape / ปุ่มปิด ⇒ กลับปฏิทิน)
 //   🔴 ปุ่มไหนแสดง = actions.* จากตัวโหลด (ไม่ตัดสินที่นี่) · ปุ่มเป็นตาราง 2 คอลัมน์ ไม่กองแนวตั้ง · ใบรายชื่อ/จองให้ลูกค้า = ปุ่มปิด "ยังไม่เปิดใช้"
-//   🔴 ยอดจองแยกช่องทาง/ผู้ใหญ่-เด็ก/เงิน = ยังไม่มีข้อมูล (T1.3/T1.7) — แสดงข้อความ ไม่แต่งตัวเลข
+//   🔴 ยอดจองแยกช่องทาง/ผู้ใหญ่-เด็ก = ยังไม่มีข้อมูล — แสดงข้อความ ไม่แต่งตัวเลข · เงินของรอบ = vm.money (T1.7a1 · null ⇒ ข้อความเดิม)
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -12,6 +12,7 @@ import { setDepartureStatusAction } from "@/lib/modules/trips/departure-actions"
 import { BTN, BTN_PRIMARY, ErrorLine, useRunner } from "./ProductsScreenParts";
 import { BTN_DANGER, CANCEL_STRIPES, UsedBar, calHref, useDepDates, useReasonText, useTitle, type CalQuery } from "./DepartureParts";
 import { CancelDialog, CapacityDialog, DecideDialog, PriceDialog, ResourceDialog, StopSellDialog, UnguaranteeDialog } from "./DepartureDialogs";
+import { CostMoneyCard } from "./CostParts";
 
 type Open = "decide" | "cancel" | "capacity" | "resources" | "price" | "stopsell" | "unguarantee" | null;
 /**
@@ -171,9 +172,21 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
       <p data-testid="trips-dep-bookings-note" className="rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-sm text-[color:var(--color-muted)]">
         {t("departures.notYet.bookings")}
       </p>
-      <p data-testid="trips-dep-money-note" className="rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-sm text-[color:var(--color-muted)]">
-        {t("departures.notYet.money")}
-      </p>
+      {/* TRIPS T1.7a1 ▸ การ์ดเงินของรอบ (ภาพ 11 :56–:57) · ต้นทุน/คอมฯ/กำไร มาเฉพาะผู้เห็นต้นทุน · ลิงก์จอต้นทุน = actions.costs ◂ */}
+      {vm.money ? (
+        <section data-testid="trips-dep-money" aria-label={t("departures.money.title")} className="flex min-w-0 flex-col gap-1.5 rounded-lg border border-[color:var(--color-line)] px-3 py-2">
+          <CostMoneyCard money={vm.money} />
+          {vm.actions.costs ? (
+            <Link data-testid="trips-dep-costs" href={`${base}/${encodeURIComponent(d.departureId)}/costs`} className={`${BTN} mt-1 w-full`}>
+              {t("departures.money.costs")}
+            </Link>
+          ) : null}
+        </section>
+      ) : (
+        <p data-testid="trips-dep-money-note" className="rounded-lg bg-[color:var(--color-surface-2)] px-3 py-2 text-sm text-[color:var(--color-muted)]">
+          {t("departures.notYet.money")}
+        </p>
+      )}
 
       <div data-testid="trips-dep-actions" className="grid grid-cols-2 gap-2.5">
         {a.manifest ? (

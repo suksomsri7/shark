@@ -513,3 +513,33 @@ export { loadBookCatalog, loadBookDay, loadBookDeparture, findBookBasket, findBo
 export type { BookCatalog, BookDaySlot, BookDepartureRow, BookBasketRow, BookReservationRow } from "./public-booking";
 export { hhmm as tripsHhmm } from "./departures-core";
 // ── /W1.2 public booking ──
+// ── T1.7a1 costs ──
+// TRIPS T1.7a1 ▸ เงินระดับรอบ: ต้นทุนรอบ · กำไรขั้นต้น (ตัวเลขบริหาร) · การ์ดเงินแผงรอบ · จอต้นทุน + ตัวแก้ (ใบสั่ง ledger/trips-briefs/T1.7.md · สิทธิ์ต้นทุนแคบ costAccessOf) ◂
+export {
+  TRIP_COST_KINDS,
+  TRIP_COST_ROWS_MAX,
+  TRIP_COST_AMOUNT_MAX,
+  TRIP_COST_NOTE_MAX,
+  REPORT_LIVE_STATUSES,
+  REPORT_PENDING_STATUSES,
+  MONEY_COUNTED,
+  CHANNEL_GROUPS,
+  DEPARTURE_REPORT_STATES,
+  MONEY_WARNING_CODES,
+  bookingMoneyOf,
+  sumMoney,
+  profitOf,
+  loadFactorBp,
+  channelGroupOf,
+  departureReportStateOf,
+  charterLikeOf,
+  costAccessOf,
+  parseCostRows,
+  costRowsFromForm,
+  costContentKey,
+} from "./report-core";
+export type { BookingMoneyIn, BookingMoney, MoneyTotals, DepartureReportState, TripCostKind, MoneyWarningCode, ChannelGroup } from "./report-core";
+export { loadDepartureCostsVM, saveDepartureCosts, departureMoneySummary } from "./costs";
+export type { DepartureMoneyVM, DepartureCostsVM, CostRowVM, SavedCosts } from "./costs";
+// ◂ TRIPS T1.7a1
+// ── /T1.7a1 costs ──

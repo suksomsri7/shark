@@ -421,6 +421,9 @@
   },
   "loading": "Loading…",
   "errors": {
+    "COST_ROWS_LIMIT": "A departure can have at most 30 cost lines",
+    "COST_AMOUNT_INVALID": "Cost amounts must be above zero and at most 10,000,000 baht per line",
+    "COST_AMOUNT_FORMAT": "Type the amount as a number with at most 2 decimal places",
     "HOLD_EXPIRED": "The hold has expired — ask the customer to book again",
     "IDEMPOTENCY_CONFLICT": "This was already sent with different details — close the box and open it again before retrying",
     "INVALID_INPUT": "Some details are missing or in the wrong format — check and try again",
@@ -481,6 +484,24 @@
     "yearOffset": "0"
   },
   "departures": {
+    "money": {
+      "title": "Departure money",
+      "sales": "Bookings {amount}",
+      "detail": "Departure money details",
+      "detailPt": "+ park fees {amount} (collected on behalf)",
+      "detailCost": "departure cost {amount}",
+      "detailCommission": "commission {amount}",
+      "detailProfit": "gross profit before VAT {amount}",
+      "detailProfitNoVat": "gross profit {amount}",
+      "noCost": "No costs recorded yet",
+      "vat": "VAT in selling prices (approx.) — not the VAT return figure",
+      "estimate": "Estimate — trip not closed yet",
+      "mgmt": "Management figures, not accounting reports",
+      "agentCollect": "Agents collect payment on {n} bookings",
+      "pendingRefund": "Refund pending on {n} bookings {amount}",
+      "noShowUnpaid": "No-show and not fully paid {n}",
+      "costs": "Costs and profit"
+    },
     "title": "Departures & availability",
     "today": "Today",
     "prev": "Previous",
@@ -1318,6 +1339,103 @@
       "waiver": "Waiver",
       "health": "Health info",
       "finSize": "Fin size"
+    }
+  },
+  "costs": {
+    "title": "Costs and profit · {title}",
+    "back": "Back to the departure calendar",
+    "mgmt": "Management figures, not accounting reports",
+    "accounting": "Nothing is posted to the books yet — use the tax documents the shop issues in the accounting system",
+    "estimate": "Estimate — trip not closed yet",
+    "charter": "Charter departure — the load factor does not reflect per-seat selling",
+    "kind": {
+      "BOAT": "Boat",
+      "FUEL": "Fuel",
+      "GUIDE": "Guide",
+      "FOOD": "Food",
+      "PARK_FEE": "Park fees paid by the shop",
+      "TRANSPORT": "Transport",
+      "EQUIPMENT": "Equipment",
+      "OTHER": "Other"
+    },
+    "state": {
+      "UPCOMING": "Not travelled yet",
+      "ENDED": "Travelled",
+      "CANCELLED": "Departure cancelled"
+    },
+    "kpi": {
+      "sales": "Sales",
+      "revenue": "Revenue before VAT",
+      "revenueNoVat": "Revenue",
+      "commission": "Commission",
+      "cost": "Departure cost",
+      "perSeat": "per seat {amount}",
+      "profit": "Gross profit",
+      "load": "Load factor",
+      "loadValue": "{sold}/{capacity} · {pct}",
+      "loss": "Loss"
+    },
+    "breakdown": {
+      "title": "Where the profit comes from",
+      "sales": "Sales",
+      "vat": "VAT in selling prices (approx.) — not the VAT return figure",
+      "revenue": "Revenue before VAT",
+      "revenueNoVat": "Revenue",
+      "commission": "Commission",
+      "commissionWithVat": "Commission (including VAT on commission)",
+      "cost": "Departure cost",
+      "profit": "Gross profit before VAT",
+      "profitNoVat": "Gross profit",
+      "split": "Shown separately",
+      "passThrough": "Collected on behalf of customers (not revenue)",
+      "collected": "Received",
+      "outstanding": "Outstanding",
+      "agentCollect": "Agents collect payment on {n} bookings",
+      "pendingRefund": "Refund pending on {n} bookings",
+      "retained": "Cancelled {n} bookings (shop kept {amount})",
+      "noShow": "No-show and not fully paid {n}",
+      "pendingHold": "Held or awaiting approval {n} bookings (not counted)"
+    },
+    "editor": {
+      "title": "Record departure costs",
+      "kind": "Type",
+      "amount": "Amount (baht)",
+      "note": "Note",
+      "add": "+ Add line",
+      "remove": "Remove",
+      "save": "Save costs",
+      "saving": "Sending…",
+      "saved": "Saved",
+      "limit": "30 lines reached",
+      "reload": "Reload",
+      "row": "Line {n}",
+      "vatNote": {
+        "registered": "VAT-registered shop: enter amounts excluding reclaimable VAT — check with the shop's accountant",
+        "notRegistered": "Shop not VAT-registered: enter the amount actually paid — check with the shop's accountant",
+        "unknown": "VAT registration not set yet: enter the amount actually paid — check with the shop's accountant"
+      }
+    },
+    "conflict": "Someone saved this departure's costs first — reload and check again",
+    "empty": "No costs recorded yet",
+    "readOnly": "View only — recording costs needs permission from the shop owner",
+    "total": "Total cost",
+    "channels": {
+      "title": "Sales by channel",
+      "channel": "Channel",
+      "bookings": "Bookings",
+      "seats": "Seats",
+      "sales": "Sales",
+      "commission": "Commission",
+      "cancelled": "Cancelled",
+      "none": "No counted bookings yet"
+    },
+    "warn": {
+      "PARK_FEE_WITH_PASS_THROUGH": "This departure has both park fees collected on behalf of customers and a park fee cost line — check it is not counted twice (the cost line is only what the shop pays itself)",
+      "SUPPLIER_COSTS_NOT_INCLUDED": "This product comes from a supplier — what the shop owes the supplier is not in this cost yet",
+      "SNAPSHOT_FALLBACK": "{n} bookings have no net amount saved at booking time — worked out from list price minus discounts, revenue may be off",
+      "FX_BOOKINGS": "{n} bookings are in another currency — added up in baht from the saved amounts, check the exchange rate",
+      "VAT_STATUS_UNKNOWN": "Shop VAT registration is not set — set it in trip settings, tax section",
+      "OTA_FEES_NOT_INCLUDED": "{n} bookings came from outside tour sites — platform fees are not deducted yet"
     }
   }
 }

@@ -187,6 +187,10 @@ const ERROR_CODES = new Set([
   // TRIPS T1.3 ▸ รหัสของจอการจอง (บริการ T0.6/T0.7a) ◂
   "HOLD_EXPIRED",
   "IDEMPOTENCY_CONFLICT",
+  // TRIPS T1.7a1 ▸ รหัสของจอต้นทุนรอบ ◂
+  "COST_ROWS_LIMIT",
+  "COST_AMOUNT_INVALID",
+  "COST_AMOUNT_FORMAT",
 ]);
 
 /** เรียก server action ทีละครั้ง: สำเร็จ ⇒ รีเฟรชข้อมูลจอจากเซิร์ฟเวอร์ · ไม่สำเร็จ ⇒ ข้อความไทยของบริการ */
