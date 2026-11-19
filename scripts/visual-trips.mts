@@ -55,13 +55,12 @@ const BOOK_RACHA = "racha-yai-day-trip";
 const LADDER = '[role="dialog"] [data-setting-key="trips.cancel.ladder"]';
 const LADDER_DAYS = `${LADDER} [data-table-cell="fromDaysBefore"] input`;
 const LADDER_PCT = `${LADDER} [data-table-cell="refundPct"] input`;
-// TRIPS W1.3 ▸ วันของรอบชั่วคราว (วันนี้ตามเวลาไทย + 45 วัน → ≥ 30 วัน = คืน 100% · d2 = วันถัดไปในเดือนเดียวกัน) + ขั้นยืนยันเบอร์ที่ทุกฉากแก้ใช้ร่วมกัน ◂
+// TRIPS W1.3 ▸ วันของรอบชั่วคราว (วันนี้ตามเวลาไทย + 45 วัน → ≥ 30 วัน = คืน 100%) + ขั้นยืนยันเบอร์ที่ทุกฉากแก้ใช้ร่วมกัน ◂
 const W13_PHONE = "0890001313";
 const W13_DATES = (() => {
   const ymd = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-  let base = Date.parse(`${ymd(Date.now() + 7 * 3_600_000)}T00:00:00.000Z`) + 45 * 86_400_000;
-  if (Number(ymd(base).slice(8, 10)) >= 28) base += 5 * 86_400_000;
-  return { d1: ymd(base), d2: ymd(base + 86_400_000) };
+  const base = Date.parse(`${ymd(Date.now() + 7 * 3_600_000)}T00:00:00.000Z`) + 45 * 86_400_000;
+  return { d1: ymd(base) };
 })();
 const W13_VERIFY: Action[] = [
   { waitFor: '[data-testid="book-verify"]' },
@@ -203,8 +202,8 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     { name: "book-expired", mockup: "07", public: true, path: () => `/book/${SHOP_DIVE.tenant.slug}/my/${W12_EXPIRED_TOKEN}?lang=th`, actions: [{ waitFor: '[data-testid="book-res-expired"]' }] },
   ],
   // TRIPS W1.3 ▸ การจองของฉัน (ภาพ 01ง ปุ่มเลื่อน/ยกเลิก · 07ง แถบวัน · 15 ยอดคืน) — ทุกฉาก public 1440 + 390
-  //   🔴 เขียนฐาน: w13Prepare สร้าง "รอบชั่วคราว 2 รอบ" ของราชาบนร้าน seed (วันนี้ + 45/46 วัน · เวลา 06:13 ไม่ชนรอบของ seed) + การจองของตัวเอง (ผ่านเส้นจริง W1.2a + ร้านรับเงิน)
-  //      ฉากที่เขียน (ยกเลิก/เลื่อน) ใช้การจองแยกต่ออุปกรณ์ · w13Cleanup ลบทุกแถวที่ผูกการจอง/รอบของตัวเอง + รอบ + Party ผู้จองทดสอบ + ถังของเครื่องที่ใช้ ใน finally (ไม่แตะรอบ/การจองของ seed)
+  //   🔴 เขียนฐาน: w13Prepare สร้าง "รอบชั่วคราว" ของราชาบนร้าน seed (วันนี้ + 45 วัน · เวลา 06:13 ไม่ชนรอบของ seed) + การจองของตัวเอง (ผ่านเส้นจริง W1.2a + ร้านรับเงิน)
+  //      ไม่มีฉากเลื่อน/ขอลิงก์ใหม่ (มติ K1 → W1.3a2/W1.3b) · ฉากที่เขียน (ยกเลิก) ใช้การจองแยกต่ออุปกรณ์ · w13Cleanup ลบทุกแถวที่ผูกการจอง/รอบของตัวเอง + รอบ + Party ผู้จองทดสอบ + ถังของเครื่องที่ใช้ ใน finally (ไม่แตะรอบ/การจองของ seed)
   //      ผู้จองทุกการจองใช้เบอร์ W13_PHONE (ฉากกรอกเบอร์นี้ในช่องยืนยัน) · ไม่ฝัง token (สร้างตอนรัน) ◂
   "w1.3": [
     { name: "self-manage", mockup: "01", public: true, path: () => w13Path("paid", "th"), actions: [{ waitFor: '[data-testid="book-manage"]' }, { reveal: '[data-testid="book-manage"]' }] },
@@ -225,14 +224,10 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       path: () => w13Path("hold", "th", "cancel"),
       actions: [...W13_VERIFY, { waitFor: '[data-testid="book-cancel-quote"]' }, { pause: 1_500 }, { click: { selector: '[data-testid="book-cancel-accept"]' } }, { click: { selector: '[data-testid="book-cancel-submit"]' } }, { waitFor: '[data-testid="book-cancel-done"]' }],
     },
-    { name: "self-move-pick", mockup: "07", public: true, path: () => w13Path("paid", "th", "move"), actions: [...W13_VERIFY, { waitFor: '[data-testid="book-move"]' }] },
-    {
-      name: "self-move-done",
-      mockup: "07",
-      public: true,
-      path: () => w13Path("move", "th", "move"),
-      actions: [...W13_VERIFY, { waitFor: `[data-testid="book-move-day-${W13_DATES.d2}"]` }, { click: { selector: `[data-testid="book-move-day-${W13_DATES.d2}"]` } }, { waitFor: '[data-testid="book-move-summary"]' }, { pause: 1_500 }, { click: { selector: '[data-testid="book-move-submit"]' } }, { waitFor: '[data-testid="book-move-done"]' }],
-    },
+    // K8: คำขอคืนเงินที่ร้านปฏิเสธ (ร้านยื่นแทนแล้วปฏิเสธใน w13Prepare) ⇒ ไม่มีปุ่มยกเลิก + ข้อความติดต่อร้าน
+    { name: "self-refund-rejected", mockup: "15", public: true, path: () => w13Path("rejected", "th"), actions: [{ waitFor: '[data-testid="book-refund-status"]' }, { reveal: '[data-testid="book-manage"]' }] },
+    // K6: การจองที่ถูกลองเบอร์ผิดครบเพดาน (w13Prepare ยิงผิด 20 ครั้งจาก 20 เครื่อง) ⇒ กรอกเบอร์ถูกแล้วยังเห็น "ถูกล็อก ติดต่อร้าน"
+    { name: "self-locked", mockup: "07", public: true, path: () => w13Path("locked", "th", "cancel"), actions: [...W13_VERIFY, { waitFor: '[data-testid="book-self-locked"]' }] },
   ],
 };
 // TRIPS W1.2 ▸ token ของการจอง 0142 (ฉาก book-voucher) — เติมก่อนถ่ายเมื่อใบ = w1.2 · ไม่มีกุญแจเซิร์ฟเวอร์/ไม่พบการจอง ⇒ หยุด ◂
@@ -258,10 +253,10 @@ async function w12ExpireLatestWebBooking(): Promise<string> {
 }
 
 // TRIPS W1.3 ▸ ของที่ฉาก w1.3 สร้าง (ลบใน finally ด้วย w13Cleanup) · W13_DEV = อุปกรณ์ของฉากที่กำลังถ่าย (ฉากที่เขียนฐานใช้การจองแยกต่ออุปกรณ์) ◂
-const W13 = { deps: [] as string[], bookingIds: [] as string[], basketIds: [] as string[], clientKeys: [] as string[], tokens: {} as Record<string, string> };
+const W13 = { deps: [] as string[], bookingIds: [] as string[], basketIds: [] as string[], clientKeys: [] as string[], tokens: {} as Record<string, string>, bucketKeys: [] as string[] };
 let W13_DEV = "";
-function w13Path(kind: "paid" | "cancel" | "hold" | "move", lang: "th" | "en", act?: "cancel" | "move"): string {
-  const token = W13.tokens[kind === "paid" ? "paid" : `${kind}:${W13_DEV}`];
+function w13Path(kind: "paid" | "cancel" | "hold" | "rejected" | "locked", lang: "th" | "en", act?: "cancel"): string {
+  const token = W13.tokens[kind === "cancel" || kind === "hold" ? `${kind}:${W13_DEV}` : kind];
   if (!token) throw new Fatal(`ไม่มีการจองของฉาก ${kind}:${W13_DEV} — w13Prepare ยังไม่รัน`);
   return `/book/${SHOP_DIVE.tenant.slug}/my/${token}?lang=${lang}${act ? `&do=${act}` : ""}`;
 }
@@ -272,7 +267,7 @@ async function w13Prepare(ids: Ids): Promise<void> {
   const staff = await prisma.user.findUnique({ where: { email: owner.email }, select: { id: true } });
   const opt = await prisma.tripOption.findFirst({ where: { tenantId, productId: ids.racha, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true } });
   if (!staff || !opt) throw new Fatal("ไม่พบเจ้าของร้าน/ตัวเลือกของราชา — รัน scripts/seed-trips-qc.mts ก่อน");
-  for (const d of [W13_DATES.d1, W13_DATES.d2]) {
+  for (const d of [W13_DATES.d1]) {
     const startsAt = new Date(`${d}T06:13:00+07:00`);
     const dep = await prisma.tripDeparture.create({
       data: { tenantId, unitId, productId: ids.racha, optionId: opt.id, localDate: new Date(`${d}T00:00:00.000Z`), startsAt, endsAt: new Date(startsAt.getTime() + 8.5 * 3_600_000), status: "OPEN", capacity: 30, cutoffAt: startsAt },
@@ -282,7 +277,8 @@ async function w13Prepare(ids: Ids): Promise<void> {
   }
   const book = (await import("@/lib/platform/trips-book")) as unknown as Record<string, W13Fn> & { issueBookFormNonce: (o: unknown) => string | null };
   const pub = (await import("@/lib/platform/trips-public")) as unknown as { bookClientKey: (ip: string) => string | null; bookSlotToken: (t: string, d: string) => string | null };
-  const trips = (await import("@/lib/modules/trips")) as unknown as { recordTripPayment: W13Fn };
+  const trips = (await import("@/lib/modules/trips")) as unknown as { recordTripPayment: W13Fn; requestTripRefund: W13Fn; decideTripRefund: W13Fn };
+  const staffCtx = { tenantId, unitId, channel: "COUNTER", actor: { kind: "STAFF", userId: staff.id } };
   const t = pub.bookSlotToken(tenantId, W13.deps[0] ?? "");
   if (!t) throw new Fatal("ทำตัวอ้างรอบชั่วคราวไม่ได้ (ไม่มี SESSION_SECRET?)");
   let n = 0;
@@ -305,15 +301,37 @@ async function w13Prepare(ids: Ids): Promise<void> {
     W13.bookingIds.push(b.id);
     if (b.basketId) W13.basketIds.push(b.basketId);
     if (pay) {
-      const p = await trips.recordTripPayment({ tenantId, unitId, channel: "COUNTER", actor: { kind: "STAFF", userId: staff.id } }, { bookingId: b.id, amountSatang: total, tender: "PROMPTPAY", idempotencyKey: `w13vis_${b.id}`.slice(0, 90) });
+      const p = await trips.recordTripPayment(staffCtx, { bookingId: b.id, amountSatang: total, tender: "PROMPTPAY", idempotencyKey: `w13vis_${b.id}`.slice(0, 90) });
       if (p.ok !== true) throw new Fatal(`ฉาก w1.3: รับเงินไม่ได้ (${JSON.stringify(p).slice(0, 160)})`);
     }
     W13.tokens[key] = c.token;
+    return b.id;
   };
   await one("paid", true);
-  for (const dev of DEVICES) { await one(`cancel:${dev.device}`, true); await one(`move:${dev.device}`, true); }
+  for (const dev of DEVICES) await one(`cancel:${dev.device}`, true);
+  // K8 ฉากคำขอถูกปฏิเสธ: ร้านยื่นคำขอแทน (STAFF) แล้วปฏิเสธ — ร้าน seed อนุมัติอัตโนมัติ = 0 ⇒ QUOTED → REJECTED
+  const rej = await one("rejected", true);
+  const rb = await prisma.tripBooking.findFirst({ where: { id: rej }, select: { version: true } });
+  const rq = await trips.requestTripRefund(staffCtx, { bookingId: rej, expectedVersion: rb?.version ?? 0, reasonKind: "CUSTOMER", choice: "MONEY", reason: "ภาพทดสอบ W1.3", idempotencyKey: `w13visrq_${rej}`.slice(0, 90) });
+  const rqId = (rq.value as { requestId?: unknown } | undefined)?.requestId;
+  if (rq.ok !== true || typeof rqId !== "string") throw new Fatal(`ฉาก w1.3: ยื่นคำขอคืนเงินแทนลูกค้าไม่ได้ (${JSON.stringify(rq).slice(0, 160)})`);
+  const dj = await trips.decideTripRefund(staffCtx, { requestId: rqId, decision: "REJECT", reason: "ภาพทดสอบ W1.3", idempotencyKey: `w13visdj_${rej}`.slice(0, 90) });
+  if (dj.ok !== true) throw new Fatal(`ฉาก w1.3: ปฏิเสธคำขอไม่ได้ (${JSON.stringify(dj).slice(0, 160)})`);
+  // K6 ฉากล็อก: ยิงเบอร์ผิด 20 ครั้งจาก 20 เครื่องผ่าน verifyBookSelf ของ W1.3a (ต้องมีงานของผู้สร้างแล้ว)
+  await one("locked", true);
+  const SELF_MOD: string = "@/lib/platform/trips-self"; // ไฟล์ของผู้สร้าง W1.3a — ตัวแปรกันตัวตรวจชนิดหาโมดูลก่อนมีงาน
+  const self = (await import(SELF_MOD)) as unknown as Record<string, W13Fn> & { issueSelfFormNonce: (o: unknown) => string | null };
+  const lockedToken = W13.tokens.locked ?? "";
+  for (let i = 0; i < 20; i++) {
+    const ckL = pub.bookClientKey(`198.51.102.${i + 1}`);
+    if (!ckL) throw new Fatal("ทำกุญแจเครื่องไม่ได้");
+    W13.clientKeys.push(ckL);
+    const nonceV = self.issueSelfFormNonce({ now: new Date(Date.now() - 60_000), scope: { tenantId, purpose: "verify", token: lockedToken } });
+    await self.verifyBookSelf({ shop: SHOP_DIVE.tenant.slug, token: lockedToken, form: { phone: "0899999913", nonce: nonceV }, clientKey: ckL });
+  }
+  W13.bucketKeys.push(`trips:verifyb:${tenantId}:${sha256(sha256(lockedToken)).slice(0, 24)}`);
   for (const dev of DEVICES) await one(`hold:${dev.device}`, false); // ที่ยังไม่จ่ายสร้างท้ายสุด (เพดานถือพร้อมกันต่อเบอร์ X10 = 3)
-  console.log(`🧪 w1.3: รอบชั่วคราว ${W13_DATES.d1}/${W13_DATES.d2} · การจองทดสอบ ${W13.bookingIds.length}`);
+  console.log(`🧪 w1.3: รอบชั่วคราว ${W13_DATES.d1} · การจองทดสอบ ${W13.bookingIds.length}`);
 }
 /** ลบของที่ฉาก w1.3 สร้าง: ทุกตารางที่มี bookingId ของการจองบนรอบชั่วคราว · ที่ถือ · ตะกร้า · audit · outbox · การจอง · รอบ · Party ผู้จองทดสอบที่ไม่มีการจองอื่น · ถังของเครื่องที่ใช้ — คืนจำนวนแถว */
 async function w13Cleanup(): Promise<number> {
@@ -343,6 +361,7 @@ async function w13Cleanup(): Promise<number> {
   }
   await run(`DELETE FROM "Party" p WHERE p."tenantId" = $1 AND p."phoneNorm" = $2 AND NOT EXISTS (SELECT 1 FROM "TripBooking" b WHERE b."bookerPartyId" = p.id)`, tenantId, W13_PHONE);
   if (W13.clientKeys.length) await run(`DELETE FROM "ChatRateBucket" WHERE key LIKE ANY($1::text[])`, W13.clientKeys.map((k) => `%:${k}`));
+  if (W13.bucketKeys.length) await run(`DELETE FROM "ChatRateBucket" WHERE key = ANY($1::text[])`, W13.bucketKeys);
   const left = await prisma.tripDeparture.count({ where: { id: { in: W13.deps } } });
   if (left) console.error(`⚠️ w1.3: ลบรอบชั่วคราวไม่หมด (${left}) — ตรวจ ${W13.deps.join(", ")}`);
   return n;

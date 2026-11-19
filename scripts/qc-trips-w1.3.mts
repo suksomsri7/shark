@@ -1,18 +1,19 @@
-// QC — TRIPS W1.3a · การจองของฉัน: ยืนยันเบอร์ผู้จอง → ยกเลิกเอง (ก่อนจ่าย = ยกเลิกทันที · จ่ายแล้ว = คำขอคืนเงินตาม snapshot) · เลื่อนรอบเอง (ยอดเท่าเดิม) · ขอลิงก์ใหม่ (ภาพ 01ง · 07ง · 15)
+// QC — TRIPS W1.3a · การจองของฉัน: ยืนยันเบอร์ผู้จอง (ลิงก์ + เบอร์ · OQ37) → grant 15 นาที → ยกเลิกก่อนจ่าย (ทันที) · ยื่นคำขอคืนเงินตาม snapshot (ร้านพิจารณา) · สถานะคำขอบนหน้า (ภาพ 01ง · 07 · 15)
 // oracle ของผู้เขียนข้อสอบ — builder ห้ามแก้ไฟล์นี้ (แย้ง = wo-notes · ORACLE-EDIT เฉพาะผู้คุม)
-// ใบสั่ง: ledger/trips-briefs/W1.3.md (ส่วน a) · สัญญา ledger/TRIPS-CORE-CONTRACT.md §G.1 §G.3 §J.3 · ภาพ ledger/design-trips/01-tour-customer.* (ง) · 07-states.* (ง) · 15-refund-flow.*
+// ใบสั่ง: ledger/trips-briefs/W1.3.md (W1.3a · มติ K1–K12) · สัญญา ledger/TRIPS-CORE-CONTRACT.md §G.1 §G.3 §J.3 · ภาพ ledger/design-trips/01-tour-customer.* (ง) · 07-states.* · 15-refund-flow.*
+// ⚠️ ไม่มีเลื่อนรอบ/ขอลิงก์ใหม่ในใบนี้ (มติ K1) — ข้อเดิมของสองเรื่องนั้นอยู่ใน scripts/qc-trips-w1.3a2.draft.txt
 //
 // กลุ่มข้อ:
 //   PC ตัวควบคุม (เขียวก่อนมีงาน · พิสูจน์ฟิกซ์เจอร์/ค่าคาดหวังด้วยบริการของโมดูลโดยตรง)
-//   S ไฟล์/กติกาโค้ด   P ตัวช่วยบริสุทธิ์ (trips-self-core)   LG ภาษา   V ยืนยันเบอร์ + สิทธิ์แก้ชั่วคราว (grant)   M ก้อนจัดการบนหน้าการจอง
-//   CN ยกเลิก (ก่อนจ่าย/คำขอคืนเงิน)   MV เลื่อนรอบ   TK ขอลิงก์ใหม่ (เพิกถอน token)   RL ด่านอัตรา (ปิดเมื่อพัง)
+//   S ไฟล์/กติกาโค้ด   P ตัวช่วยบริสุทธิ์ (trips-self-core)   LG ภาษา   FN รั้วบริการ (เรียกบริการจริงด้วย PUBLIC + publicSelf · K2–K4)
+//   V ยืนยันเบอร์ + grant   M ก้อนจัดการบนหน้าการจอง (K8 · K10)   CN ยกเลิก/คำขอคืนเงิน/สถานะคำขอ   RL ด่านอัตรา (K6 · ปิดเมื่อพัง)
 //   X1 ข้ามร้าน/ข้ามการจอง · X3 ยิงพร้อมกัน ≥ 10 · X4 ส่งซ้ำ · X6 อินพุตอันตราย · PII
 //
 // 🔴 นาฬิกา: ทุกการเทียบเวลาใช้ "now ที่ข้อสอบส่ง" (NOW0 + ค่าชดเชย) เท่านั้น — ไม่เทียบกับ createdAt/updatedAt ที่ฐานเติม now() · ไม่กรองแถวด้วยช่วงเวลา
 // 🔴 ค่าคาดหวังคิดเองจากฟิกซ์เจอร์ราชา (trips-fixture) + ตารางยกเลิกค่าเริ่ม (TRIPS-DEFAULTS T20: ≥30 วัน 100 · 15–29 วัน 50 · <15 วัน 0) — ไม่เรียกโค้ดที่ถูกทดสอบเพื่อหาคำตอบ
-// 🔴 แถวทดสอบอยู่ใต้ร้านชั่วคราว slug `trips-w13-*` (ไม่พึ่งร้าน seed — ร้าน seed ของเลน l1 มีของค้างจาก W1.2) · ลบใน finally + กวาดค้างตอนเริ่ม
-// 🔴 การจองทดสอบสร้างผ่านเส้นจองจริงของ W1.2a (startBookHold → confirmBookHold) แล้วร้านรับเงินผ่าน recordTripPayment (STAFF) — nonce ของ W1.2 ผูกโดเมนถือ/ยืนยัน + ร้าน · ทุกการถือส่ง `t` จากผลของระบบ
-// 🔴 ตัวช่วยยืนยัน/ฟอร์มของใบนี้ส่ง nonce ผูก (ร้าน · วัตถุประสงค์ verify/cancel/move/rotate · token) ตามใบสั่ง §3.2 · grant ผูกเครื่อง (ข้อสอบใช้กุญแจเครื่องเดียวกันตลอดเส้นของการจองหนึ่ง)
+// 🔴 แถวทดสอบอยู่ใต้ร้านชั่วคราว slug `trips-w13-*` (ไม่พึ่งร้าน seed) · ลบใน finally + กวาดค้างตอนเริ่ม · ร้าน A ตั้ง trips.cancel.autoApproveUpTo สูง (K4: คำขอของลูกค้ายังต้อง QUOTED)
+// 🔴 การจองทดสอบสร้างผ่านเส้นจริงของ W1.2a (startBookHold → confirmBookHold) + ร้านรับเงิน (recordTripPayment STAFF) · CONFIRMED ยังไม่จ่าย = bookTripsNow STAFF PAY_LATER
+// 🔴 nonce ของใบนี้ผูก (ร้าน · วัตถุประสงค์ verify/cancel · token) · grant ผูกกุญแจเครื่อง (IP) — ข้อสอบใช้กุญแจเครื่องเดียวกันตลอดเส้นของการจองหนึ่ง
 // 🔴 ยังไม่มีโมดูล/ฟังก์ชัน = ข้อแดงพร้อมเหตุผล ไม่ใช่ exception · ห้ามรันพร้อมข้อสอบ TRIPS อื่นบนฐานเดียวกัน
 // รัน: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-trips-w1.3.mts   (ห้าม timeout ครอบ · ห้าม kill กลางคัน)
 // ผลที่ถูกต้องก่อนมีงาน W1.3a: PC เขียว · S-8 (ฉากภาพ — ผู้ร่างเพิ่มแล้ว) เขียว · ที่เหลือแดง "ยังไม่มี…"
@@ -95,7 +96,7 @@ const flat = (o: unknown, pre = "", out: Record<string, unknown> = {}): Record<s
   return out;
 };
 
-// ═══════════════ สเปก (ใบสั่ง W1.3 · ส่วน a) ═══════════════
+// ═══════════════ สเปก (ใบสั่ง W1.3a · มติ K1–K12) ═══════════════
 const BASE_SHA = "499a4be5e"; // wip/trips-w1.3 = session/trips ตอนเขียนใบสั่ง
 const SCORE = "src/lib/platform/trips-self-core.ts";
 const SSVC = "src/lib/platform/trips-self.ts";
@@ -105,29 +106,31 @@ const PUBMOD = "src/lib/modules/trips/public-booking.ts";
 const FACADE = "src/lib/modules/trips/index.ts";
 const BOOKING = "src/lib/modules/trips/booking.ts";
 const REFUND = "src/lib/modules/trips/refund.ts";
+const MONEY = "src/lib/modules/trips/money.ts";
 const ACTIONS = "src/app/book/[shop]/my/actions.ts";
 const PAGE_RES = "src/app/book/[shop]/my/[token]/page.tsx";
 const COMP = "src/components/book";
 const MSG_TH = "src/messages/th/book.json";
 const MSG_EN = "src/messages/en/book.json";
 const OWN = [SCORE, SSVC, ACTIONS, PAGE_RES];
-const SCORE_NAMES = ["SELF_ERROR_CODES", "SELF_BLOCKS", "SELF_MOVES_MAX", "SELF_VERIFY_PER_BOOKING_PER_HOUR", "SELF_GRANT_RE", "SELF_NONCE_PURPOSES", "selfManageOf", "selfPhoneMatches"];
-const SSVC_FNS = ["issueSelfFormNonce", "verifyBookSelf", "quoteBookSelfCancel", "cancelBookSelf", "quoteBookSelfMove", "moveBookSelf", "rotateBookToken"];
-const ACTION_NAMES = ["verifySelfAction", "cancelSelfAction", "moveSelfAction", "rotateLinkAction"];
-const ERROR_CODES = ["NOT_FOUND", "RATE_LIMITED", "INVALID", "VERIFY_FAILED", "VERIFY_REQUIRED", "NOT_ALLOWED", "ACCEPT_REQUIRED", "AMOUNT_CHANGED", "STATE_CHANGED", "SOLD_OUT", "SLOT_CLOSED", "CUTOFF_PASSED", "TOO_FAST", "STALE_FORM", "DONE", "BUSY", "UNAVAILABLE"];
-const BLOCKS = ["AGENT", "ENDED", "STARTED", "REFUND_IN_PROGRESS", "FEE", "MOVE_LIMIT", "PRICE_DIFFERS", "WINDOW", "NOT_SOLD"];
+const SCORE_NAMES = ["SELF_ERROR_CODES", "SELF_BLOCKS", "SELF_CANCEL_KINDS", "SELF_GRANT_TTL_SEC", "SELF_WRONG_PER_BOOKING", "SELF_WRONG_WINDOW_SEC", "SELF_GRANT_RE", "SELF_NONCE_PURPOSES", "selfManageOf", "selfPhoneMatches"];
+const SSVC_FNS = ["issueSelfFormNonce", "verifyBookSelf", "quoteBookSelfCancel", "cancelBookSelf"];
+const ACTION_NAMES = ["verifySelfAction", "cancelSelfAction"];
+const ERROR_CODES = ["NOT_FOUND", "RATE_LIMITED", "INVALID", "VERIFY_FAILED", "VERIFY_REQUIRED", "NOT_ALLOWED", "ACCEPT_REQUIRED", "AMOUNT_CHANGED", "STATE_CHANGED", "TOO_FAST", "STALE_FORM", "DONE", "BUSY", "UNAVAILABLE"];
+const BLOCKS = ["AGENT", "PENDING", "ENDED", "STARTED", "REFUND_IN_PROGRESS", "REFUND_REJECTED"];
+const CANCEL_KINDS = ["UNPAID", "REFUND_REQUEST", "CANCEL_REQUEST"];
+const GRANT_TTL_MIN = 15; // K7 ค่าคงที่ของหน้า (ไม่อ่าน X9)
+const WRONG_LIMIT = 20; // K6 ผิดได้ 20 ครั้ง / 24 ชม. / การจอง
+const PUBLIC_ACTOR_ID = "trips.public.self"; // K3
 const INTERNAL_KEYS = ["id", "tenantId", "unitId", "productId", "slotId", "departureId", "optionId", "paxTypeId", "extraId", "zoneId", "pickupZoneId", "bookingId", "basketId", "holdId", "dueId", "partyId", "bookerPartyId",
   "agentAccountId", "clientKey", "itemRef", "priceSource", "priceTrace", "fingerprint", "warnings", "quoteId", "policySnapshot", "publicTokenHash", "requestId", "phone", "phoneNorm", "email", "version", "expectedVersion"];
-const TESTIDS = ["book-manage", "book-manage-cancel", "book-manage-move", "book-manage-contact", "book-verify", "book-verify-phone", "book-verify-submit", "book-cancel-quote", "book-cancel-paid", "book-cancel-refund", "book-cancel-kept",
-  "book-cancel-step", "book-cancel-accept", "book-cancel-submit", "book-cancel-done", "book-refund-status", "book-move", "book-move-summary", "book-move-submit", "book-move-done", "book-link-rotate", "book-link-new", "book-self-error"];
-const TESTID_PATTERNS = ["book-move-day-"];
+const TESTIDS = ["book-manage", "book-manage-cancel", "book-manage-contact", "book-verify", "book-verify-phone", "book-verify-submit", "book-cancel-quote", "book-cancel-paid", "book-cancel-refund", "book-cancel-kept",
+  "book-cancel-step", "book-cancel-paid-warning", "book-cancel-accept", "book-cancel-submit", "book-cancel-done", "book-refund-status", "book-self-locked", "book-self-error"];
 const I18N_REQUIRED = [
-  ...["title", "cancel", "move", "link", "contact", "agent"].map((k) => `self.manage.${k}`),
-  ...["title", "phone", "submit", "help"].map((k) => `self.verify.${k}`),
-  ...["title", "paid", "refund", "kept", "step", "accept", "submit", "done", "unpaidDone", "requested"].map((k) => `self.cancel.${k}`),
-  ...["title", "pick", "same", "differs", "submit", "done", "full", "left"].map((k) => `self.move.${k}`),
-  ...["title", "submit", "done", "oldDead"].map((k) => `self.link.${k}`),
-  ...["status", "QUOTED", "APPROVED", "EXECUTING", "DONE", "REJECTED"].map((k) => `self.refund.${k}`),
+  ...["title", "cancel", "cancelOnly", "contact", "agent"].map((k) => `self.manage.${k}`),
+  ...["title", "phone", "submit", "help", "locked"].map((k) => `self.verify.${k}`),
+  ...["title", "paid", "refund", "kept", "step", "accept", "submit", "done", "unpaidDone", "requested", "cancelRequested", "paidWarning"].map((k) => `self.cancel.${k}`),
+  ...["QUOTED", "APPROVED", "REJECTED", "DONE", "byShop"].map((k) => `self.refund.${k}`),
   ...ERROR_CODES.filter((c) => c !== "DONE").map((c) => `self.err.${c}`),
   ...BLOCKS.map((b) => `self.block.${b}`),
   "page.titleManage",
@@ -135,10 +138,10 @@ const I18N_REQUIRED = [
 const FORBIDDEN_PATHS = ["prisma", "src/proxy.ts", "src/lib/core", "src/i18n", "src/lib/branding", "src/lib/payment", "src/app/api", "src/app/app", "src/app/b", "src/app/(store)", "src/lib/platform", "src/lib/modules",
   "src/messages/th/trips.json", "src/messages/en/trips.json", "src/components/trips", "scripts/fitness.mts", "scripts/with-gate-lock.sh", "scripts/trips-ui-inventory.json", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts",
   ...["p0.1", "t0.1", "t0.2", "t0.3", "t0.4", "t0.5", "t0.6", "t0.7", "t0.8", "t1.1", "t1.2", "t1.3", "t1.4", "a1.1", "a1.2", "a1.3", "w1.1", "w1.2"].map((w) => `scripts/qc-trips-${w}.mts`),
-  `:(exclude)${SCORE}`, `:(exclude)${SSVC}`, `:(exclude)${BSVC}`, `:(exclude)${BCORE}`, `:(exclude)${PUBMOD}`, `:(exclude)${FACADE}`, `:(exclude)${BOOKING}`, `:(exclude)${REFUND}`];
-/** ไฟล์ที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด] — ใบสั่ง §2 */
-const LIMITED: [string, number, number | null][] = [[BSVC, 10, 60], [BCORE, 0, 20], [PUBMOD, 0, 60], [FACADE, 0, 20], [BOOKING, 8, 70], [REFUND, 4, 30], ["scripts/visual-trips.mts", 0, 10]];
-const VISUAL_SCENES = ["self-manage", "self-verify", "self-cancel-quote", "self-cancel-requested", "self-unpaid-cancelled", "self-move-pick", "self-move-done", "self-manage-en"];
+  `:(exclude)${SCORE}`, `:(exclude)${SSVC}`, `:(exclude)${BSVC}`, `:(exclude)${BCORE}`, `:(exclude)${PUBMOD}`, `:(exclude)${FACADE}`, `:(exclude)${BOOKING}`, `:(exclude)${REFUND}`, `:(exclude)${MONEY}`];
+/** ไฟล์ที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด] — ใบสั่ง §2 + K3 (money.ts) */
+const LIMITED: [string, number, number | null][] = [[BSVC, 10, 60], [BCORE, 0, 20], [PUBMOD, 0, 60], [FACADE, 0, 20], [BOOKING, 8, 70], [REFUND, 4, 30], [MONEY, 2, 12], ["scripts/visual-trips.mts", 0, 10]];
+const VISUAL_SCENES = ["self-manage", "self-manage-en", "self-verify", "self-cancel-quote", "self-cancel-requested", "self-unpaid-cancelled", "self-refund-rejected", "self-locked"];
 // ราคาราชาจากฟิกซ์เจอร์ (ภาพ 01 · 15) — คิดเอง
 const R = FX.PRODUCT_RACHA;
 const AD = R.adultSatang, CH = R.childSatang, PA = R.parkAdultSatang, PC_ = R.parkChildSatang, CAM = R.extras.camera.satang;
@@ -149,9 +152,8 @@ const halfUp = (x: number) => Math.floor((x * 5_000 + 5_000) / 10_000); // ×50%
 const KEPT50 = halfUp(2 * AD) + halfUp(CH) + halfUp(CAM); // ฿4,975.00 (ภาพ 15)
 const REFUND50 = NONPT - KEPT50 + PT; // ฿6,475.00 (ภาพ 15)
 const ONE = AD + PA; // ผู้ใหญ่ 1 คน + ค่าอุทยาน ฿4,100.00
-const PX_DELTA = 50_000; // ราคาผู้ใหญ่ของรอบ px แพงกว่า ฿500
-const FEE = 20_000; // ค่าเปลี่ยนวันของสินค้า F (T26) — ฿200
-const X9_MIN = 30, X8_VERIFY = 5, X16_DAYS = 90; // TRIPS-DEFAULTS ค่าเริ่ม
+const AUTO_APPROVE = 2_000_000; // ร้าน A อนุมัติคืนเงินอัตโนมัติได้ถึง ฿20,000 — K4: คำขอจาก publicSelf ต้อง QUOTED อยู่ดี
+const X8_VERIFY = 5; // TRIPS-DEFAULTS X8 otpPer15Min
 const NOW0 = new Date("2027-03-01T03:00:00.000Z"); // 10:00 น. 1 มี.ค. 2570 (เวลาร้าน)
 const at = (ms: number) => ({ now: new Date(NOW0.getTime() + ms) });
 const N0 = at(0);
@@ -162,7 +164,6 @@ const ACT = at(120_000); // ทำรายการหลังยืนยั�
 const IP_PREFIX = "100.66.";
 const RECEIVER_NAME = `ร้านทดสอบ W13 ${STAMP}`;
 const SHOP_CONTACT = { phone: "076-000-313", line: "@w13qc", address: "13 ถนนทดสอบ ภูเก็ต" };
-
 // ═══════════════ pg ═══════════════
 const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 20 });
 const q = async <T extends pg.QueryResultRow = Rec>(sql: string, params: unknown[] = []) => (await pool.query<T>(sql, params)).rows;
@@ -335,18 +336,13 @@ try {
       STAFF[t] = u;
       await insertRow("PaymentProfile", { id: rid("pp"), tenantId: t, promptpayId: "0812345678", displayName: `${RECEIVER_NAME} ${tag}`, updatedAt: new Date() });
     }
-    await mkProd("A", tA, uA); await mkProd("F", tA, uA); await mkProd("B", tB, uB);
-    // รอบ (เวลาร้านกรุงเทพ · NOW0 = 1 มี.ค. 2570 10:00): 45 วัน (100%) · 19 วัน (50%) · 9 วัน (0%) · ปลายทางเลื่อน · ราคาเฉพาะรอบ · เต็ม · ยกเลิก · นอกหน้าต่าง X16
-    await mkDep("d45", "A", "2027-04-15"); await mkDep("d45b", "A", "2027-04-16"); await mkDep("px", "A", "2027-04-17"); await mkDep("closed", "A", "2027-04-18", { status: "CANCELLED" });
-    await mkDep("fullApr", "A", "2027-04-19", { capacity: 10, sold: 10 }); await mkDep("hold", "A", "2027-04-20"); await mkDep("src", "A", "2027-04-21"); await mkDep("last", "A", "2027-04-22", { capacity: 12, sold: 11 });
-    await mkDep("race", "A", "2027-04-23"); await mkDep("gen", "A", "2027-04-24", { capacity: 40 }); await mkDep("pc1", "A", "2027-04-25"); await mkDep("pc2", "A", "2027-04-26"); await mkDep("hold2", "A", "2027-04-27");
-    await mkDep("far", "A", "2027-07-20"); await mkDep("d19", "A", "2027-03-20"); await mkDep("d9", "A", "2027-03-10");
-    await mkDep("f1", "F", "2027-04-15"); await mkDep("f2", "F", "2027-04-16"); await mkDep("b1", "B", "2027-04-15");
-    await insertRow("TripPrice", { id: rid("prpx"), tenantId: tA, unitId: uA, productId: PRD.A?.id, optionId: null, paxTypeId: PRD.A?.pt.ADULT, cabinTypeId: null, seasonId: null, departureId: DEP.px, currency: "THB", amountMinor: AD + PX_DELTA, weekdayMask: null, priority: 0, updatedAt: new Date() });
-    // ราคาเฉพาะรอบของเด็กปักเท่าเดิม (ไม่ปักแล้วบริการคิดเด็กจากราคาผู้ใหญ่ของรอบ — ข้อสอบไม่ผูกกติกานั้น)
-    await insertRow("TripPrice", { id: rid("prpxc"), tenantId: tA, unitId: uA, productId: PRD.A?.id, optionId: null, paxTypeId: PRD.A?.pt.CHILD, cabinTypeId: null, seasonId: null, departureId: DEP.px, currency: "THB", amountMinor: CH, weekdayMask: null, priority: 0, updatedAt: new Date() });
+    await mkProd("A", tA, uA); await mkProd("B", tB, uB);
+    // รอบ (เวลาร้านกรุงเทพ · NOW0 = 1 มี.ค. 2570 10:00): 45 วัน (100%) · 19 วัน (50%) · 9 วัน (0%) · ที่ถือ (HOLD) แยกรอบต่อข้อ · gen = การจองผู้ใหญ่ 1 คน
+    await mkDep("d45", "A", "2027-04-15"); await mkDep("d19", "A", "2027-03-20"); await mkDep("d9", "A", "2027-03-10");
+    await mkDep("hold", "A", "2027-04-20"); await mkDep("hold2", "A", "2027-04-27"); await mkDep("hold3", "A", "2027-04-28"); await mkDep("race", "A", "2027-04-23");
+    await mkDep("gen", "A", "2027-04-24", { capacity: 60 }); await mkDep("b1", "B", "2027-04-15");
     await setV(tA, [{ key: "trips.public.bookingEnabled", scope: "UNIT", scopeId: uA, value: true }, { key: "trips.public.shopContact", scope: "UNIT", scopeId: uA, value: SHOP_CONTACT },
-      { key: "trips.cancel.changeDateFee", scope: "PRODUCT", scopeId: PRD.F?.id, value: FEE }]);
+      { key: "trips.cancel.autoApproveUpTo", scope: "UNIT", scopeId: uA, value: AUTO_APPROVE }]);
     await setV(tB, [{ key: "trips.public.bookingEnabled", scope: "UNIT", scopeId: uB, value: true }]);
   } catch (e) { setupErr = errMsg(e); console.log(`  ⚠️ ตั้งร้านชั่วคราวไม่สำเร็จ: ${setupErr}`); }
   const needFx = () => { ok(!setupErr && PRD.A && PRD.B, `ไม่มีร้าน/สินค้าทดสอบ (${setupErr || "ยังไม่ตั้ง"})`); };
@@ -397,20 +393,36 @@ try {
     BK[tag] = b; allIds.push(id);
     return b;
   };
+  /** K10: CONFIRMED ยังไม่จ่าย (ร้านจองให้ · จ่ายทีหลัง) — bookTripsNow STAFF PAY_LATER ผู้ใหญ่ 1 คน · token = publicToken ที่บริการคืน */
+  const mkConfirmed = async (tag: string, depTag: string): Promise<Bk> => {
+    const p = PRD.A as Prod;
+    const line = { productKind: "TRIP", unitId: uA, productId: p.id, slotId: DEP[depTag], optionId: p.opt, pax: [{ paxTypeId: p.pt.ADULT, qty: 1 }] };
+    const qt = await tcall("quoteTrips", staffCtx(tA), { lines: [line] });
+    const qv = asRec(qt.value);
+    ok(qt.ok === true && typeof qv?.quoteId === "string", `quoteTrips ${tag}: ${fmt(qt)}`);
+    const phone = freshPhone();
+    const r = await tcall("bookTripsNow", staffCtx(tA), { idempotencyKey: `w13now_${hex(8)}`, quoteId: qv?.quoteId, quoteExpiresAt: qv?.expiresAt, booker: { name: `ผู้จอง ${tag} ${STAMP}`, phone: `+66${phone.slice(1)}` }, pay: { method: "PAY_LATER" }, quote: { lines: [line] } });
+    const ref = asArr(r.value)[0];
+    ok(r.ok === true && typeof ref?.publicToken === "string" && typeof ref?.bookingId === "string", `bookTripsNow ${tag}: ${fmt(r)}`);
+    const b: Bk = { tag, token: String(ref?.publicToken), id: String(ref?.bookingId), phone, ck: ck(), shop: SA, tenant: tA, unit: uA, dep: DEP[depTag] ?? "", total: ONE, seats: 1 };
+    BK[tag] = b; allIds.push(b.id);
+    return b;
+  };
   const FULL: Pick = { adults: 2, children: 1, camera: true };
   if (!setupErr) {
     try {
-      await mkBooking("b45", "d45", "A", FULL, { pay: true }); await mkBooking("b45x", "d45", "A", FULL, { pay: true }); await mkBooking("bPx", "d45", "A", FULL, { pay: true });
-      await mkBooking("b19", "d19", "A", FULL, { pay: true }); await mkBooking("b19r", "d19", "A", FULL, { pay: true }); await mkBooking("b19rep", "d19", "A", FULL, { pay: true });
+      await mkBooking("b45", "d45", "A", FULL, { pay: true });
+      for (const t of ["b19", "b19r", "b19rep", "bRej", "bStaffReq"]) await mkBooking(t, "d19", "A", FULL, { pay: true });
       await mkBooking("b9", "d9", "A", FULL, { pay: true });
-      await mkBooking("bHold", "hold", "A", FULL); await mkBooking("bHold2", "hold2", "A", FULL); await mkBooking("bRace", "race", "A", FULL);
-      for (const t of ["bAgent", "bV", "bV2", "bNull", "bRL3", "bRL4", "bRL5", "bTk", "bX6", "bX1"]) await mkBooking(t, "gen", "A", { adults: 1 }, { pay: true });
-      await mkBooking("bFee", "f1", "F", { adults: 1 }, { pay: true });
-      await mkBooking("bPc", "pc1", "A", { adults: 1 }, { pay: true });
+      await mkBooking("bHold", "hold", "A", FULL); await mkBooking("bHold2", "hold2", "A", FULL); await mkBooking("bRace", "race", "A", FULL); await mkBooking("bFnHold", "hold3", "A", { adults: 1 });
+      for (const t of ["bExp", "bPend"]) await mkBooking(t, "gen", "A", { adults: 1 });
+      for (const t of ["bAgent", "bChan", "bV", "bV2", "bNull", "bRL3", "bRL4", "bRL4b", "bRL5", "bX6", "bX1", "bFn1", "bFn2", "bFnOk", "bPcAuto"]) await mkBooking(t, "gen", "A", { adults: 1 }, { pay: true });
+      await mkConfirmed("bConf", "gen");
       await mkBooking("bB", "b1", "B", { adults: 1 }, { pay: true });
-      for (let i = 0; i < 10; i++) await mkBooking(`r${i}`, "src", "A", { adults: 1 }, { pay: true });
-      // ลูกค้าเอเจนซี่ (R4) · ผู้จองไม่มีเบอร์ (V-5) — ปรับฟิกซ์เจอร์ตรง ๆ หลังจอง
+      // K10: ลูกค้าเอเจนซี่ 2 แบบ (collectMode / channel AGENT_* — SELL_CHANNELS ไม่มี "AGENT") · ผู้จองไม่มีเบอร์ (V-5) · PENDING — ปรับฟิกซ์เจอร์ตรง ๆ หลังจอง (ทดสอบปฏิกิริยาของหน้า ไม่ใช่เส้นสร้าง)
       await pool.query(`UPDATE "TripBooking" SET "collectMode" = 'AGENT' WHERE id = $1`, [BK.bAgent?.id]);
+      await pool.query(`UPDATE "TripBooking" SET channel = 'AGENT_LINK' WHERE id = $1`, [BK.bChan?.id]);
+      await pool.query(`UPDATE "TripBooking" SET status = 'PENDING' WHERE id = $1`, [BK.bPend?.id]);
       await pool.query(`UPDATE "Party" SET phone = NULL, "phoneNorm" = NULL WHERE id = (SELECT "bookerPartyId" FROM "TripBooking" WHERE id = $1)`, [BK.bNull?.id]);
     } catch (e) { bookErr = e instanceof AssertFail ? e.message : errMsg(e); console.log(`  ⚠️ สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`); }
   }
@@ -418,7 +430,7 @@ try {
   const needSelf = () => { ok(SSI.mod, `ยังไม่มี platform/trips-self (W1.3a ยังไม่สร้าง · ${SSI.err.slice(0, 60)})`); };
 
   // ── ตัวช่วยของใบนี้ ──
-  type Purpose = "verify" | "cancel" | "move" | "rotate";
+  type Purpose = "verify" | "cancel";
   const snonce = (b: Bk, purpose: Purpose, ms: number): string => {
     const r = sfn("issueSelfFormNonce")({ now: new Date(NOW0.getTime() + ms), scope: { tenantId: b.tenant, purpose, token: b.token } });
     if (typeof r !== "string" || !r) throw new AssertFail(`issueSelfFormNonce ไม่คืนสตริง: ${fmt(r)}`);
@@ -439,15 +451,6 @@ try {
     const when = o.when ?? ACT;
     return call("cancelBookSelf", { shop: b.shop, token: b.token, grant, form: { seen: typeof seen === "number" ? String(seen) : seen, accept: o.accept === undefined ? "on" : o.accept, nonce: o.nonce ?? snonce(b, "cancel", when.now.getTime() - NOW0.getTime() - 60_000) }, clientKey: o.clientKey ?? b.ck }, when);
   };
-  const moveQ = (b: Bk, grant: unknown, query: Rec, when = ACT) => call("quoteBookSelfMove", { shop: b.shop, token: b.token, grant, query, clientKey: b.ck }, when);
-  const moveX = (b: Bk, grant: unknown, form: Rec, o: { nonce?: string; when?: { now: Date } } = {}) => {
-    const when = o.when ?? ACT;
-    return call("moveBookSelf", { shop: b.shop, token: b.token, grant, form: { nonce: o.nonce ?? snonce(b, "move", when.now.getTime() - NOW0.getTime() - 60_000), ...form }, clientKey: b.ck }, when);
-  };
-  const rotate = (b: Bk, grant: unknown, o: { nonce?: string; when?: { now: Date }; token?: string } = {}) => {
-    const when = o.when ?? ACT;
-    return call("rotateBookToken", { shop: b.shop, token: o.token ?? b.token, grant, form: { nonce: o.nonce ?? snonce(b, "rotate", when.now.getTime() - NOW0.getTime() - 60_000) }, clientKey: b.ck }, when);
-  };
   const openRes = (b: Bk, when = ACT, token?: string) => bcall("openBookReservation", { shop: b.shop, token: token ?? b.token, lang: "th", acceptLanguage: "th", clientKey: ck() }, when);
   const manageOf = async (b: Bk, when = ACT): Promise<Rec> => {
     const r = await openRes(b, when);
@@ -465,27 +468,35 @@ try {
   const depRow = async (id: string) => (await q<{ capacity: number; sold: number; held: number }>(`SELECT capacity, sold, held FROM "TripDeparture" WHERE id = $1`, [id]))[0] ?? { capacity: -1, sold: -1, held: -1 };
   type RRow = { id: string; status: string; amountSatang: number; reasonKind: string; choice: string; by: string };
   const refunds = async (bookingId: string) => q<RRow>(`SELECT id, status, "amountSatang", "reasonKind", choice, "by" FROM "TripRefundRequest" WHERE "bookingId" = $1 ORDER BY "createdAt"`, [bookingId]);
-  const moveTokenOf = async (b: Bk, grant: string, date: string, when = ACT): Promise<string> => {
-    const r = await moveQ(b, grant, { d: date, m: date.slice(0, 7) }, when);
-    const t = asRec(asRec(r.vm)?.selected)?.token;
-    ok(r.ok === true && typeof t === "string" && t, `quoteBookSelfMove ${b.tag} ${date}: ไม่มี selected.token · ${fmt(r)}`);
-    return String(t);
-  };
   const payableOfSnap = (s: Rec) => Number(asRec(s.totals)?.payableSatang);
-  const G: Record<string, string> = {}; // grant ที่ข้อหลังใช้ต่อ (ภายในอายุ X9 · เครื่องเดียวกัน)
+  const G: Record<string, string> = {}; // grant ที่ข้อหลังใช้ต่อ (ภายในอายุ 15 นาที · เครื่องเดียวกัน)
+  const pubCtx = (when = ACT) => ({ tenantId: tA, unitId: uA, channel: "WEB", actor: { kind: "PUBLIC", clientKey: `pc_${"7".repeat(40)}` }, now: when.now });
+  const selfReason = (): string => { const v = needTrips().TRIPS_PUBLIC_SELF_REASON; if (typeof v !== "string" || !v) throw new AssertFail("facade trips ไม่มี TRIPS_PUBLIC_SELF_REASON (K2 · เหตุผลค่าคงที่ของ PUBLIC)"); return v; };
+  const publicSelfOf = (b: Bk) => ({ publicSelf: { bookingId: b.id, tokenHash: sha256hex(b.token) } });
+  type ARow = { action: string; actorType: string; actorId: string | null; after: Rec | null };
+  const auditsOf = async (targetId: string) => q<ARow>(`SELECT action, "actorType"::text AS "actorType", "actorId", "after" FROM "AuditLog" WHERE "tenantId" = $1 AND "targetId" = $2`, [tA, targetId]);
+  const k3 = (rows: ARow[], action: string, what: string, b: Bk) => {
+    const hit = rows.filter((r) => r.action === action);
+    ok(hit.length >= 1, `${what}: ไม่มีแถว audit ${action} (${fmt(rows.map((r) => r.action))})`);
+    for (const r of hit) {
+      eq([r.actorType, r.actorId, asRec(r.after)?.by], ["SYSTEM", PUBLIC_ACTOR_ID, "PUBLIC"], `${what}: รูปแถว audit (K3)`);
+      const s = JSON.stringify(r.after);
+      ok(!s.includes(b.phone) && !s.includes(b.phone.slice(1)) && !s.includes(b.ck) && !s.includes(b.token), `${what}: audit มีเบอร์/กุญแจเครื่อง/token`);
+    }
+  };
+  const lockKeyOf = (b: Bk) => `trips:verifyb:${b.tenant}:${sha256hex(sha256hex(b.token)).slice(0, 24)}`;
 
   // ═══════════════ PC. ตัวควบคุม ═══════════════
   console.log("\n── PC: ตัวควบคุม (บริการของโมดูลโดยตรง · เขียวก่อนมีงาน) ──");
-  await st("PC-1", "การจองทดสอบเกิดผ่านเส้นจริงของ W1.2a + ร้านรับเงิน: PAID · ยอด ฿11,450.00 · token เปิดหน้าการจองเป็น VOUCHER · Party.phoneNorm ของผู้จอง = เบอร์ที่พิมพ์ (เงื่อนไขการยืนยันเบอร์)", async () => {
-    const [b] = needBk("b45");
+  await st("PC-1", "การจองทดสอบเกิดผ่านเส้นจริงของ W1.2a + ร้านรับเงิน: PAID · ยอด ฿11,450.00 · token เปิดหน้าการจองเป็น VOUCHER · Party.phoneNorm ของผู้จอง = เบอร์ที่พิมพ์ (เงื่อนไขการยืนยันเบอร์) · HOLD ยังไม่จ่าย", async () => {
+    const [b, h] = needBk("b45", "bHold");
     const r = await bRow(b.id);
     eq([r.status, r.paidSatang, payableOfSnap(r.policySnapshot), b.total], ["PAID", TOTAL, TOTAL, TOTAL], "สถานะ/ยอด");
     const o = await openRes(b, ACT);
     eq([o.ok, asRec(o.vm)?.state], [true, "VOUCHER"], "หน้าการจอง");
     const p = (await q<{ phoneNorm: string | null }>(`SELECT p."phoneNorm" FROM "Party" p JOIN "TripBooking" t ON t."bookerPartyId" = p.id WHERE t.id = $1`, [b.id]))[0];
     eq(p?.phoneNorm, b.phone, "Party.phoneNorm");
-    const h = await bRow(needBk("bHold")[0].id);
-    eq(h.status, "HOLD", "การจองยังไม่จ่าย");
+    eq((await bRow(h.id)).status, "HOLD", "การจองยังไม่จ่าย");
   });
   await st("PC-2", `ยอดคืนจาก snapshot ผ่านบริการ (STAFF · QUOTE) = ค่าที่คิดเอง: 45 วัน คืน ${TOTAL} · 19 วัน คืน ${REFUND50} เก็บ ${KEPT50} (ภาพ 15) · 9 วัน คืน ${PT} เก็บ ${NONPT}`, async () => {
     const [b45, b19, b9] = needBk("b45", "b19", "b9");
@@ -495,48 +506,39 @@ try {
       eq([r.ok, c?.refundSatang, c?.feeSatang], [true, refund, kept], `QUOTE ${b.tag}`);
     }
   });
-  await st("PC-3", "วันนี้ PUBLIC (ไม่มี opts.publicSelf) ถูกปฏิเสธทุกทาง: cancel QUOTE ⇒ FORBIDDEN OTP_REQUIRED · requestTripRefund ⇒ FORBIDDEN · changeTripBooking ⇒ FORBIDDEN (ต้องยังเป็นแบบนี้หลังใบนี้)", async () => {
+  await st("PC-3", "PUBLIC ที่ไม่มี opts.publicSelf ถูกปฏิเสธทุกทาง: cancel QUOTE ⇒ FORBIDDEN OTP_REQUIRED · requestTripRefund ⇒ FORBIDDEN · changeTripBooking ⇒ FORBIDDEN (ต้องยังเป็นแบบนี้หลังใบนี้)", async () => {
     const [b] = needBk("b19");
-    const pub = { tenantId: tA, unitId: uA, channel: "WEB", actor: { kind: "PUBLIC", clientKey: `pc_${"7".repeat(40)}` }, now: ACT.now };
-    const c = await tcall("cancelTripBooking", pub, { bookingId: b.id, mode: "QUOTE", reason: "pc", idempotencyKey: `w13pc_${hex(6)}` });
+    const c = await tcall("cancelTripBooking", pubCtx(), { bookingId: b.id, mode: "QUOTE", reason: "pc", idempotencyKey: `w13pc_${hex(6)}` });
     eq([c.ok, c.code, asRec(c.details)?.reason], [false, "FORBIDDEN", "OTP_REQUIRED"], "cancel PUBLIC");
-    const rq = await tcall("requestTripRefund", pub, { bookingId: b.id, expectedVersion: 0, reasonKind: "CUSTOMER", choice: "MONEY", reason: "pc", idempotencyKey: `w13pc_${hex(6)}` });
+    const rq = await tcall("requestTripRefund", pubCtx(), { bookingId: b.id, expectedVersion: 0, reasonKind: "CUSTOMER", choice: "MONEY", reason: "pc", idempotencyKey: `w13pc_${hex(6)}` });
     eq([rq.ok, rq.code], [false, "FORBIDDEN"], "requestTripRefund PUBLIC");
-    const ch = await tcall("changeTripBooking", pub, { bookingId: b.id, expectedVersion: 0, line: { productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: DEP.d45b, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 1 }] }, quoteId: "0".repeat(64), quoteExpiresAt: ACT.now.toISOString(), idempotencyKey: `w13pc_${hex(6)}` });
+    const ch = await tcall("changeTripBooking", pubCtx(), { bookingId: b.id, expectedVersion: 0, line: { productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: DEP.d45, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 1 }] }, quoteId: "0".repeat(64), quoteExpiresAt: ACT.now.toISOString(), idempotencyKey: `w13pc_${hex(6)}` });
     eq([ch.ok, ch.code], [false, "FORBIDDEN"], "changeTripBooking PUBLIC");
     eq((await refunds(b.id)).length, 0, "ไม่มีคำขอคืนเงิน");
   });
-  await st("PC-4", "เลื่อนรอบยอดเท่าเดิมทำได้จริงด้วยบริการ (STAFF · quoteTrips + changeTripBooking) บนการจองที่จ่ายแล้ว: ย้ายที่นั่ง pc1 → pc2 · ยอด/เงินที่จ่ายเท่าเดิม · รหัสเดิม", async () => {
-    const [b] = needBk("bPc");
-    const before = await bRow(b.id);
-    const line = { productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: DEP.pc2, optionId: PRD.A?.opt, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 1 }] };
-    const qt = await tcall("quoteTrips", staffCtx(tA, ACT), { lines: [line] });
-    const qv = asRec(qt.value);
-    ok(qt.ok === true && typeof qv?.quoteId === "string", `quoteTrips: ${fmt(qt)}`);
-    const ch = await tcall("changeTripBooking", staffCtx(tA, ACT), { bookingId: b.id, expectedVersion: before.version, line, quoteId: qv?.quoteId, quoteExpiresAt: qv?.expiresAt, idempotencyKey: `w13pc_${hex(6)}` });
-    ok(ch.ok === true, `changeTripBooking: ${fmt(ch)}`);
-    const after = await bRow(b.id);
-    eq([after.departureId, after.paidSatang, payableOfSnap(after.policySnapshot), after.code, after.status], [DEP.pc2, ONE, ONE, before.code, "PAID"], "หลังเลื่อน");
-    eq([(await depRow(DEP.pc1 ?? "")).sold, (await depRow(DEP.pc2 ?? "")).sold], [0, 1], "ที่นั่งย้าย");
+  await st("PC-4", `ค่าตั้งอนุมัติอัตโนมัติของร้าน A (${AUTO_APPROVE}) มีผลจริงกับคำขอที่ร้านยื่น (STAFF · requestTripRefund) ⇒ APPROVED — ตัวควบคุมของ K4 (คำขอจากลูกค้าต้อง QUOTED แม้ค่านี้ > 0)`, async () => {
+    const [b] = needBk("bPcAuto");
+    const v = (await bRow(b.id)).version;
+    const r = await tcall("requestTripRefund", staffCtx(tA, ACT), { bookingId: b.id, expectedVersion: v, reasonKind: "CUSTOMER", choice: "MONEY", reason: "pc auto", idempotencyKey: `w13pc_${hex(6)}` });
+    eq([r.ok, asRec(r.value)?.status, asRec(r.value)?.amountSatang], [true, "APPROVED", ONE], "คำขอของร้าน (54 วัน คืนเต็ม)");
   });
-  await st("PC-5", `ราคาเฉพาะรอบ px แพงกว่า: quoteTrips 2 ผู้ใหญ่ 1 เด็ก + กล้อง ที่รอบ px = ${TOTAL + 2 * PX_DELTA} (≠ ${TOTAL}) — ฟิกซ์เจอร์ของ PRICE_DIFFERS`, async () => {
+  await st("PC-5", "ฟิกซ์เจอร์ K10: CONFIRMED ยังไม่จ่าย (bookTripsNow PAY_LATER) เปิดหน้าการจองได้ · collectMode AGENT · channel AGENT_LINK · PENDING · ผู้จองไม่มีเบอร์ — แถวตรงตามที่ตั้ง", async () => {
+    const [c, a, ch, pe, nu] = needBk("bConf", "bAgent", "bChan", "bPend", "bNull");
+    const rc = await bRow(c.id);
+    eq([rc.status, rc.paidSatang, payableOfSnap(rc.policySnapshot)], ["CONFIRMED", 0, ONE], "CONFIRMED");
+    eq((await openRes(c)).ok, true, "token ของ bookTripsNow เปิดหน้าได้");
+    const rows = await q<{ id: string; status: string; channel: string; collectMode: string }>(`SELECT id, status, channel, "collectMode" FROM "TripBooking" WHERE id = ANY($1::text[]) ORDER BY id`, [[a.id, ch.id, pe.id]]);
+    const by = Object.fromEntries(rows.map((r) => [r.id, r]));
+    eq([by[a.id]?.collectMode, by[ch.id]?.channel, by[pe.id]?.status], ["AGENT", "AGENT_LINK", "PENDING"], "เอเจนซี่/PENDING");
+    const pn = (await q<{ p: string | null }>(`SELECT p.phone AS p FROM "Party" p JOIN "TripBooking" t ON t."bookerPartyId" = p.id WHERE t.id = $1`, [nu.id]))[0];
+    eq(pn?.p ?? null, null, "ผู้จองไม่มีเบอร์");
+  });
+  await st("PC-6", `ค่าตั้งที่ใบนี้อ่าน: X8 otpPer15Min ${X8_VERIFY} · X30 ช่องทางติดต่อร้าน (ข้อความล็อก K6) · autoApproveUpTo ${AUTO_APPROVE}`, async () => {
     needBk("b45");
-    const line = { productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: DEP.px, optionId: PRD.A?.opt, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 2 }, { paxTypeId: PRD.A?.pt.CHILD, qty: 1 }], extras: [{ extraId: PRD.A?.cam, qty: 1 }] };
-    const qt = await tcall("quoteTrips", staffCtx(tA, ACT), { lines: [line] });
-    eq([qt.ok, asRec(asRec(asRec(qt.value)?.totals)?.payable)?.satang], [true, TOTAL + 2 * PX_DELTA], "payable รอบ px");
-  });
-  await st("PC-6", `ค่าตั้งที่ใบนี้อ่าน มีค่าเริ่มตาม TRIPS-DEFAULTS: X9 otpValidMinutes ${X9_MIN} · X8 otpPer15Min ${X8_VERIFY} · X16 moveFreeWithinDays ${X16_DAYS} · snapshot ของสินค้า F จด changeDateFee ${FEE} · สินค้า A = null`, async () => {
-    const [b, f] = needBk("b45", "bFee");
     const rs = SETI.mod?.resolveSettings;
     ok(typeof rs === "function", "ไม่มี resolveSettings");
-    const v = asRec(await (rs as AnyFn)({ tenantId: tA }, ["trips.public.otpValidMinutes", "trips.public.rateLimits", "trips.cancel.moveFreeWithinDays"], { unitId: uA, productId: PRD.A?.id }, ACT.now)) ?? {};
-    eq([asRec(v["trips.public.otpValidMinutes"])?.value, asRec(asRec(v["trips.public.rateLimits"])?.value)?.otpPer15Min, asRec(v["trips.cancel.moveFreeWithinDays"])?.value], [X9_MIN, X8_VERIFY, X16_DAYS], "ค่าตั้ง");
-    eq([(await bRow(f.id)).policySnapshot.changeDateFee, (await bRow(b.id)).policySnapshot.changeDateFee], [FEE, null], "snapshot changeDateFee");
-  });
-  await st("PC-7", "รอบ last เหลือ 1 ที่ (12 − 11) · รอบ fullApr เต็ม · รอบ src มีการจอง 10 ราย (ผู้ใหญ่ 1 คน/ราย) — ฟิกซ์เจอร์ของ X3 เลื่อนชนที่นั่งสุดท้าย", async () => {
-    needBk("r0", "r9");
-    const l = await depRow(DEP.last ?? ""), f = await depRow(DEP.fullApr ?? ""), s = await depRow(DEP.src ?? "");
-    eq([l.capacity - l.sold - l.held, f.capacity - f.sold - f.held, s.sold], [1, 0, 10], "ที่ว่าง");
+    const v = asRec(await (rs as AnyFn)({ tenantId: tA }, ["trips.public.rateLimits", "trips.public.shopContact", "trips.cancel.autoApproveUpTo"], { unitId: uA }, ACT.now)) ?? {};
+    eq([asRec(asRec(v["trips.public.rateLimits"])?.value)?.otpPer15Min, asRec(v["trips.public.shopContact"])?.value, asRec(v["trips.cancel.autoApproveUpTo"])?.value], [X8_VERIFY, SHOP_CONTACT, AUTO_APPROVE], "ค่าตั้ง");
   });
   groupLine("PC");
 
@@ -547,9 +549,10 @@ try {
   const uiSrc = [PAGE_RES, ACTIONS, ...compFiles].map((f) => stripComments(read(f))).join("\n");
   const needOwn = () => { const miss = OWN.filter((f) => !existsSync(join(ROOT, f))); ok(miss.length === 0, `ยังไม่มีไฟล์: ${miss.join(", ")}`); };
   await st("S-1", `ไฟล์ของใบมีครบ: ${OWN.map((f) => basename(f)).join(" · ")} + จอ BookSelf*.tsx ≥ 1`, () => { needOwn(); ok(selfComp.length >= 1, "ไม่มี src/components/book/BookSelf*.tsx"); });
-  await st("S-2", `trips-self-core ส่งออก ${SCORE_NAMES.length} ชื่อ · trips-self ส่งออก ${SSVC_FNS.join(" · ")} · actions ส่งออก ${ACTION_NAMES.join(" · ")} เท่านั้น ('use server')`, () => {
+  await st("S-2", `trips-self-core ส่งออก ${SCORE_NAMES.length} ชื่อ · trips-self ส่งออก ${SSVC_FNS.join(" · ")} · actions ส่งออก ${ACTION_NAMES.join(" · ")} เท่านั้น ('use server') · facade มี TRIPS_PUBLIC_SELF_REASON`, () => {
     for (const n of SCORE_NAMES) coreV(n);
     for (const n of SSVC_FNS) sfn(n);
+    selfReason();
     const a = stripComments(read(ACTIONS));
     ok(/^\s*["']use server["']/.test(a), "actions ต้องขึ้นต้น 'use server'");
     const ex = [...a.matchAll(/export\s+(?:async\s+)?(?:function|const)\s+(\w+)/g)].map((m) => m[1]).sort();
@@ -562,22 +565,28 @@ try {
     ok(imps.length === 0, `มี import ที่เป็นค่า: ${imps.slice(0, 3).join(" | ")}`);
     ok(!/Date\.now\(|new Date\(\s*\)|process\.env|node:crypto|createHmac|prisma|\bfetch\(/.test(s), "มีนาฬิกา/env/crypto/db/fetch");
   });
-  await st("S-4", "trips-self.ts: ถังอัตราด้วย rateBucketCte (ห้าม checkRateLimitDb*) · ไม่มี $queryRawUnsafe/$executeRawUnsafe · ไม่ส่ง partyId/phone เข้าบริการ · ไม่ต่อ SMS/อีเมล/LINE", () => {
+  await st("S-4", "trips-self.ts: ถังอัตราด้วย rateBucketCte (ห้าม checkRateLimitDb*) · ไม่มี raw unsafe · ไม่ส่ง partyId เข้าบริการ · ไม่ส่งข้อความ (SMS/อีเมล/LINE) · ไม่มีเลื่อน/ขอลิงก์ใหม่", () => {
     const s = stripComments(read(SSVC));
     ok(s, "ยังไม่มีไฟล์");
     ok(/rateBucketCte/.test(s), "ไม่ใช้ rateBucketCte");
     ok(!/checkRateLimitDb/.test(s), "ห้าม checkRateLimitDb* (เปิดเมื่อพัง)");
     ok(!/\$(queryRaw|executeRaw)Unsafe/.test(s), "ห้าม raw unsafe");
     ok(!/partyId\s*:/.test(s), "ห้ามส่ง partyId เข้าบริการ");
-    ok(!/sendSms|sendEmail|notifyCustomer|pushLine/.test(s), "ใบนี้ไม่ส่งข้อความ (ห้ามสัญญาแจ้งเตือน)");
+    ok(!/sendSms|sendEmail|notifyCustomer|pushLine/.test(s), "ใบนี้ไม่ส่งข้อความ");
+    ok(!/changeTripBooking|rotate[A-Z]\w*Token|moveBookSelf/.test(s), "K1: ห้ามเลื่อน/ขอลิงก์ใหม่ในใบนี้");
   });
-  await st("S-5", "บริการ T0.6/T0.7 รับ PUBLIC ผ่าน opts.publicSelf เท่านั้น: booking.ts + refund.ts มี publicSelf ในบล็อก TRIPS W1.3 · ไม่อ่านค่าจากคำขอ (ไม่มี FormData/headers ในบริการ)", () => {
+  await st("S-5", "รั้วบริการ (K1 K2 K5): booking.ts + refund.ts มี publicSelf + tokenHash ในบล็อก TRIPS W1.3 · ตัวช่วย selfReplayOf · ฟังก์ชัน changeImpl ไม่เปลี่ยนจาก BASE · ไม่มี rotateBookingPublicToken · บริการไม่อ่านคำขอ (FormData/headers)", () => {
     const b = read(BOOKING), r = read(REFUND);
-    ok(/publicSelf/.test(b) && /publicSelf/.test(r), "ไม่มี publicSelf ใน booking.ts/refund.ts");
+    ok(/publicSelf/.test(b) && /publicSelf/.test(r) && /tokenHash/.test(b), "ไม่มี publicSelf/tokenHash ใน booking.ts/refund.ts");
     ok(/TRIPS W1\.3/.test(b) && /TRIPS W1\.3/.test(r), "การแก้บริการต้องอยู่ในบล็อกรั้ว // TRIPS W1.3 ▸ … ◂");
+    ok(/selfReplayOf/.test(b + r), "ไม่มีตัวช่วย selfReplayOf (K5)");
+    ok(!/rotateBookingPublicToken/.test(b), "K1: ห้ามมี rotateBookingPublicToken");
+    const body = (src: string) => { const i = src.indexOf("async function changeImpl"); if (i < 0) return ""; const j = src.indexOf("\n// ═══", i); return src.slice(i, j < 0 ? undefined : j); };
+    const base = git(["show", `${BASE_SHA}:${BOOKING}`]);
+    ok(body(base) && body(b) === body(base), "K1: changeImpl ต้องไม่เปลี่ยนจาก BASE");
     ok(!/FormData|next\/headers/.test(stripComments(b) + stripComments(r)), "บริการห้ามอ่านคำขอ");
   });
-  await st("S-6", "หน้า my/[token]: force-dynamic · noindex/nofollow · no-referrer · ไม่มีคุกกี้ใหม่ (cookies().set) · ไม่มี dangerouslySetInnerHTML/fetch/onClick ส่งฟอร์มเอง · ฟอร์มเป็น <form action={…}>", () => {
+  await st("S-6", "หน้า my/[token]: force-dynamic · noindex/nofollow · no-referrer (K7 หน้าที่มี g) · ไม่มีคุกกี้ใหม่ · ไม่มี dangerouslySetInnerHTML/fetch · ฟอร์มเป็น <form action={…}> · ไม่มี route/loading/error ใต้ /book", () => {
     needOwn();
     const s = stripComments(read(PAGE_RES));
     ok(/export\s+const\s+dynamic\s*=\s*["']force-dynamic["']/.test(s), "ต้อง force-dynamic");
@@ -587,22 +596,22 @@ try {
     ok(/<form[^>]*action=\{/.test(selfComp.map((f) => read(f)).join("\n") + read(PAGE_RES)), "ไม่มี <form action={serverAction}> ในจอของใบ");
     ok(!walk("src/app/book").some((f) => /\/(route|loading|error)\.tsx?$/.test(f)), "ห้าม route/loading/error ใต้ /book");
   });
-  await st("S-7", `data-testid ของใบครบ ${TESTIDS.length} ตัว + แพตเทิร์น ${TESTID_PATTERNS.join(" ")}`, () => {
+  await st("S-7", `data-testid ของใบครบ ${TESTIDS.length} ตัว`, () => {
     needOwn();
     const miss = TESTIDS.filter((t) => !new RegExp(`["'\`]${t}["'\`]`).test(uiSrc));
     ok(miss.length === 0, `ไม่มี testid: ${miss.slice(0, 8).join(", ")}${miss.length > 8 ? ` (+${miss.length - 8})` : ""}`);
-    const missP = TESTID_PATTERNS.filter((t) => !uiSrc.includes(`\`${t}\${`));
-    ok(missP.length === 0, `ไม่มีแพตเทิร์น: ${missP.join(", ")}`);
   });
-  await st("S-8", `ฉากภาพ w1.3 ใน visual-trips.mts: ${VISUAL_SCENES.join(" · ")} · ทุกฉาก public · เตรียมการจองบนรอบชั่วคราวของตัวเองและลบของตัวเองหลังถ่าย (ไม่ทิ้งที่ถือ/การจองบนรอบของ seed)`, () => {
+  await st("S-8", `ฉากภาพ w1.3 ใน visual-trips.mts: ${VISUAL_SCENES.join(" · ")} · ทุกฉาก public · ไม่มีฉากเลื่อน (K1) · เตรียม/ล้างของตัวเอง (w13Prepare/w13Cleanup ใน finally)`, () => {
     const v = read("scripts/visual-trips.mts");
     ok(/["']w1\.3["']\s*:/.test(v), "ไม่มีสเปก w1.3");
     const block = v.slice(v.search(/["']w1\.3["']\s*:/));
-    const miss = VISUAL_SCENES.filter((n) => !new RegExp(`name:\\s*["']${n}["']`).test(block));
+    const blk = block.slice(0, block.search(/\n\};/));
+    const miss = VISUAL_SCENES.filter((n) => !new RegExp(`name:\\s*["']${n}["']`).test(blk));
     ok(miss.length === 0, `ไม่มีฉาก: ${miss.join(", ")}`);
-    ok(/w13Prepare/.test(v) && /w13Cleanup/.test(v), "ต้องมีตัวเตรียม (w13Prepare) + ตัวล้าง (w13Cleanup) ของฉาก w1.3");
+    ok(!/name:\s*["']self-move/.test(blk), "K1: ฉากเลื่อนต้องไม่อยู่ใน w1.3");
+    ok(/w13Prepare/.test(v) && /w13Cleanup/.test(v), "ต้องมีตัวเตรียม (w13Prepare) + ตัวล้าง (w13Cleanup)");
     ok(/finally[\s\S]{0,400}w13Cleanup/.test(v), "ตัวล้างต้องวิ่งใน finally");
-    ok(!/[A-Za-z0-9_-]{43}/.test(block.slice(0, 3_000).replace(/name:\s*["'][^"']+["']/g, "")), "มี token ฝังในสเปก");
+    ok(!/[A-Za-z0-9_-]{43}/.test(blk.replace(/name:\s*["'][^"']+["']/g, "")), "มี token ฝังในสเปก");
   });
   await st("S-9", "ไม่มี 'any' · ไม่มี @ts-ignore/@ts-expect-error/eslint-disable ในไฟล์ของใบ", () => {
     needOwn();
@@ -612,14 +621,14 @@ try {
       ok(!/@ts-ignore|@ts-expect-error|eslint-disable/.test(read(f)), `${basename(f)} มีธงปิดตัวตรวจ`);
     }
   });
-  await st("S-10", `ขอบเขต (เทียบ BASE ${BASE_SHA} · ไม่นับไฟล์ที่ตรงกับ session/trips · ไม่นับ scratchpad/): ไม่แตะ prisma/proxy/core/i18n/payment/api/(store) · modules/platform นอกไฟล์ของใบ · ข้อสอบเดิม · seed/fixture · ไฟล์จำกัดตามงบ · ไม่มี migration`, () => {
+  await st("S-10", `ขอบเขต (เทียบ BASE ${BASE_SHA} · ไม่นับไฟล์ที่ตรงกับ session/trips · ไม่นับ scratchpad/): ไม่แตะ prisma/proxy/core/i18n/payment/api/(store) · modules/platform นอกไฟล์ของใบ · ข้อสอบเดิม · seed/fixture · ไฟล์จำกัดตามงบ (money.ts ≤ +12/−2 · K3) · ไม่มี migration`, () => {
     const tip = git(["rev-parse", "--verify", "-q", "session/trips"]).trim() || git(["rev-parse", "--verify", "-q", "origin/session/trips"]).trim();
     const same = (f: string) => !!tip && git(["ls-files", "--", f]).trim() !== "" && git(["diff", "--name-only", tip, "--", f]).trim() === "";
     const changed = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", ...FORBIDDEN_PATHS]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...FORBIDDEN_PATHS]).split("\n")].filter(Boolean))]
       .filter((f) => !f.startsWith("scratchpad/"));
     const bad = changed.filter((f) => !same(f));
     ok(bad.length === 0, `แตะไฟล์นอกขอบเขต: ${bad.slice(0, 6).join(", ")}`);
-    // ฉากภาพ w1.3 ผู้ร่างเพิ่มพร้อมข้อสอบ ⇒ งบของ visual-trips นับจาก commit ที่ลงข้อสอบนี้ (ยังไม่ commit = BASE)
+    // ฉากภาพ w1.3 ผู้ร่างเพิ่มพร้อมข้อสอบ ⇒ งบของ visual-trips นับจาก commit ล่าสุดที่ลงข้อสอบนี้ (ยังไม่ commit = BASE)
     const oracleBase = git(["log", "-1", "--format=%H", "--", "scripts/qc-trips-w1.3.mts"]).trim() || BASE_SHA;
     for (const [f, maxDel, maxAdd] of LIMITED) {
       if (same(f)) continue;
@@ -633,43 +642,50 @@ try {
 
   // ═══════════════ P. ตัวช่วยบริสุทธิ์ ═══════════════
   console.log("\n── P: trips-self-core ──");
-  await st("P-1", "ค่าคงที่ตามใบสั่ง §3.1: รหัสผิด 17 · block 9 · SELF_MOVES_MAX 1 · SELF_VERIFY_PER_BOOKING_PER_HOUR 10 · SELF_NONCE_PURPOSES · SELF_GRANT_RE", () => {
+  await st("P-1", `ค่าคงที่ตามใบสั่ง: รหัสผิด ${ERROR_CODES.length} · block ${BLOCKS.length} · ชนิดยกเลิก ${CANCEL_KINDS.join("/")} · grant ${GRANT_TTL_MIN} นาที (K7) · ผิดได้ ${WRONG_LIMIT} ครั้ง/24 ชม. (K6) · nonce verify/cancel · SELF_GRANT_RE`, () => {
     eq([...(coreV("SELF_ERROR_CODES") as string[])].sort(), [...ERROR_CODES].sort(), "SELF_ERROR_CODES");
     eq([...(coreV("SELF_BLOCKS") as string[])].sort(), [...BLOCKS].sort(), "SELF_BLOCKS");
-    eq([coreV("SELF_MOVES_MAX"), coreV("SELF_VERIFY_PER_BOOKING_PER_HOUR")], [1, 10], "เพดาน");
-    eq([...(coreV("SELF_NONCE_PURPOSES") as string[])].sort(), ["cancel", "move", "rotate", "verify"], "วัตถุประสงค์ nonce");
+    eq([...(coreV("SELF_CANCEL_KINDS") as string[])].sort(), [...CANCEL_KINDS].sort(), "SELF_CANCEL_KINDS");
+    eq([coreV("SELF_GRANT_TTL_SEC"), coreV("SELF_WRONG_PER_BOOKING"), coreV("SELF_WRONG_WINDOW_SEC")], [GRANT_TTL_MIN * 60, WRONG_LIMIT, 86_400], "ค่าคงที่");
+    eq([...(coreV("SELF_NONCE_PURPOSES") as string[])].sort(), ["cancel", "verify"], "วัตถุประสงค์ nonce (ไม่มี move/rotate · K1)");
     const re = coreV("SELF_GRANT_RE");
     ok(re instanceof RegExp && re.test(`g1.1700000000.${"A".repeat(22)}`) && !re.test(`g2.1.${"A".repeat(22)}`) && !re.test(`g1.1.${"A".repeat(21)}`), "SELF_GRANT_RE");
   });
-  const MAN0 = { status: "PAID", agent: false, startsAt: "2027-04-15T01:00:00.000Z", now: "2027-03-01T03:00:00.000Z", changeDateFee: null, openRefund: false, selfMoves: 0 };
-  await st("P-2", "selfManageOf ตามลำดับใบสั่ง: AGENT → ENDED → STARTED → REFUND_IN_PROGRESS → ยังไม่จ่าย (UNPAID · NOT_SOLD) → ขายแล้ว (REFUND_REQUEST + move ถ้าไม่มีค่าเปลี่ยนวันและยังไม่เลื่อนครบ)", () => {
+  const MAN0 = { status: "PAID", agent: false, startsAt: "2027-04-15T01:00:00.000Z", now: "2027-03-01T03:00:00.000Z", holdExpiresAt: null, paidSatang: TOTAL, refund: null };
+  const RQ = (status: string, mine = true) => ({ status, mine });
+  await st("P-2", "selfManageOf ตามลำดับใบสั่ง: AGENT → PENDING → ENDED (จบ/HOLD หมดตามนาฬิกา) → STARTED → คำขอเปิด (REFUND_IN_PROGRESS) / ถูกปฏิเสธ (REFUND_REJECTED) → HOLD = UNPAID → ขายแล้ว: จ่ายแล้ว > 0 = REFUND_REQUEST · 0 = CANCEL_REQUEST (K10)", () => {
     const f = P("selfManageOf");
     const cases: [Rec, Rec][] = [
-      [{}, { cancel: "REFUND_REQUEST", move: true, block: null }],
-      [{ status: "PART_PAID" }, { cancel: "REFUND_REQUEST", move: true, block: null }],
-      [{ status: "CONFIRMED" }, { cancel: "REFUND_REQUEST", move: true, block: null }],
-      [{ status: "HOLD" }, { cancel: "UNPAID", move: false, block: "NOT_SOLD" }],
-      [{ status: "PENDING" }, { cancel: "UNPAID", move: false, block: "NOT_SOLD" }],
-      [{ agent: true }, { cancel: null, move: false, block: "AGENT" }],
-      [{ agent: true, status: "CANCELLED" }, { cancel: null, move: false, block: "AGENT" }],
-      [{ status: "CANCELLED" }, { cancel: null, move: false, block: "ENDED" }],
-      [{ status: "EXPIRED" }, { cancel: null, move: false, block: "ENDED" }],
-      [{ status: "TRAVELLED" }, { cancel: null, move: false, block: "ENDED" }],
-      [{ now: "2027-04-15T01:00:00.000Z" }, { cancel: null, move: false, block: "STARTED" }],
-      [{ status: "HOLD", now: "2027-04-15T02:00:00.000Z" }, { cancel: null, move: false, block: "STARTED" }],
-      [{ openRefund: true }, { cancel: null, move: false, block: "REFUND_IN_PROGRESS" }],
-      [{ changeDateFee: 20_000 }, { cancel: "REFUND_REQUEST", move: false, block: "FEE" }],
-      [{ changeDateFee: 0 }, { cancel: "REFUND_REQUEST", move: true, block: null }],
-      [{ selfMoves: 1 }, { cancel: "REFUND_REQUEST", move: false, block: "MOVE_LIMIT" }],
+      [{}, { cancel: "REFUND_REQUEST", block: null }],
+      [{ status: "PART_PAID", paidSatang: 100 }, { cancel: "REFUND_REQUEST", block: null }],
+      [{ status: "CONFIRMED", paidSatang: 0 }, { cancel: "CANCEL_REQUEST", block: null }],
+      [{ status: "CONFIRMED", paidSatang: 50 }, { cancel: "REFUND_REQUEST", block: null }],
+      [{ status: "HOLD", paidSatang: 0, holdExpiresAt: "2027-03-01T03:15:00.000Z" }, { cancel: "UNPAID", block: null }],
+      [{ status: "HOLD", paidSatang: 0, holdExpiresAt: "2027-03-01T03:00:00.000Z" }, { cancel: null, block: "ENDED" }],
+      [{ status: "HOLD", paidSatang: 0, holdExpiresAt: null }, { cancel: null, block: "ENDED" }],
+      [{ status: "PENDING", paidSatang: 0 }, { cancel: null, block: "PENDING" }],
+      [{ agent: true }, { cancel: null, block: "AGENT" }],
+      [{ agent: true, status: "PENDING" }, { cancel: null, block: "AGENT" }],
+      [{ status: "CANCELLED" }, { cancel: null, block: "ENDED" }],
+      [{ status: "EXPIRED" }, { cancel: null, block: "ENDED" }],
+      [{ status: "TRAVELLED" }, { cancel: null, block: "ENDED" }],
+      [{ status: "NO_SHOW" }, { cancel: null, block: "ENDED" }],
+      [{ now: "2027-04-15T01:00:00.000Z" }, { cancel: null, block: "STARTED" }],
+      [{ refund: RQ("QUOTED") }, { cancel: null, block: "REFUND_IN_PROGRESS" }],
+      [{ refund: RQ("APPROVED", false) }, { cancel: null, block: "REFUND_IN_PROGRESS" }],
+      [{ refund: RQ("EXECUTING") }, { cancel: null, block: "REFUND_IN_PROGRESS" }],
+      [{ refund: RQ("FAILED") }, { cancel: null, block: "REFUND_IN_PROGRESS" }],
+      [{ refund: RQ("REJECTED") }, { cancel: null, block: "REFUND_REJECTED" }],
+      [{ refund: RQ("WITHDRAWN", false) }, { cancel: "REFUND_REQUEST", block: null }],
     ];
     for (const [patch, want] of cases) eq(f({ ...MAN0, ...patch }), want, `selfManageOf ${fmt(patch)}`);
   });
-  await st("P-3", "selfManageOf อินพุตผิดรูป/สถานะไม่รู้จัก ⇒ {null,false,ENDED} ไม่ throw", () => {
+  await st("P-3", "selfManageOf อินพุตผิดรูป/สถานะไม่รู้จัก ⇒ {null, ENDED} ไม่ throw", () => {
     const f = P("selfManageOf");
-    for (const bad of [null, undefined, 42, "x", [], { ...MAN0, status: "WHAT" }, { ...MAN0, now: "not-a-date" }, { ...MAN0, startsAt: null }]) {
+    for (const bad of [null, undefined, 42, "x", [], { ...MAN0, status: "WHAT" }, { ...MAN0, now: "not-a-date" }, { ...MAN0, startsAt: null }, { ...MAN0, paidSatang: -1 }, { ...MAN0, paidSatang: "1" }]) {
       let r: unknown;
       try { r = f(bad); } catch (e) { throw new AssertFail(`throw กับ ${fmt(bad)}: ${errMsg(e)}`); }
-      eq(r, { cancel: null, move: false, block: "ENDED" }, `ผิดรูป ${fmt(bad)}`);
+      eq(r, { cancel: null, block: "ENDED" }, `ผิดรูป ${fmt(bad)}`);
     }
   });
   await st("P-4", "selfPhoneMatches: 0812345678 ตรงกับ 081-234-5678 · +66812345678 · 66812345678 · 0066812345678 · (081) 234 5678 · ไม่ตรงเลขอื่น/ว่าง/สั้น/ไม่ใช่สตริง", () => {
@@ -682,36 +698,103 @@ try {
   // ═══════════════ LG. ภาษา ═══════════════
   console.log("\n── LG: ภาษา ──");
   const th = flat(JSON.parse(read(MSG_TH) || "{}")), en = flat(JSON.parse(read(MSG_EN) || "{}"));
-  await st("LG-1", `book.json ไทย/อังกฤษมีคีย์ของใบครบ ${I18N_REQUIRED.length} คีย์ · อังกฤษไม่มีอักษรไทย · ไม่มีรหัสดิบ/รหัสใบงาน`, () => {
+  await st("LG-1", `book.json ไทย/อังกฤษมีคีย์ของใบครบ ${I18N_REQUIRED.length} คีย์ · อังกฤษไม่มีอักษรไทย · ไม่มีรหัสดิบ/รหัสใบงาน · ไม่มีคีย์ self.move.* / self.link.* (K1)`, () => {
     const miss = I18N_REQUIRED.filter((k) => typeof th[k] !== "string" || !String(th[k]).trim() || typeof en[k] !== "string" || !String(en[k]).trim());
     ok(miss.length === 0, `คีย์ขาด: ${miss.slice(0, 8).join(", ")}${miss.length > 8 ? ` (+${miss.length - 8})` : ""}`);
     const thaiInEn = I18N_REQUIRED.filter((k) => /[ก-๙]/.test(String(en[k] ?? "")));
     ok(thaiInEn.length === 0, `อังกฤษมีอักษรไทย: ${thaiInEn.slice(0, 4).join(", ")}`);
-    const raw = I18N_REQUIRED.flatMap((k) => [String(th[k] ?? ""), String(en[k] ?? "")]).filter((v) => /\b([WTAKLSX]\d\.\d+[abc]?|OQ\d+)\b|\b(VERIFY_FAILED|NOT_ALLOWED|REFUND_IN_PROGRESS|MOVE_LIMIT|PRICE_DIFFERS|QUOTED|EXECUTING)\b/.test(v));
+    const raw = I18N_REQUIRED.flatMap((k) => [String(th[k] ?? ""), String(en[k] ?? "")]).filter((v) => /\b([WTAKLSX]\d\.\d+[abc]?|OQ\d+)\b|\b(VERIFY_FAILED|NOT_ALLOWED|REFUND_IN_PROGRESS|REFUND_REJECTED|QUOTED|EXECUTING|CANCEL_REQUEST)\b/.test(v));
     ok(raw.length === 0, `ค่ามีรหัส: ${raw.slice(0, 3).join(" | ")}`);
+    ok(!Object.keys({ ...th, ...en }).some((k) => /^self\.(move|link)\./.test(k)), "K1: ไม่มีข้อความเลื่อน/ขอลิงก์ใหม่ในใบนี้");
   });
-  await st("LG-2", "⚖️ ข้อความ self.* ไม่สัญญาสิ่งที่ระบบทำไม่ได้: วันโอนคืน (ภายใน N วัน) · คืนอัตโนมัติ · ส่ง SMS/OTP/รหัส/อีเมล/แจ้งเตือน · ร้านจะติดต่อ · ใบลดหนี้ · ข้อความยื่นคำขอบอกว่าร้านเป็นผู้พิจารณา + มีช่องทางติดต่อ {contact}", () => {
+  await st("LG-2", "⚖️ ข้อความ self.* ไม่สัญญาสิ่งที่ระบบทำไม่ได้ (วันโอนคืน · อัตโนมัติ · SMS/OTP/รหัส/แจ้งเตือน · ร้านจะติดต่อ · ใบลดหนี้ · เลขบัญชี) · self.cancel.requested บอกว่าร้านพิจารณา + {contact} · K9 self.cancel.paidWarning บอก \"ถ้าโอนแล้ว อย่ายกเลิกที่นี่ ติดต่อร้าน\" + {contact} · K10 self.manage.cancelOnly/self.cancel.cancelRequested ไม่พูดถึงเงินคืน · K8 self.refund.byShop ไม่พูดว่า \"คุณยื่น\"", () => {
     const vals = Object.entries({ ...th, ...Object.fromEntries(Object.entries(en).map(([k, v]) => [`en:${k}`, v])) }).filter(([k]) => /(^|:)self\./.test(k)).map(([k, v]) => [k, String(v)] as const);
     ok(vals.length > 0, "ยังไม่มีคีย์ self.*");
-    const bad = vals.filter(([, v]) => /ภายใน\s*\d+\s*(วัน|ชั่วโมง)|within\s+\d+\s+(business\s+)?(days?|hours?)|อัตโนมัติ|automatic|\bSMS\b|\bOTP\b|รหัส(ยืนยัน|ที่ส่ง)|code (we )?sent|ส่งรหัส|แจ้งเตือน|notif|ร้านจะติดต่อ|we will contact|will contact you|ใบลดหนี้|credit note|ใบเสร็จ.*ส่ง/i.test(v));
+    const bad = vals.filter(([, v]) => /ภายใน\s*\d+\s*(วัน|ชั่วโมง)|within\s+\d+\s+(business\s+)?(days?|hours?)|อัตโนมัติ|automatic|\bSMS\b|\bOTP\b|รหัส(ยืนยัน|ที่ส่ง)|code (we )?sent|ส่งรหัส|แจ้งเตือน|notif|ร้านจะติดต่อ|we will contact|will contact you|ใบลดหนี้|credit note|ใบเสร็จ.*ส่ง|บัญชีธนาคาร|เลขบัญชี|bank account/i.test(v));
     ok(bad.length === 0, `สัญญาที่ระบบทำไม่ได้: ${bad.slice(0, 3).map(([k, v]) => `${k}=${v}`).join(" | ")}`);
-    const req = [String(th["self.cancel.requested"] ?? ""), String(en["self.cancel.requested"] ?? "")];
-    ok(/ร้าน/.test(req[0] ?? "") && /\{contact\}/.test(req[0] ?? "") && /shop/i.test(req[1] ?? "") && /\{contact\}/.test(req[1] ?? ""), `self.cancel.requested ต้องบอกว่าร้านพิจารณา + {contact}: ${fmt(req)}`);
-    ok(!vals.some(([, v]) => /บัญชีธนาคาร|เลขบัญชี|bank account/i.test(v)), "ห้ามขอเลขบัญชีธนาคารผ่านหน้านี้");
+    const t = (k: string) => [String(th[k] ?? ""), String(en[k] ?? "")] as const;
+    const [rqT, rqE] = t("self.cancel.requested");
+    ok(/ร้าน/.test(rqT) && /\{contact\}/.test(rqT) && /shop/i.test(rqE) && /\{contact\}/.test(rqE), `self.cancel.requested ต้องบอกว่าร้านพิจารณา + {contact}: ${fmt([rqT, rqE])}`);
+    const [wT, wE] = t("self.cancel.paidWarning");
+    ok(/โอน/.test(wT) && /อย่า/.test(wT) && /ติดต่อร้าน/.test(wT) && /\{contact\}/.test(wT), `K9 ไทย: ${wT}`);
+    ok(/(transfer|paid)/i.test(wE) && /(do not|don't)/i.test(wE) && /contact/i.test(wE) && /\{contact\}/.test(wE), `K9 อังกฤษ: ${wE}`);
+    for (const k of ["self.manage.cancelOnly", "self.cancel.cancelRequested"]) for (const v of t(k)) ok(!/คืนเงิน|refund|฿|\{amount\}/i.test(v), `K10 ${k} ห้ามพูดถึงเงินคืน: ${v}`);
+    for (const v of t("self.refund.byShop")) ok(!/คุณ(ได้)?ยื่น|you (have )?(submitted|requested)/i.test(v), `K8 self.refund.byShop: ${v}`);
   });
   groupLine("LG");
 
+  // ═══════════════ FN. รั้วบริการ (K2–K4 · เรียกบริการจริง) ═══════════════
+  console.log("\n── FN: รั้วบริการ PUBLIC + opts.publicSelf ──");
+  const noWrite = async (b: Bk, v0: BRow, what: string) => { const v1 = await bRow(b.id); eq([v1.status, v1.version, (await refunds(b.id)).length], [v0.status, v0.version, 0], `${what}: ต้องไม่มีการเขียน`); };
+  await st("FN-1", "publicSelf ไม่ตรง: bookingId ของการจองอื่น / tokenHash ของการจองอื่น / tokenHash ว่าง ⇒ FORBIDDEN ทั้ง QUOTE และ EXECUTE · ไม่มีคำขอ/สถานะไม่เปลี่ยน", async () => {
+    const [b, o] = needBk("bFn1", "bFn2");
+    const reason = selfReason();
+    const v0 = await bRow(b.id);
+    for (const [ps, what] of [[{ bookingId: o.id, tokenHash: sha256hex(o.token) }, "bookingId อื่น"], [{ bookingId: b.id, tokenHash: sha256hex(o.token) }, "tokenHash อื่น"], [{ bookingId: b.id, tokenHash: "" }, "tokenHash ว่าง"]] as const) {
+      for (const mode of ["QUOTE", "EXECUTE"]) {
+        const r = await tcall("cancelTripBooking", pubCtx(), { bookingId: b.id, mode, reason, reasonKind: "CUSTOMER", choice: "MONEY", idempotencyKey: `w13fn_${hex(6)}` }, { publicSelf: ps });
+        eq([r.ok, r.code], [false, "FORBIDDEN"], `${what} ${mode}`);
+      }
+    }
+    await noWrite(b, v0, "FN-1");
+  });
+  await st("FN-2", "publicSelf ตรง แต่คำขอเกินสิทธิ์ ⇒ FORBIDDEN ไม่มีการเขียน: reasonKind EXTERNAL / SHOP_FAULT · reason ไม่ใช่ค่าคงที่ · requestTripRefund มี deductions · requestTripRefund choice CREDIT", async () => {
+    const [b] = needBk("bFn1");
+    const reason = selfReason();
+    const v0 = await bRow(b.id);
+    for (const [rk, rs] of [["EXTERNAL", reason], ["SHOP_FAULT", reason], ["CUSTOMER", `${reason} x`], ["CUSTOMER", "ยกเลิก"]] as const) {
+      const r = await tcall("cancelTripBooking", pubCtx(), { bookingId: b.id, mode: "EXECUTE", reason: rs, reasonKind: rk, choice: "MONEY", idempotencyKey: `w13fn_${hex(6)}` }, publicSelfOf(b));
+      eq([r.ok, r.code], [false, "FORBIDDEN"], `cancel ${rk} "${rs.slice(0, 12)}"`);
+    }
+    const d = await tcall("requestTripRefund", pubCtx(), { bookingId: b.id, expectedVersion: v0.version, reasonKind: "CUSTOMER", choice: "MONEY", reason, deductions: [{ category: "OTHER_NECESSARY", amountSatang: 100, evidenceFileId: null }], idempotencyKey: `w13fn_${hex(6)}` }, publicSelfOf(b));
+    eq([d.ok, d.code], [false, "FORBIDDEN"], "requestTripRefund + deductions");
+    const c = await tcall("requestTripRefund", pubCtx(), { bookingId: b.id, expectedVersion: v0.version, reasonKind: "CUSTOMER", choice: "CREDIT", reason, idempotencyKey: `w13fn_${hex(6)}` }, publicSelfOf(b));
+    ok(c.ok === false && ["FORBIDDEN", "VALIDATION"].includes(String(c.code)), `requestTripRefund CREDIT: ${fmt(c)}`);
+    await noWrite(b, v0, "FN-2");
+  });
+  await st("FN-3", "K1: changeTripBooking ด้วย PUBLIC + publicSelf ที่ถูก ⇒ FORBIDDEN (ใบนี้ไม่เปิดเลื่อน) · ไม่เปลี่ยน", async () => {
+    const [b] = needBk("bFn2");
+    selfReason();
+    const v0 = await bRow(b.id);
+    const ch = await tcall("changeTripBooking", pubCtx(), { bookingId: b.id, expectedVersion: v0.version, line: { productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: DEP.d45, optionId: PRD.A?.opt, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 1 }] }, quoteId: "0".repeat(64), quoteExpiresAt: ACT.now.toISOString(), idempotencyKey: `w13fn_${hex(6)}` }, publicSelfOf(b));
+    eq([ch.ok, ch.code], [false, "FORBIDDEN"], "change PUBLIC");
+    await noWrite(b, v0, "FN-3");
+  });
+  await st("FN-4", `publicSelf ถูก (บริการตรง): QUOTE ⇒ คืน ${ONE} · EXECUTE ⇒ คำขอ QUOTED แม้ร้านตั้งอนุมัติอัตโนมัติ ${AUTO_APPROVE} (K4) · by CUSTOMER · audit ของคำขอ actorType SYSTEM / actorId ${PUBLIC_ACTOR_ID} / after.by PUBLIC ไม่มีเบอร์ (K3) · ส่งซ้ำคีย์เดิม ⇒ ผลเดิม (K5)`, async () => {
+    const [b] = needBk("bFnOk");
+    const reason = selfReason();
+    const qq = await tcall("cancelTripBooking", pubCtx(), { bookingId: b.id, mode: "QUOTE", reason, reasonKind: "CUSTOMER", idempotencyKey: `w13fn_${hex(6)}` }, publicSelfOf(b));
+    eq([qq.ok, asRec(asRec(qq.value)?.computed)?.refundSatang], [true, ONE], "QUOTE");
+    const key = `w13fn_${hex(6)}`;
+    const x = await tcall("cancelTripBooking", pubCtx(), { bookingId: b.id, mode: "EXECUTE", reason, reasonKind: "CUSTOMER", choice: "MONEY", idempotencyKey: key }, publicSelfOf(b));
+    ok(x.ok === true, `EXECUTE: ${fmt(x)}`);
+    const rr = await refunds(b.id);
+    eq(rr.map((r) => [r.status, r.amountSatang, r.reasonKind, r.choice, r.by]), [["QUOTED", ONE, "CUSTOMER", "MONEY", "CUSTOMER"]], "คำขอ (K4 ไม่อนุมัติอัตโนมัติ)");
+    k3(await auditsOf(rr[0]?.id ?? ""), "trips.refund.request", "audit คำขอ", b);
+    const again = await tcall("cancelTripBooking", pubCtx(), { bookingId: b.id, mode: "EXECUTE", reason, reasonKind: "CUSTOMER", choice: "MONEY", idempotencyKey: key }, publicSelfOf(b));
+    ok(again.ok === true, `ส่งซ้ำคีย์เดิม: ${fmt(again)}`);
+    eq((await refunds(b.id)).length, 1, "ยังมี 1 แถว");
+  });
+  await st("FN-5", "publicSelf ถูก (บริการตรง) ยกเลิก HOLD ⇒ CANCELLED · audit trips.booking.cancel รูป K3 (SYSTEM · trips.public.self · after.by PUBLIC) · ไม่มีคำขอคืนเงิน", async () => {
+    const [b] = needBk("bFnHold");
+    const x = await tcall("cancelTripBooking", pubCtx(), { bookingId: b.id, mode: "EXECUTE", reason: selfReason(), reasonKind: "CUSTOMER", idempotencyKey: `w13fn_${hex(6)}` }, publicSelfOf(b));
+    ok(x.ok === true, `EXECUTE: ${fmt(x)}`);
+    eq([(await bRow(b.id)).status, (await refunds(b.id)).length], ["CANCELLED", 0], "สถานะ");
+    k3(await auditsOf(b.id), "trips.booking.cancel", "audit ยกเลิก", b);
+  });
+  groupLine("FN");
+
   // ═══════════════ V. ยืนยันเบอร์ + grant ═══════════════
-  console.log("\n── V: ยืนยันเบอร์ผู้จอง + สิทธิ์แก้ชั่วคราว ──");
-  await st("V-1", `เบอร์ถูก (รูปท้องถิ่น) ⇒ grant ตาม SELF_GRANT_RE · expiresAt = เวลายืนยัน + X9 (${X9_MIN} นาที) พอดี · ผลมีแค่ ok/grant/expiresAt/shopSlug`, async () => {
+  console.log("\n── V: ยืนยันเบอร์ผู้จอง + สิทธิ์แก้ชั่วคราว (grant 15 นาที · K7) ──");
+  await st("V-1", `เบอร์ถูก (รูปท้องถิ่น) ⇒ grant ตาม SELF_GRANT_RE · expiresAt = เวลายืนยัน + ${GRANT_TTL_MIN} นาทีพอดี (ค่าคงที่ · ไม่อ่าน X9) · ผลมีแค่ ok/grant/expiresAt/shopSlug`, async () => {
     needSelf(); const [b] = needBk("bV");
     const r = await verify(b);
     ok(r.ok === true && typeof r.grant === "string" && /^g1\.\d{1,12}\.[A-Za-z0-9_-]{22}$/.test(String(r.grant)), `verify: ${fmt(r)}`);
-    eq(r.expiresAt, new Date(VNOW.now.getTime() + X9_MIN * MIN).toISOString(), "expiresAt");
+    eq(r.expiresAt, new Date(VNOW.now.getTime() + GRANT_TTL_MIN * MIN).toISOString(), "expiresAt");
     eq(Object.keys(r).sort(), ["expiresAt", "grant", "ok", "shopSlug"], "คีย์ผล");
     eq(r.shopSlug, SA, "shopSlug");
   });
-  await st("V-2", "เบอร์รูปอื่นของเบอร์เดียวกัน (+66 · มีขีด/ช่องว่าง) ⇒ ผ่าน", async () => {
+  await st("V-2", "เบอร์รูปอื่นของเบอร์เดียวกัน (+66 · มีขีด) ⇒ ผ่าน", async () => {
     needSelf(); const [b] = needBk("bV");
     for (const p of [`+66${b.phone.slice(1)}`, `${b.phone.slice(0, 3)}-${b.phone.slice(3, 6)}-${b.phone.slice(6)}`]) {
       const r = await verify(b, { phone: p, clientKey: ck() });
@@ -731,13 +814,13 @@ try {
     needSelf(); const [b, b2] = needBk("bV", "bV2");
     ERR(await verify(b, { phone: b2.phone, clientKey: ck() }), "VERIFY_FAILED", "เบอร์ของ bV2 กับ bV");
   });
-  await st("V-5", "ผู้จองไม่มีเบอร์ (Party.phone ว่าง) ⇒ VERIFY_FAILED รูปเดียวกับเบอร์ผิด (ไม่บอกว่า \"ไม่มีเบอร์\")", async () => {
+  await st("V-5", "ผู้จองไม่มีเบอร์ (Party.phone ว่าง) ⇒ VERIFY_FAILED รูปเดียวกับเบอร์ผิด", async () => {
     needSelf(); const [b] = needBk("bNull");
     const a = await verify(b, { clientKey: ck() }), w = await verify(b, { phone: "0899999998", clientKey: ck() });
     ERR(a, "VERIFY_FAILED", "เบอร์เดิมของผู้จองที่ถูกลบ"); ERR(w, "VERIFY_FAILED", "เบอร์อื่น");
     eq(Object.keys(a).sort(), Object.keys(w).sort(), "รูปผลเท่ากัน");
   });
-  await st("V-6", "nonce: ไม่มี ⇒ INVALID[nonce] · วัตถุประสงค์อื่น (cancel) ⇒ INVALID · ผูก token อื่น ⇒ INVALID · nonce ถือที่ของ W1.2 ⇒ INVALID · ออกพร้อมส่ง ⇒ TOO_FAST · เกิน 2 ชม. ⇒ STALE_FORM — ไม่มี grant", async () => {
+  await st("V-6", "nonce: ไม่มี ⇒ INVALID[nonce] · วัตถุประสงค์อื่น (cancel) ⇒ INVALID · ผูก token อื่น ⇒ INVALID · nonce ถือที่ของ W1.2 ⇒ INVALID · ออกพร้อมส่ง ⇒ TOO_FAST · เกิน 2 ชม. ⇒ STALE_FORM", async () => {
     needSelf(); const [b, b2] = needBk("bV", "bV2");
     const inv = async (nonce: unknown, what: string) => { const r = await verify(b, { nonce, clientKey: ck() }); ok(r.ok === false && r.code === "INVALID" && Array.isArray(r.fields) && (r.fields as unknown[]).includes("nonce"), `${what}: ${fmt(r)}`); };
     await inv("", "ไม่มี nonce");
@@ -755,69 +838,88 @@ try {
       ok(!JSON.stringify(r).includes(p), "สะท้อนค่า");
     }
   });
-  await st("V-8", `grant หมดอายุตาม X9: ใช้ที่ +${X9_MIN - 1} นาที ⇒ ผ่าน (quote ยกเลิก) · ที่ +${X9_MIN + 1} นาที ⇒ VERIFY_REQUIRED`, async () => {
+  await st("V-8", `grant หมดอายุ ${GRANT_TTL_MIN} นาที: ใช้ที่ +${GRANT_TTL_MIN - 1} นาที ⇒ ผ่าน (quote ยกเลิก) · +${GRANT_TTL_MIN + 1} นาที ⇒ VERIFY_REQUIRED`, async () => {
     needSelf(); const [b] = needBk("bV");
     const g = await grantOf(b);
-    const r1 = await cancelQ(b, g, at(VMS + (X9_MIN - 1) * MIN));
+    const r1 = await cancelQ(b, g, at(VMS + (GRANT_TTL_MIN - 1) * MIN));
     ok(r1.ok === true, `ก่อนหมด: ${fmt(r1)}`);
-    ERR(await cancelQ(b, g, at(VMS + (X9_MIN + 1) * MIN)), "VERIFY_REQUIRED", "หลังหมด");
+    ERR(await cancelQ(b, g, at(VMS + (GRANT_TTL_MIN + 1) * MIN)), "VERIFY_REQUIRED", "หลังหมด");
   });
-  await st("V-9", "grant ผูกเครื่อง: เครื่องอื่นถือ grant เดียวกัน ⇒ VERIFY_REQUIRED (Q3)", async () => {
+  await st("V-9", "grant ผูก IP (K7): เครื่อง/IP อื่นถือ grant เดียวกัน ⇒ VERIFY_REQUIRED", async () => {
     needSelf(); const [b] = needBk("bV");
     const g = await grantOf(b);
-    ERR(await cancelQ(b, g, ACT, { clientKey: ck() }), "VERIFY_REQUIRED", "เครื่องอื่น");
+    ERR(await cancelQ(b, g, ACT, { clientKey: ck() }), "VERIFY_REQUIRED", "IP อื่น");
   });
-  await st("V-10", "grant ปลอม (แก้ 1 ตัว · หมดอายุไกล · รูปผิด) ⇒ VERIFY_REQUIRED รูปเดียว", async () => {
+  await st("V-10", "grant ปลอม (แก้ 1 ตัว · ขยายเวลาหมด · รูปผิด) ⇒ VERIFY_REQUIRED รูปเดียว", async () => {
     needSelf(); const [b] = needBk("bV");
     const g = await grantOf(b);
     const flip = g.slice(0, -1) + (g.endsWith("A") ? "B" : "A");
     const far = g.replace(/^g1\.(\d+)\./, (_m, s: string) => `g1.${Number(s) + 86_400}.`);
     for (const x of [flip, far, "g1", `g1.${Math.floor(ACT.now.getTime() / 1000) + 600}.${"A".repeat(22)}`]) ERR(await cancelQ(b, x, ACT), "VERIFY_REQUIRED", `grant ${x.slice(0, 20)}…`);
   });
-  await st("V-11", "ผู้ถือลิงก์อย่างเดียว (ไม่มี grant) ⇒ VERIFY_REQUIRED ทุกทางแก้ (quote/ยกเลิก/เลื่อน/ขอลิงก์ใหม่) · ไม่มีการเขียนฐาน", async () => {
+  await st("V-11", "ผู้ถือลิงก์อย่างเดียว (ไม่มี grant) ⇒ VERIFY_REQUIRED ทั้ง quote และยกเลิก · ไม่มีการเขียน", async () => {
     needSelf(); const [b] = needBk("bV");
     const v0 = await bRow(b.id);
     ERR(await cancelQ(b, undefined), "VERIFY_REQUIRED", "quote ยกเลิก");
     ERR(await cancelX(b, undefined, ONE), "VERIFY_REQUIRED", "ยกเลิก");
-    ERR(await moveQ(b, undefined, { m: "2027-04" }), "VERIFY_REQUIRED", "quote เลื่อน");
-    ERR(await moveX(b, undefined, { d: "2027-04-16", t: "x", seen: String(ONE) }), "VERIFY_REQUIRED", "เลื่อน");
-    ERR(await rotate(b, undefined), "VERIFY_REQUIRED", "ขอลิงก์ใหม่");
     const v1 = await bRow(b.id);
-    eq([v1.version, v1.publicTokenHash, (await refunds(b.id)).length], [v0.version, v0.publicTokenHash, 0], "ไม่เปลี่ยน");
+    eq([v1.version, (await refunds(b.id)).length], [v0.version, 0], "ไม่เปลี่ยน");
   });
   groupLine("V");
 
   // ═══════════════ M. ก้อนจัดการบนหน้าการจอง ═══════════════
-  console.log("\n── M: ก้อนจัดการบนหน้าการจอง (openBookReservation vm.manage) ──");
-  await st("M-1", "จ่ายแล้ว 45 วัน ⇒ manage {cancel:REFUND_REQUEST, move:true, block:null, refund:null}", async () => {
-    const [b] = needBk("b45x");
-    eq(await manageOf(b), { cancel: "REFUND_REQUEST", move: true, block: null, refund: null }, "manage");
+  console.log("\n── M: ก้อนจัดการบนหน้าการจอง (openBookReservation vm.manage · K8 · K10) ──");
+  await st("M-1", "จ่ายแล้ว 45 วัน ⇒ manage {cancel:REFUND_REQUEST, block:null, refund:null}", async () => {
+    const [b] = needBk("b45");
+    eq(await manageOf(b), { cancel: "REFUND_REQUEST", block: null, refund: null }, "manage");
   });
-  await st("M-2", "ยังไม่จ่าย (HOLD) ⇒ {cancel:UNPAID, move:false, block:NOT_SOLD, refund:null}", async () => {
+  await st("M-2", "ยังไม่จ่าย (HOLD) ⇒ {cancel:UNPAID, block:null, refund:null}", async () => {
     const [b] = needBk("bHold");
-    eq(await manageOf(b), { cancel: "UNPAID", move: false, block: "NOT_SOLD", refund: null }, "manage");
+    eq(await manageOf(b), { cancel: "UNPAID", block: null, refund: null }, "manage");
   });
-  await st("M-3", "การจองเอเจนซี่ (R4) ⇒ {cancel:null, move:false, block:AGENT} · ยืนยันเบอร์ ⇒ NOT_ALLOWED{AGENT} ไม่มี grant", async () => {
-    const [b] = needBk("bAgent");
-    eq(await manageOf(b), { cancel: null, move: false, block: "AGENT", refund: null }, "manage");
+  await st("M-3", "K10 เอเจนซี่ (collectMode AGENT · channel AGENT_LINK — ทะเบียนช่องทางไม่มีค่า AGENT ตรง ๆ) ⇒ {cancel:null, block:AGENT} · ยืนยันเบอร์ ⇒ NOT_ALLOWED{AGENT}", async () => {
+    const [a, c] = needBk("bAgent", "bChan");
+    for (const b of [a, c]) eq(await manageOf(b), { cancel: null, block: "AGENT", refund: null }, `manage ${b.tag}`);
     needSelf();
-    BLOCKED(await verify(b), "AGENT", "ยืนยันเบอร์");
+    for (const b of [a, c]) BLOCKED(await verify(b), "AGENT", `ยืนยันเบอร์ ${b.tag}`);
   });
-  await st("M-4", "สินค้ามีค่าเปลี่ยนวันใน snapshot ⇒ เลื่อนไม่ได้ (block FEE) แต่ยกเลิกได้", async () => {
-    const [b] = needBk("bFee");
-    eq(await manageOf(b), { cancel: "REFUND_REQUEST", move: false, block: "FEE", refund: null }, "manage");
-  });
-  await st("M-5", "หลังรอบออกเดินทางแล้ว (9 มี.ค. → นาฬิกา 10 มี.ค. 09:00) ⇒ {null,false,STARTED} · ยืนยันเบอร์ ⇒ NOT_ALLOWED{STARTED}", async () => {
+  await st("M-4", "หลังรอบออกเดินทางแล้ว (นาฬิกา 10 มี.ค. 09:00) ⇒ {null, STARTED} · ยืนยันเบอร์ ⇒ NOT_ALLOWED{STARTED}", async () => {
     const [b] = needBk("b9");
     const T9 = { now: BKK("2027-03-10", "09:00") };
-    eq(await manageOf(b, T9), { cancel: null, move: false, block: "STARTED", refund: null }, "manage");
+    eq(await manageOf(b, T9), { cancel: null, block: "STARTED", refund: null }, "manage");
     needSelf();
     BLOCKED(await verify(b, { when: T9 }), "STARTED", "ยืนยันเบอร์หลังออกเดินทาง");
   });
+  await st("M-5", "K10 ที่ถือหมดตามนาฬิกา (ตัวกวาดยังไม่วิ่ง · +16 นาที) ⇒ หน้า EXPIRED · manage {null, ENDED} · ยืนยันเบอร์ ⇒ NOT_ALLOWED{ENDED}", async () => {
+    const [b] = needBk("bExp");
+    const T = at(16 * MIN);
+    const r = await openRes(b, T);
+    eq([r.ok, asRec(r.vm)?.state, asRec(r.vm)?.manage], [true, "EXPIRED", { cancel: null, block: "ENDED", refund: null }], "หน้า/manage");
+    needSelf();
+    BLOCKED(await verify(b, { when: T }), "ENDED", "ยืนยันเบอร์");
+  });
+  await st("M-6", "K10 PENDING ⇒ ไม่มีก้อนจัดการ (หน้า PENDING ของ W1.2 คงเดิม) · ยืนยันเบอร์ ⇒ NOT_ALLOWED{PENDING}", async () => {
+    const [b] = needBk("bPend");
+    const r = await openRes(b);
+    ok(r.ok === false && r.code === "UNAVAILABLE" && r.reason === "PENDING" && !("manage" in r), `หน้า PENDING: ${fmt(r)}`);
+    needSelf();
+    BLOCKED(await verify(b), "PENDING", "ยืนยันเบอร์");
+  });
+  await st("M-7", "K10 CONFIRMED ยังไม่จ่าย ⇒ manage {cancel:CANCEL_REQUEST} · quote kind CANCEL_REQUEST จ่าย 0 คืน 0 · ยื่น ⇒ result CANCEL_REQUESTED คำขอ QUOTED ยอด 0", async () => {
+    const [b] = needBk("bConf");
+    eq(await manageOf(b), { cancel: "CANCEL_REQUEST", block: null, refund: null }, "manage");
+    needSelf();
+    const g = await grantOf(b);
+    const vm = asRec((await cancelQ(b, g)).vm) ?? {};
+    eq([vm.kind, vm.paidSatang, vm.refundSatang], ["CANCEL_REQUEST", 0, 0], "quote");
+    const r = await cancelX(b, g, 0);
+    eq([r.ok, r.result, r.refundSatang], [true, "CANCEL_REQUESTED", 0], "ผล");
+    eq((await refunds(b.id)).map((x) => [x.status, x.amountSatang, x.by]), [["QUOTED", 0, "CUSTOMER"]], "คำขอ");
+  });
   groupLine("M");
 
-  // ═══════════════ CN. ยกเลิก ═══════════════
-  console.log("\n── CN: ยกเลิก (ก่อนจ่าย = ทันที · จ่ายแล้ว = คำขอคืนเงินตาม snapshot) ──");
+  // ═══════════════ CN. ยกเลิก/คำขอคืนเงิน ═══════════════
+  console.log("\n── CN: ยกเลิก (ก่อนจ่าย = ทันที · จ่ายแล้ว = คำขอคืนเงินตาม snapshot) + สถานะคำขอ ──");
   await st("CN-1", `quote 19 วันก่อนเดินทาง: REFUND_REQUEST · จ่าย ${TOTAL} · คืน ${REFUND50} · เก็บ ${KEPT50} · 50% · daysBefore 19 · มี form.nonce · ไม่มีคีย์ภายใน`, async () => {
     needSelf(); const [b] = needBk("b19");
     const r = await cancelQ(b, await grantOf(b));
@@ -828,13 +930,13 @@ try {
     noInternal(vm, [b.id, b.dep], "vm ยกเลิก", [b.phone]);
   });
   await st("CN-2", `quote 45 วัน: คืน ${TOTAL} เก็บ 0 (100%) · 9 วัน: คืน ${PT} (ค่าอุทยาน) เก็บ ${NONPT} (0%)`, async () => {
-    needSelf(); const [b45, b9] = needBk("b45x", "b9");
+    needSelf(); const [b45, b9] = needBk("b45", "b9");
     const a = asRec((await cancelQ(b45, await grantOf(b45))).vm) ?? {};
     eq([a.kind, a.refundSatang, a.keptSatang, a.refundPct], ["REFUND_REQUEST", TOTAL, 0, 100], "45 วัน");
     const c = asRec((await cancelQ(b9, await grantOf(b9))).vm) ?? {};
     eq([c.kind, c.refundSatang, c.keptSatang, c.refundPct], ["REFUND_REQUEST", PT, NONPT, 0], "9 วัน");
   });
-  await st("CN-3", "ยอดที่เห็นไม่ตรง (seen ต่าง 1 บาท) ⇒ AMOUNT_CHANGED{refundSatang = ยอดจริง} · ไม่มีคำขอ · ไม่ติ๊กยอมรับ ⇒ ACCEPT_REQUIRED · ไม่มีคำขอ", async () => {
+  await st("CN-3", "ยอดที่เห็นไม่ตรง (seen ต่าง 1 บาท) ⇒ AMOUNT_CHANGED{refundSatang = ยอดจริง} · ไม่ติ๊กยอมรับ ⇒ ACCEPT_REQUIRED · ไม่มีคำขอ", async () => {
     needSelf(); const [b] = needBk("b19");
     const g = await grantOf(b);
     const r = await cancelX(b, g, REFUND50 - 100);
@@ -842,7 +944,7 @@ try {
     ERR(await cancelX(b, g, REFUND50, { accept: "" }), "ACCEPT_REQUIRED", "ไม่ยอมรับ");
     eq((await refunds(b.id)).length, 0, "ไม่มีคำขอ");
   });
-  await st("CN-4", `ยื่นยกเลิกการจองที่จ่ายแล้ว (19 วัน · seen ${REFUND50}) ⇒ REFUND_REQUESTED · คำขอ 1 แถว QUOTED ยอด ${REFUND50} · CUSTOMER · MONEY · by CUSTOMER · การจองยัง PAID · ที่นั่งไม่ปล่อย (OQ22) · เงินที่รับไม่เปลี่ยน`, async () => {
+  await st("CN-4", `ยื่นยกเลิกการจองที่จ่ายแล้ว (19 วัน · seen ${REFUND50}) ⇒ REFUND_REQUESTED · คำขอ 1 แถว QUOTED (K4 แม้ร้านตั้งอนุมัติอัตโนมัติ) · CUSTOMER · MONEY · by CUSTOMER · audit K3 · การจองยัง PAID · ที่นั่งไม่ปล่อย (OQ22)`, async () => {
     needSelf(); const [b] = needBk("b19");
     const d0 = await depRow(b.dep);
     G.b19 = await grantOf(b);
@@ -850,21 +952,21 @@ try {
     eq([r.ok, r.result, r.refundSatang, r.replayed], [true, "REFUND_REQUESTED", REFUND50, false], "ผล");
     const rr = await refunds(b.id);
     eq(rr.map((x) => [x.status, x.amountSatang, x.reasonKind, x.choice, x.by]), [["QUOTED", REFUND50, "CUSTOMER", "MONEY", "CUSTOMER"]], "คำขอคืนเงิน");
+    k3(await auditsOf(rr[0]?.id ?? ""), "trips.refund.request", "audit คำขอ", b);
     const row = await bRow(b.id), d1 = await depRow(b.dep);
     eq([row.status, row.paidSatang, d1.sold, d1.held], ["PAID", TOTAL, d0.sold, d0.held], "การจอง/ที่นั่ง");
   });
-  await st("CN-5", "หลังยื่น: หน้าการจองแสดง refund {QUOTED, ยอด} + block REFUND_IN_PROGRESS · ยืนยันเบอร์ใหม่ ⇒ NOT_ALLOWED{REFUND_IN_PROGRESS} · grant เดิม + ฟอร์มยกเลิกใหม่ ⇒ DONE{refund} ยังมี 1 แถว · เลื่อน ⇒ NOT_ALLOWED{REFUND_IN_PROGRESS}", async () => {
+  await st("CN-5", "หลังยื่น: หน้าแสดง refund {QUOTED, ยอด, mine:true} + block REFUND_IN_PROGRESS · ยืนยันเบอร์ใหม่ ⇒ NOT_ALLOWED{REFUND_IN_PROGRESS} · grant เดิม + ฟอร์มใหม่ ⇒ DONE{refund} · ยังมี 1 แถว", async () => {
     needSelf(); const [b] = needBk("b19");
-    eq(await manageOf(b), { cancel: null, move: false, block: "REFUND_IN_PROGRESS", refund: { status: "QUOTED", amountSatang: REFUND50 } }, "manage");
+    eq(await manageOf(b), { cancel: null, block: "REFUND_IN_PROGRESS", refund: { status: "QUOTED", amountSatang: REFUND50, mine: true } }, "manage");
     BLOCKED(await verify(b, { clientKey: ck() }), "REFUND_IN_PROGRESS", "ยืนยันเบอร์ขณะคำขอเปิด");
     const g = G.b19 ?? "";
     ok(g, "ไม่มี grant จาก CN-4");
     const r = await cancelX(b, g, REFUND50);
-    ok(r.ok === false && r.code === "DONE" && isDeepStrictEqual(r.refund, { status: "QUOTED", amountSatang: REFUND50 }), `ยื่นซ้ำ: ${fmt(r)}`);
+    ok(r.ok === false && r.code === "DONE" && isDeepStrictEqual(r.refund, { status: "QUOTED", amountSatang: REFUND50, mine: true }), `ยื่นซ้ำ: ${fmt(r)}`);
     eq((await refunds(b.id)).length, 1, "คำขอยัง 1 แถว");
-    BLOCKED(await moveX(b, g, { d: "2027-03-21", t: "x", seen: String(TOTAL) }), "REFUND_IN_PROGRESS", "เลื่อนระหว่างคำขอเปิด");
   });
-  await st("CN-6", "ยกเลิกการจองที่ยังไม่จ่าย (HOLD): quote UNPAID คืน 0 · ยกเลิก (seen 0) ⇒ CANCELLED ทันที · ที่ถือคืนรอบ (held 0) · ไม่มีคำขอคืนเงิน · หน้าการจอง = CANCELLED · ยืนยันซ้ำ ⇒ NOT_ALLOWED{ENDED}", async () => {
+  await st("CN-6", "ยกเลิกการจองที่ยังไม่จ่าย (HOLD): quote UNPAID คืน 0 · ยกเลิก (seen 0) ⇒ CANCELLED ทันที · ที่ถือคืนรอบ (held 0) · ไม่มีคำขอ · audit K3 · หน้า = CANCELLED · ยืนยันซ้ำ ⇒ NOT_ALLOWED{ENDED}", async () => {
     needSelf(); const [b] = needBk("bHold");
     const g = await grantOf(b);
     const qv = asRec((await cancelQ(b, g)).vm) ?? {};
@@ -873,131 +975,40 @@ try {
     const r = await cancelX(b, g, 0);
     eq([r.ok, r.result, r.refundSatang], [true, "CANCELLED", 0], "ผล");
     eq([(await bRow(b.id)).status, (await depRow(b.dep)).held, (await refunds(b.id)).length], ["CANCELLED", 0, 0], "หลังยกเลิก");
+    k3(await auditsOf(b.id), "trips.booking.cancel", "audit ยกเลิก", b);
     eq(asRec((await openRes(b)).vm)?.state, "CANCELLED", "หน้าการจอง");
     BLOCKED(await verify(b, { clientKey: ck() }), "ENDED", "ยืนยันหลังยกเลิก");
   });
   await st("CN-7", "ร้านแก้ตารางยกเลิกหลังจอง (0% ทุกขั้น) ⇒ การจองเดิมยังคิดจาก snapshot: 45 วันคืนเต็ม (ข้อบังคับข้ามใบ ข)", async () => {
-    needSelf(); const [b] = needBk("bPx");
+    needSelf(); const [b] = needBk("b45");
     await setV(tA, [{ key: "trips.cancel.ladder", scope: "PRODUCT", scopeId: PRD.A?.id, value: [{ fromDaysBefore: 0, refundPct: 0 }] }]);
     const vm = asRec((await cancelQ(b, await grantOf(b))).vm) ?? {};
     eq([vm.refundSatang, vm.refundPct], [TOTAL, 100], "ยังคืนตาม snapshot");
   });
+  await st("CN-8", "K8 ร้านปฏิเสธคำขอ (decideTripRefund REJECT) ⇒ หน้า refund {REJECTED, mine:true} + block REFUND_REJECTED · ยืนยันเบอร์ ⇒ NOT_ALLOWED{REFUND_REJECTED} · grant เดิม + ฟอร์มใหม่ ⇒ NOT_ALLOWED{REFUND_REJECTED} · ยื่นใหม่ไม่ได้ (ยัง 1 แถว)", async () => {
+    needSelf(); const [b] = needBk("bRej");
+    const g = await grantOf(b);
+    const r = await cancelX(b, g, REFUND50);
+    ok(r.ok === true, `ยื่น: ${fmt(r)}`);
+    const rq = (await refunds(b.id))[0];
+    const d = await tcall("decideTripRefund", staffCtx(tA, ACT), { requestId: rq?.id, decision: "REJECT", reason: "ร้านปฏิเสธ (ทดสอบ)", idempotencyKey: `w13rej_${hex(6)}` });
+    ok(d.ok === true, `decideTripRefund REJECT: ${fmt(d)}`);
+    eq(await manageOf(b), { cancel: null, block: "REFUND_REJECTED", refund: { status: "REJECTED", amountSatang: REFUND50, mine: true } }, "manage");
+    BLOCKED(await verify(b, { clientKey: ck() }), "REFUND_REJECTED", "ยืนยันเบอร์หลังถูกปฏิเสธ");
+    BLOCKED(await cancelX(b, g, REFUND50), "REFUND_REJECTED", "ยื่นใหม่ด้วย grant เดิม");
+    eq((await refunds(b.id)).length, 1, "ยัง 1 แถว");
+  });
+  await st("CN-9", "K8 คำขอที่ร้านยื่นเอง (STAFF · อนุมัติอัตโนมัติ) ⇒ หน้า refund {APPROVED, mine:false} + block REFUND_IN_PROGRESS (ข้อความกลาง ไม่ใช่ \"คุณยื่นแล้ว\")", async () => {
+    const [b] = needBk("bStaffReq");
+    const v = (await bRow(b.id)).version;
+    const r = await tcall("requestTripRefund", staffCtx(tA, ACT), { bookingId: b.id, expectedVersion: v, reasonKind: "CUSTOMER", choice: "MONEY", reason: "ลูกค้าโทรมาแจ้ง", idempotencyKey: `w13sr_${hex(6)}` });
+    ok(r.ok === true, `requestTripRefund STAFF: ${fmt(r)}`);
+    eq(await manageOf(b), { cancel: null, block: "REFUND_IN_PROGRESS", refund: { status: "APPROVED", amountSatang: REFUND50, mine: false } }, "manage");
+  });
   groupLine("CN");
 
-  // ═══════════════ MV. เลื่อนรอบ ═══════════════
-  console.log("\n── MV: เลื่อนรอบ (สินค้าเดิม · ยอดเท่าเดิม · 1 ครั้ง) ──");
-  await st("MV-1", "quote เดือน เม.ย.: 16 เม.ย. เลือกได้ (left ≥ 3) · 19 เม.ย. (เต็ม) เลือกไม่ได้ · 18 เม.ย. (รอบยกเลิก) ไม่มีหรือเลือกไม่ได้ · ก.ค. 20 (เกิน X16 90 วัน) เลือกไม่ได้ · ไม่มีคีย์ภายใน", async () => {
-    needSelf(); const [b] = needBk("b45");
-    const g = await grantOf(b);
-    const r = await moveQ(b, g, { m: "2027-04" });
-    ok(r.ok === true, `quote: ${fmt(r)}`);
-    const days = asArr(asRec(r.vm)?.days);
-    const day = (d: string) => days.find((x) => x.date === d);
-    ok(day("2027-04-16")?.selectable === true && Number(day("2027-04-16")?.left) >= 3, `16 เม.ย.: ${fmt(day("2027-04-16"))}`);
-    ok(day("2027-04-19")?.selectable === false, `19 เม.ย. เต็ม: ${fmt(day("2027-04-19"))}`);
-    ok(!day("2027-04-18") || day("2027-04-18")?.selectable === false, `18 เม.ย. ยกเลิก: ${fmt(day("2027-04-18"))}`);
-    const j = await moveQ(b, g, { m: "2027-07" });
-    const jd = asArr(asRec(j.vm)?.days).find((x) => x.date === "2027-07-20");
-    ok(j.ok === true && (!jd || jd.selectable === false), `20 ก.ค. นอกหน้าต่าง: ${fmt(jd)}`);
-    noInternal(r.vm, [b.id, ...Object.values(DEP)], "vm เลื่อน", [b.phone]);
-  });
-  await st("MV-2", `quote วัน 16 เม.ย. ⇒ selected (token) · summary {totalSatang ${TOTAL}, sameTotal true} · form.nonce`, async () => {
-    needSelf(); const [b] = needBk("b45");
-    const r = await moveQ(b, await grantOf(b), { d: "2027-04-16", m: "2027-04" });
-    const vm = asRec(r.vm) ?? {};
-    ok(r.ok === true && typeof asRec(vm.selected)?.token === "string", `selected: ${fmt(r)}`);
-    eq(vm.summary, { totalSatang: TOTAL, sameTotal: true }, "summary");
-    ok(typeof asRec(vm.form)?.nonce === "string", "ไม่มี form.nonce");
-  });
-  await st("MV-3", "เลื่อน 15 → 16 เม.ย. ⇒ ok · การจองย้ายรอบ (departureId · travelDate) · version +1 · ยอด/เงินที่จ่าย/รหัสเท่าเดิม · ตารางยกเลิกใน snapshot เดิม · ที่นั่ง d45 −3 · d45b +3 · token เดิมเปิดหน้าเห็นวันใหม่", async () => {
-    needSelf(); const [b] = needBk("b45");
-    const g = await grantOf(b);
-    const before = await bRow(b.id), s45 = await depRow(DEP.d45 ?? ""), s45b = await depRow(DEP.d45b ?? "");
-    const t = await moveTokenOf(b, g, "2027-04-16");
-    const r = await moveX(b, g, { d: "2027-04-16", t, seen: String(TOTAL) });
-    eq([r.ok, r.date, r.replayed], [true, "2027-04-16", false], `ผล ${fmt(r)}`);
-    const after = await bRow(b.id);
-    eq([after.departureId, after.travelDate, after.version, after.paidSatang, payableOfSnap(after.policySnapshot), after.code, after.status],
-      [DEP.d45b, "2027-04-16", before.version + 1, TOTAL, TOTAL, before.code, "PAID"], "การจอง");
-    eq(after.policySnapshot.cancelLadder, before.policySnapshot.cancelLadder, "ตารางยกเลิกคงเดิม");
-    eq([(await depRow(DEP.d45 ?? "")).sold, (await depRow(DEP.d45b ?? "")).sold], [s45.sold - 3, s45b.sold + 3], "ที่นั่ง");
-    eq(asRec((await openRes(b)).vm)?.date, "2027-04-16", "หน้าการจอง");
-  });
-  await st("MV-4", "เลื่อนครบ 1 ครั้งแล้ว ⇒ manage.move false (MOVE_LIMIT) · เลื่อนอีก ⇒ NOT_ALLOWED{MOVE_LIMIT} ไม่เปลี่ยน", async () => {
-    needSelf(); const [b] = needBk("b45");
-    eq(await manageOf(b), { cancel: "REFUND_REQUEST", move: false, block: "MOVE_LIMIT", refund: null }, "manage");
-    const v = (await bRow(b.id)).version;
-    BLOCKED(await moveX(b, await grantOf(b), { d: "2027-04-15", t: "x", seen: String(TOTAL) }), "MOVE_LIMIT", "เลื่อนครั้งที่ 2");
-    eq((await bRow(b.id)).version, v, "version ไม่เปลี่ยน");
-  });
-  await st("MV-5", `วันที่ราคาต่าง (px +฿${PX_DELTA / 100}/ผู้ใหญ่) ⇒ quote sameTotal false · form null · ยิงเลื่อนตรง ⇒ NOT_ALLOWED{PRICE_DIFFERS} การจองไม่เปลี่ยน (b = จ่ายส่วนต่าง)`, async () => {
-    needSelf(); const [b] = needBk("bPx");
-    const g = await grantOf(b);
-    const r = await moveQ(b, g, { d: "2027-04-17", m: "2027-04" });
-    const vm = asRec(r.vm) ?? {};
-    ok(r.ok === true && asRec(vm.summary)?.sameTotal === false && Number(asRec(vm.summary)?.totalSatang) === TOTAL + 2 * PX_DELTA && vm.form === null, `quote px: ${fmt(r)}`);
-    const t = String(asRec(vm.selected)?.token ?? "");
-    const v = await bRow(b.id);
-    BLOCKED(await moveX(b, g, { d: "2027-04-17", t, seen: String(TOTAL) }), "PRICE_DIFFERS", "เลื่อนไปวันราคาต่าง");
-    eq([(await bRow(b.id)).version, (await bRow(b.id)).departureId], [v.version, v.departureId], "ไม่เปลี่ยน");
-  });
-  await st("MV-6", "ตัวอ้างรอบไม่ใช่ของวันที่ส่ง / รอบยกเลิก ⇒ SLOT_CLOSED (ไม่ถอยไปรอบอื่น · W7) · วันนอกหน้าต่าง X16 ⇒ NOT_ALLOWED{WINDOW}", async () => {
-    needSelf(); const [b] = needBk("bPx");
-    const g = await grantOf(b);
-    const t16 = await moveTokenOf(b, g, "2027-04-16");
-    const v = await bRow(b.id);
-    ERR(await moveX(b, g, { d: "2027-04-18", t: t16, seen: String(TOTAL) }), "SLOT_CLOSED", "t ของวันอื่น");
-    const jr = await moveQ(b, g, { d: "2027-07-20", m: "2027-07" });
-    const tj = String(asRec(asRec(jr.vm)?.selected)?.token ?? "");
-    BLOCKED(await moveX(b, g, { d: "2027-07-20", t: tj, seen: String(TOTAL) }), "WINDOW", "นอกหน้าต่าง");
-    eq((await bRow(b.id)).version, v.version, "ไม่เปลี่ยน");
-  });
-  await st("MV-7", "เลื่อนไม่ได้: ยังไม่จ่าย ⇒ NOT_ALLOWED{NOT_SOLD} · สินค้ามีค่าเปลี่ยนวัน ⇒ NOT_ALLOWED{FEE} · ยอดที่เห็นไม่ตรง ⇒ AMOUNT_CHANGED", async () => {
-    needSelf(); const [h, f, x] = needBk("bHold2", "bFee", "b45x");
-    BLOCKED(await moveX(h, await grantOf(h), { d: "2027-04-28", t: "x", seen: String(TOTAL) }), "NOT_SOLD", "HOLD");
-    BLOCKED(await moveX(f, await grantOf(f), { d: "2027-04-16", t: "x", seen: String(ONE) }), "FEE", "ค่าเปลี่ยนวัน");
-    const g = await grantOf(x);
-    const t = await moveTokenOf(x, g, "2027-04-16");
-    const r = await moveX(x, g, { d: "2027-04-16", t, seen: String(TOTAL - 100) });
-    ok(r.ok === false && r.code === "AMOUNT_CHANGED", `seen ผิด: ${fmt(r)}`);
-    eq((await bRow(x.id)).departureId, DEP.d45, "ไม่ย้าย");
-  });
-  groupLine("MV");
-
-  // ═══════════════ TK. ขอลิงก์ใหม่ ═══════════════
-  console.log("\n── TK: ขอลิงก์ใหม่ (เพิกถอน token โดยไม่ต้อง migration) ──");
-  await st("TK-1", "ขอลิงก์ใหม่ ⇒ token ใหม่ 43 ตัว ≠ เดิม · publicTokenHash = sha256(ใหม่) · token เดิมเปิดหน้า ⇒ NOT_FOUND · token ใหม่เปิดได้ รหัสเดิม · token ที่คำนวณจากสูตรเดิม (bookingPublicToken) ⇒ NOT_FOUND", async () => {
-    needSelf(); const [b] = needBk("bTk");
-    const code = (await bRow(b.id)).code;
-    const g = await grantOf(b);
-    const r = await rotate(b, g);
-    ok(r.ok === true && typeof r.token === "string" && /^[A-Za-z0-9_-]{43}$/.test(String(r.token)) && r.token !== b.token, `rotate: ${fmt(r)}`);
-    const nt = String(r.token);
-    eq((await bRow(b.id)).publicTokenHash, sha256hex(nt), "hash ใหม่");
-    ERR(await openRes(b, ACT), "NOT_FOUND", "token เดิม");
-    const o2 = await openRes(b, ACT, nt);
-    eq([o2.ok, asRec(o2.vm)?.code], [true, code], "token ใหม่");
-    const hm = tfn("bookingPublicToken")(b.id);
-    if (typeof hm === "string") ERR(await openRes(b, ACT, hm), "NOT_FOUND", "token จากสูตร HMAC เดิม");
-    const old = { ...b }; BK.bTkOld = old; b.token = nt;
-  });
-  await st("TK-2", "หลังขอลิงก์ใหม่: grant เดิมกับ token ใหม่ ⇒ VERIFY_REQUIRED · ส่งฟอร์มขอลิงก์เดิมซ้ำ (token เดิม) ⇒ NOT_FOUND · hash เปลี่ยนครั้งเดียว", async () => {
-    needSelf(); const [b, old] = needBk("bTk", "bTkOld");
-    const h0 = (await bRow(b.id)).publicTokenHash;
-    const gOld = await (async () => { const r = await verify(b, { clientKey: b.ck }); return String(r.grant ?? ""); })();
-    ok(gOld, "ยืนยันด้วย token ใหม่ไม่ได้");
-    ERR(await rotate(old, gOld), "NOT_FOUND", "ขอซ้ำด้วย token เดิม");
-    eq((await bRow(b.id)).publicTokenHash, h0, "hash ไม่เปลี่ยนอีก");
-    const g2 = await grantOf(b);
-    const r = await rotate(b, g2);
-    ok(r.ok === true, `ขอใหม่อีกรอบ: ${fmt(r)}`);
-    ERR(await cancelQ(b, g2, ACT, { token: String(r.token) }), "VERIFY_REQUIRED", "grant ของ token ก่อนหน้า");
-    b.token = String(r.token);
-  });
-  groupLine("TK");
-
   // ═══════════════ RL. ด่านอัตรา ═══════════════
-  console.log("\n── RL: ด่านอัตรา (คำสั่งเดียว · ปิดเมื่อพัง) ──");
+  console.log("\n── RL: ด่านอัตรา (คำสั่งเดียว · ปิดเมื่อพัง · K6) ──");
   await st("RL-1", "ด่านล่ม (deps.query โยน) ⇒ RATE_LIMITED LIMITER_DOWN ทุกฟังก์ชัน · ไม่มี grant/คำขอ/การเปลี่ยน", async () => {
     needSelf(); const [b] = needBk("bRL5");
     const down = { now: ACT.now, deps: { query: async () => { throw new Error("down"); } } };
@@ -1006,20 +1017,17 @@ try {
       ["verifyBookSelf", { shop: b.shop, token: b.token, form: { phone: b.phone, nonce: snonce(b, "verify", 60_000) }, clientKey: b.ck }],
       ["quoteBookSelfCancel", { shop: b.shop, token: b.token, grant: "g1.1.x", clientKey: b.ck }],
       ["cancelBookSelf", { shop: b.shop, token: b.token, grant: "g1.1.x", form: { seen: String(ONE), accept: "on", nonce: snonce(b, "cancel", 60_000) }, clientKey: b.ck }],
-      ["quoteBookSelfMove", { shop: b.shop, token: b.token, grant: "g1.1.x", query: { m: "2027-04" }, clientKey: b.ck }],
-      ["moveBookSelf", { shop: b.shop, token: b.token, grant: "g1.1.x", form: { d: "2027-04-16", t: "x", seen: String(ONE), nonce: snonce(b, "move", 60_000) }, clientKey: b.ck }],
-      ["rotateBookToken", { shop: b.shop, token: b.token, grant: "g1.1.x", form: { nonce: snonce(b, "rotate", 60_000) }, clientKey: b.ck }],
     ] as const) {
       const r = await call(name, input, down);
       ok(r.ok === false && r.code === "RATE_LIMITED" && r.reason === "LIMITER_DOWN", `${name}: ${fmt(r)}`);
     }
     const v1 = await bRow(b.id);
-    eq([v1.version, v1.publicTokenHash, (await refunds(b.id)).length], [v0.version, v0.publicTokenHash, 0], "ไม่เปลี่ยน");
+    eq([v1.version, (await refunds(b.id)).length], [v0.version, 0], "ไม่เปลี่ยน");
   });
   await st("RL-2", "กุญแจเครื่องผิดรูป ⇒ RATE_LIMITED NO_CLIENT (ทุกฟังก์ชัน · ไม่ถามฐาน)", async () => {
     needSelf(); const [b] = needBk("bRL5");
     for (const name of SSVC_FNS.slice(1)) {
-      const r = await call(name, { shop: b.shop, token: b.token, grant: "x", form: { phone: b.phone, nonce: "x", seen: "0", accept: "on", d: "2027-04-16", t: "x" }, query: {}, clientKey: "1.2.3.4" }, ACT);
+      const r = await call(name, { shop: b.shop, token: b.token, grant: "x", form: { phone: b.phone, nonce: "x", seen: "0", accept: "on" }, clientKey: "1.2.3.4" }, ACT);
       ok(r.ok === false && r.code === "RATE_LIMITED" && r.reason === "NO_CLIENT", `${name}: ${fmt(r)}`);
     }
   });
@@ -1031,40 +1039,44 @@ try {
     const later = await verify(b, { when: at(VMS + 16 * MIN) });
     ok(later.ok === true, `หลัง 16 นาที: ${fmt(later)}`);
   });
-  await st("RL-4", "ถังการจอง 10/ชม.: 10 เครื่องลองผิดคนละครั้ง ⇒ เครื่องที่ 11 เบอร์ถูก ⇒ RATE_LIMITED LIMIT · ไม่มีเบอร์/token ในคีย์ถังของใบนี้", async () => {
+  await st("RL-4", `K6 ถังการจองนับเฉพาะครั้งที่ผิด: ${WRONG_LIMIT} เครื่องลองผิดคนละครั้ง ⇒ เครื่องที่ ${WRONG_LIMIT + 1} เบอร์ถูก ⇒ RATE_LIMITED LOCKED + ช่องทางติดต่อร้าน (X30) · พ้น 24 ชม. ⇒ ผ่าน · คีย์ถัง = trips:verifyb:<ร้าน>:<sha256(tokenHash) 24> ไม่มีเบอร์/token`, async () => {
     needSelf(); const [b] = needBk("bRL4");
-    for (let i = 0; i < 10; i++) ERR(await verify(b, { phone: "0899999991", clientKey: ck() }), "VERIFY_FAILED", `เครื่อง ${i + 1}`);
+    for (let i = 0; i < WRONG_LIMIT; i++) ERR(await verify(b, { phone: "0899999991", clientKey: ck() }), "VERIFY_FAILED", `เครื่อง ${i + 1}`);
     const r = await verify(b, { clientKey: ck() });
-    ok(r.ok === false && r.code === "RATE_LIMITED" && r.reason === "LIMIT", `เครื่องที่ 11: ${fmt(r)}`);
+    ok(r.ok === false && r.code === "RATE_LIMITED" && r.reason === "LOCKED", `เครื่องที่ ${WRONG_LIMIT + 1}: ${fmt(r)}`);
+    eq(asRec(r.contact), { phone: SHOP_CONTACT.phone, line: SHOP_CONTACT.line }, "ช่องทางติดต่อร้านในผลล็อก");
+    ok(!JSON.stringify(r).includes(b.phone), "ผลล็อกมีเบอร์ผู้จอง");
+    const later = await verify(b, { clientKey: ck(), when: at(VMS + 24 * HOUR + MIN) });
+    ok(later.ok === true, `หลัง 24 ชม.: ${fmt(later)}`);
     const keys = (await q<{ key: string }>(`SELECT key FROM "ChatRateBucket" WHERE key LIKE $1 OR key LIKE $2`, [`trips:verify:${tA}:%`, `trips:verifyb:${tA}:%`])).map((x) => x.key);
-    ok(keys.length >= 2, `ไม่พบถัง trips:verify / trips:verifyb ของร้าน: ${fmt(keys.slice(0, 3))}`);
+    ok(keys.includes(lockKeyOf(b)), `ไม่พบถังการจองตามรูปคีย์ในใบสั่ง (${lockKeyOf(b).slice(0, 40)}…)`);
     const leak = keys.filter((k) => Object.values(BK).some((x) => k.includes(x.phone) || k.includes(x.phone.slice(1)) || k.includes(x.token) || k.includes(sha256hex(x.token))));
     ok(leak.length === 0, `คีย์ถังมีเบอร์/token: ${leak.slice(0, 2).join(" | ")}`);
   });
-  await st("RL-5", "เบอร์ผิดรูป (INVALID) ไม่กินโควตาลอง: 6 ครั้งผิดรูปแล้วเบอร์ถูก (เครื่องเดิม) ⇒ ผ่าน", async () => {
-    needSelf(); const [b] = needBk("bRL5");
-    for (let i = 0; i < X8_VERIFY + 1; i++) { const r = await verify(b, { phone: "abc" }); ok(r.ok === false && r.code === "INVALID", `ผิดรูป ${i + 1}: ${fmt(r)}`); }
-    const r = await verify(b);
-    ok(r.ok === true, `เบอร์ถูกหลังผิดรูป: ${fmt(r)}`);
+  await st("RL-5", "K6 ยืนยันถูกไม่กินถังการจอง: 30 เครื่องยืนยันถูกคนละครั้ง ⇒ ผ่านทั้ง 30 · จากนั้นเบอร์ผิด 1 ครั้ง ⇒ VERIFY_FAILED (ไม่ใช่ LOCKED) · เบอร์ผิดรูป (INVALID) 6 ครั้งจากเครื่องเดียวไม่กินโควตา", async () => {
+    needSelf(); const [b, c] = needBk("bRL4b", "bRL5");
+    for (let i = 0; i < 30; i++) { const r = await verify(b, { clientKey: ck() }); ok(r.ok === true, `ยืนยันถูกครั้งที่ ${i + 1}: ${fmt(r)}`); }
+    ERR(await verify(b, { phone: "0899999992", clientKey: ck() }), "VERIFY_FAILED", "ผิดหลัง 30 ครั้งถูก");
+    for (let i = 0; i < X8_VERIFY + 1; i++) { const r = await verify(c, { phone: "abc" }); ok(r.ok === false && r.code === "INVALID", `ผิดรูป ${i + 1}: ${fmt(r)}`); }
+    ok((await verify(c)).ok === true, "เบอร์ถูกหลังผิดรูป");
   });
   groupLine("RL");
 
   // ═══════════════ X1. ข้ามร้าน/ข้ามการจอง ═══════════════
   console.log("\n── X1: ข้ามร้าน/ข้ามการจอง ──");
-  await st("X1-1", "token ร้าน A ที่ URL ร้าน B ⇒ NOT_FOUND รูปเดียวทุกฟังก์ชัน (ยืนยัน/quote/ยกเลิก/เลื่อน/ลิงก์ใหม่) · ไม่มีการเปลี่ยน", async () => {
+  await st("X1-1", "token ร้าน A ที่ URL ร้าน B ⇒ NOT_FOUND รูปเดียว (ยืนยัน/quote/ยกเลิก) · ไม่มีการเปลี่ยน", async () => {
     needSelf(); const [b] = needBk("bX1");
     const g = await grantOf(b);
     const v0 = await bRow(b.id);
     ERR(await verify(b, { shop: SB, clientKey: ck() }), "NOT_FOUND", "ยืนยัน");
-    for (const [name, extra] of [["quoteBookSelfCancel", {}], ["cancelBookSelf", { form: { seen: String(REFUND50), accept: "on", nonce: snonce(b, "cancel", 60_000) } }], ["quoteBookSelfMove", { query: { m: "2027-04" } }],
-      ["moveBookSelf", { form: { d: "2027-04-16", t: "x", seen: String(ONE), nonce: snonce(b, "move", 60_000) } }], ["rotateBookToken", { form: { nonce: snonce(b, "rotate", 60_000) } }]] as const) {
+    for (const [name, extra] of [["quoteBookSelfCancel", {}], ["cancelBookSelf", { form: { seen: String(ONE), accept: "on", nonce: snonce(b, "cancel", 60_000) } }]] as const) {
       const r = await call(name, { shop: SB, token: b.token, grant: g, clientKey: b.ck, ...extra }, ACT);
       eq([r.ok, r.code], [false, "NOT_FOUND"], name);
     }
     const v1 = await bRow(b.id);
-    eq([v1.version, v1.publicTokenHash, (await refunds(b.id)).length], [v0.version, v0.publicTokenHash, 0], "ไม่เปลี่ยน");
+    eq([v1.version, (await refunds(b.id)).length], [v0.version, 0], "ไม่เปลี่ยน");
   });
-  await st("X1-2", "grant ของการจองหนึ่งใช้กับอีกการจอง (ร้านเดียวกัน เครื่องเดียวกัน) ⇒ VERIFY_REQUIRED · grant ร้าน B ใช้กับการจองร้าน A ⇒ VERIFY_REQUIRED", async () => {
+  await st("X1-2", "grant ของการจองหนึ่งใช้กับอีกการจอง (ร้านเดียวกัน IP เดียวกัน) ⇒ VERIFY_REQUIRED · grant ร้าน B ใช้กับการจองร้าน A ⇒ VERIFY_REQUIRED · ร้าน B ใช้ของตัวเองได้", async () => {
     needSelf(); const [a, a2, bb] = needBk("bX1", "bV2", "bB");
     const g = await grantOf(a);
     ERR(await cancelQ(a2, g, ACT, { clientKey: a.ck }), "VERIFY_REQUIRED", "grant ของ bX1 กับ bV2");
@@ -1077,28 +1089,18 @@ try {
 
   // ═══════════════ X3. ยิงพร้อมกัน ═══════════════
   console.log("\n── X3: ยิงพร้อมกัน ≥ 10 ──");
-  await st("X3-1", "ยกเลิกการจองที่จ่ายแล้ว 10 ฟอร์มพร้อมกัน (nonce ต่างกัน) ⇒ คำขอคืนเงิน 1 แถวพอดี (ยอด ฿6,475.00) · ผลอื่น = DONE/STATE_CHANGED ไม่มี THROW", async () => {
+  await st("X3-1", "ยกเลิกการจองที่จ่ายแล้ว 10 แท็บพร้อมกัน (nonce ต่างกัน) ⇒ คำขอคืนเงิน 1 แถวพอดี (ยอด ฿6,475.00) · ผลอื่น = DONE/STATE_CHANGED/BUSY ไม่มี THROW · การจองยัง PAID", async () => {
     needSelf(); const [b] = needBk("b19r");
     const g = await grantOf(b);
     const nonces = Array.from({ length: 10 }, (_, i) => snonce(b, "cancel", 60_000 - i * 1_000));
     const rs = await Promise.all(nonces.map((n) => cancelX(b, g, REFUND50, { nonce: n })));
-    const rr = await refunds(b.id);
-    eq(rr.map((x) => [x.status, x.amountSatang]), [["QUOTED", REFUND50]], "คำขอ 1 แถว");
+    eq((await refunds(b.id)).map((x) => [x.status, x.amountSatang]), [["QUOTED", REFUND50]], "คำขอ 1 แถว");
     ok(rs.filter((r) => r.ok === true).length >= 1, `ไม่มีตัวที่สำเร็จ: ${fmt(rs.map((r) => r.code ?? r.ok))}`);
     const bad = rs.filter((r) => r.ok !== true && !["DONE", "STATE_CHANGED", "BUSY"].includes(String(r.code)));
     ok(bad.length === 0, `ผลไม่คาด: ${fmt(bad.slice(0, 2))}`);
     eq((await bRow(b.id)).status, "PAID", "การจองยัง PAID");
   });
-  await st("X3-2", "10 การจองเลื่อนไปรอบที่เหลือ 1 ที่พร้อมกัน ⇒ สำเร็จ 1 พอดี · ที่เหลือ SOLD_OUT · รอบปลายทาง sold = capacity (ไม่ขายเกิน) · รอบต้นทาง sold 9", async () => {
-    needSelf(); const bs = needBk(...Array.from({ length: 10 }, (_, i) => `r${i}`));
-    const prep = await Promise.all(bs.map(async (b) => { const g = await grantOf(b); return { b, g, t: await moveTokenOf(b, g, "2027-04-22") }; }));
-    const rs = await Promise.all(prep.map(({ b, g, t }) => moveX(b, g, { d: "2027-04-22", t, seen: String(ONE) })));
-    eq(rs.filter((r) => r.ok === true).length, 1, `สำเร็จ ${fmt(rs.map((r) => r.code ?? r.ok))}`);
-    ok(rs.filter((r) => r.ok !== true).every((r) => r.code === "SOLD_OUT"), `ผลที่ไม่สำเร็จต้อง SOLD_OUT: ${fmt(rs.map((r) => r.code ?? r.ok))}`);
-    const l = await depRow(DEP.last ?? ""), s = await depRow(DEP.src ?? "");
-    eq([l.sold, l.held, l.sold + l.held <= l.capacity, s.sold], [12, 0, true, 9], "ที่นั่ง");
-  });
-  await st("X3-3", "ยกเลิก 10 ฟอร์ม (การจองยังไม่จ่าย) พร้อมกับร้านรับเงิน 1 ครั้ง ⇒ ไม่มีสภาพ CANCELLED ที่มีเงินเข้า · ที่นั่งรอบสอดคล้อง (PAID ⇒ sold 3 held 0 · CANCELLED ⇒ 0/0)", async () => {
+  await st("X3-2", "ยกเลิก 10 ฟอร์ม (การจองยังไม่จ่าย) พร้อมกับร้านรับเงิน 1 ครั้ง ⇒ ไม่มีสภาพ CANCELLED ที่มีเงินเข้า · ที่นั่งรอบสอดคล้อง (PAID ⇒ sold 3 held 0 · CANCELLED ⇒ 0/0)", async () => {
     needSelf(); const [b] = needBk("bRace");
     const g = await grantOf(b);
     const nonces = Array.from({ length: 10 }, (_, i) => snonce(b, "cancel", 60_000 - i * 1_000));
@@ -1116,8 +1118,8 @@ try {
   groupLine("X3");
 
   // ═══════════════ X4. ส่งซ้ำ ═══════════════
-  console.log("\n── X4: ส่งซ้ำ (ฟอร์มเดิม) ──");
-  await st("X4-1", "ส่งฟอร์มยกเลิกเดิมซ้ำ (การจองที่จ่ายแล้ว) ⇒ ครั้งที่ 2 ok replayed true ยอดเดิม · คำขอ 1 แถว", async () => {
+  console.log("\n── X4: ส่งซ้ำ (ฟอร์มเดิม · K5) ──");
+  await st("X4-1", "ส่งฟอร์มยกเลิกเดิมซ้ำ (การจองที่จ่ายแล้ว) ⇒ ครั้งที่ 2 ok replayed true ยอดเดิม (ไม่ติดด่าน REFUND_IN_PROGRESS) · คำขอ 1 แถว", async () => {
     needSelf(); const [b] = needBk("b19rep");
     const g = await grantOf(b);
     const n = snonce(b, "cancel", 60_000);
@@ -1125,18 +1127,7 @@ try {
     eq([r1.ok, r1.replayed, r2.ok, r2.replayed, r2.refundSatang, r2.result], [true, false, true, true, REFUND50, "REFUND_REQUESTED"], "ผล");
     eq((await refunds(b.id)).length, 1, "คำขอ 1 แถว");
   });
-  await st("X4-2", "ส่งฟอร์มเลื่อนเดิมซ้ำ ⇒ ครั้งที่ 2 ok replayed true (ไม่ติด MOVE_LIMIT) · version +1 ครั้งเดียว · ที่นั่งย้ายครั้งเดียว", async () => {
-    needSelf(); const [b] = needBk("b45x");
-    const g = await grantOf(b);
-    const t = await moveTokenOf(b, g, "2027-04-16");
-    const v0 = (await bRow(b.id)).version, s0 = (await depRow(DEP.d45b ?? "")).sold;
-    const n = snonce(b, "move", 60_000);
-    const r1 = await moveX(b, g, { d: "2027-04-16", t, seen: String(TOTAL) }, { nonce: n });
-    const r2 = await moveX(b, g, { d: "2027-04-16", t, seen: String(TOTAL) }, { nonce: n });
-    eq([r1.ok, r1.replayed, r2.ok, r2.replayed, r2.date], [true, false, true, true, "2027-04-16"], "ผล");
-    eq([(await bRow(b.id)).version, (await depRow(DEP.d45b ?? "")).sold], [v0 + 1, s0 + 3], "ครั้งเดียว");
-  });
-  await st("X4-3", "ส่งฟอร์มยกเลิกการจองยังไม่จ่ายซ้ำ ⇒ ครั้งที่ 2 ok replayed true · CANCELLED ครั้งเดียว · held ไม่ติดลบ", async () => {
+  await st("X4-2", "ส่งฟอร์มยกเลิกการจองยังไม่จ่ายซ้ำ ⇒ ครั้งที่ 2 ok replayed true (ไม่ติดด่าน ENDED) · CANCELLED ครั้งเดียว · held ไม่ติดลบ", async () => {
     needSelf(); const [b] = needBk("bHold2");
     const g = await grantOf(b);
     const n = snonce(b, "cancel", 60_000);
@@ -1162,20 +1153,14 @@ try {
     for (const g of ["g1." + "9".repeat(5_000), null, 12, { g: 1 }, "g1.१२३.AAAAAAAAAAAAAAAAAAAAAA"]) ERR(await cancelQ(b, g), "VERIFY_REQUIRED", `grant ${fmt(g).slice(0, 20)}`);
     for (const n of ["x".repeat(5_000), null, 1, ["a"]]) { const r = await verify(b, { nonce: n, clientKey: ck() }); ok(r.ok === false && r.code === "INVALID", `nonce ${fmt(n).slice(0, 20)}: ${fmt(r)}`); }
   });
-  await st("X6-3", "seen ผิดรูป (-1 · 1e5 · 01 · 6475.00 · ช่องว่าง · ว่าง · 99999999999) ⇒ INVALID[seen] · ไม่มีคำขอ · d ผิดรูป (2027-02-30 · ../ · 2027-4-16) ⇒ INVALID[d] ไม่เปลี่ยน", async () => {
+  await st("X6-3", "seen ผิดรูป (-1 · 1e5 · 01 · 4100.00 · ช่องว่าง · ว่าง · 99999999999) ⇒ INVALID[seen] · ไม่มีคำขอ", async () => {
     needSelf(); const [b] = needBk("bX6");
     const g = await grantOf(b);
-    for (const s of ["-1", "1e5", "01", "6475.00", " 410000", "", "99999999999"]) {
+    for (const s of ["-1", "1e5", "01", "4100.00", " 410000", "", "99999999999"]) {
       const r = await cancelX(b, g, s);
       ok(r.ok === false && r.code === "INVALID" && Array.isArray(r.fields) && (r.fields as unknown[]).includes("seen"), `seen ${JSON.stringify(s)}: ${fmt(r)}`);
     }
     eq((await refunds(b.id)).length, 0, "ไม่มีคำขอ");
-    const v = (await bRow(b.id)).version;
-    for (const d of ["2027-02-30", "../", "2027-4-16"]) {
-      const r = await moveX(b, g, { d, t: "x", seen: String(ONE) });
-      ok(r.ok === false && r.code === "INVALID" && Array.isArray(r.fields) && (r.fields as unknown[]).includes("d"), `d ${d}: ${fmt(r)}`);
-    }
-    eq((await bRow(b.id)).version, v, "ไม่เปลี่ยน");
   });
   await st("X6-4", "token อันตราย (../ · unicode · 5,000 ตัว · ว่าง) ⇒ NOT_FOUND · form ไม่ใช่อ็อบเจกต์/มี __proto__ ⇒ INVALID ไม่ throw", async () => {
     needSelf(); const [b] = needBk("bX6");
@@ -1189,27 +1174,26 @@ try {
 
   // ═══════════════ PII ═══════════════
   console.log("\n── PII ──");
-  await st("PII-1", "ผลของ verify/quote/cancel/move/rotate และหน้าการจอง (vm.manage) ไม่มี id ภายใน/เบอร์/อีเมล/ชื่อผู้จอง/publicTokenHash", async () => {
+  await st("PII-1", "ผลของ verify/quote ยกเลิก และหน้าการจอง (vm.manage) ไม่มี id ภายใน/เบอร์/อีเมล/ชื่อผู้จอง/publicTokenHash", async () => {
     needSelf(); const [b] = needBk("bV2");
     const g = await grantOf(b);
     const name = String((await q<{ name: string }>(`SELECT p.name FROM "Party" p JOIN "TripBooking" t ON t."bookerPartyId" = p.id WHERE t.id = $1`, [b.id]))[0]?.name ?? "");
     const ids = [b.id, b.dep, sha256hex(b.token), ...Object.values(PRD).map((p) => p.id)];
-    for (const [what, r] of [["quote ยกเลิก", await cancelQ(b, g)], ["quote เลื่อน", await moveQ(b, g, { m: "2027-04", d: "2027-04-25" })], ["หน้าการจอง", await openRes(b)]] as const) {
+    for (const [what, r] of [["quote ยกเลิก", await cancelQ(b, g)], ["หน้าการจอง", await openRes(b)]] as const) {
       ok(r.ok === true, `${what}: ${fmt(r)}`);
       noInternal(r.vm, ids, what, [b.phone, b.phone.slice(1), name]);
     }
   });
-  await st("PII-2", "audit/คำขอคืนเงิน/ถังของร้านทดสอบไม่มีเบอร์ผู้จองหรือ token (ข้อความดิบ)", async () => {
+  await st("PII-2", "audit/คำขอคืนเงิน/ถังของร้านทดสอบไม่มีเบอร์ผู้จองหรือ token (ข้อความดิบ) · มีแถว audit จากเส้นลูกค้า (actorId trips.public.self) ให้ตรวจ", async () => {
     needSelf(); needBk("b19");
-    const audits = await q<{ s: string }>(`SELECT coalesce("after"::text, '') || coalesce("before"::text, '') AS s FROM "AuditLog" WHERE "tenantId" = $1`, [tA]);
+    const audits = await q<{ s: string; a: string | null }>(`SELECT coalesce("after"::text, '') || coalesce("before"::text, '') AS s, "actorId" AS a FROM "AuditLog" WHERE "tenantId" = $1`, [tA]);
     const reqs = await q<{ s: string }>(`SELECT computed::text || coalesce("idempotencyKey", '') AS s FROM "TripRefundRequest" WHERE "tenantId" = $1`, [tA]);
     const blob = [...audits, ...reqs].map((x) => x.s).join("\n");
     const leak = Object.values(BK).filter((x) => blob.includes(x.phone) || blob.includes(x.token));
     ok(leak.length === 0, `พบเบอร์/token ใน audit/คำขอ: ${leak.map((x) => x.tag).slice(0, 3).join(",")}`);
-    ok(audits.length > 0 && reqs.length > 0, "ไม่มีแถว audit/คำขอให้ตรวจ (ยังไม่มีงาน)");
+    ok(audits.some((x) => x.a === PUBLIC_ACTOR_ID), "ไม่มีแถว audit จากเส้นลูกค้า (ยังไม่มีงาน)");
   });
   groupLine("PII");
-
   exitCode = cks.some((c) => c.res !== "PASS") ? 1 : 0;
 } catch (e) {
   record("FATAL", "ข้อสอบล้มกลางทาง (ไม่ควรเกิด)", "FAIL", errMsg(e));
@@ -1223,13 +1207,13 @@ try {
   await pool.end().catch(() => undefined);
 }
 
-console.log(`\nเหลือให้ด่านภาพ + การเปิดจริง (ผู้คุม · scripts/visual-trips.mts w1.3 + parity 01ง/07ง): ฟอร์มส่งได้โดยไม่มี JS · grant ไม่อยู่ใน URL หลังทำสำเร็จ · ลิงก์เดิม 404 หลังขอลิงก์ใหม่ · ปุ่ม ≥ 44 px · 390 ไม่ล้น`);
+console.log(`\nเหลือให้ด่านภาพ + การเปิดจริง (ผู้คุม · scripts/visual-trips.mts w1.3 + parity 01ง/07ง): ฟอร์มส่งได้โดยไม่มี JS · grant ไม่อยู่ใน URL หลังทำสำเร็จ · หน้าที่มี g ส่ง Referrer-Policy no-referrer + Cache-Control no-store (K7 · curl -I) · ปุ่ม ≥ 44 px · 390 ไม่ล้น`);
 const failed = cks.filter((c) => c.res === "FAIL");
 const skipped = cks.filter((c) => c.res === "SKIP");
 const passed = cks.length - failed.length - skipped.length;
 const groupsOut: Record<string, string> = {};
 for (const c of cks) { const g = c.id.replace(/-\d+$/, ""); const [p0, t0] = (groupsOut[g] ?? "0/0").split("/").map(Number); groupsOut[g] = `${(p0 ?? 0) + (c.res === "PASS" ? 1 : 0)}/${(t0 ?? 0) + 1}`; }
-console.log(`\n===== QC TRIPS W1.3a · การจองของฉัน: ยืนยันเบอร์ → ยกเลิก/คำขอคืนเงิน · เลื่อนรอบ · ขอลิงก์ใหม่ =====\nผ่าน ${passed}/${cks.length} · ไม่ผ่าน ${failed.length} · ข้าม ${skipped.length}`);
+console.log(`\n===== QC TRIPS W1.3a · การจองของฉัน: ยืนยันเบอร์ → ยกเลิกก่อนจ่าย · คำขอคืนเงิน · สถานะคำขอ =====\nผ่าน ${passed}/${cks.length} · ไม่ผ่าน ${failed.length} · ข้าม ${skipped.length}`);
 console.log(`ต่อกลุ่ม: ${Object.entries(groupsOut).map(([g, v]) => `${g} ${v}`).join(" · ")}`);
 const KNOWN_RED: string[] = []; // ยังไม่มีแดงที่รู้จัก — ผู้คุมเพิ่มด้วย ORACLE-EDIT เท่านั้น
 const knownRed = failed.filter((c) => KNOWN_RED.includes(c.id)).map((c) => c.id), otherRed = failed.filter((c) => !KNOWN_RED.includes(c.id)).map((c) => c.id);
