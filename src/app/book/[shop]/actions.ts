@@ -7,7 +7,7 @@
 import { headers } from "next/headers";
 import { notFound, redirect } from "next/navigation";
 import { confirmBookHold, releaseBookHold, startBookHold } from "@/lib/platform/trips-book";
-import { BOOK_HOLD_LIMITED, bookCheckoutHref, bookRedirectOk, bookReservationHref, bookSelectHref } from "@/lib/platform/trips-book-core";
+import { BOOK_HOLD_LIMITED, bookCheckoutHref, bookRedirectOk, bookReservationHref, bookSelectHref, bookWaitOfSec } from "@/lib/platform/trips-book-core";
 import { bookRequestFromHeaders } from "@/lib/platform/trips-public";
 
 /** ค่าสตริงของฟอร์ม (ตัวแรกของแต่ละชื่อ · ไม่เกิน 200 ช่อง) — ไฟล์/ค่าอื่นทิ้ง */
@@ -31,7 +31,7 @@ export async function startBookHoldAction(shop: unknown, productSlug: unknown, d
   const req = bookRequestFromHeaders((name) => h.get(name), "POST");
   const r = await startBookHold({ shop, productSlug, form: formOf(data), acceptLanguage: req.acceptLanguage, clientKey: req.clientKey });
   if (r.ok && bookRedirectOk({ shopSlug: r.shopSlug, basketToken: r.basketToken, sel: r.sel })) redirect(bookCheckoutHref(r.shopSlug, r.basketToken, r.sel, null, r.lang));
-  if (!r.ok && r.back && bookRedirectOk({ shopSlug: r.shopSlug })) redirect(bookSelectHref(r.shopSlug ?? "", r.back, r.holdLimited ? BOOK_HOLD_LIMITED : r.code));
+  if (!r.ok && r.back && bookRedirectOk({ shopSlug: r.shopSlug })) redirect(bookSelectHref(r.shopSlug ?? "", r.back, r.holdLimited ? BOOK_HOLD_LIMITED : r.code, bookWaitOfSec(r.retryAfterSec)));
   notFound();
 }
 
@@ -43,7 +43,7 @@ export async function confirmBookHoldAction(shop: unknown, basketToken: unknown,
   if (r.ok && bookRedirectOk({ shopSlug: r.shopSlug, token: r.token })) redirect(bookReservationHref(r.shopSlug, r.token, r.lang));
   if (!r.ok) {
     if (r.code === "DONE" && bookRedirectOk({ shopSlug: r.shopSlug, token: r.token })) redirect(bookReservationHref(r.shopSlug ?? "", r.token ?? "", r.lang));
-    if (bookRedirectOk({ shopSlug: r.shopSlug, basketToken, sel })) redirect(bookCheckoutHref(r.shopSlug ?? "", String(basketToken), String(sel), { e: r.code, f: r.fields }, r.lang));
+    if (bookRedirectOk({ shopSlug: r.shopSlug, basketToken, sel })) redirect(bookCheckoutHref(r.shopSlug ?? "", String(basketToken), String(sel), { e: r.code, f: r.fields, r: bookWaitOfSec(r.retryAfterSec) }, r.lang));
   }
   notFound();
 }

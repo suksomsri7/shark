@@ -19,7 +19,7 @@ import { emitOutboxMany } from "@/lib/core/outbox";
 import type { BookingRef, CancelResult, DueSpec, Hold, LedgerDraft, Quote, QuoteRequest, SellActor, SellCtx, SellResult } from "@/lib/core/sellable";
 import { resolveSettings } from "@/lib/core/settings";
 import { requestBindings } from "@/lib/modules/approval";
-import { safeFindOrCreate } from "@/lib/modules/party";
+import { normalizePartyPhone, safeFindOrCreate } from "@/lib/modules/party";
 import {
   approveRequestSchema,
   bookNowRequestSchema,
@@ -459,9 +459,11 @@ async function reserveHoldsInTx(tx: Tx, sc: SellCtx, lines: readonly { departure
   const sum = new Map<string, number>();
   for (const l of lines) sum.set(l.departureId, (sum.get(l.departureId) ?? 0) + l.qty);
   for (const id of [...sum.keys()].sort(byStr)) {
-    for (let left = sum.get(id) ?? 0; left > 0; left -= QTY_MAX) {
+    // T0.4d D4: ก้อนหลังนับก้อนก่อนของตะกร้านี้ (prior) เข้าเพดาน PUBLIC — ล้มก้อนใด ⇒ ทั้งธุรกรรม rollback (ไม่มีที่ถือของตะกร้าเหลือ)
+    for (let left = sum.get(id) ?? 0, prior = 0; left > 0; left -= QTY_MAX) {
       const qty = Math.min(left, QTY_MAX);
-      await reserveInTx(tx, sc, [{ layer: "1a", table: "TripDeparture", id, sortKey: id }], { op: "HOLD", qtyPublic: qty, qtyAllot: 0, ...(capKey ? { capKey } : {}), policies });
+      await reserveInTx(tx, sc, [{ layer: "1a", table: "TripDeparture", id, sortKey: id }], { op: "HOLD", qtyPublic: qty, qtyAllot: 0, ...(capKey ? { capKey } : {}), policies, prior });
+      prior += qty;
     }
   }
 }
@@ -481,6 +483,8 @@ async function insertHoldsInTx(tx: Tx, sc: SellCtx, lines: readonly { departureI
  */
 const lockTripsKey = (tx: Tx, kind: "approval" | "change", id: string) =>
   tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips.booking.v1'), hashtext(${`${kind}:${id}`}))`;
+/** T0.4d D2/G3: ล็อกผู้จอง (ก่อนหา/สร้าง Party) — คลาส trips.booker.v1 ของตัวเอง ไม่ปนกับ pay/change/refund/approval */
+const lockBookerKey = (tx: Tx, key: string) => tx.$queryRaw`SELECT 1 AS "locked" FROM pg_advisory_xact_lock(hashtext('trips.booker.v1'), hashtext(${key}))`;
 /** แถวบันทึกการใช้คำอนุมัติ (S4): action นี้ + targetId = approvalId — ค้นผ่าน index "AuditLog_action_idx" (action เป็นของการใช้คำอนุมัติอย่างเดียว) */
 const APPROVAL_CONSUMED = "trips.approval.consumed";
 /**
@@ -996,6 +1000,14 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
   // คำอนุมัติราคาแก้มือ: ใช้ได้ครั้งเดียว (R1)
   if (P.approvalIds.length) await consumeApprovalsInTx(t, { tenantId: c.tenantId, unitId: c.unitId, actor: c.actor }, P.approvalIds, P.lines.map((l) => l.bookingId));
   // ผู้จอง (T0.4c): หา/สร้าง Party ผ่าน client ของ tx นี้ (ไม่มี connection ที่สอง · Party ไม่มี unique ⇒ ไม่รอใคร) — ล้ม/rollback ⇒ ไม่มี Party ค้าง
+  // T0.4d D2: ผู้จองใหม่คนเดียวกันยืนยันพร้อมกัน ⇒ เรียงคิวต่อ (ร้าน + เบอร์ normalize · ไม่มีเบอร์ ⇒ อีเมลตัวเล็ก) ก่อนหา/สร้าง Party ทุกผู้กระทำ
+  // (มติ E2: ล็อกที่ตามมา = เลขจอง · promo · CAS ตะกร้า ขอหลังล็อกนี้เสมอ) — ไม่มีทั้งคู่ ⇒ ไม่ล็อก
+  if (!("partyId" in P.booker)) {
+    // G1: ตรงกับการจับคู่ของ Party (เบอร์ ≥ 8 หลัก · ชื่อ+อีเมล) — p ก่อน e เสมอ · G3: คลาสของตัวเอง
+    const ph = normalizePartyPhone(P.booker.phone), em = P.booker.email?.trim().toLowerCase() ?? "";
+    if (ph.length >= 8) await lockBookerKey(t, `p:${c.tenantId}:${ph}`);
+    if (em) await lockBookerKey(t, `e:${c.tenantId}:${em}`);
+  }
   const bookerPartyId = "partyId" in P.booker ? P.booker.partyId : await safeFindOrCreate(c.tenantId, { name: P.booker.name, phone: P.booker.phone, email: P.booker.email }, t);
   if (!bookerPartyId) throw new BookingAbort("BUSY", { reason: "BOOKER_UNAVAILABLE" });
   // 2c เลขจอง: จองเลขเรียง (prefix, งวด) ก่อน แล้วจึงคืนให้บรรทัด (R7 — แถว SellCounter ล็อกตามลำดับเดียวกันทุกตะกร้า)

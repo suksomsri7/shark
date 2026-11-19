@@ -31,6 +31,7 @@ import {
 import {
   HOLD_PURPOSES,
   PUBLIC_CHANNELS,
+  PUBLIC_IDEM_PREFIX,
   QTY_MAX,
   QTY_MIN,
   WAITLIST_CHANNEL,
@@ -597,6 +598,8 @@ type Phase1 = {
   cap?: { hash: string; limit: number; lock: "BLOCK" | "TRY" };
   /** ตรวจคีย์ซ้ำหลังได้ล็อก (คำขอซ้อน) — คืนแถวเดิม ⇒ หยุด ไม่แตะตัวนับ */
   dupCheck?: () => Promise<HoldRow | null>;
+  /** T0.4d D4: ที่นั่งของตะกร้าเดียวกันบนรอบนี้ที่ก้อนก่อนหน้าใน tx นี้กันไว้แล้ว (ยังไม่มีแถว hold) — นับเข้าเพดาน PUBLIC */
+  prior?: number;
 };
 /**
  * ชั้น 0 (BLOCK) → สินค้า FOR SHARE → [TRY ชั้น 0] → นับเพดาน → 1a ล็อกรอบ → ตรวจปิดรับ/หยุดขาย/สถานะของ ctx.channel + ที่ว่าง → D.1(1)
@@ -624,23 +627,24 @@ async function phase1HoldInTx(tx: Tx, g: Gate, c: Ctx, a: Phase1): Promise<{ dep
   const b = blockOf(d, a.policy, g.tz, c.channel, c.clock.now, false);
   if (b) throw blockAbort(d, b);
   if (publicLeftOf(d) < a.qty) throw new CapacityAbort("SOLD_OUT", { publicLeft: Math.max(0, publicLeftOf(d)) });
-  if (isPublic(c)) await assertPublicShareInTx(tx, g, c, d, a.qty, a.policy);
+  if (isPublic(c)) await assertPublicShareInTx(tx, g, c, d, a.qty, a.policy, a.prior ?? 0);
   return { dep: d, counters: await holdSeatsSql(tx, g, d.id, a.qty, c.clock) };
 }
 
 /**
  * T0.4c เพดานที่ถือไม่จ่ายของผู้กระทำ PUBLIC ต่อรอบ (X31) — เรียกใต้ล็อก 1a ของรอบนี้เท่านั้น (SELECT ไม่ล็อก · ทุกเส้นทางที่ INSERT hold PUBLIC
- * ของรอบถือล็อกแถวรอบอยู่ ⇒ นับ+เพิ่มเป็นลำดับเดียว) · hold ที่นับ: ACTIVE · expiresAt > ctx.now · ช่องทางสาธารณะ · PAYMENT|SHOP_CONFIRM
+ * ของรอบถือล็อกแถวรอบอยู่ ⇒ นับ+เพิ่มเป็นลำดับเดียว) · hold ที่นับ: ACTIVE · expiresAt > ctx.now · ผู้กระทำ PUBLIC (คำนำหน้าคีย์กันซ้ำ · T0.4d D3) · PAYMENT|SHOP_CONFIRM
  * เพดาน = ceil(ความจุ × % / 100) · ยังไม่มีที่ถือที่นับ ⇒ ถือได้แม้เกิน (ตะกร้าแรก · Q1) · เกิน ⇒ HOLD_LIMIT reason PUBLIC_UNPAID_SHARE + retryAfterSec (ไม่บอกจำนวน)
  */
-async function assertPublicShareInTx(tx: Tx, g: Gate, c: Ctx, d: DepRow, qty: number, pol: DeparturePolicy): Promise<void> {
+async function assertPublicShareInTx(tx: Tx, g: Gate, c: Ctx, d: DepRow, qty: number, pol: DeparturePolicy, prior: number): Promise<void> {
   const rows = await tx.$queryRaw<{ seats: number; first: Date | null }[]>`
     SELECT COALESCE(sum("qtyPublic" + "qtyAllot"), 0)::int AS "seats", min("expiresAt") AS "first" FROM "TripHold"
     WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "departureId" = ${d.id} AND "status" = 'ACTIVE' AND "expiresAt" > ${c.clock.iso}::timestamp
-      AND "channel" = ANY(${[...PUBLIC_CHANNELS]}::text[]) AND "purpose" IN ('PAYMENT', 'SHOP_CONFIRM')`;
+      AND left("idempotencyKey", ${PUBLIC_IDEM_PREFIX.length}) = ${PUBLIC_IDEM_PREFIX} AND "purpose" IN ('PAYMENT', 'SHOP_CONFIRM')`;
   const seats = rows[0]?.seats ?? 0;
   const first = rows[0]?.first ?? null;
-  if (seats === 0 || seats + qty <= Math.ceil((d.capacity * pol.unpaidHoldMaxPct) / 100)) return;
+  // ตะกร้าแรก = ยังไม่มีแถวที่นับ (ไม่รวมก้อนของตะกร้านี้เอง · ข้อยกเว้นเดิม) · มีแล้ว ⇒ นับก้อนก่อนหน้าของตะกร้านี้ด้วย (D4)
+  if (seats === 0 || seats + prior + qty <= Math.ceil((d.capacity * pol.unpaidHoldMaxPct) / 100)) return;
   // มติผู้คุม (PH-8): ไม่บอกลูกค้าให้รอนานกว่าเวลาถือรอชำระของร้าน (T5) — ที่ถือแบบรอร้านยืนยัน (X2) อายุเป็นชั่วโมง ไม่ใช่เวลาที่ควรกลับมาลอง
   const untilFirst = Math.max(1, Math.ceil(((first ? new Date(first).getTime() : c.clock.now.getTime()) - c.clock.now.getTime()) / 1000));
   const retryAfterSec = pol.durations.holdMinutes ? Math.min(untilFirst, pol.durations.holdMinutes * 60) : untilFirst;
@@ -1124,7 +1128,7 @@ const ROW = z.object({ layer: z.enum(["1a", "1b", "1c"]), table: z.string().min(
  * intent ของ trips: ReserveIntent + capKey ของตะกร้า (บังคับเมื่อผู้กระทำสาธารณะ — เพดานถือ) + policies (ผล loadCapacityPolicies — ส่งผ่านเรียก Sellable
  * 4 อาร์กิวเมนต์ได้แน่นอน ไม่พึ่งแคช · r3 N1)
  */
-export type TripReserveIntent = ReserveIntent & { capKey?: string; policies?: CapacityPolicies };
+export type TripReserveIntent = ReserveIntent & { capKey?: string; policies?: CapacityPolicies; prior?: number };
 function intentPolicies(intent: unknown): CapacityPolicies | undefined {
   const p = intent !== null && typeof intent === "object" ? (intent as { policies?: unknown }).policies : undefined;
   if (p === undefined) return undefined;
@@ -1149,7 +1153,7 @@ export async function reserveInTx(tx: unknown, ctx: unknown, rows: unknown, inte
   const c = pc.c;
   const pr = z.array(ROW).min(1).max(QTY_MAX).safeParse(rows);
   if (!pr.success) abortOf(invalidInput(pr.error));
-  const pi = INTENT.safeParse(intent);
+  const pi = INTENT.extend({ prior: z.number().int().min(0).max(2_147_483_647).optional() }).safeParse(intent);
   if (!pi.success) abortOf(invalidInput(pi.error));
   const it = pi.data;
   if (it.qtyAllot > 0) throw new CapacityAbort("FORBIDDEN", { reason: "AGENCY_NOT_ENABLED" });
@@ -1167,7 +1171,7 @@ export async function reserveInTx(tx: unknown, ctx: unknown, rows: unknown, inte
     if (it.op === "HOLD") {
       const policy = requirePolicy(policies, g, r.id);
       const cap = capHash ? { hash: capHash, limit: requireHoldCap(policies, g), lock: "TRY" as const } : undefined;
-      const res = await phase1HoldInTx(t, g, c, { departureId: r.id, qty: it.qtyPublic, policy, cap });
+      const res = await phase1HoldInTx(t, g, c, { departureId: r.id, qty: it.qtyPublic, policy, cap, prior: it.prior });
       if ("dup" in res) throw new CapacityAbort("STATE_CONFLICT");
       slotId = res.dep.id;
     } else {

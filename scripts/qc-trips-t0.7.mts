@@ -1294,7 +1294,7 @@ try {
     await needDb(); const b = await mkBooking(); await payOk(b, SHORT); await payOk(b, TOTAL - SHORT);
     const o = await outboxFor("trips.payment.received", b.id); const e = await evs(b.id);
     eq([o.length, o.map((x) => Object.keys(x.payload).sort()), o.map((x) => x.idempotencyKey).sort()], [2, [PAY_KEYS, PAY_KEYS], e.map((x) => `trips.payment.received:${x.id}`).sort()], "event");
-    ok(!o.some((x) => JSON.stringify(x.payload).includes(b.code) || /ลูกค้าทดสอบ|08\d{8}/.test(JSON.stringify(x.payload))), "มีข้อมูลบุคคล/เลขจอง");
+    ok(!o.some((x) => JSON.stringify(x.payload).includes(b.code) || /ลูกค้าทดสอบ|(?<![0-9a-z])08\d{8}(?![0-9a-z])/.test(JSON.stringify(x.payload))), "มีข้อมูลบุคคล/เลขจอง"); // ORACLE-EDIT (ผู้คุม · T0.4d): ขอบตัวเลข — แบบเดิมชนแฮชฐานสิบหกได้โดยบังเอิญ (เหมือน EV-4)
   });
   await st("EV-2", "สถานะเงิน: HOLD→PAID ยิง confirmed + paid ครั้งเดียว · CONFIRMED→PART_PAID→PAID ยิง part_paid 1 + paid 1 · payload ชุด T0.6 (amountSatang = payable)", async () => {
     await needDb(); const h = await mkBooking({ pay: "PAY_NOW" }); await payOk(h, TOTAL);
@@ -1315,7 +1315,8 @@ try {
     const acts = new Set(rows.map((r) => String(r.action)));
     const miss = ["trips.payment.record", "trips.refund.request", "trips.refund.approve", "trips.refund.execute"].filter((a) => !acts.has(a));
     ok(miss.length === 0, `ขาด audit: ${miss.join(", ")}`);
-    ok(!rows.some((r) => /ลูกค้าทดสอบ|"phone"|08\d{8}/.test(JSON.stringify(r.after))), "มีข้อมูลบุคคลใน audit");
+    // ORACLE-EDIT EV-4 (ผู้คุม · T0.4d): รูปเบอร์โทรต้องมีขอบตัวเลข/ตัวอักษรทั้งสองข้าง — /08\d{8}/ เดิมชนแฮช hex ใน after (idemKeyHash) โดยบังเอิญ (แบบเดียวกับ RL-3)
+    ok(!rows.some((r) => /ลูกค้าทดสอบ|"phone"|(?<![0-9a-z])08\d{8}(?![0-9a-z])/i.test(JSON.stringify(r.after))), "มีข้อมูลบุคคลใน audit");
     ok(rows.filter((r) => String(r.action).startsWith("trips.refund.") || r.action === "trips.payment.record").every((r) => typeof asRec(r.after)?.idemKeyHash === "string"), "after ไม่มี idemKeyHash");
   });
   await st("EV-5", "tripMoneySummary: เอกสาร 13ค (995,000 · 929,907 · 65,093 · 150,000 · 1,145,000) · paid/outstanding · taxDocument.status NOT_ISSUED (ยังไม่ออกใบกำกับ · T0.7b)", async () => {
