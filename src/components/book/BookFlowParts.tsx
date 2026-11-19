@@ -71,9 +71,10 @@ export function BookLines({ lines, locale }: { lines: BookLineVM[]; locale: Book
 }
 
 /** กล่องผิดพลาด (รหัสในรายการเท่านั้น · ข้อความจากไฟล์ภาษา · ไม่มีรหัสดิบบนจอ) */
-export function BookError({ code, fields, locale }: { code: BookErrorCode; fields?: readonly BookFormField[]; locale: BookLocale }) {
+export function BookError({ code, fields, locale, wait, contact }: { code: BookErrorCode; fields?: readonly BookFormField[]; locale: BookLocale; wait?: number; contact?: string }) {
   const t = bookT(locale);
-  const msg = code === "DONE" ? t("err.BUSY") : t(`err.${code}`);
+  // T0.4d D1: SLOT_BUSY = นาทีที่รอ (พารามิเตอร์ r ที่ตรวจแล้ว · ไม่มี ⇒ ข้อความไม่มีนาที) + ทางติดต่อร้าน
+  const msg = code === "DONE" ? t("err.BUSY") : code === "SLOT_BUSY" ? t(wait ? "err.SLOT_BUSY" : "err.slotBusyLater", { minutes: wait ?? "", contact: contact ?? "" }) : t(`err.${code}`);
   return (
     <div data-testid="book-error" data-code={code} role="alert" className="rounded-xl border border-[color:var(--color-danger)] bg-[color:var(--color-surface)] px-4 py-3 text-sm text-[color:var(--color-danger)]">
       <p>{msg}</p>

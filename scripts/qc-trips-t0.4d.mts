@@ -92,7 +92,7 @@ const OWN_FILES = ["src/lib/modules/trips/booking.ts", "src/lib/modules/trips/ca
   "src/messages/th/book.json", "src/messages/en/book.json"];
 const OWN_DIRS = ["src/components/book/", "src/app/book/"];
 const BUDGET = { add: 120, del: 30 };
-const ORACLE_FILES = ["scripts/qc-trips-t0.4d.mts", "scripts/qc-trips-t0.7.mts"]; // ไฟล์ของผู้เขียนข้อสอบ/ORACLE-EDIT ของใบนี้ (ผู้คุม commit)
+const ORACLE_FILES = ["scripts/qc-trips-t0.4d.mts", "scripts/qc-trips-t0.7.mts", "scripts/qc-trips-w1.2.mts"] /* ORACLE-EDIT S-3 (ผู้คุม): w1.2 ERROR_CODES เป็น ORACLE-EDIT ของผู้คุมตามมติ E5 */; // ไฟล์ของผู้เขียนข้อสอบ/ORACLE-EDIT ของใบนี้ (ผู้คุม commit)
 const SOLD_ST = ["CONFIRMED", "PART_PAID", "PAID", "TRAVELLED", "NO_SHOW"];
 const SELL_CODES = ["VALIDATION", "NOT_FOUND", "FORBIDDEN", "KIND_NOT_SUPPORTED", "CURRENCY_NOT_ALLOWED", "SOLD_OUT", "INSUFFICIENT_ALLOTMENT", "BERTH_TAKEN", "SLOT_CLOSED", "CUTOFF_PASSED",
   "PRICE_CHANGED", "BELOW_MIN_SELL_PRICE", "DISCOUNT_OVER_CAP", "HOLD_EXPIRED", "HOLD_NOT_FOUND", "HOLD_LIMIT", "AGENT_SUSPENDED", "CREDIT_LIMIT", "REQUIRES_APPROVAL",

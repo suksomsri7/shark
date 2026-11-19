@@ -266,6 +266,8 @@
     "CUTOFF_PASSED": "Booking for this departure has closed. Please choose another date or time.",
     "SLOT_CLOSED": "This departure is no longer on sale. Please choose another date or time.",
     "HOLD_LIMIT": "This phone number already holds several bookings. Finish paying one of them or wait until it expires.",
+    "SLOT_BUSY": "Several people are booking this departure right now. Try again in about {minutes} min, or contact the shop {contact}",
+    "slotBusyLater": "Several people are booking this departure right now. Try again later, or contact the shop {contact}",
     "HOLD_EXPIRED": "Your hold has expired. Choose your travellers and hold the seats again.",
     "STALE_FORM": "This page has been open too long. Reload it and try again.",
     "TOO_FAST": "That was a little fast. Please wait a moment and try again.",
