@@ -87,7 +87,7 @@ const halfUp = (num: bigint, den: bigint): number => { const neg = (num < Z) !==
 const vatIncl = (x: number) => halfUp(BigInt(x) * BigInt(700), BigInt(10_700));
 
 // ═══════════════ สเปก (ใบสั่ง T1.7 · ส่วน a) ═══════════════
-const BASE_SHA = "c3650f79c99ee4d5a27144f78086bea52f700fe6"; // wip/trips-t1.7 = session/trips ตอนเขียนใบสั่ง (รวม origin/main แล้ว · T0.4d รับแล้ว)
+const BASE_SHA = "5789e974344d3e1e148edb4cd5a41a6b9d190ab5"; // wip/trips-t1.7 = session/trips ตอนเขียนใบสั่ง (รวม origin/main แล้ว · T0.4d รับแล้ว)
 const APP = "src/app/app/u/[unitSlug]/trips";
 const COST_PAGE = `${APP}/departures/[departureId]/costs/page.tsx`;
 const REPORT_PAGE = `${APP}/reports/page.tsx`;
