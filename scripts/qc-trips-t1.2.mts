@@ -1064,12 +1064,12 @@ try {
     eq([asRec((await ctPanel("oa", D.l1)).departure)?.stopSellInfo, cellOf(await ctCal(), D.l1).stopSell], [null, false], "หลังล้าง");
   });
   // ORACLE-EDIT (ผู้คุม 19 พ.ย. · คู่กับ PV-5): ตารางสิทธิ์ของ money ในแผงรอบตามใบสั่ง T1.7a1 §7
-  await st("CT-17", "money ของแผงรอบตามสิทธิ์ (T1.7a1 §7): departure.view + booking.view ไม่มีคีย์ต้นทุน ⇒ money ครบรูป แต่ช่องต้นทุน/คอมฯ/กำไร null · actions.costs false · departure.view อย่างเดียว ⇒ money null · เจ้าของ ⇒ ช่องต้นทุนเป็นตัวเลข", async () => {
+  await st("CT-17", "money ของแผงรอบตามสิทธิ์ (T1.7a1 §7): departure.view + booking.view ไม่มีคีย์ต้นทุน ⇒ money ครบรูป แต่ช่องต้นทุน/คอมฯ/กำไร + noCosts null (Q16) · actions.costs false · departure.view อย่างเดียว ⇒ money null · เจ้าของ ⇒ ช่องต้นทุนเป็นตัวเลข", async () => {
     needD("w");
     const pb = await ctPanel("bvw", D.w); const m = asRec(pb.money);
     ok(m, `bvw money ต้องไม่ null: ${fmt(pb.money)}`);
     eq(Object.keys(m ?? {}).sort(), MONEY_KEYS, "ช่องของ money");
-    eq([COST_FIELDS.map((k) => m?.[k]), asRec(pb.actions)?.costs, m?.noCosts], [COST_FIELDS.map(() => null), false, true], "bvw"); // noCosts ทุกผู้ดู (มติ Q2 · ORACLE-EDIT รอบ 2)
+    eq([COST_FIELDS.map((k) => m?.[k]), asRec(pb.actions)?.costs, m?.noCosts], [COST_FIELDS.map(() => null), false, null], "bvw"); // ORACLE-EDIT รอบ 2 (มติ Q16): ผู้ไม่มีคีย์ต้นทุน ⇒ noCosts null
     const pd = await ctPanel("dv", D.w); eq([pd.money, asRec(pd.actions)?.costs], [null, false], "dv");
     const po = asRec((await ctPanel("oa", D.w)).money) ?? {}; ok(["commissionCostSatang", "costSatang", "costRows"].every((k) => Number.isInteger(po[k])) && po.grossProfitSatang === null && po.noCosts === true, `oa: ${fmt(po)}`); // ORACLE-EDIT รอบ 2 (Q2): รอบไม่มีแถวต้นทุน ⇒ กำไร null
   });
