@@ -1,9 +1,10 @@
 // GET /api/mobile/secretary/rooms/[id]/messages?before&take — ข้อความในห้อง (เก่า→ใหม่ ภายในหน้า) · หน้าแรก = ล่าสุด
 //   R-S1.14d: lib `listMessages(ctx, conv, {before, take})` ใหม่→เก่าตัดที่ cursor คู่ `before=<iso>|<id>` แล้วกลับลำดับ · `nextBefore` = cursor ของแถวเก่าสุดเมื่อหน้าเต็ม
 //   สมาชิก seeHistory=false เห็นเฉพาะหลัง addedAt (บังคับใน `listMessages`)
+//   14 พ.ย. ▸ `roomMessageDto` = + `attachments[{id,name,mimeType,size,kind,url}]` (url = …/rooms/[id]/files/[fileId] · ตรวจสิทธิ์ห้อง) ◂
 import { getRoom } from "@/lib/ai/secretary/rooms";
 import { listMessages } from "@/lib/ai/service";
-import { messageDto } from "@/lib/ai/secretary/dto";
+import { roomMessageDto } from "@/lib/ai/secretary/dto";
 import { cursorOf, fail, gate, idParam, notFound, ok, pairCursor, takeOf, type RouteCtx, withErrors } from "../../../_shared";
 
 async function GET_(req: Request, ctx: RouteCtx) {
@@ -18,7 +19,7 @@ async function GET_(req: Request, ctx: RouteCtx) {
   const take = takeOf(q.get("take"), 50, 100);
   const page = await listMessages(a.c.conv, room.conversationId, { before: before ?? null, take });
   const first = page[0];
-  return ok({ items: page.map(messageDto), nextBefore: page.length === take && first ? cursorOf(first.createdAt, first.id) : null });
+  return ok({ items: page.map((m) => roomMessageDto(m, room.id)), nextBefore: page.length === take && first ? cursorOf(first.createdAt, first.id) : null });
 }
 
 // SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂

@@ -3,7 +3,7 @@ import { tenantDb } from "@/lib/core/db";
 import { mobileDenied } from "@/lib/mobile/guard";
 import { channelLabel } from "@/lib/modules/chat/channel-icon";
 import { listConnections } from "@/lib/modules/chat/service";
-import { gate, READ, REPLY, unreadFor, withErrors } from "../_shared";
+import { can, gate, READ, REPLY, SET_STATUS, unreadFor, withErrors } from "../_shared";
 
 async function GET_(req: Request) {
   const a = await gate(req, [READ]);
@@ -19,7 +19,9 @@ async function GET_(req: Request) {
     const types = [...new Set((await listConnections(c.tenantId, s.id)).map((x) => x.type))];
     systems.push({ id: s.id, name: s.name, channels: types.map((type) => ({ type, label: channelLabel(type) })), unread: await unreadFor(c, s.id) });
   }
-  return Response.json({ items: systems, canReply: mobileDenied(c.g, REPLY) === null }); // COMMON ข้อ 6 · R-S1.21i
+  const canReply = mobileDenied(c.g, REPLY) === null;
+  // canHide = ปัดซ้ายลบแชทได้ (ด่านเดียวกับ DELETE inbox/conversations/[id]: ปิดห้อง + ตอบลูกค้า · 14 พ.ย. 2026)
+  return Response.json({ items: systems, canReply, canHide: canReply && can(c, SET_STATUS) }); // COMMON ข้อ 6 · R-S1.21i
 }
 
 // SEC S3a.1-S2 ▸ R-Z20: exception ที่หลุด ⇒ {error, message} + logOps (ไม่มี 500 ดิบ) ◂

@@ -113,7 +113,7 @@ function htmlOf(kind: GuestMailKind, c: Ctx, x: ReturnType<typeof content>): str
   const table = rows.map(([k, v]) => `<tr><td style="padding:4px 12px 4px 0;color:#666">${esc(k)}</td><td style="padding:4px 0;font-weight:600">${esc(v)}</td></tr>`).join("");
   const extra = x.extra.map((e) => `<p style="margin:8px 0">${esc(e)}</p>`).join("");
   const cta = x.cta ? `<p style="margin:20px 0"><a href="${esc(x.cta.href)}" style="background:#111;color:#fff;padding:12px 20px;border-radius:10px;text-decoration:none;display:inline-block">${esc(x.cta.label)}</a></p>` : "";
-  const foot = l === "en" ? "This email was sent by the hotel through SHARK. Reply to contact the hotel." : "อีเมลนี้ส่งจากโรงแรมผ่านระบบ SHARK";
+  const foot = l === "en" ? "This email was sent by the hotel through Lekaa. Reply to contact the hotel." : "อีเมลนี้ส่งจากโรงแรมผ่านระบบเลขา";
   return `<!doctype html><html><body style="font-family:-apple-system,Segoe UI,Roboto,'Noto Sans Thai',sans-serif;color:#111;max-width:560px;margin:0 auto;padding:24px" data-kind="${kind}">
 <div style="font-size:18px;font-weight:700">${esc(f.unitName)}</div>
 <p style="margin:16px 0 8px">${esc(x.lead)}</p>

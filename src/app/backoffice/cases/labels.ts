@@ -6,6 +6,19 @@ export const STATUS_LABEL: Record<string, string> = {
   RESOLVED: "ปิดแล้ว",
 };
 
+/** help-cases: ขั้นของเคส (ชุดเดียวกับ STAGE_LABEL_TH ของ lib/support/stage.ts) */
+export { STAGE_LABEL_TH as STAGE_LABEL, CASE_STAGES } from "@/lib/support/stage";
+
+/** ปุ่มตั้งขั้นในหน้าเคส (ลำดับตามแถบที่ร้านเห็น) — ข้อความบนปุ่ม */
+export const STAGE_ACTION: Record<string, string> = {
+  RECEIVED: "รับเรื่อง",
+  CHECKING: "กำลังตรวจสอบ",
+  FIXING: "กำลังแก้ไข",
+  NEED_INFO: "ขอข้อมูลเพิ่มจากร้าน",
+  AWAITING_CONFIRM: "แก้แล้ว · ขอให้ร้านยืนยัน",
+  CLOSED: "ปิดเคส",
+};
+
 /** ช่องทางที่เปิดเรื่อง (`SupportCase.source`) */
 export const SOURCE_LABEL: Record<string, string> = {
   APP: "จากแอป",

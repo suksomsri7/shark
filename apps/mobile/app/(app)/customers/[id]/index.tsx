@@ -12,9 +12,13 @@
 //     POST …/messages/[mid]/translate → คำแปลใต้ต้นฉบับ (ต้นฉบับเห็นเสมอ · ป้าย "คำแปล · <ภาษา>") · มี translatedBody แล้ว ⇒ แสดงเลย ·
 //     การ์ดร่างมี `gloss` ⇒ บรรทัด "คำแปล: …" (ส่ง = ตัวร่างภาษาลูกค้า) · contactLang ≠ staffLang ∧ can.translate ⇒ ปุ่ม "แปลแล้วส่ง" หน้าปุ่มส่ง →
 //     POST …/translate-draft → แผ่นยืนยัน ต้นฉบับ/คำแปล: ส่งคำแปล · แก้ (ใส่คำแปลลงช่องพิมพ์) · ยกเลิก · ok:false ⇒ reason ไทยเป็นแถบแจ้ง · ไม่มีสิทธิ์/ปิด ⇒ ไม่มีปุ่ม
+//   B27 (17 พ.ย. 2026) ชิป "✨ แนะนำคำตอบ" (แถบเหนือปุ่มส่ง) = ขอร่างคำตอบเอง (POST …/ai-suggest) → การ์ดร่างเดิม · ขึ้นเมื่อ `can.aiSuggest === true`
+//     (server: คีย์ chat.ai.suggest ∧ ร้านเปิด AI แนะนำคำตอบ) ∧ ตอบลูกค้าได้ ∧ ไม่ใช่บันทึกภายใน ∧ หน้าต่างตอบยังไม่ปิด · กำลังขอ = ปุ่มหมุน ·
+//     ok:false ⇒ reason ไทยของ server ในแถบแจ้งของห้อง · การ์ดร่างขึ้นเองเมื่อห้องมีร่างค้าง (aiDraft) เหมือนเดิม ·
+//     ชิป ✨ + "แปลแล้วส่ง" อยู่แถบเล็กเหนือปุ่มส่ง (ชิดขวา) · แถวช่องพิมพ์ = ＋ 🔒 ช่องพิมพ์ ส่ง + Lekaa (ช่องพิมพ์ได้ที่เต็ม)
 //   poll 5 วิ ขณะจออยู่และแอปอยู่หน้า (ออฟไลน์ถอยห่าง) · ไม่มี SSE · 403 ⇒ setCustomersAccess(false) · หน้าต่างตอบ 24 ชม. ของ Facebook/Instagram หมด ⇒ แถบเตือน + ตอบลูกค้าไม่ได้ (บันทึกภายในได้)
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
+import { ActivityIndicator, AppState, Image, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import * as ImagePicker from "expo-image-picker";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
@@ -42,6 +46,7 @@ import {
   type ReplyAttachment,
   type Thread,
 } from "@/src/api/inbox";
+import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
 import { useAuth } from "@/src/lib/auth-context";
 import th from "@/src/i18n/th";
 import { useT, type I18nKey } from "@/src/i18n";
@@ -124,6 +129,9 @@ export default function CustomerRoomScreen() {
   const failCount = useRef(0);
   const readSent = useRef<string | null>(null);
   const draftAsked = useRef(false);
+  /** B27 กำลังขอร่างจากปุ่ม ✨ (กันกดซ้ำ) */
+  const [drafting, setDrafting] = useState(false);
+  const draftingRef = useRef(false);
   const scrollRef = useRef<ScrollView>(null);
   const atBottom = useRef(true);
   // S2.13: เปิดห้อง (รวมจากแจ้งเตือน) ต้องอยู่ท้ายห้อง — ช่วง 2.5 วิ หลังโหลดแรก เนื้อหาโต (รูป · การ์ดร่าง) ⇒ เลื่อนลงเสมอ
@@ -322,6 +330,32 @@ export default function CustomerRoomScreen() {
     }
   };
 
+  // B27 ปุ่ม ✨: ขอร่างคำตอบเอง → การ์ดร่างเดิม (ตัวเลือกแรก) · ok:false/ล้ม ⇒ แถบแจ้งไทยของห้อง (reason ของ server ก่อน)
+  const askDraft = async () => {
+    if (draftingRef.current) return;
+    draftingRef.current = true;
+    setDrafting(true);
+    setNote(null);
+    const tenant = activeTenantId;
+    try {
+      const r = await inboxPostId("inbox/conversations/[id]/ai-suggest", id, { systemId });
+      if (tenantRef.current !== tenant) return;
+      const opt = r.ok === true ? r.options?.[0] : undefined;
+      const body = (opt?.body ?? "").trim();
+      if (opt && body) {
+        const gloss = typeof opt.gloss === "string" && opt.gloss.trim() ? opt.gloss.trim() : null;
+        draftAsked.current = true;
+        atBottom.current = true;
+        setDraft({ id: opt.id || null, body, gloss });
+      } else setNote({ text: (r.ok === false && r.reason?.trim()) || t("cust.draft.fail"), warn: true });
+    } catch (e) {
+      if (tenantRef.current === tenant) setNote({ text: inboxNote(e) ?? t("cust.draft.fail"), warn: true });
+    } finally {
+      draftingRef.current = false;
+      setDrafting(false);
+    }
+  };
+
   const back = () => (router.canGoBack() ? router.back() : router.navigate("/customers"));
   const openInfo = (open?: string) => router.push(`/customers/${encodeURIComponent(id)}/info${systemId ? `?s=${encodeURIComponent(systemId)}` : ""}${open ? `${systemId ? "&" : "?"}open=${open}` : ""}`);
 
@@ -330,6 +364,8 @@ export default function CustomerRoomScreen() {
   const canReplyHere = canReply && conv?.can?.reply !== false;
   // S3a.6: ปุ่มแปลขึ้นเมื่อ server บอกว่าแปลได้ (ไม่มีฟิลด์/false = ไม่มีปุ่ม) · แปลแล้วส่ง = ภาษาลูกค้าต่างจากภาษาพนักงาน
   const canTranslate = conv?.can?.translate === true;
+  // B27: ปุ่ม ✨ = server บอกว่าขอร่างได้ (คีย์ ∧ ร้านเปิด) ∧ ตอบลูกค้าได้ — ไม่มีฟิลด์/false = ไม่มีปุ่ม (บันทึกภายใน/หน้าต่างปิด ตัดสินในช่องพิมพ์)
+  const canSuggest = conv?.can?.aiSuggest === true && canReplyHere;
   const translateTo = canTranslate && conv?.contactLang && conv?.staffLang && conv.contactLang.toLowerCase() !== conv.staffLang.toLowerCase() ? conv.contactLang : null;
   const name = thread?.contact.displayName ?? t("cust.noName");
   const windowH = conv ? replyWindowHours(conv.channel, msgs, nowMs) : null;
@@ -508,6 +544,9 @@ export default function CustomerRoomScreen() {
             translateTo={translateTo}
             translateLabel={translateTo ? langName(t, translateTo) : ""}
             onTranslated={(original, text) => setTrSheet({ original, text })}
+            canSuggest={canSuggest}
+            suggesting={drafting}
+            onSuggest={() => void askDraft()}
             onSent={() => {
               atBottom.current = true;
               void load();
@@ -599,9 +638,13 @@ type ComposerProps = {
   translateTo?: string | null;
   translateLabel?: string;
   onTranslated?: (original: string, text: string) => void;
+  /** B27 ปุ่ม ✨ ขอร่างคำตอบ (false = ไม่มีปุ่ม) · suggesting = กำลังขอ */
+  canSuggest?: boolean;
+  suggesting?: boolean;
+  onSuggest?: () => void;
 };
 const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
-  { convId, systemId, channel, canReply, windowClosed, onSent, translateTo = null, translateLabel = "", onTranslated },
+  { convId, systemId, channel, canReply, windowClosed, onSent, translateTo = null, translateLabel = "", onTranslated, canSuggest = false, suggesting = false, onSuggest },
   ref,
 ) {
   const { c } = useTheme();
@@ -836,6 +879,47 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
           ))}
         </View>
       ) : null}
+      {/* B27 (17 พ.ย.) ▸ แถบชิปเหนือปุ่มส่ง (ชิดขวา): "✨ แนะนำคำตอบ" แล้ว "แปลแล้วส่ง" — ย้ายออกจากแถวช่องพิมพ์ทั้งคู่
+          (ที่ 390pt แถวเดียว ช่องพิมพ์เหลือ ~0 → ~95pt ยังแคบ) · แถวช่องพิมพ์ = ＋ 🔒 ช่องพิมพ์ ส่ง + Lekaa · ไม่มีชิปไหนเข้าเงื่อนไข = ไม่มีแถบ (ไม่กินที่)
+          ชิปแปลยังเห็นตลอด (จางเมื่อยังไม่พิมพ์) เหมือนเดิม */}
+      {(canSuggest && !internal && !windowClosed) || (translateTo && !internal) ? (
+        <View style={styles.toolRow}>
+          {canSuggest && !internal && !windowClosed ? (
+            <Pressable
+              testID="cust-draft-ask"
+              onPress={onSuggest}
+              disabled={suggesting}
+              accessibilityRole="button"
+              accessibilityLabel={t(suggesting ? "cust.draft.asking" : "cust.draft.ask")}
+              accessibilityState={{ disabled: suggesting, busy: suggesting }}
+              style={[styles.trSend, { backgroundColor: c.chip.bg }]}
+            >
+              {suggesting ? <ActivityIndicator size="small" color={c.textDim} style={styles.askSpin} /> : <Text style={styles.askT}>✨</Text>}
+              <Text style={[styles.trSendT, { color: c.textDim }]} numberOfLines={1}>
+                {suggesting ? t("cust.draft.askBusy") : t("cust.draft.askBtn")}
+              </Text>
+            </Pressable>
+          ) : null}
+          {translateTo && !internal ? (
+            <Pressable
+              testID="cust-translate-send"
+              onPress={() => void translateDraft()}
+              disabled={translating || busy || !text.trim()}
+              accessibilityRole="button"
+              accessibilityLabel={t("cust.tr.sendBtnA11y", { lang: translateLabel })}
+              accessibilityState={{ disabled: translating || busy || !text.trim() }}
+              style={[styles.trSend, { backgroundColor: c.chip.bg }, (translating || busy || !text.trim()) && styles.trOff]}
+            >
+              <Icon name="globe" size={14} color={c.textDim} />
+              <Text style={[styles.trSendT, { color: c.textDim }]} numberOfLines={1}>
+                {translating ? t("cust.tr.busy") : t("cust.tr.sendBtn")}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+      ) : null}
+      {/* Lekaa FAB (17 พ.ย.) ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (แบบ team4 จอ 4) — ช่องพิมพ์หดด้านขวา · ปุ่มลอยซ่อนเองบนจอนี้ */}
+      <View style={styles.inputRow}>
       <InputBar
         testID="cust-input"
         sendTestID="cust-send"
@@ -864,26 +948,10 @@ const Composer = forwardRef<ComposerHandle, ComposerProps>(function Composer(
         maxLength={4000}
         sendDisabled={busy || uploading || (!text.trim() && atts.length === 0)}
         onSend={() => void send()}
-        right={
-          translateTo && !internal ? (
-            <Pressable
-              testID="cust-translate-send"
-              onPress={() => void translateDraft()}
-              disabled={translating || busy || !text.trim()}
-              accessibilityRole="button"
-              accessibilityLabel={t("cust.tr.sendBtnA11y", { lang: translateLabel })}
-              accessibilityState={{ disabled: translating || busy || !text.trim() }}
-              style={[styles.trSend, { backgroundColor: c.chip.bg }, (translating || busy || !text.trim()) && styles.trOff]}
-            >
-              <Icon name="globe" size={14} color={c.textDim} />
-              <Text style={[styles.trSendT, { color: c.textDim }]} numberOfLines={1}>
-                {translating ? t("cust.tr.busy") : t("cust.tr.sendBtn")}
-              </Text>
-            </Pressable>
-          ) : undefined
-        }
-        style={internal ? [styles.internalBar, { borderColor: c.cust.noteBorder }] : undefined}
+        style={[styles.flex, internal && [styles.internalBar, { borderColor: c.cust.noteBorder }]]}
       />
+      <LekaaFabSlot />
+      </View>
     </View>
   );
 });
@@ -923,6 +991,9 @@ const styles = StyleSheet.create({
   trSend: { flexDirection: "row", alignItems: "center", gap: 4, height: 32, borderRadius: 16, paddingHorizontal: 10 },
   trSendT: { fontSize: T.cap - 0.5, fontWeight: "700" },
   trOff: { opacity: 0.5 },
+  toolRow: { flexDirection: "row", justifyContent: "flex-end", gap: 8, paddingBottom: 8, paddingRight: size.inputH + LEKAA_SLOT_GAP },
+  askT: { fontSize: 13, lineHeight: 17 },
+  askSpin: { transform: [{ scale: 0.7 }] },
   trSheetT: { fontSize: T.h, fontWeight: "700", marginBottom: 6 },
   trSheetL: { fontSize: T.cap, fontWeight: "600", marginTop: 10 },
   trSheetB: { fontSize: T.sub + 0.5, lineHeight: 22, marginTop: 4 },
@@ -930,6 +1001,7 @@ const styles = StyleSheet.create({
   trSheetBtn: { marginTop: 16 },
   trSheetRow: { flexDirection: "row", gap: 10, marginTop: 10 },
   composer: { paddingHorizontal: spacing.page - 6, paddingBottom: 14, paddingTop: 6 },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: LEKAA_SLOT_GAP },
   sendNote: { marginTop: 0, marginBottom: 8 },
   quickRow: { gap: 8, paddingBottom: 10, paddingHorizontal: 2 },
   quick: { borderRadius: radii.pill, paddingVertical: 8, paddingHorizontal: 14, maxWidth: 200 },

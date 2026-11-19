@@ -1,21 +1,25 @@
 // เริ่มงานใหม่ (ใบ S2.3 · แบบ A2 sec-a.jpg หน้า 2)
 //   ทักทายด้วยชื่อ/คำลงท้ายของเลขา (secretary/me) · ข้อเสนอจาก secretary/suggestions (แตะ = เติมคำสั่งลงช่อง ไม่ส่งเอง · มติ 9)
-//   "งานที่สั่งบ่อย" จาก secretary/frequent (แตะ = เติม) · "ระบบที่เลขาเข้าถึงได้" จาก secretary/access (ไม่โชว์ระบบที่ปิด)
-//   ส่ง = POST secretary/rooms { instruction, clientMessageId } → แทนที่จอด้วย /secretary/room/<roomId>
+//   "งานที่สั่งบ่อย" จาก secretary/frequent (แตะ = เติม) · 14 พ.ย. (แบบ Ⓐ newtask.png): ตัดส่วน "ระบบที่เลขาเข้าถึงได้" (secretary/access) ออกแล้ว
+//   14 พ.ย. (แบบ Ⓑ) ส่งแล้วคุยต่อหน้าเดิม: กดส่ง ⇒ ฟองคำสั่งของเรา + "{ชื่อ} กำลังดูในระบบ…" ขึ้นทันที (RoomView seed · ไม่เปลี่ยนจอ/ไม่มีวงหมุน)
+//     หัวจอเปลี่ยนเป็นชื่องาน · ✕ เป็น ‹ (กลับหน้ารวมงาน) · คำทักเดิมจางอยู่บนสุด · POST secretary/rooms สำเร็จ ⇒ RoomView ตัวเดิมได้ roomId แล้วโหลดห้อง
+//     (สตรีม/อนุมัติ/ส่งต่อ ทำงานแบบห้องงานทุกอย่าง) · ห้องนี้ไปโผล่ในหน้ารวมห้องตามปกติ · ล้ม ⇒ กลับโหมดพิมพ์ ข้อความ+ไฟล์คืนช่องพิมพ์ + ข้อความแจ้ง
+//   14 พ.ย. (แบบ Ⓒ) ปุ่ม + = แผ่นแนบ รูปภาพ/ถ่ายรูป/ไฟล์ (SecAttach) — ไฟล์ส่งไปกับคำสั่ง (`attachments` ของ POST rooms) · กำลังแนบ = ส่งไม่ได้
+//   ส่ง = POST secretary/rooms { instruction, clientMessageId, attachments? }
 //   R-Z28: clientMessageId เก็บใน ref จนส่งสำเร็จ (กดซ้ำ/ลองใหม่หลังเน็ตหลุด = รหัสเดิม → ห้องเดิม) · คำสั่งหรือกิจการเปลี่ยน = รหัสใหม่
 //   R-Z30: 409 pending (ครั้งแรกยังเปิดห้องไม่เสร็จ) ⇒ retryPending รอ 1.5 วิ แล้วลองใหม่เงียบ ๆ ≤ 3 ครั้ง · กดซ้ำกันด้วย sendingRef
 //   402 / quota ⇒ การ์ด "โควตางานเดือนนี้หมด" + ลิงก์ /secretary/settings/quota · 429 / อื่น ๆ ⇒ ข้อความสั้นใต้ข้อเสนอ
-//   403 (suggestions / access / POST rooms · R-S2.14h) ⇒ การ์ดล็อก `sec-new-denied` + ล็อกช่องพิมพ์ (ปุ่มส่ง/+ ปิด · ไม่รับการพิมพ์)
+//   403 (suggestions / POST rooms · R-S2.14h) ⇒ การ์ดล็อก `sec-new-denied` + ล็อกช่องพิมพ์ (ปุ่มส่ง/+ ปิด · ไม่รับการพิมพ์)
 //   ช่องพิมพ์ล่างสุด InputBar (ไม่มีปุ่มเสียง · มติ 16) · ปุ่มส่งกดไม่ได้เมื่อว่างหรือกำลังส่ง · ?q= เติมคำสั่งมาจาก C3
 // ทุกเส้นผ่าน src/api/secretary.ts · ข้อความผ่าน i18n · สเกล R-UI1 (F.v = แบบ × 0.73 · ตัวอักษรตาม tokens.type)
 import { useCallback, useEffect, useRef, useState } from "react";
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View } from "react-native";
 import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
-import { AiryScreen, Chip, Glass, IconBtn, InputBar, LoadError, Note, Orb, SectionLabel, SysTag, TopBar } from "@/src/components/airy";
+import { AiryScreen, Chip, Glass, IconBtn, InputBar, LoadError, Note, Orb, SectionLabel, TopBar } from "@/src/components/airy";
 import { SuggestionList } from "@/src/components/secretary/SuggestionList";
-import { sysName } from "@/src/components/secretary/RoomCard";
-import { sysColor } from "@/src/components/secretary/sys";
+import { RoomView, type RoomSeed } from "@/src/components/secretary/RoomView";
+import { AttachSheet, AttachTray, localAttachments, useSecAttach } from "@/src/components/secretary/SecAttach";
 import {
   DEFAULT_SECRETARY_NAME,
   clientMessageId,
@@ -27,10 +31,10 @@ import {
   secPost,
   startErrorKind,
   useSecretaryMe,
-  type AccessItem,
   type Frequent,
   type Suggestion,
 } from "@/src/api/secretary";
+import { LekaaFabSlot, LEKAA_SLOT_GAP } from "@/src/components/lekaa/core";
 import { useAuth } from "@/src/lib/auth-context";
 import { useT } from "@/src/i18n";
 import { F, useTheme } from "@/src/theme/index";
@@ -54,7 +58,11 @@ export default function SecretaryNewScreen() {
   const [text, setText] = useState(typeof params.q === "string" ? params.q : "");
   const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [frequent, setFrequent] = useState<Frequent[]>([]);
-  const [systems, setSystems] = useState<AccessItem[]>([]);
+  /** ส่งแล้ว (แบบ Ⓑ): seed = ฟองที่ขึ้นทันที · roomId = ได้ห้องแล้ว (RoomView ตัวเดิมโหลดต่อ) */
+  const [seed, setSeed] = useState<RoomSeed | null>(null);
+  const [roomId, setRoomId] = useState("");
+  const [attachOpen, setAttachOpen] = useState(false);
+  const attach = useSecAttach();
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<ErrKind | null>(null);
   const [denied, setDenied] = useState(false);
@@ -90,18 +98,13 @@ export default function SecretaryNewScreen() {
       const own = normalizeFrequent(f);
       setFrequent((own.length > 0 ? own : normalizeFrequent(s, "frequent")).slice(0, 8));
     });
-    void secGet("secretary/access")
-      .then((r) => live() && setSystems((r.items ?? []).filter((x) => x.level !== "OFF")))
-      .catch((e) => {
-        deny(e);
-        if (live()) setSystems([]);
-      });
   }, [activeTenantId]);
 
+  const sent = seed !== null;
   useFocusEffect(
     useCallback(() => {
-      load();
-    }, [load]),
+      if (!sent) load();
+    }, [load, sent]),
   );
 
   const fill = (instruction: string) => {
@@ -110,23 +113,34 @@ export default function SecretaryNewScreen() {
   };
 
   const send = async () => {
-    const instruction = text.trim();
-    if (!instruction || sendingRef.current || denied) return;
+    const typed = text.trim();
+    if ((!typed && attach.items.length === 0) || !attach.ready || sendingRef.current || denied) return;
+    // ไฟล์อย่างเดียว ⇒ คำสั่งปริยาย (เซิร์ฟเวอร์ต้องมีข้อความเสมอ)
+    const instruction = typed || t("sec.attach.defaultText");
+    const files = attach.take();
+    const refs = attach.refs(files);
     sendingRef.current = true;
     setBusy(true);
     setErr(null);
-    // คำสั่งเดิม (กดซ้ำ/ลองใหม่) = รหัสเดิม · แก้คำสั่งหรือสลับกิจการ = รหัสใหม่
-    const key = `${activeTenantId ?? ""}|${instruction}`;
+    // แบบ Ⓑ: ฟองของเรา + กำลังดูในระบบ ขึ้นทันทีในหน้านี้ (ยังไม่มี roomId)
+    setSeed({ title: instruction.length > 60 ? `${instruction.slice(0, 59)}…` : instruction, text: instruction, attachments: localAttachments(files), at: new Date().toISOString() });
+    setText("");
+    // คำสั่งเดิม (กดซ้ำ/ลองใหม่) = รหัสเดิม · แก้คำสั่ง/ไฟล์ หรือสลับกิจการ = รหัสใหม่
+    const key = `${activeTenantId ?? ""}|${instruction}|${refs.map((r) => r.id).join(",")}`;
     if (cmidFor.current !== key) cmidRef.current = null;
     cmidRef.current = cmidRef.current ?? clientMessageId();
     cmidFor.current = key;
     const cmid = cmidRef.current;
     try {
-      const r = await retryPending(() => secPost("secretary/rooms", { instruction, clientMessageId: cmid }));
+      const r = await retryPending(() => secPost("secretary/rooms", { instruction, clientMessageId: cmid, ...(refs.length ? { attachments: refs } : {}) }));
       cmidRef.current = null;
       cmidFor.current = null;
-      router.replace(`/secretary/room/${r.roomId}`);
+      setRoomId(r.roomId); // RoomView ตัวเดิมโหลดห้องต่อ — ไม่เปลี่ยนจอ
     } catch (e) {
+      // ล้ม ⇒ กลับโหมดพิมพ์ · ฟองหาย · ข้อความ+ไฟล์คืนช่องพิมพ์
+      setSeed(null);
+      setText((cur) => cur || typed);
+      attach.restore(files);
       const k = startErrorKind(e);
       if (k === "denied") setDenied(true);
       else setErr(k);
@@ -140,6 +154,24 @@ export default function SecretaryNewScreen() {
   // ชื่อผู้ใช้คำแรก (เช่น "คุณสุข") ให้คำทักสั้นพอบรรทัดเดียว
   const first = user?.name?.trim().split(/\s+/)[0] ?? "";
   const greet = first ? t("sec.new.greetUser", { suffix, user: first, name }) : t("sec.new.greet", { suffix, name });
+
+  if (seed) {
+    // แบบ Ⓑ: คุยต่อในหน้านี้ — คำทักเดิมจางอยู่บนสุด · หัว = ชื่องาน + ‹ กลับหน้ารวม (RoomView)
+    return (
+      <RoomView
+        id={roomId}
+        seed={seed}
+        lead={
+          <View testID="sec-new-lead" style={[styles.hello, styles.faded]}>
+            <Orb size={size.orb - 6} />
+            <Text style={[styles.hint, styles.helloX, { color: c.textMuted }]} numberOfLines={1}>
+              {greet}
+            </Text>
+          </View>
+        }
+      />
+    );
+  }
 
   return (
     <AiryScreen testID="sec-new">
@@ -196,22 +228,12 @@ export default function SecretaryNewScreen() {
             </>
           ) : null}
 
-          {systems.length > 0 ? (
-            <>
-              <SectionLabel style={styles.label}>{t("sec.new.systemLabel", { name })}</SectionLabel>
-              <View testID="sec-new-system" style={[styles.wrap, styles.tags]}>
-                {systems.map((s) => (
-                  <SysTag
-                    key={s.module}
-                    sys={sysColor(s.module)}
-                    label={s.level === "READ" ? t("sec.new.readOnly", { sys: sysName(t, s.module) }) : sysName(t, s.module)}
-                  />
-                ))}
-              </View>
-            </>
-          ) : null}
         </ScrollView>
 
+        <AttachTray items={attach.items} note={attach.note} onRemove={attach.remove} testID="sec-new-attach" />
+
+        {/* Lekaa FAB (17 พ.ย.) ▸ ปุ่ม Lekaa แถวเดียวกับช่องพิมพ์ (แบบ team4 จอ 4) — ปุ่มลอยซ่อนเองบนจอนี้ */}
+        <View style={styles.inputRow}>
         <InputBar
           testID="sec-new-input"
           sendTestID="sec-new-send"
@@ -222,14 +244,17 @@ export default function SecretaryNewScreen() {
             if (err && err !== "quota") setErr(null);
           }}
           onSend={() => void send()}
-          onPlus={() => fill("")}
+          onPlus={() => setAttachOpen(true)}
           plusDisabled={denied}
-          sendDisabled={!text.trim() || busy || denied}
+          sendDisabled={(!text.trim() && attach.items.length === 0) || !attach.ready || busy || denied}
           locked={denied}
           placeholder={denied ? t("sec.new.lockedPh") : t("sec.new.input")}
-          style={styles.input}
+          style={styles.flex}
         />
+        <LekaaFabSlot />
+        </View>
       </KeyboardAvoidingView>
+      <AttachSheet visible={attachOpen} onClose={() => setAttachOpen(false)} onPick={(k) => void attach.pick(k)} name={name} testID="sec-new-attach-sheet" />
     </AiryScreen>
   );
 }
@@ -245,11 +270,11 @@ const styles = StyleSheet.create({
   hint: { fontSize: T.cap, lineHeight: 18, marginTop: 2 },
   label: { marginTop: F.v(36), marginLeft: F.v(10), fontSize: T.cap, lineHeight: 17, letterSpacing: 0.8 },
   wrap: { flexDirection: "row", flexWrap: "wrap", gap: spacing.sm, marginTop: F.v(16) },
-  tags: { gap: 6 },
+  faded: { opacity: 0.45, marginTop: F.v(14) },
   quota: { marginTop: F.v(24) },
   quotaT: { fontSize: T.h, fontWeight: "700", lineHeight: 24 },
   quotaB: { fontSize: T.sub, lineHeight: 20, marginTop: spacing.xs },
   quotaLink: { marginTop: spacing.sm, alignSelf: "flex-start", paddingVertical: spacing.xs },
   quotaL: { fontSize: T.sub, fontWeight: "700", textDecorationLine: "underline" },
-  input: { marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
+  inputRow: { flexDirection: "row", alignItems: "flex-end", gap: LEKAA_SLOT_GAP, marginHorizontal: spacing.page, marginBottom: INPUT_BOTTOM },
 });

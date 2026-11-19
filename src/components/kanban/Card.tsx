@@ -334,7 +334,7 @@ export function Card({
         {card.linkCount > 0 && (
           <span
             data-testid="card-link-count"
-            title="เชื่อมข้อมูล SHARK"
+            title="เชื่อมข้อมูลเลขา"
             className="inline-flex items-center tabular-nums"
             style={{ gap: 3 }}
           >

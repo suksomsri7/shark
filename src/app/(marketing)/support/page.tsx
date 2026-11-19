@@ -7,8 +7,8 @@ import { SUPPORT_EMAIL } from "@/components/public-chrome";
 // มีบล็อกภาษาอังกฤษท้ายหน้าโดยตั้งใจ: ผู้ตรวจของ Apple ส่วนใหญ่อ่านไทยไม่ออก
 // แต่ตัวแอปเป็นตลาดไทย → เนื้อหาหลักเป็นไทย + สรุปอังกฤษให้ผู้ตรวจพอเข้าใจว่าแอปทำอะไร/ติดต่อยังไง
 export const metadata = {
-  title: "ศูนย์ช่วยเหลือ — SHARK",
-  description: "ติดต่อทีมงาน SHARK · คำถามที่พบบ่อย · วิธีลบบัญชีและข้อมูล",
+  title: "ศูนย์ช่วยเหลือ — เลขา",
+  description: "ติดต่อทีมงานเลขา · คำถามที่พบบ่อย · วิธีลบบัญชีและข้อมูล",
 };
 
 const FAQ: { q: string; a: React.ReactNode }[] = [
@@ -16,7 +16,7 @@ const FAQ: { q: string; a: React.ReactNode }[] = [
     q: "เข้าสู่ระบบอย่างไร ไม่มีรหัสผ่าน?",
     a: (
       <>
-        SHARK ใช้การเข้าสู่ระบบแบบไม่มีรหัสผ่าน — กรอกอีเมลแล้วระบบส่ง <strong>รหัส 6 หลัก (OTP)</strong> ไปให้
+        เลขาใช้การเข้าสู่ระบบแบบไม่มีรหัสผ่าน — กรอกอีเมลแล้วระบบส่ง <strong>รหัส 6 หลัก (OTP)</strong> ไปให้
         หรือจะเข้าผ่าน Apple / Google / LINE / Facebook ก็ได้ ทุกช่องทางเข้าสู่บัญชีเดียวกันถ้าใช้อีเมลเดียวกัน
       </>
     ),
@@ -75,7 +75,7 @@ export default function SupportPage() {
       <header className="flex flex-col gap-2">
         <h1 className="text-2xl font-semibold">ศูนย์ช่วยเหลือ</h1>
         <p className={`text-sm ${muted}`}>
-          SHARK — ระบบบริหารจัดการกิจการ (ขายหน้าร้าน · สมาชิก · จองคิว · คลังสินค้า · บัญชี · ผู้ช่วย AI)
+          เลขา — ระบบบริหารจัดการกิจการ (ขายหน้าร้าน · สมาชิก · จองคิว · คลังสินค้า · บัญชี · ผู้ช่วย AI)
         </p>
       </header>
 
@@ -136,7 +136,7 @@ export default function SupportPage() {
       >
         <h2 className="text-lg font-medium">Support (English)</h2>
         <p className="text-sm leading-6">
-          SHARK is a business management platform for small and medium businesses in Thailand:
+          Lekaa is a business management platform for small and medium businesses in Thailand:
           point of sale, membership and loyalty points, appointment and queue booking, inventory,
           accounting, and an AI assistant. The service is provided in Thai.
         </p>

@@ -18,9 +18,9 @@ import { KANBAN_OPS } from "@/lib/modules/kanban/api/registry";
 import { WEBHOOK_EVENTS } from "@/lib/webhooks/labels";
 
 export const metadata: Metadata = {
-  title: "SHARK Task Board API for developers",
+  title: "Lekaa Task Board API for developers",
   description:
-    "REST API ของบอร์ดงาน (Kanban) ใน SHARK: บอร์ด คอลัมน์ การ์ด ป้าย เช็คลิสต์ ความเห็น ไฟล์แนบ ค้นหาข้ามบอร์ด และ webhook",
+    "REST API ของบอร์ดงาน (Kanban) ในเลขา: บอร์ด คอลัมน์ การ์ด ป้าย เช็คลิสต์ ความเห็น ไฟล์แนบ ค้นหาข้ามบอร์ด และ webhook",
 };
 
 const BASE_URL = "https://shark.in.th/api/v1/kanban";
@@ -249,8 +249,8 @@ export default function KanbanApiDevPage() {
   return (
     <main className="mx-auto flex w-full max-w-4xl flex-col gap-10 px-4 py-10">
       <header className="flex flex-col gap-2">
-        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">SHARK Developers</p>
-        <h1 className="text-2xl font-bold">SHARK Task Board API — API บอร์ดงาน</h1>
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Lekaa Developers</p>
+        <h1 className="text-2xl font-bold">Lekaa Task Board API — API บอร์ดงาน</h1>
         <p className="text-sm text-neutral-700">
           REST API ของโมดูล <strong>บอร์ดงาน</strong> (Kanban) ในร้านของคุณ: อ่านและแก้บอร์ด คอลัมน์ การ์ดงาน
           ป้ายกำกับ เช็คลิสต์ ความเห็น ไฟล์แนบ ค้นหาการ์ดข้ามบอร์ด เปิดกล่อง &quot;งานของฉัน&quot; ของพนักงาน
@@ -508,7 +508,7 @@ export default function KanbanApiDevPage() {
           manifest ของสกิล <code>tasks</code> ที่ <code>/api/v1/ai/skills/tasks</code> ด้วย — ผู้ช่วยภายนอก
           (Claude, GPT, Gemini หรือโฟลว์ n8n) จึงสั่งงานบอร์ดด้วยคีย์ของร้านได้ · เครื่องมือฝั่ง <strong>อ่าน</strong>{" "}
           ทำงานทันที ส่วน <strong>เขียน/อันตราย</strong> จะสร้างเป็น <strong>ข้อเสนอ</strong> ให้เจ้าของร้าน
-          กดยืนยันในแอป SHARK ก่อน ถึงจะเปลี่ยนข้อมูลจริง · รูปแบบ manifest และวิธีเรียกอยู่ในคู่มือฉบับเต็ม{" "}
+          กดยืนยันในแอปเลขาก่อน ถึงจะเปลี่ยนข้อมูลจริง · รูปแบบ manifest และวิธีเรียกอยู่ในคู่มือฉบับเต็ม{" "}
           <a className="underline" href="/developers/kanban.md">
             /developers/kanban.md
           </a>{" "}

@@ -43,6 +43,10 @@ export async function GET(req: Request): Promise<Response> {
           tenantId: m.tenantId,
           name: m.tenant.name,
           role: m.role,
+          // ตั้งค่ากิจการ (14 พ.ย.): โลโก้ร้านเสมอ (แม้ปิดสวิตช์ "ใช้กับแอปมือถือ" — นั่นคือธีมสี ไม่ใช่ตัวตนร้าน) ⇒ ไอคอนกิจการ (BizIcon) โชว์โลโก้ได้ทุกร้าน
+          //   ฟิลด์เพิ่ม (additive) — แอปรุ่นเก่าไม่อ่าน · null = ไม่มีโลโก้
+          logoUrl: t.logoUrl,
+          businessType: m.tenant.businessType ?? null,
           branding: t.applyMobile
             ? {
                 displayName: t.displayName,

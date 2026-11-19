@@ -20,7 +20,8 @@ import { revalidatePath } from "next/cache";
 import { Prisma } from "@prisma/client";
 import { tenantDb } from "@/lib/core/db";
 import { assertCan, evaluate, filterAccessibleUnitIds } from "@/lib/core/rbac";
-import { requireChatRead, membershipOf } from "./guard";
+import { requireChatRead, membershipOf, CHAT_SETTING_ACTION } from "./guard";
+import { staffLangFromForm, writeChatAiSettings } from "./ai-settings";
 import {
   canAccessConvUnit,
   getThread,
@@ -99,6 +100,9 @@ function inboxWhere(
   // 🔴 ใช้ตัวเดียวกับ service.ts ห้ามเขียนซ้ำ — ตรรกะความปลอดภัย 2 ชุดจะเพี้ยนจากกันเสมอ
   const unitWhere = unitAccessWhere(unitAccess);
   if (Object.keys(unitWhere).length > 0) and.push(unitWhere);
+
+  // ห้องที่ลบแชทแล้ว (ปัดซ้ายในแอป · `hideConversation`) ไม่อยู่ในรายการ/ตัวนับ — ลูกค้าทักใหม่ = กลับมาเอง
+  and.push({ hiddenAt: null });
 
   // "ปิดแล้ว" อยู่หลังไอคอนกรวย (มติ D3) — ค่าตั้งต้นคือซ่อนห้องที่ปิดไปแล้ว เหมือนพฤติกรรมเดิม
   and.push(opts.closed ? { status: "RESOLVED" } : { status: { not: "RESOLVED" } });
@@ -530,18 +534,14 @@ export async function retrySendAction(
  */
 export async function setChatAiSettingsAction(formData: FormData): Promise<void> {
   const auth = await requireChatRead();
-  assertCan(membershipOf(auth), { module: "chat", action: "chat.setting.setMemberSystem" });
+  assertCan(membershipOf(auth), { module: "chat", action: CHAT_SETTING_ACTION });
   const systemId = String(formData.get("systemId") ?? "");
   if (!systemId) redirect("/app");
-  const staffLangRaw = String(formData.get("staffLang") ?? "").trim().toLowerCase();
-  const staffLang = /^[a-z]{2}$/.test(staffLangRaw) ? staffLangRaw : "th";
-  await db(auth.active.tenantId, systemId).chatSetting.updateMany({
-    where: {},
-    data: {
-      aiSuggestEnabled: String(formData.get("aiSuggestEnabled") ?? "") === "on",
-      translateEnabled: String(formData.get("translateEnabled") ?? "") === "on",
-      staffLang,
-    },
+  // 17 พ.ย.: ตัวเขียนร่วมกับแอป (ai-settings.ts · PUT /api/mobile/inbox/ai-settings) — ค่าที่ฟอร์มส่งและกติกาภาษาเหมือนเดิม
+  await writeChatAiSettings(auth.active.tenantId, systemId, {
+    aiSuggestEnabled: String(formData.get("aiSuggestEnabled") ?? "") === "on",
+    translateEnabled: String(formData.get("translateEnabled") ?? "") === "on",
+    staffLang: staffLangFromForm(formData.get("staffLang")),
   });
   const path = `/app/sys/${systemId}/chat/channels`;
   revalidatePath(path);

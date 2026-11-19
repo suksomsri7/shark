@@ -236,7 +236,7 @@ export function EmailSettingsForm({ data }: { data: CrmEmailSettingsData }) {
             ส่งออก — ผู้ส่ง
           </h2>
           <p className="text-xs text-[color:var(--color-muted)]">
-            ตอนนี้ลูกค้าจะเห็นผู้ส่งเป็น <span className="font-mono">{data.effectiveFrom}</span> (ผ่าน{data.via === "DOMAIN" ? "โดเมนของร้าน" : "กล่อง SHARK"})
+            ตอนนี้ลูกค้าจะเห็นผู้ส่งเป็น <span className="font-mono">{data.effectiveFrom}</span> (ผ่าน{data.via === "DOMAIN" ? "โดเมนของร้าน" : "กล่องเลขา"})
           </p>
           <label className="flex min-w-0 flex-col gap-1 text-sm">
             <span className="text-xs text-[color:var(--color-muted)]">ที่อยู่ผู้ส่ง</span>
@@ -323,7 +323,7 @@ export function EmailSettingsForm({ data }: { data: CrmEmailSettingsData }) {
                 {data.domains.length === 0 && (
                   <tr>
                     <td className="p-3 text-[color:var(--color-muted)]" colSpan={4}>
-                      ยังไม่มีโดเมนของร้าน — ส่งผ่านกล่อง SHARK ได้เลยโดยไม่ต้องตั้ง DNS
+                      ยังไม่มีโดเมนของร้าน — ส่งผ่านกล่องเลขาได้เลยโดยไม่ต้องตั้ง DNS
                     </td>
                   </tr>
                 )}
@@ -456,7 +456,7 @@ export function EmailSettingsForm({ data }: { data: CrmEmailSettingsData }) {
                 <tr key={u.userId} data-user-id={u.userId}>
                   <td className="p-2">{u.name}</td>
                   <td className="p-2 font-mono text-xs">{u.userEmail ?? "—"}</td>
-                  <td className="p-2 text-xs">{u.replyToMode === "SHARK" ? "กล่อง SHARK" : u.replyToMode === "CUSTOM" ? (u.replyToAddr ?? "กำหนดเอง") : "อีเมลตัวเอง"}</td>
+                  <td className="p-2 text-xs">{u.replyToMode === "SHARK" ? "กล่องเลขา" : u.replyToMode === "CUSTOM" ? (u.replyToAddr ?? "กำหนดเอง") : "อีเมลตัวเอง"}</td>
                   <td className="p-2 text-xs">{u.copyToAddr ?? "—"}</td>
                   <td className="p-2">
                     <button type="button" className="btn btn-ghost text-xs" disabled={busy} onClick={() => setUserDraft(u)} data-testid="crm-email-user-edit" data-user-id={u.userId}>

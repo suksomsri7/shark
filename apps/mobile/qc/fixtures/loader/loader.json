@@ -1,0 +1,201 @@
+{
+ "_about": "QC ตัวโหลดโลโก้ Lekaa (qc/shoot-cal.mjs + FIXTURE นี้)",
+ "endpoints": {
+  "GET /api/mobile/me": {
+   "user": {
+    "id": "u-qc-owner",
+    "email": "suk@qc.invalid",
+    "name": "สมชาย ใจดี",
+    "phone": "+66800000101",
+    "appleLinked": true
+   },
+   "memberships": [
+    {
+     "tenantId": "t1",
+     "name": "SIAM DIVE CENTER",
+     "role": "OWNER",
+     "branding": null
+    },
+    {
+     "tenantId": "t2",
+     "name": "บลูเฮาส์ หอพัก",
+     "role": "OWNER",
+     "branding": null
+    }
+   ]
+  },
+  "GET /api/mobile/secretary/me": {
+   "name": "เลขา",
+   "suffix": "ครับ",
+   "tone": "polite",
+   "languages": [
+    "th"
+   ],
+   "stats": {
+    "jobs": 3,
+    "approvedClean": 3,
+    "edited": 0,
+    "rejected": 0
+   }
+  },
+  "GET /api/mobile/secretary/badges": {
+   "approvals": 0,
+   "customers": 40,
+   "team": {
+    "invites": 0,
+    "help": 0,
+    "support": 0
+   },
+   "total": 40,
+   "calendar": 6
+  },
+  "GET /api/mobile/secretary/rooms": {
+   "items": [
+    {
+     "id": "r9",
+     "title": "ตอนนี้เรามีสมาชิกกี่คนครับ",
+     "status": "DONE",
+     "systems": [
+      "member"
+     ],
+     "startedBy": {
+      "id": "u-qc-owner",
+      "name": "สมชาย"
+     },
+     "sharedWith": [],
+     "unread": false,
+     "badge": {
+      "pendingProposals": 0
+     },
+     "updatedAt": "2026-11-15T09:00:00.000Z"
+    }
+   ],
+   "nextBefore": null
+  },
+  "POST /api/mobile/push/register": {
+   "ok": true
+  }
+ },
+ "shots": [
+  {
+   "name": "frame-00",
+   "route": "/secretary/_loader?p=0.0000&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 300
+    }
+   ]
+  },
+  {
+   "name": "frame-01",
+   "route": "/secretary/_loader?p=0.1250&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 300
+    }
+   ]
+  },
+  {
+   "name": "frame-02",
+   "route": "/secretary/_loader?p=0.2500&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 300
+    }
+   ]
+  },
+  {
+   "name": "frame-03",
+   "route": "/secretary/_loader?p=0.3750&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 300
+    }
+   ]
+  },
+  {
+   "name": "frame-04",
+   "route": "/secretary/_loader?p=0.5000&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 300
+    }
+   ]
+  },
+  {
+   "name": "frame-05",
+   "route": "/secretary/_loader?p=0.6250&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 300
+    }
+   ]
+  },
+  {
+   "name": "frame-06",
+   "route": "/secretary/_loader?p=0.7500&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 300
+    }
+   ]
+  },
+  {
+   "name": "frame-07",
+   "route": "/secretary/_loader?p=0.8750&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 300
+    }
+   ]
+  },
+  {
+   "name": "launch",
+   "route": "/secretary/_loader?launch=1",
+   "steps": [
+    {
+     "wait": "launch-loader"
+    },
+    {
+     "sleep": 900
+    }
+   ]
+  },
+  {
+   "name": "anim",
+   "route": "/secretary/_loader?anim=1&size=240",
+   "steps": [
+    {
+     "wait": "loader-qc"
+    },
+    {
+     "sleep": 700
+    }
+   ]
+  }
+ ]
+}

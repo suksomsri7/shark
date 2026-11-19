@@ -74,7 +74,7 @@ export default async function PublicFormPage({ params }: { params: Promise<{ tok
       />
 
       <p className="text-center text-[11px] text-[color:var(--color-muted)]">
-        ขับเคลื่อนโดย SHARK
+        ขับเคลื่อนโดยเลขา
       </p>
     </>,
   );

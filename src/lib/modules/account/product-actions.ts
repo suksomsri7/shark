@@ -444,7 +444,7 @@ function validateProductPayload(p: ProductFormPayload): Record<string, string> {
     if (!Number.isFinite(n)) f[k] = `${label}ต้องเป็นตัวเลข`;
     else if (n < 0) f[k] = `${label}ติดลบไม่ได้`;
   }
-  if (p.costMethod === "FIFO") f.costMethod = "FIFO ยังไม่เปิดใช้งาน (คลัง SHARK ใช้ถัวเฉลี่ย)";
+  if (p.costMethod === "FIFO") f.costMethod = "FIFO ยังไม่เปิดใช้งาน (คลังเลขาใช้ถัวเฉลี่ย)";
   if (p.type === "BUNDLE" && p.trackStock) f.trackStock = "รายการจัดชุดติดตามสต็อกเองไม่ได้ (ตัดที่ส่วนประกอบ)";
   if (p.type === "SERVICE" && p.trackStock) f.trackStock = "บริการไม่มีสต็อกให้ติดตาม";
   return f;

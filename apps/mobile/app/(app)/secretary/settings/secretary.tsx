@@ -11,6 +11,7 @@ import { AiryScreen, Chip, Glass, LoadError, Loading, Note, Orb, PrimaryButton, 
 import { SettingRow, SettingsTop } from "@/src/components/secretary/SettingRow";
 import {
   DEFAULT_SECRETARY_NAME,
+  secretaryNameOf,
   SEC_LANGUAGES,
   SUFFIXES,
   TONES,
@@ -37,18 +38,17 @@ const WEEK_MS = 7 * 86_400_000;
 const NAME_MAX = 30;
 
 const formOf = (s: SecretaryIdentity | null): Form => ({
-  name: s?.name ?? DEFAULT_SECRETARY_NAME,
+  name: s ? secretaryNameOf(s.name) : DEFAULT_SECRETARY_NAME, // 17 พ.ย. ชื่อปริยายเดิม "Shark" ⇒ "เลขา"
   tone: s?.tone && (TONES as readonly string[]).includes(s.tone) ? s.tone : "polite",
   suffix: suffixKeyOf(s?.suffix),
   languages: s?.languages?.length ? [...s.languages] : ["th"],
 });
 const same = (a: Form, b: Form) => a.name.trim() === b.name.trim() && a.tone === b.tone && a.suffix === b.suffix && a.languages.join(",") === b.languages.join(",");
 
+// 14 พ.ย. (แบบ bizgear Ⓑ): ลิงก์ท้ายหน้าเหลือของส่วนตัว — สิทธิ์/กฎ/ความรู้/โควตา ย้ายไป "ตั้งค่ากิจการ" (⚙ ในตัวสลับกิจการ · เส้นทางเดิมยังอยู่)
 const LINKS: { key: string; title: I18nKey; path: Href }[] = [
-  { key: "access", title: "sec.title.settingsAccess", path: "/secretary/settings/access" },
-  { key: "rules", title: "sec.title.settingsRules", path: "/secretary/settings/rules" },
-  { key: "knowledge", title: "sec.title.settingsKnowledge", path: "/secretary/settings/knowledge" },
-  { key: "quota", title: "sec.title.settingsQuota", path: "/secretary/settings/quota" },
+  { key: "account", title: "sec.title.settingsAccount", path: "/secretary/settings/account" },
+  { key: "log", title: "sec.title.settingsLog", path: "/secretary/settings/log" },
 ];
 
 export default function SecretaryProfileScreen() {

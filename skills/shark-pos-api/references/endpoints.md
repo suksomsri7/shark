@@ -1,4 +1,4 @@
-# SHARK POS API — endpoint reference
+# Lekaa POS API — endpoint reference
 
 Generated from the operation registry by `scripts/gen-pos-api-docs.mts` (`--check` covers this file too). Do not edit by hand.
 

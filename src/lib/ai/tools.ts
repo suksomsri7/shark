@@ -22,6 +22,7 @@ import { channelSentenceLabel } from "@/lib/modules/chat/channel-icon";
 import { AVAILABLE_FEATURE, systemDef } from "@/lib/systems";
 import { accountTools } from "./tools-account";
 import { kanbanTools } from "./tools-kanban";
+import { calendarTools } from "./tools-calendar"; // CAL1.7 ◂
 import { memberTools } from "./tools-member";
 // CRM C1.10 ▸ สกิล crm (14 tool จากทะเบียน op ของ REST CRM · แทน crm_create_lead รุ่นเขียนมือ) ◂
 import { crmTools } from "./tools-crm";
@@ -1446,7 +1447,7 @@ const chatUnreadConversations: AiTool = {
         ? {}
         : (await import("@/lib/modules/chat/service")).unitAccessWhere(cm?.unitAccess ?? []);
     const convs = await prisma.chatConversation.findMany({
-      where: { AND: [{ tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 } }, chatUnitWhere] },
+      where: { AND: [{ tenantId: ctx.tenantId, staffUnreadCount: { gt: 0 }, hiddenAt: null }, chatUnitWhere] },
       orderBy: { lastMessageAt: "desc" },
       take: 50,
       include: { contact: { select: { displayName: true } } }, // SEC S3a.1-S2 ▸ R-Z24: ไม่อ่านเบอร์ (ไม่ถอยไปใช้เบอร์เป็นชื่อ) ◂
@@ -1472,7 +1473,7 @@ const sendCustomerMessage: AiTool = {
   def: {
     name: "send_customer_message",
     description:
-      `Propose a message to a customer in the shop's customer chat (LINE / web chat). Nothing is sent until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์); the customer sees it signed "Shark (ผู้ช่วย AI)" with a fixed signature line added by the system. Only for customers linked to a member/CRM record. conversationId = the customer chat conversation from the room context (ask the user if you do not have it). body = the exact message, at most ${CHAT_SEND_BODY_MAX} characters, no promises about money or discounts the owner did not ask for. kind = reply | followup (service follow-up, not marketing) | quote.`,
+      `Propose a message to a customer in the shop's customer chat (LINE / web chat). Nothing is sent until it is approved by a person with permission (ต้องผ่านการอนุมัติจากผู้มีสิทธิ์); the customer sees it signed "เลขา (ผู้ช่วย AI)" with a fixed signature line added by the system. Only for customers linked to a member/CRM record. conversationId = the customer chat conversation from the room context (ask the user if you do not have it). body = the exact message, at most ${CHAT_SEND_BODY_MAX} characters, no promises about money or discounts the owner did not ask for. kind = reply | followup (service follow-up, not marketing) | quote.`,
     parameters: {
       type: "object",
       properties: {
@@ -1494,7 +1495,7 @@ const sendCustomerMessage: AiTool = {
       return JSON.stringify({ error: "ยังไม่รู้ว่าจะส่งถึงลูกค้าห้องไหน", suggestion: "ถามผู้ใช้ด้วย ask_clarify ว่าลูกค้าคนไหน หรือเปิดงานจากห้องแชทลูกค้า" });
     }
     if (!body) return JSON.stringify({ error: "ข้อความถึงลูกค้าว่างอยู่ — เขียนข้อความที่จะส่งก่อน" });
-    if (body.length > CHAT_SEND_BODY_MAX) return JSON.stringify({ error: `ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร (สำรองที่ให้บรรทัดลงชื่อ Shark) — ย่อให้สั้นลงแล้วเสนอใหม่` });
+    if (body.length > CHAT_SEND_BODY_MAX) return JSON.stringify({ error: `ข้อความถึงลูกค้ายาวเกิน ${CHAT_SEND_BODY_MAX.toLocaleString("th-TH")} ตัวอักษร (สำรองที่ให้บรรทัดลงชื่อของเลขา) — ย่อให้สั้นลงแล้วเสนอใหม่` });
     const kindRaw = a.kind === undefined || a.kind === null || a.kind === "" ? "reply" : String(a.kind).trim().toLowerCase();
     if (!(CUSTOMER_MESSAGE_KINDS as readonly string[]).includes(kindRaw)) {
       return JSON.stringify({ error: `ไม่รู้จักชนิดข้อความ "${kindRaw}"`, suggestion: "ใช้ reply (ตอบ) followup (ติดตาม) หรือ quote (ส่งใบเสนอราคา)" });
@@ -2480,7 +2481,7 @@ const supportOpenCase: AiTool = {
   def: {
     name: "support_open_case",
     description:
-      "Open a support case with the SHARK team when the user reports a system problem, makes a complaint, or asks for something the assistant cannot do (outage, bug, feature request, platform billing issue). Records the case immediately without asking the user to confirm; the team replies inside this same chat. Provide subject (short title) and detail (the problem as the user described it).",
+      "Open a support case with the Lekaa team when the user reports a system problem, makes a complaint, or asks for something the assistant cannot do (outage, bug, feature request, platform billing issue). Records the case immediately without asking the user to confirm; the team replies inside this same chat. Provide subject (short title) and detail (the problem as the user described it).",
     parameters: {
       type: "object",
       properties: {
@@ -2502,7 +2503,7 @@ const supportOpenCase: AiTool = {
     if (!detail) return JSON.stringify({ error: "ต้องระบุรายละเอียดปัญหา" });
     // SEC S3a.1-S2 ▸ R-Z34 (RC1 M1): ห้องที่มีบริบทลูกค้า ⇒ เปิดเคสเป็นข้อเสนอ `support.open` (ข้อความลูกค้าอยู่ใน prompt — ไม่ให้ส่งออกนอกร้านเอง) ◂
     if ((await secRoomOf(ctx)).customer) {
-      return propose(ctx, "support.open", `แจ้งทีมงาน SHARK: ${subject}`.slice(0, 300), { subject: subject.slice(0, 200), detail: detail.slice(0, 4000) });
+      return propose(ctx, "support.open", `แจ้งทีมงานเลขา: ${subject}`.slice(0, 300), { subject: subject.slice(0, 200), detail: detail.slice(0, 4000) });
     }
     const { caseNo } = await openCaseFromAi(
       { tenantId: ctx.tenantId },
@@ -2728,6 +2729,8 @@ function registryTools(): AiTool[] {
     ...crmTools(),
     // POS P3.9 ▸ R1 มติ 1: สกิล sales จากทะเบียน op ของ REST POS (11 tool · kind `pos.*`) + pos_draft_po ◂
     ...posTools(),
+    // CAL1.7 ▸ ปฏิทินส่วนตัวของผู้ใช้ (เตือนฉัน/นัดส่วนตัว · ไม่มีผู้รับ · ไม่ผ่านด่านอนุมัติ — สัญญา 32 §9) ◂
+    ...calendarTools(),
   ];
 }
 

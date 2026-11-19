@@ -277,6 +277,14 @@ export const SKILLS: Skill[] = [
     tools: ["schedule_task", "automation_create_rule"],
   },
   {
+    // CAL1.7 ▸ ปฏิทินส่วนตัว (เตือนฉัน/นัดส่วนตัว) — เฉพาะห้องเลขา ◂
+    id: "calendar",
+    label: "ปฏิทินส่วนตัว",
+    summary: "Personal calendar: change, cancel or list the user's own reminders and appointments (confirm a draft repeating reminder).",
+    // calendar_b ▸ review b m1: ทั้ง 5 ตัวอยู่สกิลนี้ — ห้องเลขา (AiRoom) เท่านั้นที่เห็นสกิล · service ยื่น calendar_add/calendar_agenda ตั้งแต่รอบแรกในห้องเลขา (CALENDAR_ROOM_CORE) ◂
+    tools: ["calendar_add", "calendar_agenda", "calendar_update", "calendar_cancel", "calendar_list"],
+  },
+  {
     id: "memory",
     label: "ความจำผู้ช่วย",
     summary: "Assistant memory: forget a previously remembered fact.",

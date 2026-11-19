@@ -27,7 +27,7 @@ type Props = {
   health?: IntegrationHealthView[];
   thresholdPercent?: number;
 };
-const KEY_MISSING_TEXT = "ยังไม่ตั้งกุญแจ — ระบบยังไม่พร้อมเก็บคีย์ ติดต่อทีม SHARK";
+const KEY_MISSING_TEXT = "ยังไม่ตั้งกุญแจ — ระบบยังไม่พร้อมเก็บคีย์ ติดต่อทีมเลขา";
 /** ชื่อเริ่มต้นที่ไม่ซ้ำของชนิดนี้ (โหมดเพิ่มอีกชุด) */
 function uniqueLabel(base: string, taken: string[]): string {
   if (!taken.includes(base)) return base;
@@ -486,7 +486,7 @@ function Panel({
               </option>
             ))}
           </select>
-          <span className="text-xs text-[color:var(--color-muted)]">รายการ = ตัวต่อที่ SHARK มี · ร้านไปสมัครกับผู้ให้บริการเอง (จ่ายค่าตรวจเอง)</span>
+          <span className="text-xs text-[color:var(--color-muted)]">รายการ = ตัวต่อที่เลขามี · ร้านไปสมัครกับผู้ให้บริการเอง (จ่ายค่าตรวจเอง)</span>
         </label>
 
         <label className="flex flex-col gap-1.5 text-sm">

@@ -203,7 +203,7 @@ function SharkSection(p: ConnectionsPanelProps & SharedState) {
   return (
     <section className="card flex flex-col gap-4 p-5" data-testid="connections-shark">
       <div>
-        <h2 className="text-sm font-medium">การเชื่อมต่อ · ระบบใน SHARK</h2>
+        <h2 className="text-sm font-medium">การเชื่อมต่อ · ระบบในเลขา</h2>
         <p className={`mt-1 ${helpCls}`}>สมุดบัญชีเล่มนี้รับข้อมูลจากระบบต่อไปนี้อัตโนมัติ</p>
       </div>
 
@@ -786,7 +786,7 @@ function ApiSection(p: ConnectionsPanelProps) {
       <section className="card flex flex-col gap-3 p-5">
         <h2 className="text-sm font-medium">เชื่อมกับแอปอื่น</h2>
         <p className={helpCls}>
-          Zapier / Make ต่อกับ SHARK ผ่าน &ldquo;คีย์ API + webhook&rdquo; ด้านบน — สร้างคีย์ 1 อัน แล้วใส่ที่อยู่ปลายทางของ Zap
+          Zapier / Make ต่อกับเลขาผ่าน &ldquo;คีย์ API + webhook&rdquo; ด้านบน — สร้างคีย์ 1 อัน แล้วใส่ที่อยู่ปลายทางของ Zap
           ในตาราง webhook
         </p>
         <div className="flex items-center justify-between gap-2 rounded-lg border p-3 opacity-60">

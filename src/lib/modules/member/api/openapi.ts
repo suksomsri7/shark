@@ -23,7 +23,7 @@ export { memberWebhookEvents, MEMBER_EVENT_PREFIXES } from "./webhook-events";
 const MEMBER_WEBHOOK_EVENTS = memberWebhookEvents().map((e) => `\`${e}\``);
 
 const INFO_DESCRIPTION = [
-  "REST API for the SHARK membership module. One API key works inside one member system (AppSystem of type MEMBER) and sees every member of that system.",
+  "REST API for the Lekaa membership module. One API key works inside one member system (AppSystem of type MEMBER) and sees every member of that system.",
   "",
   "Conventions that apply to every operation:",
   "1. Authentication is `Authorization: Bearer <api key>`. The key carries its own scopes; an operation returns 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope`.",
@@ -48,7 +48,7 @@ const INFO_DESCRIPTION = [
 
 /** ส่วนหัวเอกสารของ API ระบบสมาชิก */
 export const MEMBER_DOC_INFO: ApiDocInfo = {
-  title: "SHARK Member API",
+  title: "Lekaa Member API",
   version: API_VERSION,
   serverUrl: SERVER_URL,
   serverDescription: "Production",

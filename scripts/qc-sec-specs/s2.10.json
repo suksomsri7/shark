@@ -65,10 +65,10 @@
   },
   {
    "id": "X-3",
-   "name": "C1: ค่าเริ่มต้นชื่อ Shark · ไม่มีรายการชื่อตัวอย่าง (R9) · PUT /secretary แล้วไป /secretary",
+   "name": "C1: ค่าเริ่มต้นชื่อ (DEFAULT_SECRETARY_NAME = เลขา · 17 พ.ย. เดิม Shark) · ไม่มีรายการชื่อตัวอย่าง (R9) · PUT /secretary แล้วไป /secretary",
    "file": "app/(app)/secretary/onboarding/name.tsx",
    "must": [
-    "Shark",
+    "DEFAULT_SECRETARY_NAME",
     "PUT|updateSecretary",
     "router\\.(replace|push)\\(\"/secretary\"\\)"
    ],

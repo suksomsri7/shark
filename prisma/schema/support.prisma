@@ -6,6 +6,17 @@ enum SupportCaseStatus {
   RESOLVED // ปิดแล้ว (ร้านพิมพ์ต่อ = เปิดใหม่เป็น OPEN)
 }
 
+// help-cases (15 พ.ย. 2026) ▸ ขั้นของเคสที่ร้านเห็น (แถบ 5 ขั้น รับเรื่อง → ตรวจสอบ → แก้ไข → รอยืนยัน → ปิดเคส + "รอข้อมูลจากคุณ")
+//   `status` เดิมยังเป็นตัวที่ backoffice/แท็บ/flow เดิมใช้ — ตั้ง stage ทุกครั้งจะตั้ง status ตาม (stageStatus ใน lib/support/stage.ts)
+enum SupportCaseStage {
+  RECEIVED // รับเรื่อง (เปิดใหม่ / ร้านพิมพ์ต่อหลังปิด)
+  CHECKING // กำลังตรวจสอบ
+  FIXING // กำลังแก้ไข
+  NEED_INFO // รอข้อมูลจากคุณ (ร้านตอบ ⇒ CHECKING)
+  AWAITING_CONFIRM // แก้แล้ว รอร้านยืนยัน
+  CLOSED // ปิดเคส (= status RESOLVED)
+}
+
 enum SupportAuthorSide {
   SHOP
   PLATFORM
@@ -18,6 +29,7 @@ model SupportCase {
   openedByUserId         String // User.id ฝั่งร้าน
   subject                String
   status                 SupportCaseStatus @default(OPEN)
+  stage                  SupportCaseStage  @default(RECEIVED) // help-cases: ขั้นที่ร้านเห็น (status ตามมาจาก stage)
   assigneePlatformUserId String?
   shopLastReadAt         DateTime? // ร้านเปิดอ่านเธรดล่าสุดเมื่อไหร่ (คำนวณ badge unread)
   conversationId         String? // mobile: เคสที่ AI เปิดจาก session แชท — admin ตอบ → bridge กลับห้องเดิม
@@ -27,7 +39,8 @@ model SupportCase {
   createdAt              DateTime          @default(now())
   updatedAt              DateTime          @updatedAt
 
-  messages SupportMessage[]
+  messages    SupportMessage[]
+  stageEvents SupportStageEvent[]
 
   @@unique([tenantId, caseNo])
   @@index([tenantId, status, updatedAt])
@@ -44,6 +57,22 @@ model SupportMessage {
   body            String
   attachmentsJson Json              @default("[]") // [{name, url, kind:"image"|"file"}] — WO help-v2
   createdAt       DateTime          @default(now())
+
+  @@index([tenantId, caseId, createdAt])
+}
+
+// help-cases ▸ ประวัติการเปลี่ยนขั้น (ใคร/เมื่อไหร่) — append-only · ห้องเคสแสดงเป็นบรรทัดระบบ "15 พ.ย. 09:40 · สถานะ → กำลังแก้ไข"
+model SupportStageEvent {
+  id        String            @id @default(cuid())
+  tenantId  String
+  caseId    String
+  case      SupportCase       @relation(fields: [caseId], references: [id], onDelete: Cascade)
+  fromStage SupportCaseStage? // null = เปิดเคส
+  toStage   SupportCaseStage
+  actorSide SupportAuthorSide // PLATFORM = ทีมงานตั้ง · SHOP = เกิดจากการกระทำของร้าน (ตอบ/ยืนยัน/เปิดใหม่)
+  actorId   String // PlatformUser.id หรือ User.id
+  note      String? // ข้อความประกอบสั้น ๆ (เช่น "ทีมพบสาเหตุแล้ว")
+  createdAt DateTime          @default(now())
 
   @@index([tenantId, caseId, createdAt])
 }

@@ -63,7 +63,7 @@ export function conversationDto(
 }
 
 /** ปุ่มที่ผู้เรียกกดได้ในห้อง (S1.14b · ตัดสินจากคีย์ของผู้เรียกฝั่ง server — แอปไม่คำนวณเอง) */
-/** S1.14c: `aiSuggest` = คีย์ `chat.ai.suggest` (ปุ่ม "ให้ AI ร่าง" · ด่านเดียวกับ POST …/ai-suggest) */
+/** S1.14c: `aiSuggest` = คีย์ `chat.ai.suggest` (ปุ่ม "ให้ AI ร่าง" · ด่านเดียวกับ POST …/ai-suggest) · B27 17 พ.ย.: ∧ ร้านเปิด aiSuggestEnabled (แบบเดียวกับ `translate`) */
 /** S3a.6: `translate` = ร้านเปิดการแปล ∧ ผู้เรียกเห็นห้อง ∧ มีคีย์ `chat.translate.use` (คีย์เดียวกับปุ่มแปลบนเว็บ) */
 export type InboxConversationCan = { reply: boolean; assign: boolean; setStatus: boolean; linkCustomer: boolean; aiSuggest: boolean; translate: boolean };
 /** ห้องในจอเธรด = รายการ + หน้าต่างตอบกลับ + ปุ่มที่กดได้ (S1.14b) */

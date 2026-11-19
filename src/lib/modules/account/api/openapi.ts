@@ -33,7 +33,7 @@ const API_VERSION = "1.0.0";
 const ACCOUNT_WEBHOOK_EVENTS = WEBHOOK_EVENTS.filter((e) => e.value.startsWith("account.")).map((e) => `\`${e.value}\``);
 
 const INFO_DESCRIPTION = [
-  "REST API for the SHARK accounting module. One API key works inside one accounting book (AppSystem of type ACCOUNT).",
+  "REST API for the Lekaa accounting module. One API key works inside one accounting book (AppSystem of type ACCOUNT).",
   "",
   "Conventions that apply to every operation:",
   "1. Money is always an integer number of satang (1 baht = 100 satang) and every money field carries a `Satang` suffix, for example `amountSatang` or `totalSatang`. Never send decimals: 1,250.50 baht is 125050.",
@@ -51,7 +51,7 @@ const INFO_DESCRIPTION = [
 
 /** ส่วนหัวเอกสารของ API บัญชี — ค่าเดิมทุกตัวอักษร (คู่มือ/สเปกต้องไม่ขยับเพราะการรีแฟกเตอร์) */
 export const ACCOUNT_DOC_INFO: ApiDocInfo = {
-  title: "SHARK Accounting API",
+  title: "Lekaa Accounting API",
   version: API_VERSION,
   serverUrl: SERVER_URL,
   serverDescription: "Production",

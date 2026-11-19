@@ -21,7 +21,7 @@ export function PublicHeader() {
     <header className="border-b border-[color:var(--color-line)]">
       <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-6 py-4">
         <Link href="/" className="text-sm font-semibold tracking-widest">
-          SHARK
+          Lekaa
         </Link>
         <nav className="flex items-center gap-1 text-sm">
           <Link href="/support" className="btn-sm min-h-[40px] rounded-lg px-3">
@@ -54,7 +54,7 @@ export function PublicFooter() {
               {SUPPORT_EMAIL}
             </a>
           </p>
-          <p>SHARK — ระบบบริหารจัดการกิจการสำหรับธุรกิจไทย · shark.in.th</p>
+          <p>เลขา — ระบบบริหารจัดการกิจการสำหรับธุรกิจไทย · shark.in.th</p>
         </div>
       </div>
     </footer>

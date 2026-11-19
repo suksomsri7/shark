@@ -30,6 +30,8 @@ model AiMessage {
   tokensIn       Int            @default(0) // นับเฉพาะแถว ASSISTANT (ของ request นั้น)
   tokensOut      Int            @default(0)
   authorUserId   String? // S1.1 เลขา AI — คนที่พิมพ์ (R-K2 · เขียนเฉพาะ actor.kind = member · ห้องเดิม = null)
+  // เลขา AI 14 พ.ย. — ไฟล์แนบของข้อความ USER ในห้องเลขา (≤ 5 · [{fileId,name,mimeType,size,kind}] · FileAsset ส่วนตัวของร้าน · null = ไม่มี)
+  attachments    Json?
   createdAt      DateTime       @default(now())
 
   @@index([tenantId, conversationId, createdAt])

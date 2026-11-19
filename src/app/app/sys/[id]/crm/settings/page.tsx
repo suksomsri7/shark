@@ -141,7 +141,7 @@ export default async function CrmSettingsPage({ params }: { params: Promise<{ id
           <div className="flex flex-col gap-1">
             <h2 className="text-sm font-medium">เพดานการใช้งานของระบบ</h2>
             <p className="text-xs text-[color:var(--color-muted)]">
-              เมื่อใช้ถึง 80% เจ้าของร้านได้รับแจ้งเตือนในแอปครั้งเดียวต่อเดือน · เต็มเพดานแล้วระบบไม่ให้เพิ่มรายการใหม่ (ข้อมูลเดิมไม่หาย) — ติดต่อทีม SHARK เพื่อขยายเพดาน
+              เมื่อใช้ถึง 80% เจ้าของร้านได้รับแจ้งเตือนในแอปครั้งเดียวต่อเดือน · เต็มเพดานแล้วระบบไม่ให้เพิ่มรายการใหม่ (ข้อมูลเดิมไม่หาย) — ติดต่อทีมเลขาเพื่อขยายเพดาน
             </p>
           </div>
           <ul className="flex flex-col gap-2 text-xs" data-testid="crm-limits-list">

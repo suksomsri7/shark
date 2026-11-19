@@ -1,4 +1,4 @@
-# SHARK POS API
+# Lekaa POS API
 
 Machine readable contract: `/api/v1/pos/openapi.json` (OpenAPI 3.1.0, no API key needed).
 Base URL: `https://shark.in.th/api/v1/pos` - contract version 1.0.0 - 49 operations.
@@ -11,7 +11,7 @@ Generated from the operation registry by `scripts/gen-pos-api-docs.mts`. Do not 
 
 ## Authentication and scopes
 
-Send `Authorization: Bearer <api key>`. Keys are created by the shop owner in POS > Settings > SHARK connections > API keys; the raw key is shown once. A key is bound to one POS system.
+Send `Authorization: Bearer <api key>`. Keys are created by the shop owner in POS > Settings > Lekaa connections > API keys; the raw key is shown once. A key is bound to one POS system.
 
 Scopes are the same permission keys the staff roles use, so a key can never do more than a person could. The key acts as a staff member of its own (seller id = key id, role STAFF): bills it sells are attributed to the key, not to the person who created it.
 
@@ -29,7 +29,7 @@ Not available through the API on purpose: staff PINs, manager PINs and deciding 
 
 These are the rules of the module, copied verbatim from the contract description in `/api/v1/pos/openapi.json`:
 
-REST API for the SHARK point of sale (POS). One API key works inside one POS system (AppSystem of type POS) and its branches (business units). It sells, refunds and voids bills exactly like the register screen does, takes and progresses online orders, manages the catalog and reads every sales report.
+REST API for the Lekaa point of sale (POS). One API key works inside one POS system (AppSystem of type POS) and its branches (business units). It sells, refunds and voids bills exactly like the register screen does, takes and progresses online orders, manages the catalog and reads every sales report.
 
 Conventions that apply to every operation:
 1. Authentication is `Authorization: Bearer <api key>`. The key carries its own scopes (the POS permission keys, e.g. `pos.sale.create`); an operation returns 403 `scope_missing` when the key lacks the scope listed as `x-shark-scope` (the missing scope is in `hint`). Bundles: `pos-read`, `pos-operate`, `pos-admin`.
@@ -42,7 +42,7 @@ Conventions that apply to every operation:
 8. Success is `{ data, page?, requestId }`. For reads, `data` is the POS reader's answer itself (for example `GET /sales/{id}` answers the bill). Failure is `{ error: { code, message_th, message_en, hint?, details? }, requestId }` - branch on `error.code`; `message_th` is already worded for a Thai shop owner. `requestId` is also returned in the `X-Request-Id` header; quote it when reporting a problem.
 9. Dates: report ranges are Thai business dates `YYYY-MM-DD` (`from`, `to`, inclusive, at most 92 days; the shop's day cut-off applies). Timestamps are ISO-8601 strings in UTC.
 10. Paging: `GET /sales` pages with `page` and `pageSize` (10, 20 or 50) and answers `page` next to `data`; `GET /products` pages with `pageSize` and `cursor` (send `nextCursor` back). `GET /shifts` is not paged: it answers the newest 50 shifts of the branch (`limit` up to 200) and has no status filter - keep the rows with `status: OPEN` to find the open shift, or ask `GET /shifts/current` with the register's `deviceId`. `GET /orders` answers the orders since the start of the Thai business day (`since` reaches back at most 7 days). Other lists return the whole set.
-11. Rate limits are per key and per class: 300 reads, 60 writes and 30 reports per minute (namespace pos, separate from other SHARK modules). A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
+11. Rate limits are per key and per class: 300 reads, 60 writes and 30 reports per minute (namespace pos, separate from other Lekaa modules). A 429 response carries `Retry-After`; successful responses carry `X-RateLimit-Limit` and `X-RateLimit-Remaining`.
 12. Reports render CSV with `Accept: text/csv`: `text/csv; charset=utf-8` with a UTF-8 BOM and `Content-Disposition: attachment`, the same file as the export button of the reports screen.
 13. Outgoing webhooks. The shop can subscribe an endpoint to these POS events: `pos.sale.paid`, `pos.sale.voided`, `pos.shift.opened`, `pos.shift.closed`, `pos.stockCount.confirmed`, `pos.sale.refunded`, `pos.payment.intent_paid`, `pos.sale.taxInvoiceIssued`, `pos.order.received`, `pos.order.accepted`, `pos.order.rejected`, `pos.order.ready`, `pos.order.completed`, `pos.order.cancelled`, `pos.product.availability`. Each delivery is `POST` with `X-Shark-Event`, a body of `{ id, type, payload, sentAt }` and header `X-Shark-Signature` = HMAC-SHA256 of the raw body with the endpoint secret, lowercase hex. Delivery is at least once, so handlers must be idempotent (`id` stays the same on every retry).
 14. Bills sold through the API are bills of the POS: they carry `sourceModule: "API"` and the key id as seller, follow the shop's shift rule for sales from other sources (or the OPEN shift given as `shiftId`), and appear in every report. Cash taken for an order (`POST /orders/{id}/pay`) always lands in a shift: the branch must have exactly one open shift, otherwise 409 `state_conflict` and nothing is written.

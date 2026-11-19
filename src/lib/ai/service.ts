@@ -1,13 +1,17 @@
 // service ผู้ช่วย AI (Phase 1) — guard → provider → persist (docs/AI_LAYER.md)
 // scope: AiConversation/AiMessage/AiUsage เป็น tenant-scoped → tenantDb({ tenantId })
+// 14 พ.ย. 2026 ▸ sendMessage รับ `documents` (PDF แนบของห้องเลขา) คู่กับ `imageUrls` · ประวัติที่มีไฟล์แนบ = ป้าย "[แนบ: …]" (ไม่ส่งไบต์ซ้ำ) ◂
 
+import { randomUUID } from "node:crypto";
 import { prisma, tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { approvedPromptTweaksText } from "@/lib/platform/ai-tuning";
 import { recordSample } from "./dataset";
+import { CALENDAR_ROOM_CORE, CALENDAR_SKILL_ID, turnTouchesCalendar } from "./tools-calendar"; // calendar_b ◂
 import { memoryBlock } from "./memory";
 import { buildSystemPrompt } from "./persona";
-import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiProvider } from "./provider";
+import { dailyLimits, FAST_MODEL, pickModel, resolveProvider, type AiChatMessage, type AiDocument, type AiProvider } from "./provider";
+import { attachmentMarker, attachmentsOf } from "./secretary/attachments-shared";
 import { dayKeyBangkok, overBudget, titleFrom, trimHistory } from "./rules";
 import { runTool, toolRegistry } from "./tools";
 import type { AiActor } from "./actor";
@@ -26,6 +30,7 @@ import { getAccess } from "./secretary/access";
 import { NOT_SYSTEM_MESSAGE, visibleMessagesWhere } from "./secretary/members";
 import { digestBlockFor } from "./secretary/digest";
 import { customerBlock, customerContextOf } from "./secretary/customer-context";
+import { applyPageMarkers, pageContextPromptBlock, toJson as pageContextJson } from "./secretary/page-context"; // Lekaa FAB ◂
 
 export type Ctx = { tenantId: string };
 /**
@@ -148,7 +153,7 @@ export function aiEnabled(): boolean {
  */
 export async function sendMessage(
   ctx: SendCtx,
-  input: { conversationId?: string; text: string; imageUrls?: string[] },
+  input: { conversationId?: string; text: string; imageUrls?: string[]; documents?: AiDocument[] },
   deps?: {
     provider?: AiProvider;
     source?: AiCreditSource;
@@ -182,7 +187,8 @@ export async function sendMessage(
 
   // routing ชั้น 1: เลือกโมเดลตามเนื้อความ (env SHARK_AI_MODEL ตั้งไว้ = คืนตัวนั้นเสมอ)
   // → ชั้น 2: resolveProvider ตาม tier · provider ฉีดได้ (ข้อสอบ) ไม่งั้นเลือกจาก env
-  const hasImages = (input.imageUrls?.length ?? 0) > 0;
+  // 14 พ.ย. ▸ PDF แนบ (ห้องเลขา) นับเป็นงานที่ต้องอ่านไฟล์ ⇒ ใช้เส้นเดียวกับรูป (SMART · ไม่ลดชั้น) — ไม่แตะรหัสโมเดล/ราคา ◂
+  const hasImages = (input.imageUrls?.length ?? 0) > 0 || (input.documents?.length ?? 0) > 0;
   let routedModel = pickModel(text, hasImages);
   let provider = deps?.provider ?? resolveProvider(routedModel === FAST_MODEL ? "fast" : "smart");
   if (!provider) return { ok: false, error: "ai_disabled" };
@@ -261,11 +267,13 @@ export async function sendMessage(
   // CRM C5.5-G1 ▸ ยื่นเฉพาะสิ่งที่ผู้กระทำใช้ได้: สกิลที่ไม่มีเครื่องมือให้ผู้กระทำนี้เลย = ไม่อยู่ในสารบัญ · แกนกลาง/สกิลที่โหลด
   //   = กรองรายเครื่องมือ (runTool ตรวจซ้ำทุกครั้งอยู่แล้ว — ชั้นนี้คือไม่ชวนโมเดลเรียกสิ่งที่จะโดนปฏิเสธ + ประหยัด token) ◂
   const offeredOf = (names: readonly string[]) => toolsOfferedTo(ctx.actor, names, access);
-  const visibleSkills = skillsForTenant(systems.map((s) => s.type)).filter((s) => offeredOf(s.tools).length > 0);
+  // calendar_b ▸ review b m1: ปฏิทินส่วนตัวเฉพาะห้องเลขา (AiRoom) — ห้องเดิม/ไม่มีห้อง = ไม่เห็นสกิล calendar และไม่ยื่นเครื่องมือ ◂
+  const calendarRoom = !!conv?.room && ctx.actor.kind === "member";
+  const visibleSkills = skillsForTenant(systems.map((s) => s.type)).filter((s) => (calendarRoom || s.id !== CALENDAR_SKILL_ID) && offeredOf(s.tools).length > 0);
   // SEC S1.12 ▸ R-S1.12d: กติกาส่งถึงลูกค้าใน prompt เฉพาะเมื่อยื่นเครื่องมือ send_customer_message ได้จริง (skill chat เห็น + ผู้ถามผ่านด่าน) ◂
   const customerChatOffered = visibleSkills.some((s) => s.tools.includes("send_customer_message")) && offeredOf(["send_customer_message"]).length > 0;
   const loadedSkillIds = new Set<string>();
-  const activeToolNames = new Set<string>(offeredOf(CORE_TOOLS));
+  const activeToolNames = new Set<string>([...offeredOf(CORE_TOOLS), ...(calendarRoom ? offeredOf(CALENDAR_ROOM_CORE) : [])]); // calendar_b ▸ "เตือนฉัน…" ไม่ต้องโหลดสกิลในห้องเลขา ◂
   const currentTools = () => {
     const list = [...activeToolNames].map(defOf).filter((d): d is NonNullable<typeof d> => Boolean(d));
     // ยื่น load_skill ต่อเมื่อยังมีสกิลให้โหลด (โหลดครบแล้วยื่นต่อ = ชวนให้ AI เรียกวนเปล่า ๆ)
@@ -312,18 +320,24 @@ export async function sendMessage(
     roomCustomerConvId && ctx.actor.kind === "member"
       ? await customerContextOf(ctx.tenantId, { chatConversationId: roomCustomerConvId }, ctx.actor).then((c) => (c ? customerBlock(c) : "")).catch(() => "")
       : "";
+  // Lekaa FAB ▸ หน้าที่ผู้ใช้เปิดอยู่ตอนสั่ง (AiRoom.pageContext · ตรวจสิทธิ์แล้วตอน startRoom) — ห้องเลขาที่มีเท่านั้น · อื่น = prompt เดิมทุกไบต์ ◂
+  const pageContext = conv?.room?.pageContext ? pageContextPromptBlock(conv.room.pageContext) : "";
   const messages: AiChatMessage[] = [
     {
       role: "system",
       content: [
-        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(lessons ? { lessons } : {}), ...(customerChatOffered ? { customerChat: true } : {}) }), // SEC S1.12 R-S1.12d ◂
+        buildSystemPrompt({ tenantName: tenant.name, dna: dnaSummary, systems, memories, promptTweaks, ...(secretary ? { secretary } : {}), access, ...(digest ? { digest } : {}), ...(customer ? { customer } : {}), ...(lessons ? { lessons } : {}), ...(pageContext ? { pageContext } : {}), ...(customerChatOffered ? { customerChat: true } : {}), ...(calendarRoom ? { calendar: true } : {}) }), // SEC S1.12 R-S1.12d ◂ · calendar_b ▸ กติกาปฏิทินเมื่อยื่นเครื่องมือปฏิทิน ◂
         skillIndexPrompt(visibleSkills),
       ].filter(Boolean).join("\n\n"),
     },
     ...trimHistory(
       history
         .reverse()
-        .map((m) => ({ role: m.role === "USER" ? ("user" as const) : ("assistant" as const), content: m.content })),
+        // 14 พ.ย. ▸ ข้อความเก่าที่มีไฟล์แนบ = ป้าย "[แนบ: …]" ต่อท้าย (ไบต์ส่งเฉพาะเทิร์นปัจจุบัน) ◂
+        .map((m) => {
+          const marker = m.attachments ? attachmentMarker(attachmentsOf(m.attachments)) : "";
+          return { role: m.role === "USER" ? ("user" as const) : ("assistant" as const), content: marker ? `${m.content}\n${marker}` : m.content };
+        }),
       HISTORY_MAX_CHARS,
     ),
     // แนบรูปเข้ากับข้อความ user (ส่งเข้าโมเดล vision inline) — ไม่ persist รูปใน DB
@@ -331,6 +345,7 @@ export async function sendMessage(
       role: "user",
       content: text,
       ...(input.imageUrls && input.imageUrls.length > 0 ? { imageUrls: input.imageUrls } : {}),
+      ...(input.documents && input.documents.length > 0 ? { documents: input.documents } : {}),
     },
   ];
 
@@ -444,6 +459,11 @@ export async function sendMessage(
   // R-Z52 (ค): ชนเพดานรอบ ⇒ สรุปสิ่งที่ทำไปแล้ว (ไม่ใช่ข้อความขอโทษเฉย ๆ) · คำตอบว่างทั่วไป = FALLBACK_REPLY เดิม
   if (hitCap && !finalText.trim()) finalText = roundCapReply(usedTools.map((t) => t.name));
   if (!finalText.trim()) finalText = FALLBACK_REPLY;
+  // Lekaa FAB ▸ เครื่องหมายอ้าง/ถามหน้าที่เปิดอยู่ (⟦ref⟧ ⟦ask⟧) — ตัดออกจากข้อความเสมอ · ห้องที่มี pageContext ⇒ สถานะใหม่เขียนใน tx เดียวกับคำตอบ ◂
+  const assistantId = randomUUID();
+  const page = applyPageMarkers(finalText, conv?.room?.pageContext ?? null, assistantId);
+  finalText = page.text || FALLBACK_REPLY;
+  const pageNext = conv?.room && page.next ? page.next : null;
 
   // persist คู่ข้อความ + ยอดใช้ อะตอมมิก (ผ่าน prisma ตรง — ใส่ tenantId เองให้ตรง type)
   // SEC S1.5 ▸ มี userMessageId = แถว USER มีอยู่แล้ว (ไม่สร้างซ้ำ) ◂
@@ -459,6 +479,7 @@ export async function sendMessage(
         ]),
     db.aiMessage.create({
       data: {
+        id: assistantId,
         tenantId: ctx.tenantId,
         conversationId: conversation.id,
         role: "ASSISTANT",
@@ -468,6 +489,7 @@ export async function sendMessage(
       },
     }),
     db.aiConversation.update({ where: { id: conversation.id }, data: { updatedAt: new Date() } }),
+    ...(pageNext && conv?.room ? [db.aiRoom.updateMany({ where: { id: conv.room.id, tenantId: ctx.tenantId }, data: { pageContext: pageContextJson(pageNext) } })] : []),
     db.aiUsage.upsert({
       where: { tenantId_day: { tenantId: ctx.tenantId, day } },
       create: { tenantId: ctx.tenantId, day, requests: 1, tokensIn: tokensIn + cacheWrite + cacheRead, tokensOut },
@@ -524,6 +546,8 @@ export async function sendMessage(
 
   // เก็บ dataset (ฐาน self-host) — best-effort เท่านั้น: ห้ามให้พังการตอบ · gate ด้วย env ภายใน
   try {
+    // calendar_b ▸ review b M7: เทิร์นที่ใช้เครื่องมือปฏิทิน (ข้อมูลส่วนตัว/Google — Limited Use) ไม่เข้า dataset ฝึกโมเดลเด็ดขาด ◂
+    if (!turnTouchesCalendar(usedTools))
     await recordSample({ tenantId: ctx.tenantId }, {
       userText: text,
       toolCalls: usedTools,

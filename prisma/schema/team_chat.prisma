@@ -1,0 +1,76 @@
+// ─────────────────────────────────────────────────────────────
+// แชททีม (B27 · มติเจ้าของ 15 พ.ย. 2026 · แบบ /root/mockups/team-invite/team2.png) — คนในร้านคุยกันแบบ WhatsApp
+//   ห้อง 1:1 (DIRECT) + กลุ่ม (GROUP) · ข้อความ ข้อความ/รูป/ไฟล์ (ไฟล์แนบส่วนตัว — ตัวกลาง uploadFile visibility private) · อ่านแล้ว (lastReadAt)
+// บริการ: src/lib/team-chat/service.ts (ผู้เขียนเดียว) · เส้นแอป /api/mobile/secretary/team/**
+// 🔴 แกน tenant ทุกตัว (scope.ts) · อ่าน/เขียนได้เฉพาะสมาชิกห้อง (TeamThreadMember.leftAt = null) ที่ยังเป็นสมาชิกร้าน (Membership.acceptedAt ≠ null)
+//    ไม่ใช่สมาชิก = 404 เสมอ (ไม่บอกว่าห้องมีจริง)
+// ─────────────────────────────────────────────────────────────
+
+enum TeamThreadKind {
+  DIRECT
+  GROUP
+}
+
+enum TeamThreadRole {
+  ADMIN
+  MEMBER
+}
+
+model TeamThread {
+  id            String         @id @default(cuid())
+  tenantId      String
+  kind          TeamThreadKind
+  /** กลุ่มเท่านั้น (DIRECT = null · ชื่อแสดง = อีกฝ่าย) */
+  name          String?
+  /** รูปกลุ่ม = FileAsset.id (ATTACHMENT · private) — อ่านผ่าน /team/threads/[id]/files/[fileId] */
+  photoFileId   String?
+  createdById   String
+  /** DIRECT: "<userIdเล็ก>:<userIdใหญ่>" กันเปิดห้องซ้ำ (unique ต่อร้าน) · GROUP = null */
+  directKey     String?
+  lastMessageAt DateTime?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  members  TeamThreadMember[]
+  messages TeamMessage[]
+
+  @@unique([tenantId, directKey])
+  @@index([tenantId, lastMessageAt])
+}
+
+model TeamThreadMember {
+  id         String         @id @default(cuid())
+  tenantId   String
+  threadId   String
+  thread     TeamThread     @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  userId     String
+  role       TeamThreadRole @default(MEMBER)
+  /** อ่านถึงเวลานี้ (null = ยังไม่เคยเปิด ⇒ นับจาก joinedAt) */
+  lastReadAt DateTime?
+  muted      Boolean        @default(false)
+  joinedAt   DateTime       @default(now())
+  /** ออกจากกลุ่ม/ถูกเอาออก (แถวยังอยู่ — ประวัติอ้างชื่อได้) · กลับเข้า = null อีกครั้ง */
+  leftAt     DateTime?
+
+  @@unique([threadId, userId])
+  @@index([tenantId, userId, leftAt])
+}
+
+model TeamMessage {
+  id           String     @id @default(cuid())
+  tenantId     String
+  threadId     String
+  thread       TeamThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  senderUserId String
+  /** TEXT = ข้อความคน · SYSTEM = เหตุการณ์กลุ่ม (สร้าง/เพิ่ม/เอาออก/ออก/เปลี่ยนชื่อ) — ไม่นับยังไม่อ่าน */
+  kind         String     @default("TEXT")
+  body         String     @default("")
+  /** [{fileId,name,mimeType,size,kind}] (รูปแบบเดียวกับ AiMessage.attachments) */
+  attachments  Json       @default("[]")
+  createdAt    DateTime   @default(now())
+  editedAt     DateTime?
+  deletedAt    DateTime?
+
+  @@index([threadId, createdAt])
+  @@index([tenantId, createdAt])
+}

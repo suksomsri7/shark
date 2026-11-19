@@ -37,6 +37,7 @@ export function SettingRow({
   icon,
   onPress,
   children,
+  danger = false,
 }: {
   testID: string;
   title: string;
@@ -45,6 +46,8 @@ export function SettingRow({
   icon?: IconName;
   onPress?: () => void;
   children?: ReactNode;
+  /** แถวอันตราย (เช่น "ลบกิจการ") — ชื่อ + ไอคอนสีแดง */
+  danger?: boolean;
 }) {
   const { c } = useTheme();
   // S2.14: แถวแสดงค่าอย่างเดียว (ไม่มี onPress) = View ไม่ใช่ปุ่มที่ปิดอยู่ (โปรแกรมอ่านจอไม่ประกาศเป็นปุ่ม · ทะเบียนปุ่ม = กล่องแสดงผล)
@@ -54,11 +57,11 @@ export function SettingRow({
       <Row testID={testID} {...(onPress ? { onPress, accessibilityRole: "button" as const } : {})} style={styles.row}>
         {icon ? (
           <View style={[styles.ico, { backgroundColor: c.surface }]}>
-            <Icon name={icon} size={18} />
+            <Icon name={icon} size={18} color={danger ? c.danger.bg : undefined} />
           </View>
         ) : null}
         <View style={styles.body}>
-          <Text style={[styles.title, { color: c.text }]} numberOfLines={2}>
+          <Text style={[styles.title, { color: danger ? c.danger.bg : c.text }]} numberOfLines={2}>
             {title}
           </Text>
           {sub ? (

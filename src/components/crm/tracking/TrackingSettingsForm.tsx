@@ -327,7 +327,7 @@ export function TrackingSettingsForm({ data }: { data: CrmTrackingPageData }) {
           </p>
           {policy.alwaysAllowed.length > 0 && (
             <p className="break-words text-xs text-[color:var(--color-muted)]">
-              ใช้ได้เสมอโดยไม่ต้องใส่ (เว็บของร้านในส่วนติดตามเว็บ และระบบ SHARK): {policy.alwaysAllowed.join(" · ")}
+              ใช้ได้เสมอโดยไม่ต้องใส่ (เว็บของร้านในส่วนติดตามเว็บ และระบบเลขา): {policy.alwaysAllowed.join(" · ")}
             </p>
           )}
           <textarea
@@ -354,7 +354,7 @@ export function TrackingSettingsForm({ data }: { data: CrmTrackingPageData }) {
             >
               {impact.saved ? "บันทึกแล้ว · " : "ถ้าบันทึกรายการนี้ · "}
               {impact.policy.blockedActiveLinks > 0
-                ? `ลิงก์ที่เปิดอยู่ ${impact.policy.blockedActiveLinks} ลิงก์${impact.saved ? "ใช้ไม่ได้" : "จะใช้ไม่ได้"} (ปลายทาง: ${impact.policy.blockedHosts.join(", ")}) — ลูกค้าที่กดจะไปหน้าแรกของ SHARK แทน`
+                ? `ลิงก์ที่เปิดอยู่ ${impact.policy.blockedActiveLinks} ลิงก์${impact.saved ? "ใช้ไม่ได้" : "จะใช้ไม่ได้"} (ปลายทาง: ${impact.policy.blockedHosts.join(", ")}) — ลูกค้าที่กดจะไปหน้าแรกของเลขาแทน`
                 : "ลิงก์ที่เปิดอยู่ใช้ได้ทุกลิงก์"}
             </p>
           )}

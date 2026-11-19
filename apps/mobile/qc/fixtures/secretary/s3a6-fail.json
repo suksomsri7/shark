@@ -36,7 +36,7 @@
    "canApprove": 2
   },
   "GET /api/mobile/secretary/me": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [
@@ -45,14 +45,14 @@
    ]
   },
   "GET /api/mobile/secretary/secretary": {
-   "name": "Shark",
+   "name": "เลขา",
    "suffix": "ครับ",
    "tone": "polite",
    "languages": [
     "th",
     "en"
    ],
-   "sample": "สวัสดีครับ Sharkพร้อมช่วยงานแล้วครับ วันนี้มีอะไรให้ช่วยดูแลบ้างครับ",
+   "sample": "สวัสดีครับ เลขาพร้อมช่วยงานแล้วครับ วันนี้มีอะไรให้ช่วยดูแลบ้างครับ",
    "saved": true
   },
   "POST /api/mobile/push/register": {
@@ -85,12 +85,12 @@
   "GET /api/mobile/secretary/after-hours": {
    "reply": true,
    "handoff": true,
-   "disclosure": "ข้อความนี้ตอบโดย Shark ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
+   "disclosure": "ข้อความนี้ตอบโดยเลขา ผู้ช่วย AI ของร้าน — ทีมงานจะติดต่อกลับในเวลาทำการ"
   },
   "PUT /api/mobile/secretary/after-hours": {
    "reply": false,
    "handoff": true,
-   "disclosure": "ตอบโดย Shark ผู้ช่วย AI ของร้าน"
+   "disclosure": "ตอบโดยเลขา ผู้ช่วย AI ของร้าน"
   },
   "GET /api/mobile/inbox/unread": {
    "unread": 3
@@ -233,7 +233,7 @@
      "assigneeName": "คุณสุข (QC)",
      "unitId": null,
      "lastMessageAt": "2026-11-04T15:10:00.000Z",
-     "lastMessagePreview": "ร้านเปิดกี่โมงคะ · Shark ตอบแล้วนอกเวลาทำการ",
+     "lastMessagePreview": "ร้านเปิดกี่โมงคะ · เลขาตอบแล้วนอกเวลาทำการ",
      "staffUnreadCount": 0,
      "waitingMin": null,
      "aiDraft": false,

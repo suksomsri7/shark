@@ -88,7 +88,7 @@
   },
   {
    "id": "X-2",
-   "name": "K2: thread + reply (clientMessageId · 429 retry เดิม) · attachments (Bearer) · quick-replies apply · meta.ai ป้าย 'ส่งโดย Shark' · ai-suggest การ์ดร่าง (recordSuggestionOutcome) · ไม่มี EventSource",
+   "name": "K2: thread + reply (clientMessageId · 429 retry เดิม) · attachments (Bearer) · quick-replies apply · meta.ai ป้าย 'ส่งโดยเลขา' · ai-suggest การ์ดร่าง (recordSuggestionOutcome) · ไม่มี EventSource",
    "file": "app/(app)/customers/[id]/index.tsx",
    "must": [
     "inbox/conversations/",
@@ -106,7 +106,7 @@
   },
   {
    "id": "X-3",
-   "name": "K3: assign/handoff/helpers/status/contact + สร้างงานบอร์ด + สั่ง Shark = POST secretary/rooms {context:{chatConversationId, contactId}}",
+   "name": "K3: assign/handoff/helpers/status/contact + สร้างงานบอร์ด + สั่งเลขา = POST secretary/rooms {context:{chatConversationId, contactId}}",
    "file": "app/(app)/customers/[id]/info.tsx",
    "must": [
     "/assign",

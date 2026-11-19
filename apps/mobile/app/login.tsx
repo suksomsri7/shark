@@ -6,6 +6,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, View
 import { FontAwesome6 } from "@expo/vector-icons";
 import * as AppleAuthentication from "expo-apple-authentication";
 import { GoogleSignin, isSuccessResponse, statusCodes } from "@react-native-google-signin/google-signin";
+import { GOOGLE_IOS_CLIENT_ID, GOOGLE_WEB_CLIENT_ID } from "@/src/lib/google-client";
 import * as WebBrowser from "expo-web-browser";
 import { useRouter } from "expo-router";
 import { Text } from "@/src/components/ui/text";
@@ -14,7 +15,7 @@ import { useAuth } from "@/src/lib/auth-context";
 import { AiryScreen, Glass, PrimaryButton } from "@/src/components/airy";
 import { AuthField, LinkLine, NoteLine, OtpBoxes } from "@/src/components/auth/airy";
 import { SOCIAL_BRAND } from "@/src/components/auth/social";
-import { AnimatedOrb } from "@/src/components/ui/orb";
+import { LekaaLoader } from "@/src/components/brand/LekaaLoader";
 import { authErrorCode, authErrorKey, keepCodeOnError, smsRequest } from "@/src/lib/auth-api";
 import { formatThaiMobileInput, localThaiMobile, normalizeThaiMobile } from "@/src/lib/phone";
 import { useT } from "@/src/i18n";
@@ -25,8 +26,8 @@ const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Google Sign-In (creds เจ้าของ 25 ก.ค. — idToken aud = web client → server ตรวจกับ Google JWKS)
 GoogleSignin.configure({
-  iosClientId: "732040229931-pudkdofrj1qbj7lbhrfie5m5dpmfi1pv.apps.googleusercontent.com",
-  webClientId: "732040229931-nk82v61v46bln5q5rodeuftknn27ok8l.apps.googleusercontent.com",
+  iosClientId: GOOGLE_IOS_CLIENT_ID,
+  webClientId: GOOGLE_WEB_CLIENT_ID,
 });
 
 // ปุ่ม social — icon แบรนด์ (FontAwesome6) · สีแบรนด์อยู่ที่ components/auth/social.ts (Apple/TikTok = สีตัวอักษรของธีม)
@@ -268,8 +269,8 @@ export default function LoginScreen() {
       <KeyboardAvoidingView style={s.flex} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView contentContainerStyle={s.page} keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
           <View style={s.hero}>
-            <AnimatedOrb size={96} />
-            <Text style={[s.brand, { color: c.text }]}>SHARK HUB</Text>
+            <LekaaLoader size={96} testID="login-logo" />
+            <Text style={[s.brand, { color: c.text }]}>Lekaa</Text>
             <Text style={[s.tagline, { color: c.textMuted }]}>{t("auth.login.tagline")}</Text>
           </View>
 

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 
-// overlay ระหว่างเปลี่ยนหน้า — หน้าเดิมยังอยู่ (เทา + disable) + AI orb หมุนเร็วทับกลางจอ
+// overlay ระหว่างเปลี่ยนหน้า — หน้าเดิมยังอยู่ (เทา + disable) + โลโก้ Lekaa เคลื่อนไหวทับกลางจอ (17 พ.ย. เดิม = AI orb หมุนเร็ว)
 // (แทน loading.tsx เดิมที่เปลี่ยนเป็นหน้าขาวว่าง — feedback เจ้าของ)
 // ⚠️ ต้องดักที่ capture phase (true) — เพราะ Next <Link> เรียก preventDefault() ก่อน
 //    ถ้าดัก bubble phase จะเจอ defaultPrevented=true แล้วพลาดทุกลิงก์
@@ -45,9 +45,9 @@ export function NavProgress() {
       aria-busy="true"
       aria-label="กำลังเปลี่ยนหน้า"
     >
-      <div className="ai-orb-breathe relative h-14 w-14">
-        <span aria-hidden className="ai-orb ai-orb-fast" />
-      </div>
+      {/* 17 พ.ย. (เจ้าของสั่ง): ตัวโหลด = โลโก้ Lekaa เคลื่อนไหว (loading-A · public/lekaa-loading.svg) แทนวงกลม orb */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img src="/lekaa-loading.svg" alt="" aria-hidden width={72} height={72} />
     </div>
   );
 }

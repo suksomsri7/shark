@@ -82,6 +82,8 @@ await import("@/lib/modules/crm/reminders");
 await import("@/lib/modules/crm/emails-job");
 // CRM C2.8 ▸ งานรายวัน "crm.scoring.decay" (แต้มหมดอายุ + หักแต้มคนที่เงียบหาย) — ลงทะเบียนตอน import ◂
 await import("@/lib/modules/crm/scoring-job");
+// CAL1.4 ▸ งานรายนาที "calendar.fire" (เตือนส่วนตัวของเลขา) + CAL1.5 "calendar.brief" — ลงทะเบียนตอน import ◂
+await import("@/lib/modules/calendar/jobs");
 
 let code = 0;
 try {
