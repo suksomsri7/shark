@@ -267,10 +267,11 @@ export function parseBookQuery(sp: unknown): BookQuery {
 }
 
 /**
- * ตัวอ้างรอบในวันเดียวกัน (`?t=`) = เวลาออกของร้านแบบ HHMM + ลำดับเมื่อเวลาซ้ำ (`0700` · `0700-2`) — ไม่ใช่ id ภายใน
- * ผิดรูป ⇒ null (หน้าเลือกรอบแรกที่ขายได้แทน)
+ * ตัวอ้างรอบในวันเดียวกัน (`?t=`) = ref สาธารณะของรอบ 12 ตัว a-z2-7 (HMAC มีกุญแจของ id รอบ · ผูกร้าน — W1.2a มติ W5)
+ * ไม่ใช่ id ภายใน · ไม่อิงลำดับในวัน (รอบเพิ่ม/หายไม่ทำให้ตัวอ้างชี้รอบอื่น) · ผิดรูป ⇒ null (หน้าเลือกรอบแรกที่ขายได้แทน)
+ * (slotTokensOf ข้างล่าง = รูปเดิม HHMM ของ W1.1 — ไม่ใช้เป็นตัวอ้างแล้ว)
  */
-export const BOOK_SLOT_TOKEN_RE = /^([01]\d|2[0-3])[0-5]\d(-[2-9])?$/;
+export const BOOK_SLOT_TOKEN_RE = /^[a-z2-7]{12}$/;
 export function parseBookSlot(sp: unknown): string | null {
   if (!isRec(sp)) return null;
   let v: unknown;
@@ -291,7 +292,7 @@ export function slotTokensOf(startTimes: readonly string[]): (string | null)[] {
     const n = (seen.get(base) ?? 0) + 1;
     seen.set(base, n);
     const token = n === 1 ? base : `${base}-${n}`;
-    return BOOK_SLOT_TOKEN_RE.test(token) ? token : null;
+    return /^([01]\d|2[0-3])[0-5]\d(-[2-9])?$/.test(token) ? token : null;
   });
 }
 
@@ -466,8 +467,11 @@ export type BookProductVM = {
   requestedUnavailable: boolean;
   /** slots = รอบของวันนั้นเรียงเวลาออก (ไม่เกิน BOOK_SLOT_CAP · รอบที่ขายได้มาก่อนเมื่อเกิน) · moreSlots = รอบที่ไม่ได้แสดง · price = ของรอบที่ selected เท่านั้น */
   selected: null | { date: string; slots: BookSlotVM[]; moreSlots: number; price: BookPriceVM | null; priceError: string | null };
-  cta: { enabled: false };
+  /** ปุ่มจองออนไลน์ (W1.2): เปิดเมื่อรอบที่เลือกขายได้ + ร้านเปิดปุ่ม + สินค้าไม่ใช่ "ร้านยืนยันก่อน" · reason = เหตุที่ปิดซึ่งหน้าต้องบอกลูกค้า (null = ไม่มีรอบให้จอง) */
+  cta: { enabled: boolean; reason: BookCtaReason };
 };
+/** เหตุที่ปุ่มจองปิด (W1.2 มติ R7 · R8) */
+export type BookCtaReason = null | "BOOKING_OFF" | "SHOP_CONFIRMS" | "UNAVAILABLE";
 /** พารามิเตอร์ที่ลิงก์ในหน้าพาต่อ (ภาษาที่เลือกเอง · รหัสผู้แนะนำที่ผูกได้จริง) */
 export type BookCarry = { lang: BookLocale | null; a: string | null };
 

@@ -83,7 +83,8 @@
     "title": "Cancellation",
     "row": "{days} days or more before departure — {pct}% refund",
     "rowLast": "After that — {pct}% refund",
-    "noRefund": "After that, no refund"
+    "noRefund": "After that, no refund",
+    "until": "Cancel by {date} for a {pct}% refund"
   },
   "tz": {
     "note": "All times are shop local time ({zone} · GMT{offset})"
@@ -145,5 +146,143 @@
     "PER_DAY": "per day",
     "PER_PAX_DAY": "per person per day",
     "PER_BOAT_NIGHT": "per boat per night"
+  },
+  "steps": {
+    "label": "Booking steps",
+    "select": "Guests",
+    "details": "Your details",
+    "pay": "Payment",
+    "done": "Voucher",
+    "current": "current step"
+  },
+  "select": {
+    "title": "Guests and add-ons",
+    "pax": "Number of travellers",
+    "pickup": "Pickup",
+    "noPickup": "No pickup needed",
+    "extras": "Add-ons",
+    "update": "Update price",
+    "continue": "Hold seats and enter your details",
+    "maxSeats": "Up to {n} people per booking",
+    "minus": "Fewer {label}",
+    "plus": "More {label}",
+    "free": "Free",
+    "closed": "Online booking is not open yet — please contact the shop",
+    "choosePax": "Choose the number of travellers to see the total",
+    "left": "{n} seats left",
+    "surcharge": "+{amount}",
+    "holdLimited": "This device has already held seats on this trip several times. Try again later or contact the shop {contact}",
+    "holdUnavailable": "Seats can't be held right now. Try again later or contact the shop {contact}"
+  },
+  "summary": {
+    "title": "Price summary",
+    "total": "Total",
+    "passThrough": "Includes {amount} collected on behalf of others",
+    "holdNote": "We hold your seats for {min} minutes for you to enter your details and confirm the booking",
+    "vat": "VAT",
+    "seats": "{n} seats",
+    "lineQty": "{qty} × {unit}"
+  },
+  "checkout": {
+    "title": "Your details and payment",
+    "holdUntil": "Fill in and confirm by {time}",
+    "name": "Full name",
+    "phone": "Phone",
+    "email": "Email (optional)",
+    "accept": "I have read and accept the booking terms, the cancellation table and the privacy notice below",
+    "pay": "Confirm and go to payment",
+    "privacy": "Personal data: the shop is the data controller and SHARK is the data processor acting for the shop. We use your name, phone and email only to manage this booking and contact you about the trip, keep them for the period the shop sets under the law, and you can ask the shop to see, correct or delete them.",
+    "license": "Tour business licence no. {no}",
+    "noAccount": "No account needed",
+    "receiptNote": "The shop issues your receipt after payment is received (a tax invoice if the shop is VAT-registered)",
+    "termsVersion": "Terms version {v}",
+    "legal": "You book directly with the shop. Prices are itemised. Fees collected on behalf of others (such as marine park fees) are passed on and are not refunded under the cancellation table.",
+    "back": "Back to change travellers"
+  },
+  "shop": {
+    "title": "Seller",
+    "phone": "Phone {v}",
+    "line": "LINE {v}",
+    "address": "Address {v}"
+  },
+  "priceChanged": {
+    "title": "The price changed after your seats were held",
+    "old": "Total when held {amount}",
+    "new": "Total now {amount}",
+    "rehold": "Hold again at the new price",
+    "termsTitle": "The booking terms changed since your hold",
+    "termsBody": "The total is the same, but the terms of this booking have changed, such as the payment schedule or cancellation. Hold again to see the latest terms before booking.",
+    "reholdTerms": "Hold again with the latest terms"
+  },
+  "page": {
+    "titleCheckout": "Confirm booking",
+    "titleReservation": "My booking"
+  },
+  "res": {
+    "code": "Booking code {code}",
+    "total": "Booking total",
+    "pay": {
+      "title": "Pay with PromptPay",
+      "amount": "Amount {amount}",
+      "amountNow": "Amount to transfer now",
+      "note": "The shop confirms your booking when the money arrives. Keep your transfer slip.",
+      "unavailable": "The shop has not set up a payment account yet — please contact the shop to pay",
+      "tooLate": "Your hold is about to expire — do not transfer now. Contact the shop or book again.",
+      "payBy": "Transfer by {date} {time} — do not transfer after this time",
+      "holdUntil": "Seats held until {time}",
+      "receiver": "Payee {name}",
+      "paid": "Paid {amount}",
+      "outstanding": "Outstanding {amount}",
+      "nothingDue": "Nothing to transfer right now. If you have questions, contact the shop {contact} with booking code {code}",
+      "agentCollects": "This booking is paid to the agent you booked through — contact your agent about payment",
+      "notShop": "This booking can't be paid on this page. If you have questions, contact the shop {contact} with booking code {code}"
+    },
+    "voucher": {
+      "title": "Your voucher",
+      "qrNote": "Show this QR code to the crew when you board"
+    },
+    "expired": "Your hold has expired. This booking was not completed.",
+    "expiredPaid": "If you already transferred, contact the shop {contact} with booking code {code}",
+    "cancelled": "This booking has been cancelled",
+    "ended": "This trip has been completed. Thank you for travelling with us.",
+    "lines": "Items",
+    "pending": "This booking is waiting for the shop to confirm. If you have questions, contact the shop {contact} with booking code {code}"
+  },
+  "todo": {
+    "title": "Before you travel",
+    "PAY": "Payment complete",
+    "PASSENGERS": "Traveller names {count}/{total}",
+    "WAIVER": "Risk acknowledgement {count}/{total}",
+    "later": "The shop will send you a link to fill in traveller details",
+    "done": "Done",
+    "pending": "Not done yet"
+  },
+  "err": {
+    "NOT_FOUND": "We could not find this booking. Check the link or contact the shop.",
+    "RATE_LIMITED": "Too many requests. Please wait a moment and try again.",
+    "INVALID": "Some fields are missing or not in the expected format. Check the marked fields and try again.",
+    "PRICE_CHANGED": "The price has changed since this page was opened. Please check the new total before you continue.",
+    "SOLD_OUT": "There are not enough seats left on this departure. Try fewer people or another date.",
+    "CUTOFF_PASSED": "Booking for this departure has closed. Please choose another date or time.",
+    "SLOT_CLOSED": "This departure is no longer on sale. Please choose another date or time.",
+    "HOLD_LIMIT": "This phone number already holds several bookings. Finish paying one of them or wait until it expires.",
+    "HOLD_EXPIRED": "Your hold has expired. Choose your travellers and hold the seats again.",
+    "STALE_FORM": "This page has been open too long. Reload it and try again.",
+    "TOO_FAST": "That was a little fast. Please wait a moment and try again.",
+    "ACCEPT_REQUIRED": "Please tick to accept the terms before confirming.",
+    "BUSY": "The system is busy right now. Please try again in a moment.",
+    "UNAVAILABLE": "Online booking is not available right now — please contact the shop"
+  },
+  "field": {
+    "d": "Travel date",
+    "t": "Departure time",
+    "pax": "Travellers",
+    "extras": "Add-ons",
+    "zone": "Pickup",
+    "seen": "Amount",
+    "nonce": "Form",
+    "name": "Full name",
+    "phone": "Phone",
+    "email": "Email"
   }
 }

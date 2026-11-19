@@ -948,9 +948,9 @@ try {
     const v = await unitSV();
     const h = asRec(v.header) ?? {};
     const form = asRec(v.form) ?? {};
-    eq([h.templateKey, h.differsCount, h.productOverrideCount, form.scope, form.domains], ["DIVE_SHOP", 3, 6, "UNIT", ["trips"]], "หัว");
+    eq([h.templateKey, h.differsCount, h.productOverrideCount, form.scope, form.domains], ["DIVE_SHOP", 4, 6, "UNIT", ["trips"]], "หัว"); // ORACLE-EDIT SET-2 (ผู้คุม 15 พ.ย. · W1.2a มติ R17): ร้าน seed เปิด X29 trips.public.bookingEnabled ⇒ ต่างจากแม่แบบ 4 คีย์
     const differs = fieldsOf(v).filter((f) => f.differsFromTemplate === true).map((f) => f.key).sort();
-    eq(differs, ["trips.msg.confirmation", "trips.parkFee.table", "trips.sell.cutoff"], "ต่างจากแม่แบบ");
+    eq(differs, ["trips.msg.confirmation", "trips.parkFee.table", "trips.public.bookingEnabled", "trips.sell.cutoff"], "ต่างจากแม่แบบ");
   });
   await st("SET-3", "ปิดรับหน้าร้าน 0 วัน 07:00 (perChannel.COUNTER) ตั้งที่หน่วย · ถือที่ 15 นาที = ค่าแม่แบบ", async () => {
     const v = await unitSV();

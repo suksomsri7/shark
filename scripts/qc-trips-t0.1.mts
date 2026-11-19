@@ -126,6 +126,8 @@ const EXPECT: Exp[] = [
   E("X20", "trips.pdpa.viewLogDays", "days", [U]), E("X21", "trips.pdpa.maskOnScreen", "bool", [U]), E("X22", "trips.pdpa.abandonedRetentionDays", "days", [U]),
   E("X23", "trips.supplier.respondHours", "int", [U, P]), E("X23", "trips.supplier.shopDecisionHours", "int", [U, P]), E("X23", "trips.supplier.autoCancelOnTimeout", "bool", [U, P]),
   E("X28", "trips.cash.varianceApprovalSatang", "money", [U]),
+  // ORACLE-EDIT R-1 R-2 (มติ R15 · W1.2 §3.3): คีย์ใหม่ของหน้าจองสาธารณะ — ตรง ledger/TRIPS-DEFAULTS.md แถว X29 X30 (ชั้น SHOP = UNIT)
+  E("X29", "trips.public.bookingEnabled", "bool", [U]), E("X30", "trips.public.shopContact", "table", [U]),
 ];
 const TPLS = ["DIVE_SHOP", "DAY_TOUR", "LIVEABOARD", "ATTRACTION"] as const;
 type Tpl = (typeof TPLS)[number];

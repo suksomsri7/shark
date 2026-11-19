@@ -48,7 +48,7 @@ type Action =
   | { reveal: string }
   | { pause: number };
 // TRIPS W1.1 ▸ public = หน้าสาธารณะ: ไม่ใส่คุกกี้ session (บริบทเบราว์เซอร์ใหม่) + ตั้งหัว x-forwarded-for (หน้าต้องรู้ IP) · expectStatus = รหัสสถานะที่ต้องได้ (ปริยาย: ต่ำกว่า 400) ◂
-type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print" };
+type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01" | "07"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print" };
 const PUBLIC_CLIENT_IP = "198.51.100.77";
 const BOOK_RACHA = "racha-yai-day-trip";
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
@@ -156,7 +156,60 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       actions: [{ waitFor: 'a[data-testid="trips-dep-manifest"]' }],
     },
   ],
+  // TRIPS W1.2 ▸ ทัวร์ 4 ขั้นฝั่งลูกค้า (ภาพ 01 ข/ค/ง มือถือไทย · 19 จอใหญ่อังกฤษ) — ทุกฉาก public 1440 + 390 · วัน/เดือนปักด้วย --book-month/--book-date (ปริยาย 31 ธ.ค. ของ seed)
+  //   "w1.2" อ่านอย่างเดียว (ไม่เขียนฐาน) · "w1.2-flow" กดผ่านฟอร์มจริง ⇒ เขียนฐานเลน (ถือ 3 ที่บนรอบ 31 ธ.ค. + การจอง HOLD + Party ผู้จองทดสอบ ค้างจนตัวกวาดวิ่ง) — รันหลังข้อสอบ/ก่อน reseed
+  //   วอเชอร์ = การจอง TR-…-0142 ของ seed (ภัทรา · CONFIRMED ยังไม่จ่าย) · token หาจาก bookingPublicToken ตอนรัน (ไม่ฝัง token) ◂
+  "w1.2": [
+    { name: "book-select", mockup: "01", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=th&m=${i.bookMonth}&d=${i.bookDate}&n.ADULT=2&n.CHILD=1`, actions: [{ reveal: '[data-testid="book-select"]' }] },
+    { name: "book-select-en", mockup: "19", public: true, path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=en&m=${i.bookMonth}&d=${i.bookDate}&n.ADULT=2&n.CHILD=1` },
+    { name: "book-voucher", mockup: "01", public: true, path: (i) => `/book/${i.shopSlug}/my/${W12_VOUCHER_TOKEN}?lang=th`, actions: [{ waitFor: '[data-testid="book-res"]' }] },
+  ],
+  "w1.2-flow": [
+    {
+      name: "book-checkout",
+      mockup: "01",
+      public: true,
+      path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=th&m=${i.bookMonth}&d=${i.bookDate}&n.ADULT=2&n.CHILD=1`,
+      actions: [{ waitFor: '[data-testid="book-continue"]' }, { pause: 2_500 }, { click: { selector: '[data-testid="book-continue"]' } }, { waitFor: '[data-testid="book-checkout"]' }, { pause: 300 }],
+    },
+    {
+      name: "book-pay",
+      mockup: "01",
+      public: true,
+      path: (i) => `/book/${i.shopSlug}/t/${BOOK_RACHA}?lang=th&m=${i.bookMonth}&d=${i.bookDate}&n.ADULT=2&n.CHILD=1`,
+      actions: [
+        { waitFor: '[data-testid="book-continue"]' }, { pause: 2_500 }, { click: { selector: '[data-testid="book-continue"]' } }, { waitFor: '[data-testid="book-checkout"]' }, { pause: 2_500 },
+        { fill: { selector: '[data-testid="book-booker-name"]', value: "ภัทรา ภาพทดสอบ" } }, { fill: { selector: '[data-testid="book-booker-phone"]', value: "0890001180" } },
+        { click: { selector: '[data-testid="book-accept"]' } }, { click: { selector: '[data-testid="book-pay-submit"]' } }, { waitFor: '[data-testid="book-res"]' },
+        { waitFor: '[data-testid="book-pay-qr"]' }, { pause: 300 }, // TRIPS W1.2 r1 (มติ W6) ▸ ร้าน seed มีผู้รับเงินพร้อมเพย์แล้ว ⇒ ต้องเห็น QR (ไม่ใช่ "ร้านยังไม่ได้ตั้งบัญชีรับเงิน") ◂
+      ],
+    },
+    // TRIPS W1.2 รอบ 2 (มติ R8) ▸ หน้าการจองหมดเวลา (07 · "ถ้าโอนแล้ว ติดต่อร้าน") — ก่อนถ่าย: การจอง WEB ล่าสุดของร้าน seed (จากฉาก book-pay) ถูกเลื่อนเวลาถือให้หมด
+    //   (เขียนฐานเลนเหมือนฉากอื่นของกลุ่มนี้ · ตัวกวาดปล่อยที่ตามปกติ) · ไม่มีฉาก AWAIT_SHOP ใน a (ย้ายไป W1.2b) ◂
+    { name: "book-expired", mockup: "07", public: true, path: () => `/book/${SHOP_DIVE.tenant.slug}/my/${W12_EXPIRED_TOKEN}?lang=th`, actions: [{ waitFor: '[data-testid="book-res-expired"]' }] },
+  ],
 };
+// TRIPS W1.2 ▸ token ของการจอง 0142 (ฉาก book-voucher) — เติมก่อนถ่ายเมื่อใบ = w1.2 · ไม่มีกุญแจเซิร์ฟเวอร์/ไม่พบการจอง ⇒ หยุด ◂
+let W12_VOUCHER_TOKEN = "";
+async function w12VoucherToken(bookingId: string): Promise<string> {
+  if (!bookingId) throw new Fatal(`ไม่พบการจองของ ${BOOKING_0142_PARTY} บนรอบราชา ${DEPARTURE_RACHA_1114.date} — รัน scripts/seed-trips-qc.mts ก่อน`);
+  const trips = (await import("@/lib/modules/trips")) as { bookingPublicToken?: (id: string) => string | null };
+  const t = typeof trips.bookingPublicToken === "function" ? trips.bookingPublicToken(bookingId) : null;
+  if (!t) throw new Fatal("ทำ token การจองไม่ได้ (ไม่มี SESSION_SECRET ใน .env.qc-trips?)");
+  return t;
+}
+// TRIPS W1.2 รอบ 2 ▸ ฉาก book-expired: การจอง WEB สถานะ HOLD ล่าสุดของร้าน seed ⇒ เลื่อนที่ถือ ACTIVE ให้หมด 1 นาทีก่อน (นาฬิกาเครื่อง = นาฬิกาเซิร์ฟเวอร์ที่เปิดหน้า) ⇒ token ◂
+let W12_EXPIRED_TOKEN = "";
+async function w12ExpireLatestWebBooking(): Promise<string> {
+  const tenantId = SHOP_DIVE.tenant.id;
+  const b = await prisma.tripBooking.findFirst({ where: { tenantId, unitId: SHOP_DIVE.units.trips.id, channel: "WEB", status: "HOLD" }, orderBy: { createdAt: "desc" }, select: { id: true } });
+  if (!b) throw new Fatal("ไม่พบการจอง WEB ที่ถืออยู่ของร้าน seed — ฉาก book-expired ต้องรันหลัง book-pay ในกลุ่ม w1.2-flow");
+  await prisma.tripHold.updateMany({ where: { tenantId, bookingId: b.id, status: "ACTIVE" }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+  const trips = (await import("@/lib/modules/trips")) as { bookingPublicToken?: (id: string) => string | null };
+  const t = typeof trips.bookingPublicToken === "function" ? trips.bookingPublicToken(b.id) : null;
+  if (!t) throw new Fatal("ทำ token การจองไม่ได้ (ไม่มี SESSION_SECRET ใน .env.qc-trips?)");
+  return t;
+}
 
 const argv = process.argv.slice(2);
 const argOf = (flag: string): string | undefined => {
@@ -327,12 +380,14 @@ async function runAction(page: Page, a: Action): Promise<string | null> {
 }
 
 let failures = 0;
+let publicSeq = 0; // TRIPS W1.2 r1 ▸ ลำดับ IP ของฉากสาธารณะ (ฉาก×อุปกรณ์) ◂
 let fatal = "";
 const shots: string[] = [];
 const results: { name: string; device: string; mockup: string; status: number; errors: string[]; overflow: boolean; file: string }[] = [];
 const profile = `/tmp/chr-trips-${process.pid}`;
 try {
   const ids = await idsFromSeed();
+  if (WO === "w1.2") W12_VOUCHER_TOKEN = await w12VoucherToken(ids.booking0142); // TRIPS W1.2 ▸ ◂
   const cookies = specs.some((s) => !s.public) ? await mintSession() : [];
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e})`);
@@ -343,11 +398,13 @@ try {
   });
   try {
     for (const spec of specs) for (const dev of DEVICES) {
+      if (spec.name === "book-expired" && !W12_EXPIRED_TOKEN) W12_EXPIRED_TOKEN = await w12ExpireLatestWebBooking(); // TRIPS W1.2 รอบ 2 ▸ ◂
       // หน้าสาธารณะ: บริบทใหม่ (ไม่มีคุกกี้ของฉากอื่น) + หัว IP ของผู้ใช้ (ไม่พึ่งว่า server เติมให้)
       const ctx = spec.public && browser.createBrowserContext ? await browser.createBrowserContext() : null;
       const page = await (ctx ?? browser).newPage();
       await page.setViewport({ width: dev.width, height: dev.height, deviceScaleFactor: 1, isMobile: dev.mobile, hasTouch: dev.mobile });
-      if (spec.public) await page.setExtraHTTPHeaders({ "x-forwarded-for": PUBLIC_CLIENT_IP });
+      // TRIPS W1.2 r1 (มติ W2 · ผู้คุมทำตอนรับงาน) ▸ ฉากสาธารณะใช้ IP ผู้ใช้ต่างกันต่อฉาก×อุปกรณ์ — ไม่ชนถังถือต่อรอบต่อเครื่อง (3/ชม.) / ถังถือต่อเครื่อง ◂
+      if (spec.public) await page.setExtraHTTPHeaders({ "x-forwarded-for": `${PUBLIC_CLIENT_IP.split(".").slice(0, 3).join(".")}.${(Number(PUBLIC_CLIENT_IP.split(".")[3]) + ++publicSeq) % 250}` });
       else await page.setCookie(...cookies);
       const errors: string[] = [];
       page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 120)));
