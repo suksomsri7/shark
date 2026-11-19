@@ -122,7 +122,14 @@ const PINNED: Record<string, string> = {
   "departures.money.noShowUnpaid": "ลูกค้าไม่มาและยังไม่จ่ายครบ {n}", "costs.charter": "รอบเหมาลำ — อัตราเต็มไม่สะท้อนการขายรายที่นั่ง",
   "errors.COST_AMOUNT_FORMAT": "พิมพ์ยอดเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง",
 };
-const FORBIDDEN_WORDS = ["รายได้รับรู้", "กำไรสุทธิ", "งบ", "POS"];
+// ORACLE-EDIT S-9 (ผู้คุม 19 พ.ย.): เดิมห้ามสตริงย่อย "งบ" ทุกที่ ⇒ ชนกับข้อความที่ S-10 ตรึงเอง ("ลงบัญชี" มี ง+บ) และคำปกติอย่าง "กำลังบันทึก"
+//   เจตนาเดิมคง: ห้ามอ้างงบการเงิน/งบบัญชีทุกรูป — คำบัญชีเป็นสตริงย่อยตรงตัว · "งบ" เป็นคำ: ตัดคำด้วย Intl.Segmenter("th") แล้วห้าม ง+บ ที่อยู่ในคำเดียวกัน
+//   (งบ · ของงบ · ดูงบ · งบดุล · งบประมาณ ⇒ ผิด · ลง|บัญชี · กำลัง|บันทึก ⇒ ไม่ผิด เพราะ ง เป็นตัวสะกดของคำก่อน)
+const FORBIDDEN_WORDS = ["งบการเงิน", "งบกำไรขาดทุน", "งบดุล", "รายได้รับรู้", "กำไรสุทธิ", "POS"];
+const TH_WORDS = new Intl.Segmenter("th", { granularity: "word" });
+/** คำต้องห้ามตัวแรกที่พบ (ไม่พบ ⇒ null) */
+const forbiddenHit = (v: string): string | null =>
+  FORBIDDEN_WORDS.find((w) => v.includes(w)) ?? ([...TH_WORDS.segment(v)].find((s) => s.segment.includes("งบ"))?.segment ?? null);
 const TESTIDS_FIXED = ["trips-dep-money", "trips-dep-money-detail", "trips-dep-money-vat", "trips-dep-money-estimate", "trips-dep-money-mgmt", "trips-dep-money-agent", "trips-dep-money-pending-refund",
   "trips-dep-money-noshow", "trips-dep-costs", "trips-cost", "trips-cost-back", "trips-cost-title", "trips-cost-state", "trips-cost-estimate", "trips-cost-mgmt", "trips-cost-accounting-note", "trips-cost-kpis",
   "trips-cost-kpi-sales", "trips-cost-kpi-revenue", "trips-cost-kpi-commission", "trips-cost-kpi-cost", "trips-cost-kpi-profit", "trips-cost-kpi-load", "trips-cost-charter", "trips-cost-breakdown", "trips-cost-vat-line",
@@ -345,6 +352,17 @@ try {
     needOwn(); const s = stripComments(read(COSTS)) + stripComments(read(MOD + "departure-screens.ts"));
     ok(/costAccessOf\(/.test(s), "ไม่ใช้ costAccessOf");
     ok(!/\bcan(Any)?\(\s*\[?\s*["']trips\.cost\./.test(s) && !/action:\s*["']trips\.cost\./.test(s), "ตัดสิน trips.cost.* ด้วย can/evaluate");
+    // ORACLE-EDIT S-6 (ผู้คุม 19 พ.ย.): regex เดิมหลบได้ด้วยค่าคงที่ (const K = "trips.cost.view"; g.can(K)) — ทางที่ builder ใช้กับ action ของ audit
+    //   ⇒ ชื่อคีย์ trips.cost.view / trips.cost.edit (หรือคำนำ "trips.cost." ใดๆ นอกจาก action audit "trips.cost.saved") ห้ามมีในโค้ด trips ทุกไฟล์
+    //   ยกเว้น report-core.ts ภายใน costAccessOf (ตัวตัดสินแคบตัวเดียว) และ cost-actions.ts (ด่านแรก assertCan ตามใบสั่ง §1 — บริการตัดสินซ้ำ)
+    const COST_KEY_LIT = /trips\.cost\.(?!saved["'`])/g;
+    const hitsOf = (src: string) => [...stripComments(src).matchAll(COST_KEY_LIT)].length;
+    eq([hitsOf(`const K = "trips.cost.view"; g.can(K)`), hitsOf(`evaluate(m, { action: "trips.cost." + "edit" })`), hitsOf(`const A = "trips.cost.saved"; // trips.cost.view`)], [1, 1, 0], "ตัวควบคุมตัวจับ");
+    const scope = [...walk("src/lib/modules/trips"), ...walk(COMP), ...walk(APP)].filter((f) => f !== PURE && f !== ACTIONS);
+    const leak = scope.filter((f) => hitsOf(read(f)) > 0);
+    ok(leak.length === 0, `ชื่อคีย์ต้นทุนนอกตัวตัดสินแคบ: ${leak.join(", ")}`);
+    const pure0 = stripComments(read(PURE)); const ca = pure0.indexOf("export function costAccessOf"); const caEnd = pure0.indexOf("\n}", ca);
+    ok(ca >= 0 && hitsOf(pure0.slice(0, ca)) + hitsOf(pure0.slice(caEnd)) === 0, "report-core อ้างคีย์ต้นทุนนอก costAccessOf");
   });
   await st("S-7", "หน้า costs/page.tsx: requireUnit → tripsPageGate(\"departures\") → loadDepartureCostsVM · ส่งลงคอมโพเนนต์เฉพาะ vm · notFound · TripsForbidden · ไม่ import prisma · ไม่มี 'use client'", () => {
     needOwn(); const s = stripComments(read(COST_PAGE));
@@ -366,9 +384,13 @@ try {
     ok(/vatNote\.registered/.test(all) && /vatNote\.notRegistered/.test(all) && /revenueNoVat/.test(all), "ไม่เลือกข้อความตาม vatMode");
     ok(bad.length === 0, bad.slice(0, 5).join(" · "));
   });
-  await st("S-9", `ข้อความ costs.* departures.money.*: ไม่มีคำต้องห้าม (${FORBIDDEN_WORDS.join(" · ")}) · ไม่มีรหัสดิบ/รหัสใบงาน · อังกฤษไม่มีอักษรไทย · revenueNoVat ไม่มีคำ VAT`, () => {
+  await st("S-9", `ข้อความ costs.* departures.money.*: ไม่มีคำต้องห้าม (${FORBIDDEN_WORDS.join(" · ")} · คำ "งบ") · ไม่มีรหัสดิบ/รหัสใบงาน · อังกฤษไม่มีอักษรไทย · revenueNoVat ไม่มีคำ VAT`, () => {
+    // ORACLE-EDIT S-9: ตัวควบคุมของตัวจับคำ (positive: ต้องจับ · negative: ต้องปล่อย — รวมข้อความที่ S-10 ตรึง)
+    const mustHit = ["ไม่ใช่งบการเงิน", "ดูงบ", "ของงบ", "งบดุลของร้าน", "เป็นงบประมาณ", "งบ", "กำไรสุทธิ", "ใช้ POS"].filter((s) => forbiddenHit(s) === null);
+    const mustPass = [PINNED["costs.accounting"], "กำลังบันทึก…", "บันทึกต้นทุนรอบ", "ส่งบันทึก", "ตรงบัญชี", "ยังไม่ลงบันทึก"].filter((s) => forbiddenHit(s) !== null);
+    ok(mustHit.length === 0 && mustPass.length === 0, `ตัวจับคำผิด: ไม่จับ ${fmt(mustHit)} · จับเกิน ${fmt(mustPass)}`);
     const mt = mine(fth), me = mine(fen); ok(mt.length > 0, "ยังไม่มีข้อความของใบ");
-    const bad = [...mt, ...me].filter(([, v]) => FORBIDDEN_WORDS.some((w) => v.includes(w)) || /\b[TAWKLSCX]\d\.\d+[a-z]?\d?\b|\bOQ\d+\b/.test(v) || v.split(/[^A-Z_0-9]+/).some((w) => RAW_CODES.has(w)));
+    const bad = [...mt, ...me].filter(([, v]) => forbiddenHit(v) !== null || /\b[TAWKLSCX]\d\.\d+[a-z]?\d?\b|\bOQ\d+\b/.test(v) || v.split(/[^A-Z_0-9]+/).some((w) => RAW_CODES.has(w)));
     ok(bad.length === 0, `ข้อความต้องห้าม: ${fmt(bad.slice(0, 4))}`);
     ok(!me.some(([, v]) => /[฀-๿]/.test(v)), "อังกฤษมีอักษรไทย");
     ok(!/VAT/i.test(fth["costs.kpi.revenueNoVat"] ?? "VAT") && !/VAT/i.test(fen["costs.kpi.revenueNoVat"] ?? "VAT"), "revenueNoVat มีคำ VAT");
@@ -681,6 +703,8 @@ try {
     await mkBk("corrupt", { dep: dS, prod: "PS", status: "CONFIRMED", channel: "WEB", adults: 1, created: "2027-05-20T05:00:00Z", snapshot: "corrupt" });
     const dW = await mkDep("W", "PR", "2027-05-01", { cap: 10, sold: 0, status: "OPEN" });
     await mkCost(dW, "PR", "BOAT", 50_000_000);
+    // ── dAC: รอบของข้อ AC (ทางจริงของจอ: ตัวแก้ → server action → บริการ) · ORACLE-EDIT ผู้คุม 19 พ.ย. (บทเรียน W1.3a) ──
+    await mkDep("AC", "PR", "2027-06-20", { cap: 20, sold: 0, status: "OPEN" });
     // ── หน่วยไม่จด VAT (uN): เอเจนซี่คอมฯ 100,000 + VAT คอมฯ 7,000 · ตรงจ่ายครบ · ต้นทุน 200,000 ──
     const dV = await mkDep("V", "PN", "2027-04-10", { cap: 12, sold: 3 });
     await mkBk("vAg", { dep: dV, prod: "PN", status: "CONFIRMED", channel: "AGENT_LINK", adults: 2, agent: true, commission: 100_000, commissionVat: 7_000, created: "2027-04-01T03:00:00Z" });
@@ -848,6 +872,112 @@ try {
   });
   groupLine("CT");
 
+  // ═══════════════ AC. ทางจริงของจอ: CostEditor → saveDepartureCostsAction → saveDepartureCosts ═══════════════
+  // ORACLE-EDIT (ผู้คุม 19 พ.ย. · บทเรียน W1.3a: ข้อสอบเรียกบริการตรงแล้วพลาดว่า action ทิ้งช่องของฟอร์ม ⇒ หน้าจริงส่งไม่ได้)
+  //   ตัวแก้ไม่ใช่ <form name=…> — เรียก action ด้วยออบเจ็กต์ที่ประกอบจาก state ⇒ AC-1 ตรวจในโค้ดว่าคีย์ที่ตัวแก้ส่ง = คีย์ที่ action อ่านและส่งต่อ
+  //   AC-2…AC-5 เรียก action จริงในขอบเขตคำขอของ Next (เทคนิค qc-crm-c1.11: workAsyncStorage + workUnitAsyncStorage + คุกกี้ session จริงในตาราง Session)
+  //   payload ประกอบแบบเดียวกับตัวแก้: แถวเดิมจาก VM ⇒ { id, kind, amountText: formatBaht(amountSatang), note: note ?? "" } · แถวใหม่ไม่มี id
+  console.log("\n── AC: ตัวแก้ → server action → บริการ (ในขอบเขตคำขอของ Next) ──");
+  (globalThis as Rec).AsyncLocalStorage ??= (await import("node:async_hooks")).AsyncLocalStorage;
+  const nextWork = (await tryImport("next/dist/server/app-render/work-async-storage.external.js")).mod as Rec | null;
+  const nextWorkUnit = (await tryImport("next/dist/server/app-render/work-unit-async-storage.external.js")).mod as Rec | null;
+  const nextCookies = (await tryImport("next/dist/server/web/spec-extension/cookies.js")).mod as Rec | null;
+  const ACT = await tryImport("@/lib/modules/trips/cost-actions");
+  const SHARED = await tryImport("@/components/trips/trips-shared");
+  const ENV = await tryImport("@/lib/env");
+  const HASH = await tryImport("@/lib/core/hash");
+  const SESSION_COOKIE = asRec(ENV.mod)?.secureCookies === false ? "shark_session" : "__Host-shark_session";
+  const cookieOf: Record<string, string> = {};
+  const needAct = async (tag: string): Promise<string> => {
+    needSetup();
+    ok(typeof ACT.mod?.saveDepartureCostsAction === "function", `ยังไม่มี saveDepartureCostsAction (${ACT.err.slice(0, 100)})`);
+    ok(asRec(nextWork?.workAsyncStorage) && asRec(nextWorkUnit?.workUnitAsyncStorage) && typeof nextCookies?.RequestCookies === "function", "ตั้งขอบเขตคำขอของ Next ไม่ได้ (โมดูลภายในของ next หาย)");
+    if (!cookieOf[tag]) {
+      const token = `t17ac${randomBytes(24).toString("hex")}`; const sha = HASH.mod?.sha256 as AnyFn | undefined; ok(typeof sha === "function", "ไม่มี sha256");
+      await insertRow("Session", { id: rid("ss"), userId: U[tag]?.userId, tokenHash: String((sha as AnyFn)(token)), idleExpiresAt: new Date(Date.now() + DAY), expiresAt: new Date(Date.now() + DAY), createdAt: new Date() });
+      cookieOf[tag] = `${SESSION_COOKIE}=${token}; shark_tenant=${U[tag]?.tenantId}`;
+    }
+    return cookieOf[tag];
+  };
+  const SLUG_A = `${SLUG}a-${STAMP}`;
+  /** เรียก action จริงแบบที่หน้า /trips/departures/<id>/costs เรียก (phase action) — throw (notFound/redirect) ⇒ { ok: "THROW" } */
+  const act = async (tag: string, slug: string, input: unknown): Promise<Rec> => {
+    const cookie = await needAct(tag);
+    const path = `/app/u/${slug}/trips/departures/x/costs`;
+    const req = new Request(`http://qc.local${path}`, { headers: { cookie, "user-agent": "qc-t17-ac" } });
+    const jar = new (nextCookies?.RequestCookies as new (h: Headers) => unknown)(req.headers);
+    const workStore = { route: path, page: `${path}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [] };
+    const unitStore = { type: "request", phase: "action", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: req.headers, draftMode: undefined, rootParams: {}, url: { pathname: path, search: "" } };
+    const run = (s: Rec | null, store: unknown, f: () => unknown) => (s?.run as (st: unknown, f: () => unknown) => unknown).call(s, store, f);
+    try {
+      return asRec(await run(asRec(nextWork?.workAsyncStorage), workStore, () => run(asRec(nextWorkUnit?.workUnitAsyncStorage), unitStore, () => (ACT.mod?.saveDepartureCostsAction as AnyFn)(slug, input)))) ?? { ok: "NONE" };
+    } catch (e) { return { ok: "THROW", e: errMsg(e), digest: String(asRec(e)?.digest ?? "") }; }
+  };
+  const fmtBaht = (n: number): string => { const f = SHARED.mod?.formatBaht; ok(typeof f === "function", `ไม่มี formatBaht (${SHARED.err.slice(0, 80)})`); return String((f as AnyFn)(n)); };
+  /** payload แบบ CostEditor: แถวเดิมจาก VM + แถวใหม่ (ไม่มี id) */
+  const editorPayload = (vm: Rec, extra: { kind: string; amountText: string; note: string }[] = [], edit: (r: Rec) => Rec = (r) => r) => ({
+    departureId: asRec(vm.departure)?.id, expectedToken: asRec(vm.costs)?.token,
+    rows: [...asArr(asRec(vm.costs)?.rows).map((r) => edit({ id: r.id, kind: r.kind, amountText: fmtBaht(Number(r.amountSatang)), note: (r.note as string | null) ?? "" })), ...extra],
+  });
+  const acState = async () => ({ rows: (await costRowsDb(DEP.AC)).map((r) => [r.kind, r.amountSatang, r.note]), audit: await auditCount("trips.cost.saved", DEP.AC), token: await tokenOf(DEP.AC) });
+  await st("AC-1", "โค้ด: ตัวแก้ส่ง { departureId: vm.departure.id · expectedToken: vm.costs.token · rows: { id? · kind · amountText · note } } · action อ่าน body.departureId/expectedToken/rows แล้วส่งต่อบริการพร้อม unitId จาก slug · แปลงยอดด้วย costRowsFromForm(body.rows) · CostScreen ตั้ง key = token (โหลดใหม่หลังบันทึกแล้วตัวแก้เริ่มจากชุดใหม่ · ไม่สร้างแถวซ้ำ)", () => {
+    needOwn(); const ed = stripComments(read(`${COMP}/CostEditor.tsx`)), ac = stripComments(read(ACTIONS)), sc = stripComments(read(`${COMP}/CostScreen.tsx`));
+    const call0 = ed.slice(ed.indexOf("saveDepartureCostsAction("), ed.indexOf("saveDepartureCostsAction(") + 400);
+    ok(ed.includes("saveDepartureCostsAction(") && /departureId:\s*vm\.departure\.id/.test(call0) && /expectedToken:\s*vm\.costs\.token/.test(call0), `ตัวแก้ไม่ส่ง departureId/expectedToken: ${call0.slice(0, 160)}`);
+    ok(/\bid:\s*x\.id/.test(call0) && /kind:\s*x\.kind/.test(call0) && /amountText:\s*x\.amountText/.test(call0) && /note:\s*x\.note/.test(call0), "แถวที่ตัวแก้ส่งไม่ครบ id/kind/amountText/note");
+    ok(!/amountSatang\s*:/.test(call0), "ตัวแก้ส่ง amountSatang (ต้องเป็นข้อความ)");
+    ok(/costRowsFromForm\(\s*body\.rows\s*\)/.test(ac) && /departureId:\s*body\.departureId/.test(ac) && /expectedToken:\s*body\.expectedToken/.test(ac) && /unitId:\s*unit\.id/.test(ac), "action ไม่อ่าน/ไม่ส่งต่อ departureId · expectedToken · rows · unitId จาก slug");
+    ok(/<CostEditor\s+key=\{vm\.costs\.token\}/.test(sc), "CostScreen ไม่ตั้ง key = token");
+  });
+  let acTok = "";
+  await st("AC-2", "OWNER ผ่าน action: แถวใหม่ 3 แถว \"1,250.50\" / \" 300 \" / \"12,000\" ⇒ applied · ในฐาน (เรียง createdAt) = BOAT 125050 \"เรือ AC\" · FUEL 30000 null · GUIDE 1200000 \"ไกด์\" · audit 1 แถว actor = ผู้ใช้ของคุกกี้ · เปิดตัวแก้ใหม่จาก VM แล้วกดบันทึกโดยไม่แก้ ⇒ applied false · ไม่มี audit เพิ่ม", async () => {
+    const vm = VM(await loadCosts("oa", DEP.AC), "load AC");
+    const r = await act("oa", SLUG_A, editorPayload(vm, [{ kind: "BOAT", amountText: "1,250.50", note: "เรือ AC" }, { kind: "FUEL", amountText: " 300 ", note: "" }, { kind: "GUIDE", amountText: "12,000", note: "  ไกด์ " }]));
+    ok(r.ok === true && asRec(r.value)?.applied === true, `action: ${fmt(r)}`);
+    const s = await acState();
+    eq(s.rows, [["BOAT", 125_050, "เรือ AC"], ["FUEL", 30_000, null], ["GUIDE", 1_200_000, "ไกด์"]], "แถวในฐาน");
+    eq([s.audit, (await q<{ a: string }>(`SELECT "actorId" AS a FROM "AuditLog" WHERE action = 'trips.cost.saved' AND "targetId" = $1`, [DEP.AC]))[0]?.a], [1, U.oa.userId], "audit");
+    eq(asRec(r.value)?.token, s.token, "token ที่ action คืน = token ปัจจุบัน");
+    const vm2 = VM(await loadCosts("oa", DEP.AC), "reload");
+    const p2 = editorPayload(vm2); eq(asArr(p2.rows).map((x) => x.amountText), ["1,250.50", "300.00", "12,000.00"], "ข้อความยอดที่ตัวแก้เติมจาก VM");
+    const r2 = await act("oa", SLUG_A, p2); ok(r2.ok === true && asRec(r2.value)?.applied === false, `บันทึกโดยไม่แก้: ${fmt(r2)}`);
+    const s2 = await acState(); eq([s2.rows, s2.audit, s2.token], [s.rows, 1, s.token], "ไม่เขียน");
+    acTok = s.token;
+  });
+  await st("AC-3", "ยอดผิดผ่าน action: \"1,2a\" / \"12.345\" / \"abc\" ⇒ COST_AMOUNT_FORMAT · \"0\" ⇒ COST_AMOUNT_INVALID · ไม่เขียน · token/audit เดิม · ข้อความไม่สะท้อนอินพุต", async () => {
+    const vm = VM(await loadCosts("oa", DEP.AC), "load"); const before = await acState();
+    for (const [txt, code] of [["1,2a", "COST_AMOUNT_FORMAT"], ["12.345", "COST_AMOUNT_FORMAT"], ["abc", "COST_AMOUNT_FORMAT"], ["0", "COST_AMOUNT_INVALID"]] as const) {
+      const r = await act("oa", SLUG_A, editorPayload(vm, [{ kind: "OTHER", amountText: txt, note: "" }]));
+      codeR(r, code, txt); ok(txt.length < 2 || !String(r.message ?? "").includes(txt), `ข้อความสะท้อนอินพุต ${txt}`);
+    }
+    const r5 = await act("oa", SLUG_A, editorPayload(vm, [], (x) => (x.kind === "FUEL" ? { ...x, amountText: "3OO" } : x))); codeR(r5, "COST_AMOUNT_FORMAT", "แก้แถวเดิมเป็นยอดผิด");
+    eq(await acState(), before, "ไม่เขียน");
+  });
+  await st("AC-4", "พนักงาน trips.cost.edit ผ่าน action แก้ยอด FUEL เป็น \"350.25\" ⇒ applied (35025) · แล้ว OWNER ส่งด้วย token เดิมของ AC-2 เนื้อหาต่าง ⇒ STATE_CONFLICT · ไม่เขียน", async () => {
+    const vm = VM(await loadCosts("ce", DEP.AC), "load ce");
+    const r = await act("ce", SLUG_A, editorPayload(vm, [], (x) => (x.kind === "FUEL" ? { ...x, amountText: "350.25" } : x)));
+    ok(r.ok === true && asRec(r.value)?.applied === true, `ce: ${fmt(r)}`);
+    const s = await acState(); eq(s.rows, [["BOAT", 125_050, "เรือ AC"], ["FUEL", 35_025, null], ["GUIDE", 1_200_000, "ไกด์"]], "แถวหลัง ce");
+    ok(acTok && acTok !== s.token, "token ต้องเปลี่ยน");
+    const stale = { ...editorPayload(vm, [{ kind: "FOOD", amountText: "99", note: "" }]), expectedToken: acTok };
+    codeR(await act("oa", SLUG_A, stale), "STATE_CONFLICT", "token เก่า"); eq(await acState(), s, "ไม่เขียน");
+  });
+  await st("AC-5", "ปฏิเสธที่ action: cost.view · cost.view+report.view · trips.* (STAFF) · report.view · booking.view · departure.view · ไม่มีสิทธิ์ ⇒ FORBIDDEN ไม่มีตัวเลข · MANAGER ⇒ ได้ · รอบหน่วยอื่นผ่าน slug หน่วยนี้ ⇒ NOT_FOUND · slug หน่วยที่ผู้ใช้เข้าไม่ได้ / ร้านอื่น ⇒ ไม่ผ่าน (notFound) · ไม่เขียนทุกกรณีที่ถูกปฏิเสธ", async () => {
+    const vm = VM(await loadCosts("oa", DEP.AC), "load"); const before = await acState(); const a2Before = content(await costRowsDb(DEP.A2));
+    const p = editorPayload(vm, [{ kind: "OTHER", amountText: "1,000", note: "" }]); const bad: string[] = [];
+    for (const t of ["cvo", "cv", "wild", "rv", "bv", "dv", "none"]) {
+      const r = await act(t, SLUG_A, p);
+      if (r.ok !== false || r.code !== "FORBIDDEN") bad.push(`${t}: ${fmt(r)}`); else if (/\d{4,}/.test(String(r.message ?? "")) || hasNum(JSON.stringify(r), [125_050, 1_200_000, 35_025]).length) bad.push(`${t}: ข้อความมีตัวเลข`);
+    }
+    ok(bad.length === 0, bad.slice(0, 3).join(" · ")); eq(await acState(), before, "ไม่เขียน (ปฏิเสธ)");
+    codeR(await act("oa", SLUG_A, { ...p, departureId: DEP.A2, unitId: uA2 }), "NOT_FOUND", "รอบหน่วย a2 ผ่าน slug a (unitId ใน input ไม่มีผล)");
+    for (const [t, slug] of [["a2", SLUG_A], ["ob", SLUG_A], ["mgx", SLUG_A]] as const) { const r = await act(t, slug, p); ok(r.ok !== true, `${t} ต้องไม่ผ่าน: ${fmt(r)}`); }
+    eq([await acState(), content(await costRowsDb(DEP.A2))], [before, a2Before], "ไม่เขียน (หน่วย/ร้านอื่น)");
+    const rm = await act("mg", SLUG_A, p); ok(rm.ok === true && asRec(rm.value)?.applied === true, `MANAGER: ${fmt(rm)}`);
+    eq((await acState()).audit, before.audit + 1, "MANAGER audit +1");
+  });
+  groupLine("AC");
+
   // ═══════════════ PN. การ์ดเงิน / departureMoneySummary ═══════════════
   console.log("\n── PN: การ์ดเงินระดับรอบ ──");
   const MK2 = ["bookings", "cancelledBookings", "pendingRefundBookings", "seats", "sold", "capacity", "loadFactorBp", "salesSatang", "passThroughSatang", "vatSatang", "revenueExVatSatang", "commissionCostSatang",
@@ -915,6 +1045,17 @@ try {
     const m = V(await call("departureMoneySummary", SEED, { unitId: U0, departureId: seedDep }, { now: AS_OF }), "seed");
     eq(pick(m, ["bookings", "salesSatang", "passThroughSatang", "vatSatang", "revenueExVatSatang", "costSatang", "costRows", "estimate"]), [raw.live, raw.sales, raw.pt, raw.vat, raw.sales - raw.vat, 0, 0, true], "seed");
     eq(await seedCounts(), seedBefore, "seed ไม่ถูกเขียน");
+  });
+  // ORACLE-EDIT (ผู้คุม 19 พ.ย.): ข้อตัดสินที่ builder ประกาศ แต่ข้อเดิมพิสูจน์ไม่ครบ
+  await st("PN-13", "actions.costs (§4.3) = departure.view ∧ costAccessOf.view: OWNER · MANAGER · cost.view · cost.view+report.view · cost.edit ⇒ true · booking.view · report.view · trips.* · departure.view อย่างเดียว ⇒ false · ทุกคนที่ true ได้ money ที่มีต้นทุน", async () => {
+    needSetup(); const got: Record<string, unknown> = {};
+    for (const t of ["oa", "mg", "cvo", "cv", "ce", "bv", "rv", "wild", "dv"]) { const vm = VM(await panel(t), t); got[t] = [asRec(vm.actions)?.costs, asRec(vm.money)?.costSatang ?? null]; }
+    eq(got, { oa: [true, 2_150_000], mg: [true, 2_150_000], cvo: [true, 2_150_000], cv: [true, 2_150_000], ce: [true, 2_150_000], bv: [false, null], rv: [false, null], wild: [false, null], dv: [false, null] }, "actions.costs");
+  });
+  await st("PN-14", "ร้านไม่จด VAT (N8) ระดับช่องทาง: จอต้นทุน dV ทุกช่องทาง revenueExVatSatang = salesSatang · money.vatSatang 0 · revenueExVat = sales", async () => {
+    needSetup(); const vm = VM(await loadCosts("oa", DEP.V, uN), "dV"); const ch = asArr(vm.channels); const m = asRec(vm.money) ?? {};
+    ok(ch.length >= 2 && ch.every((c) => c.revenueExVatSatang === c.salesSatang), `ช่องทาง: ${fmt(ch.map((c) => [c.channel, c.salesSatang, c.revenueExVatSatang]))}`);
+    eq([m.vatSatang, m.revenueExVatSatang], [0, m.salesSatang], "money");
   });
   groupLine("PN");
 

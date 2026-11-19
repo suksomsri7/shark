@@ -338,7 +338,7 @@ try {
     ok(rows.length > 0, "rows ว่าง");
     const kinds = ["button", "link", "menu", "tab", "toggle", "drag", "form", "filter", "input", "textarea", "select", "notice"];
     const bad = rows.filter((r) => typeof r.page !== "string" || !String(r.page).startsWith("/app/u/[unitSlug]/trips") || typeof r.testid !== "string" || !kinds.includes(String(r.kind))
-      || !Array.isArray(r.roles) || (r.roles as unknown[]).length === 0 || !(r.roles as unknown[]).every((x) => ["owner", "editor", "viewer"].includes(String(x))) || !/^(T1\.\d+|A1\.\d+|W1\.\d+|L1\.\d+|K1\.\d+)$/.test(String(r.wo)) /* ORACLE-EDIT S-12 (ผู้คุม 13 พ.ย.): ใบจอถัดไปเพิ่มแถวของตัวเอง */ || r.system !== "TRIPS" || !asRec(r.expect)?.type);
+      || !Array.isArray(r.roles) || (r.roles as unknown[]).length === 0 || !(r.roles as unknown[]).every((x) => ["owner", "editor", "viewer"].includes(String(x))) || !/^(T1\.\d+|A1\.\d+|W1\.\d+|L1\.\d+|K1\.\d+)([a-z]\d*)?$/.test(String(r.wo)) /* ORACLE-EDIT S-12 (ผู้คุม 13 พ.ย.): ใบจอถัดไปเพิ่มแถวของตัวเอง · ORACLE-EDIT S-12 (ผู้คุม 19 พ.ย.): รับใบย่อย ตัวพิมพ์เล็ก 1 ตัว + เลข (T1.7a1 T1.7a2 W1.3a) — ยังปฏิเสธรูปผิด (T1.7A1 · T1.7-a1 · t1.7a1 · ช่องว่าง) */ || r.system !== "TRIPS" || !asRec(r.expect)?.type);
     ok(bad.length === 0, `แถวพิการ ${bad.length}: ${fmt(bad[0])}`);
     const ids = rows.map((r) => String(r.testid));
     const miss = [...TESTIDS_FIXED.filter((t) => !ids.includes(t)), ...TESTID_PATTERNS.filter((p) => !ids.includes(`${p}*`)).map((p) => `${p}*`)];

@@ -627,8 +627,21 @@ try {
     eq(actOf(p14), { close: true, reopen: false, guarantee: false, unguarantee: true, run: false, merge: false, cancel: true, capacity: true, resources: true, price: true, stopSell: true, manifest: true /* ORACLE-EDIT PV-4 (ผู้คุม 13 พ.ย. · T1.4a): ปุ่มใบรายชื่อเปิดใช้ */, book: false }, "actions");
     eq(p14.cancelBlocked, true, "cancelBlocked"); // ORACLE-EDIT (ผู้คุม 13 พ.ย.): seed ของ T0.6 ขายตรง 6 ที่ในราชา ส. 14 พ.ย. ⇒ มีผู้จอง ยกเลิกที่นี่ไม่ได้
   });
-  await st("PV-5", "ไม่แต่งข้อมูลการจอง/เงิน: bookings = null · money = null (T1.3/T1.7)", () => {
-    eq([p14.bookings, p14.money], [null, null], "null");
+  // ORACLE-EDIT PV-5 (ผู้คุม 19 พ.ย. · ใบสั่ง T1.7a1 §4.3 §7 · C7): แผงรอบเติม money จากตัวคิดของ costs.ts — bookings ยังคง null
+  //   เจ้าของ (มีสิทธิ์ต้นทุน) ⇒ money ครบรูป DepartureMoneyVM · ต้นทุนของ seed 0 แถว · ช่องต้นทุน/คอมฯ/กำไรเป็นตัวเลข · actions.costs true
+  //   ผู้ไม่มีคีย์ต้นทุน ⇒ ช่องต้นทุน/คอมฯ/กำไร null (ตรวจใน CT-17 บนร้านชั่วคราว — seed ไม่มีผู้ใช้แบบนั้น)
+  const MONEY_KEYS = ["bookings", "cancelledBookings", "pendingRefundBookings", "seats", "salesSatang", "passThroughSatang", "vatSatang", "revenueExVatSatang", "commissionCostSatang", "collectedSatang",
+    "outstandingSatang", "heldSatang", "retainedSatang", "agentCollectBookings", "noShowUnpaid", "state", "estimate", "vatMode", "capacity", "sold", "loadFactorBp", "charterLike", "pendingBookings",
+    "costSatang", "costRows", "grossProfitSatang", "marginBp", "warnings"].sort();
+  const COST_FIELDS = ["commissionCostSatang", "costSatang", "costRows", "grossProfitSatang", "marginBp"];
+  await st("PV-5", "ไม่แต่งข้อมูลการจอง: bookings = null (T1.3) · money (T1.7a1) ของเจ้าของ = รูป DepartureMoneyVM ครบ 28 ช่อง · estimate true · ความจุ/ขายตรงแผง · ต้นทุน 0 แถว · ช่องต้นทุน/คอมฯ/กำไรเป็นตัวเลข · actions.costs true", () => {
+    eq(p14.bookings, null, "bookings");
+    const m = asRec(p14.money); ok(m, `money ต้องไม่ null สำหรับเจ้าของ: ${fmt(p14.money)}`);
+    eq(Object.keys(m ?? {}).sort(), MONEY_KEYS, "ช่องของ money");
+    const c = asRec(p14.counts) ?? {};
+    eq([m?.estimate, m?.capacity, m?.sold, m?.costSatang, m?.costRows, Array.isArray(m?.warnings)], [true, c.capacity, c.sold, 0, 0, true], "ค่า");
+    ok(["commissionCostSatang", "costSatang", "grossProfitSatang", "salesSatang"].every((k) => Number.isInteger(m?.[k])), `ช่องเงินต้องเป็นจำนวนเต็ม: ${fmt(m)}`);
+    eq(asRec(p14.actions)?.costs, true, "actions.costs");
   });
   await st("PV-6", "ราคา ส. 14: ผู้ใหญ่ 3,500 · เด็ก 2,450 · ไม่ใช่ราคารอบ", () => {
     const rows = asArr(asRec(p14.price)?.rows);
@@ -696,6 +709,7 @@ try {
     await mkUser("pvo", tA, "STAFF", [uA], ["trips.product.view"]);
     await mkUser("none", tA, "STAFF", [uA], []);
     await mkUser("a2", tA, "STAFF", [uA2], [...DV, "trips.departure.edit", "trips.departure.status"]);
+    await mkUser("bvw", tA, "STAFF", [uA], [...DV, "trips.booking.view"]); // ORACLE-EDIT (ผู้คุม 19 พ.ย. · T1.7a1 §7): ผู้เห็นยอดขายแต่ไม่มีคีย์ต้นทุน — ใช้ใน CT-17
   } catch (e) { setupErr = errMsg(e); console.log(`  ⚠️ ตั้งร้านชั่วคราวไม่สำเร็จ: ${setupErr}`); }
   const ctxOf = (tag: string): Ctx => {
     const a = U[tag];
@@ -1047,6 +1061,16 @@ try {
     eq([si.channels, si.reason, cellOf(await ctCal(), D.l1).stopSell], [["WEB"], "ปิดเว็บชั่วคราว", true], "หลังตั้ง");
     okR(await call("setDepartureStopSell", OA(), { unitId: uA, departureId: D.l1, stopSell: null }), "ล้าง");
     eq([asRec((await ctPanel("oa", D.l1)).departure)?.stopSellInfo, cellOf(await ctCal(), D.l1).stopSell], [null, false], "หลังล้าง");
+  });
+  // ORACLE-EDIT (ผู้คุม 19 พ.ย. · คู่กับ PV-5): ตารางสิทธิ์ของ money ในแผงรอบตามใบสั่ง T1.7a1 §7
+  await st("CT-17", "money ของแผงรอบตามสิทธิ์ (T1.7a1 §7): departure.view + booking.view ไม่มีคีย์ต้นทุน ⇒ money ครบรูป แต่ช่องต้นทุน/คอมฯ/กำไร null · actions.costs false · departure.view อย่างเดียว ⇒ money null · เจ้าของ ⇒ ช่องต้นทุนเป็นตัวเลข", async () => {
+    needD("w");
+    const pb = await ctPanel("bvw", D.w); const m = asRec(pb.money);
+    ok(m, `bvw money ต้องไม่ null: ${fmt(pb.money)}`);
+    eq(Object.keys(m ?? {}).sort(), MONEY_KEYS, "ช่องของ money");
+    eq([COST_FIELDS.map((k) => m?.[k]), asRec(pb.actions)?.costs], [COST_FIELDS.map(() => null), false], "bvw");
+    const pd = await ctPanel("dv", D.w); eq([pd.money, asRec(pd.actions)?.costs], [null, false], "dv");
+    const po = asRec((await ctPanel("oa", D.w)).money) ?? {}; ok(COST_FIELDS.filter((k) => k !== "marginBp").every((k) => Number.isInteger(po[k])), `oa: ${fmt(po)}`);
   });
   groupLine("CT");
 
