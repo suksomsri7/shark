@@ -527,7 +527,7 @@ try {
     ok(cv.ok === true, `convertHoldInTx: ${fmt(cv)}`);
     await holdOk(pub(), [line(d, { a: 5 })]);
     shareR((await holdT(pub(), [line(d, { a: 2 })])).r, "หลังแปลง");
-    eq([(await dep(d)).sold, (await dep(d)).held], [5, 5], "sold/held"); await invOk([d], "PH-6");
+    eq([(await dep(d)).sold, (await dep(d)).held], [5, 5], "sold/held"); // ORACLE-EDIT PH-6 (ผู้คุม 19 พ.ย.): ตัด invOk — ข้อนี้แปลง hold ด้วย convertHoldInTx ตรง ๆ โดยไม่มีการจอง ⇒ sold 5 กับการจอง 0 ไม่ตรงกันตามนิยามของตัวตรวจ (ไม่ใช่พฤติกรรมของบริการ)
   });
   await st("PH-7", "การจอง HOLD ของ PUBLIC (ยืนยันแล้ว ยังไม่จ่าย · hold KEEP) ยังนับ: ถือ 5 → ยืนยัน PAY_NOW ⇒ HOLD · ขอ 1 ⇒ HOLD_LIMIT", async () => {
     needDb();

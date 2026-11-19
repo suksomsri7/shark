@@ -641,7 +641,9 @@ async function assertPublicShareInTx(tx: Tx, g: Gate, c: Ctx, d: DepRow, qty: nu
   const seats = rows[0]?.seats ?? 0;
   const first = rows[0]?.first ?? null;
   if (seats === 0 || seats + qty <= Math.ceil((d.capacity * pol.unpaidHoldMaxPct) / 100)) return;
-  const retryAfterSec = Math.max(1, Math.ceil(((first ? new Date(first).getTime() : c.clock.now.getTime()) - c.clock.now.getTime()) / 1000));
+  // มติผู้คุม (PH-8): ไม่บอกลูกค้าให้รอนานกว่าเวลาถือรอชำระของร้าน (T5) — ที่ถือแบบรอร้านยืนยัน (X2) อายุเป็นชั่วโมง ไม่ใช่เวลาที่ควรกลับมาลอง
+  const untilFirst = Math.max(1, Math.ceil(((first ? new Date(first).getTime() : c.clock.now.getTime()) - c.clock.now.getTime()) / 1000));
+  const retryAfterSec = pol.durations.holdMinutes ? Math.min(untilFirst, pol.durations.holdMinutes * 60) : untilFirst;
   throw new CapacityAbort("HOLD_LIMIT", { reason: "PUBLIC_UNPAID_SHARE", retryAfterSec });
 }
 
