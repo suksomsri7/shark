@@ -17,7 +17,7 @@ import { resolveSettings } from "@/lib/core/settings";
 import { tourRefundFloorPctAt } from "@/lib/core/settings/legal/th-tour-2569";
 import { requestBindings } from "@/lib/modules/approval";
 import { BookingAbort, runTripsTx, tripsSafely } from "./booking";
-import { PUBLIC_SELF_AUDITOR, publicSelfGate, publicTokenOk } from "./booking"; // TRIPS W1.3 ▸ รั้วลูกค้า (K2–K4) ◂
+import { PUBLIC_SELF_AUDITOR, publicSelfGate, publicSelfRowFail } from "./booking"; // TRIPS W1.3 ▸ รั้วลูกค้า (K2–K4) ◂
 import { seatsOfSnapshot, tripText, type SnapshotShape } from "./booking-core";
 import { holdRequestHash, invalidInput, parseCtx, returnSoldInTx, sellFail, type CapacityPolicies, type Ctx, type Failure, type Gate, type Tx } from "./capacity";
 import { gateOf, loadCapacityPolicies, unitClient } from "./capacity-service";
@@ -394,7 +394,11 @@ async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel",
     // 2b
     const lb = await lockMoneyBookingInTx(tx, g, b.id);
     if (!lb) throw new BookingAbort("NOT_FOUND");
-    if (pub && !(await publicTokenOk(tx, g, lb.id, pub.tokenHash, true))) throw new BookingAbort("FORBIDDEN"); // TRIPS W1.3 ▸ ใต้ล็อกแถว (K2) ◂
+    // TRIPS W1.3 ▸ ใต้ล็อกแถว: รั้ว (token · PENDING · เอเจนซี่ · รุ่นที่หน้าเห็น · K2 L1 L9) · คำขอล่าสุดของลูกค้าถูกปฏิเสธ ⇒ ยื่นใหม่ผ่านหน้าไม่ได้ (K8 L3) ◂
+    const pf = pub ? await publicSelfRowFail(tx, g, lb.id, pub, true) : null;
+    if (pf) throw new BookingAbort(pf.code, pf.details);
+    const last = pub ? (await tx.$queryRaw<{ s: string; b: string }[]>`SELECT "status" AS "s", "by" AS "b" FROM "TripRefundRequest" WHERE "bookingId" = ${lb.id} AND "tenantId" = ${g.tenantId} ORDER BY "createdAt" DESC, "id" DESC LIMIT 1`)[0] : undefined;
+    if (last && last.s === "REJECTED" && last.b === "CUSTOMER") throw new BookingAbort("FORBIDDEN", { reason: "REFUND_REJECTED" });
     const again = await requestByKey(tx, g.tenantId, key);
     if (again) return { replay: again };
     if (!REFUNDABLE.has(lb.status)) throw new BookingAbort("STATE_CONFLICT", { reason: "NOT_REFUNDABLE_STATUS" });

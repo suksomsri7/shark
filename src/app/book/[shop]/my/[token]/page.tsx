@@ -16,8 +16,8 @@ import { BookNoticeFrame } from "@/components/book/BookShell";
 import { bookT } from "@/components/book/book-i18n";
 import { openBookReservation } from "@/lib/platform/trips-book";
 import { bookReservationHref } from "@/lib/platform/trips-book-core";
-import { bookRequestFromHeaders, resolveBookShop } from "@/lib/platform/trips-public";
-import { issueSelfFormNonce, quoteBookSelfCancel } from "@/lib/platform/trips-self";
+import { bookRequestFromHeaders } from "@/lib/platform/trips-public";
+import { quoteBookSelfCancel } from "@/lib/platform/trips-self";
 import { selfPageErrorOf, selfPageParams, selfReservationHref, selfShowsManage, type SelfPageError } from "@/lib/platform/trips-self-core";
 import { cancelSelfAction, verifySelfAction } from "../actions";
 import { bookHref, bookLocaleOf, parseBookQuery } from "@/lib/platform/trips-public-core";
@@ -104,8 +104,8 @@ async function selfPanel(shop: string, token: string, self: ReturnType<typeof se
     if (q.code !== "VERIFY_REQUIRED") return qe ? <BookSelfError code={qe} locale={vm.locale} /> : null;
     error = error ?? "VERIFY_REQUIRED";
   }
-  const s = await resolveBookShop(shop);
-  const nonce = s.ok ? issueSelfFormNonce({ scope: { tenantId: s.shop.tenantId, purpose: "verify", token } }) : null;
+  // nonce ของฟอร์มยืนยันมาจากตัวเปิดหน้า (มติ L6 · หน้าไม่แก้ร้านเอง)
+  const nonce = vm.selfVerifyNonce;
   if (!nonce) return <BookSelfError code="UNAVAILABLE" locale={vm.locale} />;
   return <BookSelfVerify action={verifySelfAction.bind(null, shop, token)} nonce={nonce} locale={vm.locale} error={error} />;
 }

@@ -550,6 +550,7 @@ export async function audit(tx: Tx, g: Gate, c: Ctx, action: string, targetType:
       targetType,
       targetId,
       after: { ...after },
+      ...(c.actor.kind === "SYSTEM" && c.actor.job === "trips.public.self" ? { actorId: c.actor.job, after: { ...after, by: "PUBLIC" } } : {}), // TRIPS W1.3 ▸ L5 · K3 เส้นลูกค้า ◂
     },
   });
 }

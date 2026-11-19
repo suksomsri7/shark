@@ -245,3 +245,18 @@ export async function findBookSelfFacts(ref: { tenantId: string; unitId: string 
     refund: r ? { status: String(r.status), amountSatang: Number(r.amountSatang), by: String(r.by) } : null,
   };
 }
+/** ผลเดิมของคีย์ฟอร์มลูกค้า (K5 · คีย์อย่างเดียว): คำขอคืนเงินของคีย์ หรือแถว audit ยกเลิกที่จด idemKeyHash (ช่วงเผื่อ 24 ชม. ก่อนเวลาสร้างการจอง แบบ T0.6 F1) — ไม่เคยทำ ⇒ null */
+export async function findSelfReplay(ref: { tenantId: string; unitId: string }, b: { id: string; createdAt: Date }, key: string, keyHash: string): Promise<{ request: { id: string; status: string; amountSatang: number; keptSatang: number; step: { daysBefore: number; refundBp: number } | null } | null } | null> {
+  const db = dbOf(ref.tenantId, ref.unitId);
+  const rq = (await db.$queryRaw<{ id: string; status: string; amountSatang: number; computed: unknown }[]>`
+    SELECT "id", "status", "amountSatang", "computed" FROM "TripRefundRequest" WHERE "tenantId" = ${ref.tenantId} AND "idempotencyKey" = ${key} AND "bookingId" = ${b.id}`)[0];
+  if (rq) {
+    const cp = isRec(rq.computed) ? rq.computed : {};
+    const step = isRec(cp.step) ? { daysBefore: Number(cp.step.daysBefore), refundBp: Number(cp.step.refundBp) } : null;
+    return { request: { id: rq.id, status: rq.status, amountSatang: Number(rq.amountSatang), keptSatang: Number(cp.keptSatang ?? 0), step } };
+  }
+  const since = new Date(new Date(b.createdAt).getTime() - 86_400_000).toISOString();
+  const a = await db.$queryRaw<{ x: number }[]>`
+    SELECT 1 AS "x" FROM "AuditLog" WHERE "tenantId" = ${ref.tenantId} AND "createdAt" >= ${since}::timestamp AND "targetId" = ${b.id} AND "action" = 'trips.booking.cancel' AND "after"->>'idemKeyHash' = ${keyHash} LIMIT 1`;
+  return a.length ? { request: null } : null;
+}

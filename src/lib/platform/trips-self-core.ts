@@ -75,7 +75,7 @@ const get = (o: Record<string, unknown>, k: string): unknown => {
 /**
  * ปุ่มจัดการของการจอง ณ เวลาที่ผู้เรียกส่ง (ใบสั่ง §3.1 · ลำดับตายตัว):
  * เอเจนซี่ ⇒ AGENT · PENDING ⇒ PENDING · จบแล้ว/HOLD หมดตามนาฬิกา ⇒ ENDED · ออกเดินทางแล้ว ⇒ STARTED ·
- * คำขอเปิด ⇒ REFUND_IN_PROGRESS · ถูกปฏิเสธ ⇒ REFUND_REJECTED · HOLD ⇒ UNPAID · ขายแล้ว: จ่าย > 0 ⇒ REFUND_REQUEST · 0 ⇒ CANCEL_REQUEST
+ * คำขอเปิด ⇒ REFUND_IN_PROGRESS · คำขอของลูกค้าถูกปฏิเสธ ⇒ REFUND_REJECTED · HOLD ⇒ UNPAID · ขายแล้ว: จ่าย > 0 ⇒ REFUND_REQUEST · 0 ⇒ CANCEL_REQUEST
  * อินพุตผิดรูป ⇒ { null, ENDED } (ไม่ throw)
  */
 export function selfManageOf(input: unknown): SelfManage {
@@ -92,12 +92,12 @@ export function selfManageOf(input: unknown): SelfManage {
     if (typeof status !== "string" || !BOOKING_STATUSES.has(status) || typeof agent !== "boolean") return ENDED;
     if (typeof paid !== "number" || !Number.isSafeInteger(paid) || paid < 0) return ENDED;
     if (now === null || startsAt === null || (holdRaw !== null && holdRaw !== undefined && holdAt === null)) return ENDED;
-    let rq: { status: string } | null = null;
+    let rq: { status: string; mine: boolean } | null = null;
     if (refund !== null && refund !== undefined) {
       if (!isRec(refund)) return ENDED;
       const rs = get(refund, "status");
       if (typeof rs !== "string" || !REFUND_KNOWN.has(rs) || typeof get(refund, "mine") !== "boolean") return ENDED;
-      rq = { status: rs };
+      rq = { status: rs, mine: get(refund, "mine") === true };
     }
     if (agent) return { cancel: null, block: "AGENT" };
     if (status === "PENDING") return { cancel: null, block: "PENDING" };
@@ -105,7 +105,8 @@ export function selfManageOf(input: unknown): SelfManage {
     if (status === "HOLD" && (holdAt === null || now >= holdAt)) return ENDED;
     if (now >= startsAt) return { cancel: null, block: "STARTED" };
     if (rq && REFUND_OPEN.has(rq.status)) return { cancel: null, block: "REFUND_IN_PROGRESS" };
-    if (rq && rq.status === "REJECTED") return { cancel: null, block: "REFUND_REJECTED" };
+    // L3: คำขอที่ร้าน/ระบบยื่นแล้วถูกปฏิเสธ ไม่ปิดสิทธิ์ลูกค้า — ปิดเฉพาะคำขอของลูกค้าเอง (K8)
+    if (rq && rq.status === "REJECTED" && rq.mine) return { cancel: null, block: "REFUND_REJECTED" };
     if (status === "HOLD") return { cancel: "UNPAID", block: null };
     if (SOLD_STATUSES.has(status)) return { cancel: paid > 0 ? "REFUND_REQUEST" : "CANCEL_REQUEST", block: null };
     return ENDED;
@@ -134,15 +135,17 @@ export function selfManageVMOf(i: { status: string; startsAt: string | null; now
   return { cancel: m.cancel, block: m.block, refund: show };
 }
 
-/** เลขโทรศัพท์รูปเดียว (0…) — 0066/66/+66 ⇒ 0… · อื่น ⇒ ตัวเลขล้วน */
+/**
+ * เลขสำคัญของเบอร์ (ตัดรหัสประเทศ 0066/66/+66 และ 0 นำหน้าของเบอร์ในประเทศ) — ทนรูปที่ normalizePartyPhone เก็บไว้ทุกแบบ
+ * (0066… ถูกเก็บเป็น 8… · +66… เป็น 0… · มติ L4) · สั้นกว่า 8 หลัก ⇒ null
+ */
 function phoneDigits(v: unknown): string | null {
   if (typeof v !== "string" || v.length > 60) return null;
   let d = v.replace(/\D/g, "");
   if (d.startsWith("0066")) d = d.slice(4);
   else if (d.startsWith("66") && d.length >= 10) d = d.slice(2);
-  else return d.length >= 9 ? d : null;
-  d = d.startsWith("0") ? d : `0${d}`;
-  return d.length >= 9 ? d : null;
+  if (d.startsWith("0")) d = d.slice(1);
+  return d.length >= 8 ? d : null;
 }
 
 /** เบอร์ที่ลูกค้าพิมพ์ตรงกับ Party.phoneNorm ของผู้จองไหม (ว่าง/สั้นกว่า 9 หลัก/ไม่ใช่สตริง ⇒ false) */
@@ -153,8 +156,8 @@ export function selfPhoneMatches(input: unknown, phoneNorm: unknown): boolean {
 }
 
 // ═══════════════ พารามิเตอร์ของหน้า my/[token] (ค่าที่อยู่ในรายการเท่านั้น · ไม่สะท้อนค่าอื่น) ═══════════════
-/** รหัสใน `e` ของหน้า: รหัสผิด + LOCKED (ถูกล็อกจากการลองเบอร์ผิด · K6) */
-export const SELF_PAGE_ERRORS = [...SELF_ERROR_CODES.filter((c) => c !== "DONE" && c !== "NOT_FOUND"), "LOCKED"] as const;
+/** รหัสใน `e` ของหน้า: รหัสผิด + LOCKED (ถูกล็อกจากการลองเบอร์ผิด · K6) + INVALID_PHONE (เบอร์ผิดรูป · L7 ง) */
+export const SELF_PAGE_ERRORS = [...SELF_ERROR_CODES.filter((c) => c !== "DONE" && c !== "NOT_FOUND"), "LOCKED", "INVALID_PHONE"] as const;
 export type SelfPageError = (typeof SELF_PAGE_ERRORS)[number];
 export const SELF_OUTCOMES = ["CANCELLED", "REFUND_REQUESTED", "CANCEL_REQUESTED"] as const;
 export type SelfOutcome = (typeof SELF_OUTCOMES)[number];
@@ -185,10 +188,10 @@ export function selfReservationHref(shopSlug: string, token: string, lang: "th" 
   return `/book/${encodeURIComponent(shopSlug)}/my/${encodeURIComponent(token)}${parts.length ? `?${parts.join("&")}` : ""}`;
 }
 /** ข้อความสถานะคำขอ (K8): QUOTED/APPROVED/REJECTED/DONE · คำขอของร้าน/ระบบ ⇒ byShop · คำขอยกเลิกยอด 0 ของลูกค้า ⇒ cancelRequested (K10) · `satang` = ยอดของคำขอ (จอไม่คิด) */
-export type SelfRefundView = { kind: "QUOTED" | "APPROVED" | "REJECTED" | "DONE" | "byShop" | "cancelRequested"; satang: number };
+export type SelfRefundView = { kind: "QUOTED" | "APPROVED" | "REJECTED" | "byShopRejected" | "DONE" | "byShop" | "cancelRequested"; satang: number };
 export function selfRefundView(r: SelfRefundVM): SelfRefundView {
   const satang = r.amountSatang;
-  if (r.status === "REJECTED") return { kind: "REJECTED", satang };
+  if (r.status === "REJECTED") return { kind: r.mine ? "REJECTED" : "byShopRejected", satang };
   if (r.status === "DONE") return { kind: "DONE", satang };
   if (!r.mine) return { kind: "byShop", satang };
   if (r.status === "APPROVED" || r.status === "EXECUTING" || r.status === "FAILED") return { kind: "APPROVED", satang };
@@ -203,8 +206,9 @@ export function selfDoneShown(done: SelfOutcome | null, state: string, r: SelfRe
   return null;
 }
 /** รหัส `e` ของหน้าจากผลไม่สำเร็จ (ล็อกจากการลองเบอร์ผิด = LOCKED · K6 K15) · DONE/NOT_FOUND ⇒ null */
-export function selfPageErrorOf(f: { code: SelfErrorCode; reason?: string }): SelfPageError | null {
+export function selfPageErrorOf(f: { code: SelfErrorCode; reason?: string; fields?: readonly string[] }): SelfPageError | null {
   if (f.code === "RATE_LIMITED" && f.reason === "LOCKED") return "LOCKED";
+  if (f.code === "INVALID" && Array.isArray(f.fields) && f.fields.includes("phone")) return "INVALID_PHONE"; // L7 ง
   return (SELF_PAGE_ERRORS as readonly string[]).includes(f.code) ? (f.code as SelfPageError) : null;
 }
 /** ผลของหน้ายกเลิกที่ให้ก้อนจัดการบอกเหตุเอง (ปุ่มปิดแล้ว/คำขอเปิด/ไม่พบ) */

@@ -519,4 +519,5 @@ export { findBookSelfFacts } from "./public-booking";
 export type { BookSelfFacts } from "./public-booking";
 export { TRIPS_PUBLIC_SELF_REASON, selfReplayOf } from "./booking";
 export type { PublicSelf } from "./booking";
+export { normalizePartyPhone } from "@/lib/modules/party"; // L4: เทียบเบอร์ด้วยตัว normalise เดียวกับ Party
 // ── /W1.3 self-service ──

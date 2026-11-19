@@ -19,6 +19,7 @@ import {
   findBookReservation,
   findBookSelfFacts,
   loadBookDeparture,
+  normalizePartyPhone,
   selfReplayOf,
   utcToLocal,
   type BookReservationRow,
@@ -28,6 +29,7 @@ import { bookMiss, resolveBookShop, type BookShop } from "./trips-public";
 import { BOOK_LIMITER_DOWN_RETRY_SEC, BOOK_READ_LIMIT } from "./trips-public-core";
 import { BOOK_FORM_MAX_SEC, BOOK_FORM_MIN_SEC, BOOK_RES_TOKEN_RE, bookerPhoneOf } from "./trips-book-core";
 import {
+  SELF_CANCEL_KINDS,
   SELF_GRANT_RE,
   SELF_GRANT_TTL_SEC,
   SELF_WRONG_PER_BOOKING,
@@ -61,7 +63,21 @@ export type SelfFail = {
   shopSlug?: string;
 };
 export type SelfVerifyResult = { ok: true; grant: string; expiresAt: string; shopSlug: string } | SelfFail;
-export type SelfCancelVM = { kind: SelfCancelKind; paidSatang: number; refundSatang: number; keptSatang: number; refundPct: number | null; daysBefore: number; form: { nonce: string } };
+/**
+ * จอยกเลิก: ยอดทุกตัวจาก QUOTE ของบริการ · `passThroughSatang` = เงินที่ร้านเก็บแทนที่คืนเต็ม (null = ไม่มี · L7 ก) · `refundPct` ไม่ปัด (12.5) · `partPaid` = ยังมียอดค้าง (L7 ฌ)
+ * `form` = ช่องของฟอร์มยกเลิก: nonce + ชนิด/รุ่นที่ลูกค้าเห็น (`kind` `v`) ผูกด้วย MAC `kv` (มติ L1)
+ */
+export type SelfCancelVM = {
+  kind: SelfCancelKind;
+  paidSatang: number;
+  refundSatang: number;
+  keptSatang: number;
+  passThroughSatang: number | null;
+  refundPct: number | null;
+  daysBefore: number;
+  partPaid: boolean;
+  form: { nonce: string; kind: SelfCancelKind; v: string; kv: string };
+};
 export type SelfQuoteResult = { ok: true; vm: SelfCancelVM } | SelfFail;
 export type SelfCancelOutcome = "CANCELLED" | "REFUND_REQUESTED" | "CANCEL_REQUESTED";
 export type SelfCancelResult = { ok: true; result: SelfCancelOutcome; refundSatang: number; replayed: boolean; shopSlug: string } | SelfFail;
@@ -77,7 +93,8 @@ const K_CONTACT = "trips.public.shopContact";
 const QUOTE_KEY = "self_quote_v1";
 
 const fail = (code: SelfErrorCode, extra?: Omit<SelfFail, "ok" | "code">): SelfFail => ({ ok: false, code, ...(extra ?? {}) });
-const limiterDown = (): SelfFail => ({ ok: false, code: "RATE_LIMITED", reason: "LIMITER_DOWN", retryAfterSec: BOOK_LIMITER_DOWN_RETRY_SEC });
+/** ตัวนับล่ม ⇒ ให้ลองใหม่ (พก slug ร้านเมื่อรู้แล้ว ⇒ หน้า redirect กลับได้ ไม่ใช่ 404 · มติ L9) */
+const limiterDown = (shopSlug?: string): SelfFail => ({ ok: false, code: "RATE_LIMITED", reason: "LIMITER_DOWN", retryAfterSec: BOOK_LIMITER_DOWN_RETRY_SEC, ...(shopSlug ? { shopSlug } : {}) });
 const noClient = (): SelfFail => ({ ok: false, code: "RATE_LIMITED", reason: "NO_CLIENT", retryAfterSec: BOOK_LIMITER_DOWN_RETRY_SEC });
 const NOT_FOUND = (): SelfFail => ({ ok: false, code: "NOT_FOUND" });
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
@@ -168,7 +185,7 @@ const retryOf = (ws: unknown, windowMs: number, nowMs: number): number => {
   return Math.min(Math.ceil(windowMs / 1000), Math.max(1, Math.ceil((start + windowMs - nowMs) / 1000)));
 };
 /** ถังที่นับ (ถังถัดไปนับเมื่อถังก่อนผ่าน) + ถังที่อ่านอย่างเดียว ในคำสั่งเดียว · ล้ม ⇒ null */
-async function runGate(buckets: readonly Bucket[], peeks: readonly Peek[], now: Date, opts: SelfOpts | undefined): Promise<GateRow | null> {
+async function runGate(buckets: readonly Bucket[], peeks: readonly Peek[], now: Date, opts: SelfOpts | undefined, extra?: { ctes: Prisma.Sql[]; cols: Prisma.Sql[] }): Promise<GateRow | null> {
   const nowMs = now.getTime();
   try {
     const ctes = buckets.map((b, i) => rateBucketCte(b.name, b.key, b.windowMs, nowMs, i > 0 ? { after: buckets[i - 1]?.name ?? "", limit: buckets[i - 1]?.limit ?? 0 } : undefined));
@@ -179,7 +196,9 @@ async function runGate(buckets: readonly Bucket[], peeks: readonly Peek[], now: 
         Prisma.sql`(SELECT CASE WHEN k."windowStart" > ${cut} THEN k."count" ELSE 0 END FROM "ChatRateBucket" k WHERE k."key" = ${p.key}) AS ${Prisma.raw(`"${p.name}c"`)}, (SELECT k."windowStart" FROM "ChatRateBucket" k WHERE k."key" = ${p.key}) AS ${Prisma.raw(`"${p.name}w"`)}`,
       );
     }
-    const rows = await queryOf(opts)(Prisma.sql`WITH ${Prisma.join(ctes, ", ")} SELECT ${Prisma.join(cols, ", ")}`);
+    const all = [...ctes, ...(extra?.ctes ?? [])];
+    const sel = [...cols, ...(extra?.cols ?? [])];
+    const rows = await queryOf(opts)(all.length ? Prisma.sql`WITH ${Prisma.join(all, ", ")} SELECT ${Prisma.join(sel, ", ")}` : Prisma.sql`SELECT ${Prisma.join(sel, ", ")}`);
     return Array.isArray(rows) && isRec(rows[0]) ? rows[0] : null;
   } catch {
     return null;
@@ -234,7 +253,8 @@ async function contactOf(tenantId: string, unitId: string, now: Date): Promise<{
 // ═══════════════ ส่วนต้นของทุกฟังก์ชัน (§5 ข้อ 1–4) ═══════════════
 type Opened = { shop: BookShop; clientKey: string; now: Date; secret: string; token: string; tokenHash: string; row: BookReservationRow; unit: { id: string; tz: string }; limits: { token: number; verify: number } };
 const isFail = (v: unknown): v is SelfFail => isRec(v) && v.ok === false;
-async function openSelf(input: unknown, opts: SelfOpts | undefined): Promise<Opened | SelfFail> {
+/** `count` = นับถังอ่าน (false = อ่านถังอย่างเดียว — หน้ายกเลิกที่ตัวเปิดหน้านับไปแล้ว · มติ L6) */
+async function openSelf(input: unknown, opts: SelfOpts | undefined, count = true): Promise<Opened | SelfFail> {
   const clientKey = field(input, "clientKey");
   if (typeof clientKey !== "string" || !CLIENT_KEY_RE.test(clientKey)) return noClient();
   const r = await resolveBookShop(field(input, "shop"));
@@ -242,21 +262,24 @@ async function openSelf(input: unknown, opts: SelfOpts | undefined): Promise<Ope
   const shop = r.shop;
   const now = nowOf(opts);
   const limits = await rateLimitsOf(shop.tenantId, shop.units[0]?.id ?? "", now);
-  if (!limits) return limiterDown();
+  if (!limits) return limiterDown(shop.slug);
   const guessKey = `trips:token:${shop.tenantId}:${clientKey}`;
   const read: Bucket = { name: "rb", key: `trips:book:${shop.tenantId}:${clientKey}`, limit: BOOK_READ_LIMIT.limit, windowMs: BOOK_READ_LIMIT.windowMs };
-  const row0 = await runGate([read], [{ name: "tg", key: guessKey, windowMs: HOUR_MS }], now, opts);
-  if (!row0) return limiterDown();
-  const v = bucketVerdict(row0, [read], now.getTime());
+  const row0 = await runGate(count ? [read] : [], [{ name: "tg", key: guessKey, windowMs: HOUR_MS }, ...(count ? [] : [{ name: "rp", key: read.key, windowMs: read.windowMs }])], now, opts);
+  if (!row0) return limiterDown(shop.slug);
+  const v = count ? bucketVerdict(row0, [read], now.getTime()) : null;
   if (v) return { ...v, shopSlug: shop.slug };
+  const readSoFar = count ? 0 : peekOf(row0, "rp");
+  if (readSoFar === null) return limiterDown(shop.slug);
+  if (readSoFar >= read.limit) return { ok: false, code: "RATE_LIMITED", reason: "LIMIT", retryAfterSec: retryOf(row0.rpw, read.windowMs, now.getTime()), shopSlug: shop.slug };
   const guessed = peekOf(row0, "tg");
-  if (guessed === null) return limiterDown();
+  if (guessed === null) return limiterDown(shop.slug);
   if (guessed >= limits.token) return { ok: false, code: "RATE_LIMITED", reason: "LIMIT", retryAfterSec: retryOf(row0.tgw, HOUR_MS, now.getTime()), shopSlug: shop.slug };
   const secret = secretOf();
   if (!secret) return fail("UNAVAILABLE", { shopSlug: shop.slug });
   // ข้อ 4: token → การจอง (ผูกร้าน + หน่วย TRIPS ของร้าน) · ไม่พบ ⇒ +1 ถังเดา token (นับไม่ได้ ⇒ ปิด)
   const token = field(input, "token");
-  const missed = async (): Promise<SelfFail> => ((await bump(guessKey, HOUR_MS, now, opts)) ? NOT_FOUND() : limiterDown());
+  const missed = async (): Promise<SelfFail> => ((await bump(guessKey, HOUR_MS, now, opts)) ? NOT_FOUND() : limiterDown(shop.slug));
   if (typeof token !== "string" || !BOOK_RES_TOKEN_RE.test(token)) return missed();
   const tokenHash = sha256hex(token);
   const row = await findBookReservation({ tenantId: shop.tenantId, unitIds: shop.units.map((u) => u.id) }, tokenHash);
@@ -276,9 +299,35 @@ async function manageOf(o: Opened): Promise<{ m: SelfManageVM; facts: BookSelfFa
 const blockedOf = (o: Opened, m: SelfManageVM): SelfFail =>
   m.block === "REFUND_IN_PROGRESS" && m.refund ? fail("DONE", { refund: m.refund, shopSlug: o.shop.slug }) : fail("NOT_ALLOWED", { block: m.block ?? "ENDED", shopSlug: o.shop.slug });
 const ctxOf = (o: Opened) => ({ tenantId: o.shop.tenantId, unitId: o.unit.id, channel: "WEB" as const, actor: { kind: "PUBLIC" as const, clientKey: o.clientKey }, now: o.now });
-const publicSelfOf = (o: Opened) => ({ publicSelf: { bookingId: o.row.bookingId, tokenHash: o.tokenHash } });
+/** publicSelf ของบริการ: รุ่นที่หน้าใช้คิดยอด (มติ L1) */
+const publicSelfOf = (o: Opened, expectedVersion: number) => ({ publicSelf: { bookingId: o.row.bookingId, tokenHash: o.tokenHash, expectedVersion } });
 
 // ═══════════════ 1) ยืนยันเบอร์ผู้จอง → grant ═══════════════
+/**
+ * ถังการจอง (K6 · L2): จองสิทธิ์ลอง 1 ครั้งด้วยคำสั่งเดียว (เพิ่มเมื่อยังไม่ถึงเพดานหรือหน้าต่างหมด) คู่กับถังเครื่อง X8 — ไม่ได้สิทธิ์ ⇒ ถูกล็อก
+ * เบอร์ถูก ⇒ คืนสิทธิ์ (ลดตัวนับ) · ยิงผิดพร้อมกันได้เทียบเบอร์ไม่เกินเพดาน
+ */
+function reserveTryCte(key: string, windowMs: number, now: Date, after: Bucket): Prisma.Sql {
+  const at = now;
+  const cut = new Date(now.getTime() - windowMs);
+  return Prisma.sql`lk AS (
+    INSERT INTO "ChatRateBucket" ("id", "key", "count", "windowStart", "createdAt", "updatedAt")
+    SELECT gen_random_uuid()::text, ${key}, 1, ${at}, NOW(), NOW() FROM ${Prisma.raw(after.name)} p WHERE p."count" <= ${after.limit}
+    ON CONFLICT ("key") DO UPDATE SET
+      "count" = CASE WHEN "ChatRateBucket"."windowStart" <= ${cut} THEN 1 ELSE "ChatRateBucket"."count" + 1 END,
+      "windowStart" = CASE WHEN "ChatRateBucket"."windowStart" <= ${cut} THEN ${at} ELSE "ChatRateBucket"."windowStart" END,
+      "updatedAt" = NOW()
+    WHERE "ChatRateBucket"."windowStart" <= ${cut} OR "ChatRateBucket"."count" < ${SELF_WRONG_PER_BOOKING}
+    RETURNING "count", "windowStart")`;
+}
+/** คืนสิทธิ์ที่จองไว้ (เบอร์ถูก) — ล้มไม่เปลี่ยนผลของลูกค้า */
+async function releaseTry(key: string, opts: SelfOpts | undefined): Promise<void> {
+  try {
+    await queryOf(opts)(Prisma.sql`UPDATE "ChatRateBucket" SET "count" = "count" - 1, "updatedAt" = NOW() WHERE "key" = ${key} AND "count" > 0 RETURNING "count"`);
+  } catch {
+    // ตัวนับค้าง +1 = ข้างปลอดภัย (ไม่ปล่อยให้เดาเพิ่ม)
+  }
+}
 /** ลิงก์ + เบอร์ของผู้จอง (OQ37) ⇒ grant 15 นาที ผูกเครื่อง · ผิด ⇒ VERIFY_FAILED รูปเดียว (ไม่สะท้อน/ไม่ใบ้เบอร์) */
 export async function verifyBookSelf(input: { shop: unknown; token: unknown; form: unknown; clientKey: unknown }, opts?: SelfOpts): Promise<SelfVerifyResult> {
   try {
@@ -293,23 +342,23 @@ export async function verifyBookSelf(input: { shop: unknown; token: unknown; for
     if (phone === null) return fail("INVALID", { fields: ["phone"], ...slug });
     const { m, facts } = await manageOf(o);
     if (m.cancel === null) return fail("NOT_ALLOWED", { block: m.block ?? "ENDED", ...slug });
-    // เพดาน (คำสั่งเดียว · K6): ถังเครื่อง X8 นับทุกครั้งที่ฟอร์มถูกรูป + อ่านถังการจอง (นับเฉพาะครั้งที่ผิด) — ไม่มีเบอร์/token ในคีย์
+    // เพดาน (คำสั่งเดียว · K6 L2): ถังเครื่อง X8 (ทุกฟอร์มที่ถูกรูป) → จองสิทธิ์ลองของการจอง (ไม่มีเบอร์/token ในคีย์)
     const machine: Bucket = { name: "vb", key: `trips:verify:${o.shop.tenantId}:${o.clientKey}`, limit: o.limits.verify, windowMs: VERIFY_WINDOW_MS };
     const lockKey = `trips:verifyb:${o.shop.tenantId}:${sha256hex(o.tokenHash).slice(0, 24)}`;
     const wrongWindowMs = SELF_WRONG_WINDOW_SEC * 1000;
-    const row = await runGate([machine], [{ name: "lk", key: lockKey, windowMs: wrongWindowMs }], o.now, opts);
-    if (!row) return { ...limiterDown(), ...slug };
+    const row = await runGate([machine], [{ name: "lp", key: lockKey, windowMs: wrongWindowMs }], o.now, opts, {
+      ctes: [reserveTryCte(lockKey, wrongWindowMs, o.now, machine)],
+      cols: [Prisma.sql`(SELECT "count" FROM lk) AS "lkc"`],
+    });
+    if (!row) return limiterDown(o.shop.slug);
     const v = bucketVerdict(row, [machine], o.now.getTime());
     if (v) return { ...v, ...slug };
-    const wrong = peekOf(row, "lk");
-    if (wrong === null) return { ...limiterDown(), ...slug };
-    if (wrong >= SELF_WRONG_PER_BOOKING) {
-      return { ok: false, code: "RATE_LIMITED", reason: "LOCKED", retryAfterSec: retryOf(row.lkw, wrongWindowMs, o.now.getTime()), contact: await contactOf(o.shop.tenantId, o.unit.id, o.now), ...slug };
+    if (intOf(row.lkc) === null) {
+      return { ok: false, code: "RATE_LIMITED", reason: "LOCKED", retryAfterSec: retryOf(row.lpw, wrongWindowMs, o.now.getTime()), contact: await contactOf(o.shop.tenantId, o.unit.id, o.now), ...slug };
     }
-    if (!facts || !selfPhoneMatches(phone, facts.bookerPhoneNorm)) {
-      if (!(await bump(lockKey, wrongWindowMs, o.now, opts))) return { ...limiterDown(), ...slug };
-      return fail("VERIFY_FAILED", slug);
-    }
+    // L4: เทียบด้วยตัว normalise เดียวกับ Party ทั้งสองฝั่ง (แล้วเทียบเลขสำคัญ)
+    if (!facts || !selfPhoneMatches(normalizePartyPhone(phone), normalizePartyPhone(facts.bookerPhoneNorm))) return fail("VERIFY_FAILED", slug);
+    await releaseTry(lockKey, opts);
     const exp = Math.floor(o.now.getTime() / 1000) + SELF_GRANT_TTL_SEC;
     return { ok: true, grant: `g1.${exp}.${grantMac(o, exp)}`, expiresAt: new Date(exp * 1000).toISOString(), shopSlug: o.shop.slug };
   } catch {
@@ -319,31 +368,48 @@ export async function verifyBookSelf(input: { shop: unknown; token: unknown; for
 
 // ═══════════════ 2) ยอดคืนก่อนกดยืนยัน ═══════════════
 type Quoted = { ok: true; vm: Omit<SelfCancelVM, "form">; kind: SelfCancelKind } | SelfFail;
-/** ยอดจากบริการ (QUOTE · snapshot) ณ นาฬิกาของคำขอ — จอห้ามคิด */
-async function quoteOf(o: Opened, kind: SelfCancelKind, localDate: string | null): Promise<Quoted> {
-  const r = await cancelTripBooking(ctxOf(o), { bookingId: o.row.bookingId, mode: "QUOTE", reason: TRIPS_PUBLIC_SELF_REASON, reasonKind: "CUSTOMER", idempotencyKey: QUOTE_KEY }, publicSelfOf(o));
+/** ยอดจากบริการ (QUOTE · snapshot) ณ นาฬิกาของคำขอ ด้วยรุ่นของการจองตอนนี้ — จอห้ามคิด */
+async function quoteOf(o: Opened, kind: SelfCancelKind, localDate: string | null, version: number): Promise<Quoted> {
+  const r = await cancelTripBooking(ctxOf(o), { bookingId: o.row.bookingId, mode: "QUOTE", reason: TRIPS_PUBLIC_SELF_REASON, reasonKind: "CUSTOMER", idempotencyKey: QUOTE_KEY }, publicSelfOf(o, version));
   if (!r.ok) return mapService(r);
   const c = r.value.computed;
   if (!isInt(c.refundSatang) || !isInt(c.feeSatang) || c.refundSatang < 0 || c.feeSatang < 0) return fail("BUSY");
+  const pt = field(c, "passThroughSatang");
   const step = c.ladderStep;
-  const refundPct = kind === "REFUND_REQUEST" && step && isInt(step.refundBp) ? Math.floor(step.refundBp / 100) : null;
+  const refundPct = kind === "REFUND_REQUEST" && step && isInt(step.refundBp) ? step.refundBp / 100 : null;
   const today = utcToLocal(o.unit.tz, o.now).ymd;
   const days = localDate ? Math.round((Date.parse(`${localDate}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / DAY_MS) : 0;
-  return { ok: true, kind, vm: { kind, paidSatang: o.row.paidSatang, refundSatang: c.refundSatang, keptSatang: c.feeSatang, refundPct, daysBefore: Number.isFinite(days) ? Math.max(0, days) : 0 } };
+  return {
+    ok: true,
+    kind,
+    vm: {
+      kind,
+      paidSatang: o.row.paidSatang,
+      refundSatang: c.refundSatang,
+      keptSatang: c.feeSatang,
+      passThroughSatang: kind === "REFUND_REQUEST" && isInt(pt) && pt > 0 ? pt : null,
+      refundPct,
+      daysBefore: Number.isFinite(days) ? Math.max(0, days) : 0,
+      partPaid: o.row.status === "PART_PAID",
+    },
+  };
 }
-/** หน้ายกเลิก: ยอดที่จ่าย/คืน/เก็บ/ขั้น + nonce ของฟอร์มยกเลิก · ต้องมี grant */
+/** MAC ของสิ่งที่ลูกค้าเห็นบนฟอร์ม (nonce + ชนิด + รุ่น · มติ L1) */
+const formMac = (o: Opened, nonce: string, kind: string, v: string): string => mac22(o.secret, `trips.public.self.form.v1:${o.shop.tenantId}:${o.tokenHash}:${nonce}:${kind}:${v}`);
+/** หน้ายกเลิก: ยอดที่จ่าย/คืน/เก็บ/ขั้น + ฟอร์มยกเลิก · ต้องมี grant · ไม่นับถังอ่านซ้ำ (ตัวเปิดหน้านับแล้ว · มติ L6) */
 export async function quoteBookSelfCancel(input: { shop: unknown; token: unknown; grant: unknown; clientKey: unknown }, opts?: SelfOpts): Promise<SelfQuoteResult> {
   try {
-    const o = await openSelf(input, opts);
+    const o = await openSelf(input, opts, false);
     if (isFail(o)) return o;
     if (!grantOk(o, field(input, "grant"))) return fail("VERIFY_REQUIRED", { shopSlug: o.shop.slug });
-    const { m, localDate } = await manageOf(o);
-    if (m.cancel === null) return blockedOf(o, m);
-    const q = await quoteOf(o, m.cancel, localDate);
+    const { m, localDate, facts } = await manageOf(o);
+    if (m.cancel === null || !facts) return blockedOf(o, m);
+    const q = await quoteOf(o, m.cancel, localDate, facts.version);
     if (!q.ok) return { ...q, shopSlug: o.shop.slug };
     const nonce = issueSelfFormNonce({ now: o.now, scope: { tenantId: o.shop.tenantId, purpose: "cancel", token: o.token } });
     if (!nonce) return fail("UNAVAILABLE", { shopSlug: o.shop.slug });
-    return { ok: true, vm: { ...q.vm, form: { nonce } } };
+    const v = String(facts.version);
+    return { ok: true, vm: { ...q.vm, form: { nonce, kind: q.kind, v, kv: formMac(o, nonce, q.kind, v) } } };
   } catch {
     return fail("BUSY");
   }
@@ -351,10 +417,12 @@ export async function quoteBookSelfCancel(input: { shop: unknown; token: unknown
 
 // ═══════════════ 3) ยกเลิก / ยื่นคำขอ ═══════════════
 type ServiceFail = { ok: false; code: string; details?: Record<string, unknown> };
-/** รหัสบริการ → รหัสหน้า (§3.2) */
+/** รหัสบริการ → รหัสหน้า (§3.2 · ที่ถือหมด/ถูกกวาดระหว่างทาง ⇒ STATE_CHANGED · มติ L9) */
 function mapService(r: ServiceFail): SelfFail {
   switch (r.code) {
     case "STATE_CONFLICT":
+    case "HOLD_EXPIRED":
+    case "HOLD_NOT_FOUND":
       return fail("STATE_CHANGED");
     case "IDEMPOTENCY_CONFLICT":
       return fail("STALE_FORM");
@@ -369,7 +437,8 @@ const SEEN_RE = /^(0|[1-9]\d{0,9})$/;
 const outcomeOf = (kind: SelfCancelKind): SelfCancelOutcome => (kind === "UNPAID" ? "CANCELLED" : kind === "REFUND_REQUEST" ? "REFUND_REQUESTED" : "CANCEL_REQUESTED");
 /**
  * ฟอร์มยกเลิก: HOLD ⇒ ยกเลิกทันที (คืนที่) · จ่ายแล้ว ⇒ ยื่นคำขอคืนเงิน QUOTED ตาม snapshot · ขายแล้วยังไม่จ่าย ⇒ คำขอยกเลิก ยอด 0
- * ฟอร์มเดิมซ้ำ ⇒ ผลเดิม (replayed) · ยอดที่เห็น ≠ ยอดตอนนี้ ⇒ AMOUNT_CHANGED (ไม่ยื่น)
+ * ฟอร์มเดิมซ้ำ ⇒ ผลเดิม (replayed · ผลเลือกจากคำขอเดิม) · ชนิดที่เห็น ≠ ตอนนี้ ⇒ STATE_CHANGED · ยอดที่เห็น ≠ ยอดตอนนี้ ⇒ AMOUNT_CHANGED (ไม่ยื่น · มติ L1)
+ * บริการตอบ ok แต่ผลไม่ตรงสิ่งที่ลูกค้าเห็น ⇒ ไม่รายงานว่าเป็นผลที่ลูกค้าเลือก (STATE_CHANGED)
  */
 export async function cancelBookSelf(input: { shop: unknown; token: unknown; grant: unknown; form: unknown; clientKey: unknown }, opts?: SelfOpts): Promise<SelfCancelResult> {
   try {
@@ -381,31 +450,45 @@ export async function cancelBookSelf(input: { shop: unknown; token: unknown; gra
     const nc = checkNonce(o, formStr(form, "nonce"), "cancel");
     if (!nc.ok) return nc.code === "INVALID" ? fail("INVALID", { fields: ["nonce"], ...slug }) : fail(nc.code, slug);
     if (!grantOk(o, field(input, "grant"))) return fail("VERIFY_REQUIRED", slug);
-    // ข้อ 6′: ฟอร์มเดิม ⇒ ผลเดิม (คีย์อย่างเดียว · ก่อนด่านสถานะ · K5)
+    // ข้อ 6′: ฟอร์มเดิม ⇒ ผลเดิม (คีย์อย่างเดียว · ก่อนด่านสถานะ · K5) — ผลเลือกจากคำขอเดิม (L9) · การอ่านนี้ไม่เทียบรุ่น
     const idempotencyKey = `self_${createHash("sha256").update(nc.nonce).digest("base64url").slice(0, 40)}`;
-    const rp = await selfReplayOf(ctxOf(o), { bookingId: o.row.bookingId, idempotencyKey }, publicSelfOf(o));
+    const rp = await selfReplayOf(ctxOf(o), { bookingId: o.row.bookingId, idempotencyKey }, publicSelfOf(o, 0));
     if (!rp.ok) return { ...mapService(rp), ...slug };
     if (rp.value) {
-      const result: SelfCancelOutcome = rp.value.requestId === undefined ? "CANCELLED" : o.row.paidSatang > 0 ? "REFUND_REQUESTED" : "CANCEL_REQUESTED";
-      return { ok: true, result, refundSatang: rp.value.computed.refundSatang, replayed: true, shopSlug: o.shop.slug };
+      const amount = rp.value.computed.refundSatang;
+      const result: SelfCancelOutcome = rp.value.requestId === undefined ? "CANCELLED" : amount > 0 ? "REFUND_REQUESTED" : "CANCEL_REQUESTED";
+      return { ok: true, result, refundSatang: amount, replayed: true, shopSlug: o.shop.slug };
     }
-    const { m, localDate } = await manageOf(o);
-    if (m.cancel === null) return blockedOf(o, m);
+    const { m, localDate, facts } = await manageOf(o);
+    if (m.cancel === null || !facts) return blockedOf(o, m);
+    // L1: ชนิด + รุ่นที่ลูกค้าเห็น (ผูกกับ nonce ด้วย MAC) · ชนิดไม่ตรงตอนนี้ ⇒ STATE_CHANGED (ไม่ยื่น)
+    const seenKind = formStr(form, "kind");
+    const seenV = formStr(form, "v");
+    const kv = formStr(form, "kv");
+    const kind = (SELF_CANCEL_KINDS as readonly string[]).find((k) => k === seenKind) as SelfCancelKind | undefined;
+    if (!kind || seenV === null || !/^\d{1,10}$/.test(seenV) || kv === null || !safeEq(formMac(o, nc.nonce, kind, seenV), kv)) return fail("INVALID", { fields: ["nonce"], ...slug });
+    const seenVersion = Number(seenV);
+    if (m.cancel !== kind) return fail("STATE_CHANGED", slug);
     // ข้อ 8: ฟอร์ม — ผิด ⇒ ไม่เรียกบริการ
     const seenRaw = formStr(form, "seen");
     if (seenRaw === null || !SEEN_RE.test(seenRaw)) return fail("INVALID", { fields: ["seen"], ...slug });
     if (formStr(form, "accept") !== "on") return fail("ACCEPT_REQUIRED", slug);
     // ข้อ 9: ยอดใหม่ด้วยนาฬิกาเดียวกัน ≠ ยอดที่เห็น ⇒ AMOUNT_CHANGED
-    const q = await quoteOf(o, m.cancel, localDate);
+    const q = await quoteOf(o, m.cancel, localDate, facts.version);
     if (!q.ok) return { ...q, ...slug };
-    if (q.vm.refundSatang !== Number(seenRaw)) return fail("AMOUNT_CHANGED", { refundSatang: q.vm.refundSatang, ...slug });
-    // ข้อ 10: บริการ (PUBLIC + publicSelf · เหตุคงที่ · ลูกค้า · เงิน)
+    const seen = Number(seenRaw);
+    if (q.vm.refundSatang !== seen) return fail("AMOUNT_CHANGED", { refundSatang: q.vm.refundSatang, ...slug });
+    // ข้อ 10: บริการ (PUBLIC + publicSelf · รุ่นที่ลูกค้าเห็น · เหตุคงที่ · ลูกค้า · เงิน)
     const r = await cancelTripBooking(
       ctxOf(o),
-      { bookingId: o.row.bookingId, mode: "EXECUTE", reason: TRIPS_PUBLIC_SELF_REASON, reasonKind: "CUSTOMER", ...(q.kind === "UNPAID" ? {} : { choice: "MONEY" as const }), idempotencyKey },
-      publicSelfOf(o),
+      { bookingId: o.row.bookingId, mode: "EXECUTE", reason: TRIPS_PUBLIC_SELF_REASON, reasonKind: "CUSTOMER", ...(kind === "UNPAID" ? {} : { choice: "MONEY" as const }), idempotencyKey },
+      publicSelfOf(o, seenVersion),
     );
-    if (r.ok) return { ok: true, result: outcomeOf(q.kind), refundSatang: r.value.computed.refundSatang, replayed: false, shopSlug: o.shop.slug };
+    if (r.ok) {
+      const filed = r.value.requestId !== undefined;
+      const matches = kind === "UNPAID" ? !filed && r.value.status === "CANCELLED" && r.value.computed.refundSatang === 0 : filed && r.value.computed.refundSatang === seen;
+      return matches ? { ok: true, result: outcomeOf(kind), refundSatang: r.value.computed.refundSatang, replayed: false, shopSlug: o.shop.slug } : fail("STATE_CHANGED", slug);
+    }
     if (r.code === "STATE_CONFLICT" && r.details?.reason === "REFUND_IN_PROGRESS") {
       const again = await manageOf(o);
       if (again.m.refund) return fail("DONE", { refund: again.m.refund, ...slug });

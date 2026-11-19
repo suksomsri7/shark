@@ -82,6 +82,7 @@ import {
   type BookSummaryVM,
 } from "./trips-book-core";
 import { selfManageVMOf } from "./trips-self-core"; // TRIPS W1.3 ▸ ก้อน "จัดการการจอง" ◂
+import { issueSelfFormNonce } from "./trips-self"; // TRIPS W1.3 ▸ nonce ฟอร์มยืนยันเบอร์ออกจากตัวเปิดหน้า (มติ L6) ◂
 
 // ═══════════════ ชนิดผล ═══════════════
 export type BookFlowOpts = { now?: Date; deps?: { query?: (sql: unknown) => Promise<unknown[]> } };
@@ -1130,6 +1131,7 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
         cancelRows: cancelRowsOf(ladder),
         cancelUntil: cancelDeadlinesOf(ladder, dep.localDate, utcToLocal(unit.tz, o.now).ymd),
         manage,
+        selfVerifyNonce: manage.cancel !== null ? issueSelfFormNonce({ now: o.now, scope: { tenantId: o.shop.tenantId, purpose: "verify", token } }) : null,
       },
     };
   } catch {

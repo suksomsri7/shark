@@ -460,4 +460,6 @@ export type BookReservationVM = {
   cancelUntil: { date: string; pct: number }[];
   /** TRIPS W1.3 ▸ ก้อน "จัดการการจอง" (ปุ่มยกเลิก/เหตุที่ปิด/สถานะคำขอคืนเงิน · ใบสั่ง W1.3 §3.2) ◂ */
   manage: SelfManageVM;
+  /** TRIPS W1.3 ▸ nonce ของฟอร์มยืนยันเบอร์ (เมื่อปุ่มเปิด · นอก manage · มติ L6) ◂ */
+  selfVerifyNonce: string | null;
 };
