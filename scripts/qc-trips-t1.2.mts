@@ -632,15 +632,16 @@ try {
   //   ผู้ไม่มีคีย์ต้นทุน ⇒ ช่องต้นทุน/คอมฯ/กำไร null (ตรวจใน CT-17 บนร้านชั่วคราว — seed ไม่มีผู้ใช้แบบนั้น)
   const MONEY_KEYS = ["bookings", "cancelledBookings", "pendingRefundBookings", "seats", "salesSatang", "passThroughSatang", "vatSatang", "revenueExVatSatang", "commissionCostSatang", "collectedSatang",
     "outstandingSatang", "heldSatang", "retainedSatang", "agentCollectBookings", "noShowUnpaid", "state", "estimate", "vatMode", "capacity", "sold", "loadFactorBp", "charterLike", "pendingBookings",
-    "costSatang", "costRows", "grossProfitSatang", "marginBp", "warnings"].sort();
+    "costSatang", "costRows", "grossProfitSatang", "marginBp", "warnings", "noCosts" /* ORACLE-EDIT รอบ 2 (T1.7a1 มติ Q2) */].sort();
   const COST_FIELDS = ["commissionCostSatang", "costSatang", "costRows", "grossProfitSatang", "marginBp"];
-  await st("PV-5", "ไม่แต่งข้อมูลการจอง: bookings = null (T1.3) · money (T1.7a1) ของเจ้าของ = รูป DepartureMoneyVM ครบ 28 ช่อง · estimate true · ความจุ/ขายตรงแผง · ต้นทุน 0 แถว · ช่องต้นทุน/คอมฯ/กำไรเป็นตัวเลข · actions.costs true", () => {
+  await st("PV-5", "ไม่แต่งข้อมูลการจอง: bookings = null (T1.3) · money (T1.7a1) ของเจ้าของ = รูป DepartureMoneyVM ครบ 29 ช่อง · estimate true · ความจุ/ขายตรงแผง · ต้นทุน 0 แถว ⇒ กำไร/มาร์จิน null + noCosts true (มติ Q2) · คอมฯ/ต้นทุนเป็นตัวเลข · actions.costs true", () => {
     eq(p14.bookings, null, "bookings");
     const m = asRec(p14.money); ok(m, `money ต้องไม่ null สำหรับเจ้าของ: ${fmt(p14.money)}`);
     eq(Object.keys(m ?? {}).sort(), MONEY_KEYS, "ช่องของ money");
     const c = asRec(p14.counts) ?? {};
     eq([m?.estimate, m?.capacity, m?.sold, m?.costSatang, m?.costRows, Array.isArray(m?.warnings)], [true, c.capacity, c.sold, 0, 0, true], "ค่า");
-    ok(["commissionCostSatang", "costSatang", "grossProfitSatang", "salesSatang"].every((k) => Number.isInteger(m?.[k])), `ช่องเงินต้องเป็นจำนวนเต็ม: ${fmt(m)}`);
+    ok(["commissionCostSatang", "costSatang", "salesSatang"].every((k) => Number.isInteger(m?.[k])), `ช่องเงินต้องเป็นจำนวนเต็ม: ${fmt(m)}`);
+    eq([m?.grossProfitSatang, m?.marginBp, m?.noCosts], [null, null, true], "ไม่มีแถวต้นทุน ⇒ ไม่แสดงกำไร (ORACLE-EDIT รอบ 2 · มติ Q2)");
     eq(asRec(p14.actions)?.costs, true, "actions.costs");
   });
   await st("PV-6", "ราคา ส. 14: ผู้ใหญ่ 3,500 · เด็ก 2,450 · ไม่ใช่ราคารอบ", () => {
@@ -1068,9 +1069,9 @@ try {
     const pb = await ctPanel("bvw", D.w); const m = asRec(pb.money);
     ok(m, `bvw money ต้องไม่ null: ${fmt(pb.money)}`);
     eq(Object.keys(m ?? {}).sort(), MONEY_KEYS, "ช่องของ money");
-    eq([COST_FIELDS.map((k) => m?.[k]), asRec(pb.actions)?.costs], [COST_FIELDS.map(() => null), false], "bvw");
+    eq([COST_FIELDS.map((k) => m?.[k]), asRec(pb.actions)?.costs, m?.noCosts], [COST_FIELDS.map(() => null), false, true], "bvw"); // noCosts ทุกผู้ดู (มติ Q2 · ORACLE-EDIT รอบ 2)
     const pd = await ctPanel("dv", D.w); eq([pd.money, asRec(pd.actions)?.costs], [null, false], "dv");
-    const po = asRec((await ctPanel("oa", D.w)).money) ?? {}; ok(COST_FIELDS.filter((k) => k !== "marginBp").every((k) => Number.isInteger(po[k])), `oa: ${fmt(po)}`);
+    const po = asRec((await ctPanel("oa", D.w)).money) ?? {}; ok(["commissionCostSatang", "costSatang", "costRows"].every((k) => Number.isInteger(po[k])) && po.grossProfitSatang === null && po.noCosts === true, `oa: ${fmt(po)}`); // ORACLE-EDIT รอบ 2 (Q2): รอบไม่มีแถวต้นทุน ⇒ กำไร null
   });
   groupLine("CT");
 
