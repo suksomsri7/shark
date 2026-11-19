@@ -90,6 +90,8 @@ export const REASON_TH: Record<string, string> = {
   POLICIES_REQUIRED: "ต้องโหลดค่าตั้งด้วย loadCapacityPolicies ก่อนเปิดธุรกรรม",
   AGENCY_NOT_ENABLED: "ระบบเอเจนซี่ยังไม่เปิดใช้",
   PUBLIC_NOT_ALLOWED: "ทำรายการนี้ผ่านหน้าสาธารณะไม่ได้",
+  // T0.4c: เพดานที่ลูกค้าออนไลน์ถือรอชำระต่อรอบ (ไม่ใช่ "ที่นั่งไม่พอ" · ไม่บอกจำนวน)
+  PUBLIC_UNPAID_SHARE: "ที่นั่งรอบนี้ถูกลูกค้าคนอื่นถือไว้ชั่วคราวระหว่างรอชำระ ลองใหม่ในอีกไม่กี่นาที",
 };
 
 export type Failure = { ok: false; code: SellErrorCode; messageTh: string; retryable: boolean; details?: Record<string, unknown> };
@@ -205,8 +207,8 @@ export function asTx(tx: unknown): Tx {
 }
 
 // ═══════════════════════ ค่าตั้งที่ส่งเข้ามา (r2 ข้อ 1 · แหล่งเดียวของระยะถือ/เพดาน §4 ข้อ 10) ═══════════════════════
-/** ค่าตั้งของรอบ (T5 T6 T9 X2 X6 + ผู้ให้บริการ) ณ {unitId, productId, departureId} */
-export type DeparturePolicy = { departureId: string; productId: string; t6: T6Value; durations: HoldDurations; showLeftAtOrBelow: number };
+/** ค่าตั้งของรอบ (T5 T6 T9 X2 X6 X31 + ผู้ให้บริการ) ณ {unitId, productId, departureId} */
+export type DeparturePolicy = { departureId: string; productId: string; t6: T6Value; durations: HoldDurations; showLeftAtOrBelow: number; unpaidHoldMaxPct: number };
 /** ผลของ loadCapacityPolicies — ส่งให้ *InTx ทุกตัวที่ต้องใช้ค่าตั้ง (อ่านก่อนเปิด tx) */
 export type CapacityPolicies = { tenantId: string; unitId: string; holdCap: number; departures: Readonly<Record<string, DeparturePolicy>> };
 
@@ -622,7 +624,43 @@ async function phase1HoldInTx(tx: Tx, g: Gate, c: Ctx, a: Phase1): Promise<{ dep
   const b = blockOf(d, a.policy, g.tz, c.channel, c.clock.now, false);
   if (b) throw blockAbort(d, b);
   if (publicLeftOf(d) < a.qty) throw new CapacityAbort("SOLD_OUT", { publicLeft: Math.max(0, publicLeftOf(d)) });
+  if (isPublic(c)) await assertPublicShareInTx(tx, g, c, d, a.qty, a.policy);
   return { dep: d, counters: await holdSeatsSql(tx, g, d.id, a.qty, c.clock) };
+}
+
+/**
+ * T0.4c เพดานที่ถือไม่จ่ายของผู้กระทำ PUBLIC ต่อรอบ (X31) — เรียกใต้ล็อก 1a ของรอบนี้เท่านั้น (SELECT ไม่ล็อก · ทุกเส้นทางที่ INSERT hold PUBLIC
+ * ของรอบถือล็อกแถวรอบอยู่ ⇒ นับ+เพิ่มเป็นลำดับเดียว) · hold ที่นับ: ACTIVE · expiresAt > ctx.now · ช่องทางสาธารณะ · PAYMENT|SHOP_CONFIRM
+ * เพดาน = ceil(ความจุ × % / 100) · ยังไม่มีที่ถือที่นับ ⇒ ถือได้แม้เกิน (ตะกร้าแรก · Q1) · เกิน ⇒ HOLD_LIMIT reason PUBLIC_UNPAID_SHARE + retryAfterSec (ไม่บอกจำนวน)
+ */
+async function assertPublicShareInTx(tx: Tx, g: Gate, c: Ctx, d: DepRow, qty: number, pol: DeparturePolicy): Promise<void> {
+  const rows = await tx.$queryRaw<{ seats: number; first: Date | null }[]>`
+    SELECT COALESCE(sum("qtyPublic" + "qtyAllot"), 0)::int AS "seats", min("expiresAt") AS "first" FROM "TripHold"
+    WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "departureId" = ${d.id} AND "status" = 'ACTIVE' AND "expiresAt" > ${c.clock.iso}::timestamp
+      AND "channel" = ANY(${[...PUBLIC_CHANNELS]}::text[]) AND "purpose" IN ('PAYMENT', 'SHOP_CONFIRM')`;
+  const seats = rows[0]?.seats ?? 0;
+  const first = rows[0]?.first ?? null;
+  if (seats === 0 || seats + qty <= Math.ceil((d.capacity * pol.unpaidHoldMaxPct) / 100)) return;
+  // มติผู้คุม (PH-8): ไม่บอกลูกค้าให้รอนานกว่าเวลาถือรอชำระของร้าน (T5) — ที่ถือแบบรอร้านยืนยัน (X2) อายุเป็นชั่วโมง ไม่ใช่เวลาที่ควรกลับมาลอง
+  const untilFirst = Math.max(1, Math.ceil(((first ? new Date(first).getTime() : c.clock.now.getTime()) - c.clock.now.getTime()) / 1000));
+  const retryAfterSec = pol.durations.holdMinutes ? Math.min(untilFirst, pol.durations.holdMinutes * 60) : untilFirst;
+  throw new CapacityAbort("HOLD_LIMIT", { reason: "PUBLIC_UNPAID_SHARE", retryAfterSec });
+}
+
+/**
+ * T0.4c จุดตรวจ 1a′ ของการยืนยัน (ต้น finalizeCoreInTx): รอบของทุกบรรทัดยังขายได้สำหรับ ctx.channel ในธุรกรรมเดียวกับล็อกรอบ —
+ * lockDeparture เรียง id (แถวที่ tx นี้ถืออยู่แล้ว = ไม่รอ) · blockOf(fullIsOpen) — FULL ขายได้ (ที่ของเราอยู่ใน held แล้ว) · ค่าตั้งจาก policies ที่โหลดก่อน tx
+ * STATUS/STOP_SELL ⇒ SLOT_CLOSED · STARTED/CUTOFF ⇒ CUTOFF_PASSED (ตาราง blockAbort) · ไม่ส่งออกทาง index.ts
+ */
+export async function assertDeparturesSellableInTx(tx: Tx, c: Ctx, policies: CapacityPolicies, departureIds: readonly string[]): Promise<void> {
+  const g = await gateOfTx(tx, c);
+  if (!g) throw new CapacityAbort("NOT_FOUND");
+  for (const id of [...new Set(departureIds)].sort()) {
+    const d = await lockDeparture(tx, g, id);
+    if (!d) throw new CapacityAbort("NOT_FOUND");
+    const b = blockOf(d, requirePolicy(policies, g, id), g.tz, c.channel, c.clock.now, true);
+    if (b) throw blockAbort(d, b);
+  }
 }
 
 // ═══════════════════════ เฟส 2a: แถว hold (ส่งออกให้ T0.6 · r2 ข้อ 3 / m12) ═══════════════════════

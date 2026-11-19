@@ -418,7 +418,8 @@ try {
     const i = s.indexOf('type: "trips.booking.expired"'); ok(i > 0, "ไม่พบตัวยิง");
     ok(!/amountSatang:\s*b\.grossSatang/.test(s.slice(i, i + 600)), "ยังใช้ grossSatang");
     const rows = git(["diff", "--numstat", BASE_SHA, "--", D + "capacity.ts"]).trim().split(/\s+/);
-    ok(Number(rows[0] ?? 0) + Number(rows[1] ?? 0) <= 8, `capacity.ts แก้ ${rows[0]}+/${rows[1]}−`);
+    // ORACLE-EDIT S-11 (T0.4c มติ R2 R5 · ใบ §2 ไฟล์เจ้าของ capacity.ts): ใบ T0.4c แก้ capacity.ts 40+/2− (เพดาน PUBLIC + assertDeparturesSellableInTx + เพดาน retryAfterSec ของผู้คุม) — โควตาเดิม 8 + 42 = 50 · ส่วนของ T0.7 ยังตรวจด้วยตัวยิงข้างบน
+    ok(Number(rows[0] ?? 0) + Number(rows[1] ?? 0) <= 8 + 42, `capacity.ts แก้ ${rows[0]}+/${rows[1]}−`);
   });
   await st("S-12", "สิทธิ์ 4 คีย์ใหม่ในโมดูล trips (ป้ายไทย)", async () => {
     const P = (await tryImport("@/lib/core/permissions")).mod;

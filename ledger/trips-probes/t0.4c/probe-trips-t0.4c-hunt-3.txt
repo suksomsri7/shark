@@ -1,0 +1,114 @@
+// hunt-3 — T0.4c long storm (9): 60 s of random commands from 30 workers on 3 departures (hold · placeHold · release · confirm · pay · close/reopen · stop-sell · sweep · staff hold/confirm/bookNow)
+// simulated clock: 1 real second = 1 minute (holds of T5 = 60 min expire during the storm)
+// run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-t0.4c-hunt-3.mts
+import { BAD, fmt, hex, huntSetup, NOW0, R, sleep, stats, type Rec } from "./probe-trips-t0.4c-hunt-lib.mjs";
+
+const H = await huntSetup("probe-t0.4c-hunt-3");
+const { call, check, note } = H;
+const rnd = (n: number) => Math.floor(Math.random() * n);
+const pick = <T,>(xs: T[]): T | undefined => xs[rnd(xs.length)];
+const DURATION_MS = 60_000;
+const WORKERS = 30;
+const OP_TIMEOUT_MS = 45_000;
+type Hd = Awaited<ReturnType<typeof H.holdT>>;
+
+try {
+  const deps = [await H.mkDep({ key: "A", capacity: 24 }), await H.mkDep({ key: "B", capacity: 30 }), await H.mkDep({ key: "C", capacity: 12 })];
+  const t0 = Date.now();
+  const simNow = () => new Date(new Date(NOW0).getTime() + (Date.now() - t0) * 60);
+  let maxSim = new Date(NOW0);
+  const nowTick = () => { const n = simNow(); if (n > maxSim) maxSim = n; return n; };
+  const baskets: Hd[] = [];
+  const bookings: Rec[] = [];
+  const closed = new Set<string>();
+  const lat: Record<string, number[]> = {};
+  const out: Record<string, Record<string, number>> = {};
+  const bad: { op: string; r: Rec }[] = [];
+  let timeouts = 0; let ops = 0;
+  const EXPECTED = new Set(["ok", "HOLD_LIMIT", "SOLD_OUT", "SLOT_CLOSED", "HOLD_EXPIRED", "HOLD_NOT_FOUND", "STATE_CONFLICT", "CUTOFF_PASSED", "BAD_STATE", "NOT_FOUND"]);
+  const rec = (op: string, r: Rec, ms: number) => {
+    ops++;
+    (lat[op] ??= []).push(ms);
+    const k = r.ok === true ? "ok" : String(r.code ?? r.ok);
+    const kk = r.ok === true ? "ok" : `${k}${R(r.details).reason ? `:${String(R(r.details).reason)}` : ""}`;
+    (out[op] ??= {})[kk] = ((out[op] ??= {})[kk] ?? 0) + 1;
+    if (BAD(r) || !EXPECTED.has(k) || (k === "HOLD_LIMIT" && op.startsWith("pub") && R(r.details).reason !== "PUBLIC_UNPAID_SHARE" && op !== "pubConfirm")) bad.push({ op, r });
+  };
+  const run = async (op: string, f: () => Promise<Rec>) => {
+    const t = Date.now();
+    const r = await H.withTimer(f().catch((e) => ({ ok: "THROW", e: String(e) }) as Rec), OP_TIMEOUT_MS, `op ${op}`);
+    if (r === "TIMEOUT") { timeouts++; bad.push({ op, r: { ok: "TIMEOUT" } }); return; }
+    rec(op, r, Date.now() - t);
+  };
+  const ops9: [number, string, () => Promise<Rec>][] = [
+    [30, "pubHold", async () => {
+      const n = 1 + rnd(2); const lines: Rec[] = [];
+      for (let i = 0; i < n; i++) lines.push(await H.line(pick(deps) as string, 1 + rnd(3)));
+      const h = await H.holdT(H.pub({ now: nowTick(), ch: pick(["WEB", "LIFF"]) }), lines);
+      if (h.r.ok === true) baskets.push(h);
+      return h.r;
+    }],
+    [10, "pubPlaceHold", async () => H.placeHoldPub(pick(deps) as string, 1 + rnd(3), H.pub({ now: nowTick() }))],
+    [16, "pubConfirm", async () => {
+      const h = baskets.length ? baskets.splice(rnd(baskets.length), 1)[0] : undefined;
+      if (!h) return { ok: true, skip: true };
+      const r = await H.confirmT(h, { ctx: H.withNow(h.ctx, nowTick()) });
+      if (r.ok === true) for (const b of (r.value as Rec[]) ?? []) bookings.push(b);
+      return r;
+    }],
+    [8, "pubRelease", async () => {
+      const h = pick(baskets);
+      if (!h) return { ok: true, skip: true };
+      const rs = await H.releaseBasket(h, H.withNow(h.ctx, nowTick()));
+      return rs.find((x) => x.ok !== true) ?? { ok: true };
+    }],
+    [8, "staffPay", async () => {
+      const b = bookings.length ? bookings.splice(rnd(bookings.length), 1)[0] : undefined;
+      if (!b) return { ok: true, skip: true };
+      const amount = ((b.dues as Rec[]) ?? []).reduce((s, d) => s + Number(R(d.amount).satang ?? 0), 0);
+      return call("recordTripPayment", H.staff({ now: nowTick() }), { bookingId: b.bookingId, amountSatang: amount, tender: "CASH", idempotencyKey: `y${hex(6)}` });
+    }],
+    [5, "staffCloseOpen", async () => {
+      const d = pick(deps) as string;
+      const to = closed.has(d) ? "OPEN" : "CLOSED";
+      const r = await H.closeDep(d, to, nowTick());
+      if (r.ok === true) { if (to === "CLOSED") closed.add(d); else closed.delete(d); }
+      return r;
+    }],
+    [4, "staffStopSell", async () => H.stopSell(pick(deps) as string, rnd(2) ? ["WEB"] : null, nowTick())],
+    [4, "sweep", async () => { const r = await H.sweep(nowTick()); return R(r).failed && (R(r).failed as unknown[]).length ? { ok: false, code: "SWEEP_FAILED", details: r } : { ok: true }; }],
+    [10, "staffHoldConfirm", async () => {
+      const h = await H.holdT(H.staff({ now: nowTick() }), [await H.line(pick(deps) as string, 1 + rnd(2))]);
+      if (h.r.ok !== true) return h.r;
+      return H.confirmT(h, { ctx: H.withNow(h.ctx, nowTick()), onExpired: "REHOLD" });
+    }],
+    [5, "staffBookNow", async () => H.bookNow(H.staff({ now: nowTick() }), [await H.line(pick(deps) as string, 1)])],
+  ];
+  const total = ops9.reduce((s, [w]) => s + w, 0);
+  const choose = () => { let x = rnd(total); for (const o of ops9) { if (x < o[0]) return o; x -= o[0]; } return ops9[0]; };
+  const stop = H.sampler(deps);
+  const p0 = await H.partyCount();
+  const worker = async () => { while (Date.now() - t0 < DURATION_MS) { const [, name, f] = choose(); await run(name, f); await sleep(rnd(15)); } };
+  const fin = await H.withTimer(Promise.all(Array.from({ length: WORKERS }, () => worker())), DURATION_MS + 120_000, "storm");
+  const s = await stop();
+  const wall = Date.now() - t0;
+  // final: reopen + sweep at max simulated now, then invariants at that now
+  const end = maxSim;
+  await H.sweep(end);
+  const invBad = await H.inv(deps, end);
+  const orphan = await H.orphanParties();
+  const stuck = await H.stuckTx();
+  const allLat = Object.values(lat).flat();
+  check("9a 60 s storm: workers finished (no hung command) · no TIMEOUT", fin !== "TIMEOUT" && timeouts === 0, "all done", `fin ${fin === "TIMEOUT" ? "TIMEOUT" : "ok"} timeouts ${timeouts} wall ${wall}ms`);
+  check("9b storm: no BUSY/THROW/40P01/P2028/unexpected codes", bad.length === 0, "0", `${bad.length} · ${fmt(bad.slice(0, 4).map((b) => ({ op: b.op, r: b.r })))}`);
+  check("9c storm: sampler never saw sold+held+reserved > capacity or negatives", s.viol.length === 0, `0 of ${s.n} samples`, `${s.viol.length} ${fmt(s.viol.slice(0, 3))}`);
+  check("9d storm end: invariants (held = Σ ACTIVE hold · sold = Σ sold bookings · ≤ capacity · PUBLIC counted ≤ cap or single group at final sim now)", invBad.length === 0, "0", fmt(invBad));
+  check("9e storm end: no orphan Party from failed confirms · no idle-in-tx > 20s", orphan === 0 && stuck === 0, "0/0", `orphan ${orphan} stuck ${stuck} · Party rows +${(await H.partyCount()) - p0}`);
+  note("9", `storm: ${ops} commands · ${WORKERS} workers · ${wall} ms · sim end ${end.toISOString()} · latency all ${stats(allLat)}`);
+  for (const [op, xs] of Object.entries(lat)) note(`9 ${op}`, `${stats(xs)} · ${fmt(out[op])}`);
+  for (const d of deps) note("9 dep", `${d.slice(-6)} ${fmt(await H.depRow(d))} counted-public@end ${await H.publicHeld(d, end)}`);
+} catch (e) {
+  console.log(`💥 probe crashed: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await H.finish();
+}
