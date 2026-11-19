@@ -156,6 +156,16 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       actions: [{ waitFor: 'a[data-testid="trips-dep-manifest"]' }],
     },
   ],
+  // TRIPS T1.7 ▸ ต้นทุนรอบ · กำไร · รายงาน (ภาพ 11 แผงรอบ :56–:57 · จอต้นทุน/รายงานไม่มีภาพ — เทียบธรรมเนียมจอ T1.3a/T1.4a) — ทุกฉาก 1440 + 390 · อ่านอย่างเดียว (ไม่กดบันทึก/ส่งออก ⇒ ไม่เขียนฐาน)
+  //   seed ไม่มีแถวต้นทุน ⇒ แผงรอบราชา 14 พ.ย. แสดง "ยังไม่บันทึกต้นทุน" · ตัวเลขภาพ 11 (฿50,400 · ฿21,500 · ฿4,095) ผู้คุมดูจากร้านชั่วคราวของ probe ◂
+  "t1.7": [
+    { name: "panel-money", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}&dep=${i.racha1114}`, actions: [{ waitFor: '[data-testid="trips-dep-money"]' }] },
+    { name: "departure-costs", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs`, actions: [{ waitFor: '[data-testid="trips-cost"]' }] },
+    { name: "reports-sales", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?tab=sales&from=${i.month}-01&to=${i.month}-30`, actions: [{ waitFor: '[data-testid="trips-rp-sales"]' }] },
+    { name: "reports-load", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?tab=load&from=${i.month}-01&to=${i.month}-30`, actions: [{ waitFor: '[data-testid="trips-rp-load"]' }] },
+    { name: "reports-lead", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?tab=lead&from=${i.month}-01&to=${i.month}-30`, actions: [{ waitFor: '[data-testid="trips-rp-lead"]' }] },
+    { name: "reports-channel", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?tab=channel&from=${i.month}-01&to=${i.month}-30`, actions: [{ waitFor: '[data-testid="trips-rp-channel"]' }] },
+  ],
   // TRIPS W1.2 ▸ ทัวร์ 4 ขั้นฝั่งลูกค้า (ภาพ 01 ข/ค/ง มือถือไทย · 19 จอใหญ่อังกฤษ) — ทุกฉาก public 1440 + 390 · วัน/เดือนปักด้วย --book-month/--book-date (ปริยาย 31 ธ.ค. ของ seed)
   //   "w1.2" อ่านอย่างเดียว (ไม่เขียนฐาน) · "w1.2-flow" กดผ่านฟอร์มจริง ⇒ เขียนฐานเลน (ถือ 3 ที่บนรอบ 31 ธ.ค. + การจอง HOLD + Party ผู้จองทดสอบ ค้างจนตัวกวาดวิ่ง) — รันหลังข้อสอบ/ก่อน reseed
   //   วอเชอร์ = การจอง TR-…-0142 ของ seed (ภัทรา · CONFIRMED ยังไม่จ่าย) · token หาจาก bookingPublicToken ตอนรัน (ไม่ฝัง token) ◂
