@@ -128,6 +128,8 @@ const EXPECT: Exp[] = [
   E("X28", "trips.cash.varianceApprovalSatang", "money", [U]),
   // ORACLE-EDIT R-1 R-2 (มติ R15 · W1.2 §3.3): คีย์ใหม่ของหน้าจองสาธารณะ — ตรง ledger/TRIPS-DEFAULTS.md แถว X29 X30 (ชั้น SHOP = UNIT)
   E("X29", "trips.public.bookingEnabled", "bool", [U]), E("X30", "trips.public.shopContact", "table", [U]),
+  // ORACLE-EDIT R-1 R-2 F-2 (T0.4c มติ R1 · ใบ §3.2 §7): เพดานที่ลูกค้าออนไลน์ถือรอชำระต่อรอบ — ตรง ledger/TRIPS-DEFAULTS.md แถว X31 (ชั้น SHOP · PRODUCT)
+  E("X31", "trips.public.unpaidHoldMaxPct", "percent", [U, P]),
 ];
 const TPLS = ["DIVE_SHOP", "DAY_TOUR", "LIVEABOARD", "ATTRACTION"] as const;
 type Tpl = (typeof TPLS)[number];
@@ -247,7 +249,7 @@ const PENDING_REVIEW = ["W05", "W07", "W08", "W10", "W13", "W15", "W29", "W41", 
 const SETTINGS_RULES = ["W01", "W02", "W03", "W14", "W15", "W16", "W17", "W18", "W20", "W25", "W26", "W29", "W30", "W33", "W38"];
 const ALL_RULES = Array.from({ length: 46 }, (_, i) => `W${String(i + 1).padStart(2, "0")}`);
 const RUNTIME_RULES = ALL_RULES.filter((r) => !SETTINGS_RULES.includes(r));
-const PERCENT100 = ["trips.price.manualOverrideApprovalPct", "trips.price.costWarnMarginPct", "trips.pay.depositPct", "trips.pax.childPricePct", "trips.cancel.creditBonusPct"];
+const PERCENT100 = ["trips.price.manualOverrideApprovalPct", "trips.price.costWarnMarginPct", "trips.pay.depositPct", "trips.pax.childPricePct", "trips.cancel.creditBonusPct", "trips.public.unpaidHoldMaxPct"]; // ORACLE-EDIT R-10 (ผู้คุม · T0.4c): X31 เป็นร้อยละ 0–100 ตามสัญญา §3.2
 const EFFECTIVE_DATED = ["trips.tax.vatRate", "trips.parkFee.table", "trips.parkFee.ageBands", "trips.dive.ratio", "trips.insurance.minSum", "trips.fx.rates"];
 const HIDDEN = ["trips.giftcard.invoiceAt", "trips.cancel.creditBonusPct", "trips.cancel.creditValidityMonths"];
 const SENS: Record<string, string> = { tax: "LEGAL", giftcard: "LEGAL", consumer: "LEGAL", pay: "MONEY", price: "MONEY", cash: "MONEY", pdpa: "PRIVACY", waiver: "PRIVACY" };

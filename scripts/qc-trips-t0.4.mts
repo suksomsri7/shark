@@ -906,6 +906,9 @@ try {
   });
   await st("RC-2", "(ก) ซ้ำ 3 รอบบนรอบใหม่ (ความเสถียร) ⇒ 24/26 ทุกรอบ", async () => {
     await needDb();
+    // ORACLE-EDIT RC-2 (T0.4c มติ R1 · ใบ §7): ข้อนี้ทดสอบการแข่งถือจนเต็มรอบ ไม่ใช่เพดานที่ PUBLIC ถือไม่จ่าย (X31 ค่าเริ่ม 50%) — ตั้ง X31 = 100 ชั้น PRODUCT ของสินค้า A เฉพาะข้อนี้ แล้วคืน 50
+    await setV([{ key: "trips.public.unpaidHoldMaxPct", scope: "PRODUCT", scopeId: P.A.id, value: 100 }]);
+    try {
     const got: string[] = [];
     for (let i = 0; i < 3; i++) {
       const id = await mkDep(); const stop = sampler("TripDeparture", [id]);
@@ -914,6 +917,7 @@ try {
       got.push(`${rs.filter((r) => r.ok === true).length}`);
     }
     eq(got, ["24", "24", "24"], "สำเร็จต่อรอบ");
+    } finally { await setV([{ key: "trips.public.unpaidHoldMaxPct", scope: "PRODUCT", scopeId: P.A.id, value: 50 }]); }
   });
   await st("RC-3", "(ก) ขนาดปน 1–4 ที่ 50 คำขอ ⇒ ผลรวมที่ได้ ≤ 24 · ผู้แพ้ทุกรายขนาด > ที่เหลือสุดท้าย · ค่าคงที่ทุกจังหวะ", async () => {
     await needDb();
@@ -1008,10 +1012,14 @@ try {
   });
   await st("RC-12", "สาธารณะ 40 basket (คนละ clientKey) พร้อมกันบนรอบว่าง 20 ⇒ สำเร็จ 20 พอดี · ที่เหลือ SOLD_OUT · ไม่มี HOLD_LIMIT/RATE_LIMITED", async () => {
     await needDb();
+    // ORACLE-EDIT RC-12 (T0.4c มติ R1 · ใบ §7): ข้อนี้ทดสอบ 40 ตะกร้าแข่งบนที่ว่าง 20 ไม่ใช่เพดานที่ PUBLIC ถือไม่จ่าย (X31 ค่าเริ่ม 50%) — ตั้ง X31 = 100 ชั้น PRODUCT ของสินค้า A เฉพาะข้อนี้ แล้วคืน 50
+    await setV([{ key: "trips.public.unpaidHoldMaxPct", scope: "PRODUCT", scopeId: P.A.id, value: 100 }]);
+    try {
     const id = await mkDep({ capacity: 25, sold: 5 }); const stop = sampler("TripDeparture", [id]);
     const rs = await withTimer(par(40, () => pubHold(id, 1)), 120_000, "RC-12");
     const s = await stop(); noThrow(rs, "RC-12", ["SOLD_OUT"]);
     eq([rs.filter((r) => r.ok === true).length, (await raceCheck(id, s, "RC-12")).held], [20, 20], "สำเร็จ/held");
+    } finally { await setV([{ key: "trips.public.unpaidHoldMaxPct", scope: "PRODUCT", scopeId: P.A.id, value: 50 }]); }
   });
   groupLine("RC");
 

@@ -542,7 +542,13 @@ try {
     const h = await holdOk(pub({ key: "A2" }), [line(d, { key: "A2", a: 5 })]);
     eq(ref0(await confirmT(h)).status, "PENDING", "สถานะการจอง");
     eq((await holdRow((h.v.holdIds as string[])[0])).purpose, "SHOP_CONFIRM", "purpose");
-    shareR((await holdT(pub({ key: "A2" }), [line(d, { key: "A2", a: 1 })])).r, "หลัง PENDING");
+    const r8 = (await holdT(pub({ key: "A2" }), [line(d, { key: "A2", a: 1 })])).r;
+    shareR(r8, "หลัง PENDING");
+    // ORACLE-EDIT PH-8 (T0.4c มติ R5 · ผู้คุม 19 พ.ย.): retryAfterSec = min(เวลาถึงที่ถือที่นับซึ่งหมดเร็วสุด, T5 × 60) — ตรึงให้ชัดว่าเพดาน T5 มีผลจริง:
+    // เงื่อนไขก่อน = ที่ถือที่นับทุกแถวหมดช้ากว่า T5 × 60 (SHOP_CONFIRM X2 ชม.) ⇒ ค่าที่ได้ต้องเท่ากับ T5 × 60 พอดี (ไม่ใช่แค่ ≤)
+    const first = (await q<{ t: Date | null }>(`SELECT min("expiresAt") AS t FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND channel = ANY($3::text[]) AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [d, NOW0, PUBLIC_CHANNELS]))[0]?.t;
+    ok(first && Math.ceil((new Date(first).getTime() - new Date(NOW0).getTime()) / 1000) > HOLD_MIN * 60, `เงื่อนไขก่อน: ที่ถือที่นับต้องหมดช้ากว่า T5 (${fmt(first)})`);
+    eq(asRec(r8.details)?.retryAfterSec, HOLD_MIN * 60, "retryAfterSec (เพดาน T5 × 60 · มติ R5)");
   });
   await st("PH-9", "แยกต่อรอบ: รอบ D1 ถือ 5/10 ⇒ รอบ D2 ของสินค้าเดียวกันถือ 5 ได้ · ที่หน้าร้านถือ 6/10 ไม่กินเพดาน: PUBLIC ถือ 4 ได้", async () => {
     needDb();
@@ -585,6 +591,22 @@ try {
     const r = (await holdT(pub({ key: "L" }), [line(d1, { key: "L", a: 1 }), line(d2, { key: "L", a: 1 })])).r;
     codeR(r, "HOLD_LIMIT", "เพดานต่อตะกร้า");
     ok(asRec(r.details)?.reason !== REASON, `เพดานเดิมต้องไม่ใช้ reason ${REASON}: ${fmt(r)}`);
+  });
+  // ORACLE-EDIT PH-14 (ผู้เขียนข้อสอบแยก 19 พ.ย. · สัญญา §3.1 + มติ R5): ข้อเดิมทุกข้อถือที่ ณ ctx.now เดียวกับคำขอที่ล้ม ⇒ เวลาถึงที่ถือหมดเร็วสุด = T5 × 60 = เพดานพอดี
+  // ⇒ บริการที่คืน T5 × 60 ตายตัวก็เขียว (ไม่ได้พิสูจน์สูตร "หมดเร็วสุด") — ข้อนี้ถามหลังถือ 20 นาที ⇒ ต้องได้ ceil((min expiresAt − ctx.now)/1000) จากแถวจริง (< T5 × 60)
+  await st("PH-14", "retryAfterSec = เวลาถึงที่ถือ PUBLIC ที่นับซึ่งหมดเร็วสุด (ไม่ใช่ T5 ตายตัว): ถือ 3 ตอน NOW0 + 2 ตอน +10 นาที · ขอ 1 ตอน +20 นาที ⇒ HOLD_LIMIT retryAfterSec = ceil((min expiresAt − now)/1000) = 40 นาที", async () => {
+    needDb();
+    const d = await mkDep({ date: "2027-03-25", capacity: 10 });
+    await holdOk(pub(), [line(d, { a: 3 })]);
+    await holdOk(pub({ now: addMin(NOW0, 10) }), [line(d, { a: 2 })]);
+    const at = addMin(NOW0, 20);
+    const r = (await holdT(pub({ now: at }), [line(d, { a: 1 })])).r;
+    shareR(r, "ขอหลัง 20 นาที");
+    const first = (await q<{ t: Date | null }>(`SELECT min("expiresAt") AS t FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE' AND "expiresAt" > $2::timestamp AND channel = ANY($3::text[]) AND purpose IN ('PAYMENT','SHOP_CONFIRM')`, [d, at.toISOString(), PUBLIC_CHANNELS]))[0]?.t;
+    ok(first, "ไม่พบที่ถือที่นับ");
+    const want = Math.ceil((new Date(first!).getTime() - at.getTime()) / 1000);
+    ok(want >= 1 && want < HOLD_MIN * 60, `เงื่อนไขก่อน: เวลาถึงหมดเร็วสุดต้องน้อยกว่า T5 × 60 (${want})`);
+    eq([asRec(r.details)?.retryAfterSec, want], [want, (HOLD_MIN - 20) * 60], "retryAfterSec / ค่าที่คิดเองจากแถว");
   });
   groupLine("PH");
 

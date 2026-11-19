@@ -1,0 +1,202 @@
+// hunt-1 — T0.4c PUBLIC unpaid-hold cap under races: (1) cap storm ×20 rounds mixed paths + release + sweeper (2) first basket (7) settings (8) staff/system unaffected
+// run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-t0.4c-hunt-1.mts
+import { addMin, BAD, fmt, hex, HOLD_MIN, huntSetup, KEY, NOW0, R, sha256hex, shareLimit, stats, tally, tok, type Rec } from "./probe-trips-t0.4c-hunt-lib.mjs";
+
+const H = await huntSetup("probe-t0.4c-hunt-1");
+const { call, check, note, q } = H;
+const rnd = (n: number) => Math.floor(Math.random() * n);
+const T1 = addMin(NOW0, HOLD_MIN + 1).toISOString();
+const shareOk = (r: Rec) => r.ok === false && r.code === "HOLD_LIMIT" && R(r.details).reason === "PUBLIC_UNPAID_SHARE";
+const retryOk = (r: Rec) => { const d = R(r.details); const ks = Object.keys(d).sort().join(","); const ra = Number(d.retryAfterSec); return ks === "reason,retryAfterSec" && Number.isInteger(ra) && ra >= 1 && ra <= HOLD_MIN * 60 && !/เต็ม|\d/.test(String(r.messageTh ?? "")); };
+
+try {
+  // ═════ 1. cap storm: cap 24 (limit 12) · 40 PUBLIC 1–3 seats · mixed paths · releases · then T1 phase with sweeper ×20 rounds ═════
+  {
+    const lat: number[] = []; const all: Rec[] = []; const invBad: string[] = []; const sampViol: string[] = []; let underUse = 0; const retryBad: Rec[] = []; let exceptions = 0;
+    for (let round = 0; round < 20; round++) {
+      const X = await H.mkDep({ key: "A", capacity: 24 });
+      const Y = await H.mkDep({ key: "B", capacity: 24 });
+      const stop = H.sampler([X, Y]);
+      const okBaskets: Awaited<ReturnType<typeof H.holdT>>[] = [];
+      const job = async (i: number): Promise<Rec> => {
+        const a = 1 + rnd(3);
+        const kind = i % 5;
+        if (kind === 0) return H.placeHoldPub(X, a, undefined, lat);
+        let lines: Rec[];
+        if (kind === 1) lines = [await H.line(X, a)];
+        else if (kind === 2) lines = [await H.line(X, 1), await H.line(X, a)]; // multi-line same departure
+        else if (kind === 3) lines = [await H.line(X, a), await H.line(Y, 1 + rnd(3))]; // two departures
+        else lines = [await H.line(Y, a), await H.line(X, 1)]; // reversed order two departures
+        const h = await H.holdT(H.pub({ ch: ["WEB", "LIFF", "EMBED", "CHAT_AI"][i % 4] }), lines, lat);
+        if (h.r.ok === true) okBaskets.push(h);
+        return h.r;
+      };
+      const releaser = async (): Promise<Rec[]> => { const out: Rec[] = []; for (let k = 0; k < 6; k++) { await new Promise((r) => setTimeout(r, 30 + rnd(80))); const h = okBaskets[rnd(okBaskets.length)]; if (h) out.push(...(await H.releaseBasket(h))); } return out; };
+      const res = await H.withTimer(Promise.all([...Array.from({ length: 40 }, (_, i) => job(i)), releaser().then((x) => ({ ok: true, rel: x.length }) as Rec)]), 180_000, `round ${round} A`);
+      if (res === "TIMEOUT") { invBad.push(`round ${round} A timeout`); continue; }
+      all.push(...res);
+      for (const r of res) if (shareOk(r) && !retryOk(r)) retryBad.push(r);
+      invBad.push(...(await H.inv([X, Y], NOW0)).map((s) => `r${round}A ${s}`));
+      for (const d of [X, Y]) {
+        const gs = await H.publicGroups(d, NOW0); const tot = gs.reduce((s, g) => s + g.n, 0);
+        if (tot > 12) exceptions++;
+        // liveness: no SOLD_OUT for public (capacity 24 ≫ 12) and cap should be nearly used if any HOLD_LIMIT happened
+        if (res.some(shareOk) && tot < 12 - 3 - 6) underUse++;
+      }
+      // phase B at T1 (all phase-A holds expired by clock) — 20 more holders ∥ sweeper scoped to own tenant ∥ releases
+      const jobB = async (i: number): Promise<Rec> => {
+        const a = 1 + rnd(3);
+        if (i % 3 === 0) return H.placeHoldPub(X, a, H.pub({ now: T1 }), lat);
+        const h = await H.holdT(H.pub({ now: T1 }), i % 3 === 1 ? [await H.line(X, a)] : [await H.line(X, a), await H.line(Y, 1)], lat);
+        return h.r;
+      };
+      const resB = await H.withTimer(Promise.all([...Array.from({ length: 20 }, (_, i) => jobB(i)), H.sweep(T1), H.sweep(T1)]), 180_000, `round ${round} B`);
+      const v = await stop();
+      sampViol.push(...v.viol);
+      if (resB === "TIMEOUT") { invBad.push(`round ${round} B timeout`); continue; }
+      all.push(...resB.slice(0, 20));
+      for (const r of resB.slice(20)) if (r.ok === "THROW" || (Array.isArray(r.failed) && r.failed.length)) invBad.push(`r${round} sweep ${fmt(r)}`);
+      await H.sweep(T1);
+      invBad.push(...(await H.inv([X, Y], T1)).map((s) => `r${round}B ${s}`));
+    }
+    const t = tally(all);
+    const bad = all.filter((r) => BAD(r) || (r.ok !== true && !shareOk(r) && r.code !== "SOLD_OUT"));
+    check("1a cap storm ×20 (40 PUBLIC mixed paths + releases, then 20 more ∥ 2 sweepers at T1): invariants (held=Σhold · sold+held ≤ cap · PUBLIC counted ≤ 12 or single group)", invBad.length === 0 && sampViol.length === 0,
+      "0 violations", `inv ${invBad.length} ${fmt(invBad.slice(0, 6))} · sampler ${sampViol.length} ${fmt(sampViol.slice(0, 3))}`);
+    check("1b cap storm: no BUSY/THROW/40P01/unexpected codes", bad.length === 0, "only ok | HOLD_LIMIT:PUBLIC_UNPAID_SHARE | SOLD_OUT", `${bad.length} bad · tally ${fmt(t)} · e.g. ${fmt(bad[0])}`);
+    check("1c every PUBLIC_UNPAID_SHARE result: details exactly {reason,retryAfterSec} · 1..T5×60 · message w/o 'เต็ม'/digits", retryBad.length === 0, "0 bad", `${retryBad.length} bad e.g. ${fmt(retryBad[0])}`);
+    check("1d liveness: cap not grossly under-used when callers were refused", underUse === 0, "0 rounds under-used", `${underUse} departure-rounds`);
+    note("1", `storm size: ${all.length} hold calls in 20 rounds × (40 + 20) workers · latency ${stats(lat)} · tally ${fmt(t)} · rounds with counted > 12 (single-group exception) ${exceptions}`);
+  }
+
+  // ═════ 1e. one PUBLIC basket on cap 24: 13 seats as two lines (6+7) after a 1-seat hold exists ⇒ HOLD_LIMIT (multi-line summed) ═════
+  {
+    const X = await H.mkDep({ capacity: 24 });
+    const a = await H.holdT(H.pub(), [await H.line(X, 1)]);
+    const b = await H.holdT(H.pub(), [await H.line(X, 6), await H.line(X, 6)]);
+    check("1e multi-line same departure summed: held 1 then basket 6+6 on limit 12 ⇒ HOLD_LIMIT", a.r.ok === true && shareOk(b.r), "ok then HOLD_LIMIT", `${fmt(a.r.ok)} / ${fmt(b.r)}`);
+    // known debt (R7): > QTY_MAX per departure is chunked — chunk 2 doesn't see chunk 1
+    const Z = await H.mkDep({ capacity: 200 });
+    await H.holdT(H.pub(), [await H.line(Z, 1)]);
+    const big = await H.holdT(H.pub(), [await H.line(Z, 40), await H.line(Z, 40)]);
+    note("1e-debt", `known debt R7 (service-level only, platform caps 10 seats): cap 200 limit 100, 1 counted, basket 40+40 ⇒ ${big.r.ok === true ? "ok" : String(big.r.code)} · PUBLIC counted now ${await H.publicHeld(Z, NOW0)} (limit 100)`);
+  }
+
+  // ═════ 2. first basket ═════
+  {
+    // 2a two "first" baskets 10 + 10 on capacity 12 (limit 6) ×20
+    const out: string[] = []; let multiOver = 0; let overSell = 0;
+    for (let i = 0; i < 20; i++) {
+      const d = await H.mkDep({ capacity: 12 });
+      const rs = await Promise.all([H.holdT(H.pub(), [await H.line(d, 10)]), H.holdT(H.pub(), [await H.line(d, 10)])]);
+      const t = rs.map((h) => (h.r.ok === true ? "ok" : String(h.r.code))).sort().join("+");
+      out.push(t);
+      const c = await H.depRow(d); if (c.held > 12) overSell++;
+      const gs = await H.publicGroups(d, NOW0); if (gs.length > 1 && gs.reduce((s, g) => s + g.n, 0) > 6) multiOver++;
+    }
+    const cnt: Record<string, number> = {}; for (const t of out) cnt[t] = (cnt[t] ?? 0) + 1;
+    check("2a two concurrent first baskets 10+10 on cap 12 ×20 ⇒ exactly one ok each round, no oversell, ≤ 1 over-cap group", (cnt["SOLD_OUT+ok"] ?? 0) + (cnt["HOLD_LIMIT+ok"] ?? 0) === 20 && overSell === 0 && multiOver === 0,
+      "20× one ok", `${fmt(cnt)} oversell ${overSell} multiOver ${multiOver}`);
+    // 2b 5+5 first baskets (each alone fits cap? limit 6 ⇒ 5 ≤ 6) — second must be HOLD_LIMIT (5+5=10 > 6)
+    const out2: Record<string, number> = {};
+    for (let i = 0; i < 20; i++) {
+      const d = await H.mkDep({ capacity: 12 });
+      const rs = await Promise.all([H.holdT(H.pub(), [await H.line(d, 5)]), H.holdT(H.pub(), [await H.line(d, 5)])]);
+      const t = rs.map((h) => (h.r.ok === true ? "ok" : `${String(h.r.code)}:${String(R(h.r.details).reason ?? "")}`)).sort().join("+");
+      out2[t] = (out2[t] ?? 0) + 1;
+    }
+    check("2b 5+5 concurrent on cap 12 (limit 6) ×20 ⇒ one ok + HOLD_LIMIT:PUBLIC_UNPAID_SHARE", out2["HOLD_LIMIT:PUBLIC_UNPAID_SHARE+ok"] === 20, "20", fmt(out2));
+    // 2c 10 concurrent first baskets of 8 on capacity 20 (limit 10) — at most one ok
+    const out3: Record<string, number> = {};
+    for (let i = 0; i < 10; i++) {
+      const d = await H.mkDep({ capacity: 20 });
+      const rs = await Promise.all(Array.from({ length: 10 }, async () => H.holdT(H.pub(), [await H.line(d, 8)])));
+      const n = rs.filter((h) => h.r.ok === true).length; out3[`ok${n}`] = (out3[`ok${n}`] ?? 0) + 1;
+    }
+    check("2c 10 concurrent baskets of 8 on cap 20 (limit 10) ×10 ⇒ exactly 1 ok", out3.ok1 === 10, "ok1×10", fmt(out3));
+    // 2d hoarding loop: first basket 10/12 → others blocked for T5 → expires → a new first basket (same or other customer) takes it again
+    const d = await H.mkDep({ capacity: 12 });
+    const hog = await H.holdT(H.pub(), [await H.line(d, 10)]);
+    const other = await H.holdT(H.pub({ now: addMin(NOW0, 30) }), [await H.line(d, 1)]);
+    const relock = await H.holdT(H.pub({ now: addMin(NOW0, HOLD_MIN + 0.5) }), [await H.line(d, 10)]);
+    const other2 = await H.holdT(H.pub({ now: addMin(NOW0, HOLD_MIN + 1) }), [await H.line(d, 1)]);
+    // release-and-rehold race: hog releases at t, re-holds immediately — does a waiting customer get a chance?
+    const d2 = await H.mkDep({ capacity: 12 });
+    const hog2 = await H.holdT(H.pub(), [await H.line(d2, 10)]);
+    await H.releaseBasket(hog2);
+    const [re, cust] = await Promise.all([H.holdT(H.pub(), [await H.line(d2, 10)]), H.holdT(H.pub(), [await H.line(d2, 2)])]);
+    note("2d first-basket rotation (behaviour)", `cap 12 limit 6: hog 10 = ${hog.r.ok === true ? "ok" : String(hog.r.code)} · other 1 seat at +30m = ${String(other.r.code ?? other.r.ok)} retryAfterSec ${fmt(R(other.r.details).retryAfterSec)} · after expiry (+60.5m, no sweep) new hog 10 = ${relock.r.ok === true ? "ok (first again)" : String(relock.r.code)} · other 1 seat at +61m = ${String(other2.r.code ?? other2.r.ok)} · release→rehold race: hog re-hold 10 = ${re.r.ok === true ? "ok" : String(re.r.code)} / customer 2 = ${cust.r.ok === true ? "ok" : String(cust.r.code)}`);
+    // 2e SHOP_CONFIRMS product: first basket 10 confirmed ⇒ SHOP_CONFIRM hold (X2 hours) — how long are others blocked vs retryAfterSec
+    await H.setV([{ key: "trips.sell.confirmMode", scope: "PRODUCT", scopeId: H.PRD.D.id, value: "SHOP_CONFIRMS" }]);
+    const ds = await H.mkDep({ key: "D", capacity: 12 });
+    const h = await H.holdT(H.pub(), [await H.line(ds, 10)]);
+    const c = h.r.ok === true ? await H.confirmT(h) : h.r;
+    const hr = (await q<{ purpose: string; expiresAt: Date }>(`SELECT purpose, "expiresAt" FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE'`, [ds]))[0];
+    const later = await H.holdT(H.pub({ now: addMin(NOW0, 120) }), [await H.line(ds, 1)]);
+    note("2e SHOP_CONFIRM first basket", `confirm ${c.ok === true ? "ok" : String(c.code)} · hold ${hr?.purpose} until ${hr ? new Date(hr.expiresAt).toISOString() : "-"} · other 1 seat at +2h = ${String(later.r.code ?? later.r.ok)} reason ${String(R(later.r.details).reason ?? "")} retryAfterSec ${fmt(R(later.r.details).retryAfterSec)} (capped at T5×60 by R5 though real wait is hours)`);
+  }
+
+  // ═════ 7. settings ═════
+  {
+    // 7a X31=100 on product B ⇒ no cap: 40 × 1 seat on cap 24 ⇒ 24 ok, 16 SOLD_OUT, no HOLD_LIMIT
+    await H.setV([{ key: KEY, scope: "PRODUCT", scopeId: H.PRD.B.id, value: 100 }, { key: KEY, scope: "PRODUCT", scopeId: H.PRD.C.id, value: 1 }]);
+    const d = await H.mkDep({ key: "B", capacity: 24 });
+    const rs = await Promise.all(Array.from({ length: 40 }, async () => (await H.holdT(H.pub(), [await H.line(d, 1)])).r));
+    const t = tally(rs);
+    check("7a X31=100 (PRODUCT over UNIT 50): 40×1 on cap 24 ⇒ 24 ok · 16 SOLD_OUT · 0 HOLD_LIMIT", t.ok === 24 && t.SOLD_OUT === 16 && (await H.inv([d], NOW0, 100)).length === 0, "24/16", fmt(t));
+    // 7b X31=1 on cap 24 ⇒ limit 1 + first basket: first 3 ok, then everybody HOLD_LIMIT
+    const d1 = await H.mkDep({ key: "C", capacity: 24 });
+    const first = await H.holdT(H.pub(), [await H.line(d1, 3)]);
+    const rest = await Promise.all(Array.from({ length: 20 }, async () => (await H.holdT(H.pub(), [await H.line(d1, 1)])).r));
+    check("7b X31=1 cap 24: first basket 3 ok (exception) · 20×1 after ⇒ all HOLD_LIMIT", first.r.ok === true && rest.every(shareOk), "ok + 20 HOLD_LIMIT", `${fmt(first.r.ok)} ${fmt(tally(rest))}`);
+    const d2 = await H.mkDep({ key: "C", capacity: 24 });
+    const conc = await Promise.all(Array.from({ length: 20 }, async () => (await H.holdT(H.pub(), [await H.line(d2, 1)])).r));
+    check("7c X31=1 cap 24: 20×1 concurrent ⇒ exactly 1 ok", tally(conc).ok === 1, "1 ok", fmt(tally(conc)));
+    // 7d change setting during a storm (UNIT 50 → 100 → 50) ⇒ no weird codes / no invariant break under either cap
+    const ds = await H.mkDep({ key: "A", capacity: 30 });
+    const flip = (async () => { const o: Rec[] = []; for (const v of [100, 50, 100, 50]) { await new Promise((r) => setTimeout(r, 120)); try { await H.setV([{ key: KEY, scope: "UNIT", scopeId: H.uA, value: v }]); o.push({ ok: true }); } catch (e) { o.push({ ok: "THROW", e: String(e) }); } } return o; })();
+    const rs2: Rec[] = await Promise.all(Array.from({ length: 40 }, async (_, i) => (i % 4 === 0 ? await H.placeHoldPub(ds, 1 + rnd(2)) : (await H.holdT(H.pub(), [await H.line(ds, 1 + rnd(2))])).r)));
+    const fl = await flip;
+    const odd = (rs2 as Rec[]).filter((r) => r.ok !== true && !shareOk(r) && r.code !== "SOLD_OUT");
+    const pubNow = await H.publicHeld(ds, NOW0);
+    check("7d flip X31 50↔100 during 40-way storm: only ok/HOLD_LIMIT/SOLD_OUT · counted ≤ capacity · invariants (cap 100%)", odd.length === 0 && fl.every((x) => x.ok === true) && (await H.inv([ds], NOW0, 100)).length === 0,
+      "no odd", `odd ${odd.length} ${fmt(odd[0])} flips ${fmt(fl)} tally ${fmt(tally(rs2))} counted ${pubNow}/30`);
+    await H.setV([{ key: KEY, scope: "UNIT", scopeId: H.uA, value: 50 }]);
+  }
+
+  // ═════ 8. staff / system unaffected ═════
+  {
+    // 8a PUBLIC fills cap 12 of 24, then 20 PUBLIC ∥ 6 STAFF holdTrips 2 ∥ 2 STAFF bookTripsNow 2 ∥ 2 SYSTEM placeHold 1 (SUPPLIER_REQUEST) on cap 40
+    const d = await H.mkDep({ capacity: 40 });
+    for (let i = 0; i < 4; i++) await H.holdT(H.pub(), [await H.line(d, 5)]); // 20 = limit
+    const jobs: (() => Promise<Rec>)[] = [
+      ...Array.from({ length: 20 }, () => async () => ({ who: "P", ...(await H.holdT(H.pub(), [await H.line(d, 1)])).r })),
+      ...Array.from({ length: 6 }, () => async () => ({ who: "S", ...(await H.holdT(H.staff(), [await H.line(d, 2)])).r })),
+      ...Array.from({ length: 2 }, () => async () => ({ who: "B", ...(await H.bookNow(H.staff(), [await H.line(d, 2)])) })),
+      ...Array.from({ length: 2 }, () => async () => ({ who: "Y", ...(await call("placeHold", H.sys(), { departureId: d, qty: 1, idempotencyKey: `y${hex(6)}`, purpose: "SUPPLIER_REQUEST" })) })),
+    ];
+    const rs = await Promise.all(jobs.map((j) => j()));
+    const by = (w: string) => tally(rs.filter((r) => r.who === w));
+    const sOk = rs.filter((r) => r.who !== "P").every((r) => r.ok === true);
+    check("8a PUBLIC at cap: STAFF hold ×6 · bookTripsNow ×2 · SYSTEM placeHold ×2 all ok · PUBLIC all HOLD_LIMIT · invariants", sOk && rs.filter((r) => r.who === "P").every(shareOk) && (await H.inv([d], NOW0)).length === 0,
+      "staff/system all ok", `P ${fmt(by("P"))} S ${fmt(by("S"))} B ${fmt(by("B"))} Y ${fmt(by("Y"))} dep ${fmt(await H.depRow(d))}`);
+    // 8b STAFF fills the whole departure even with PUBLIC at cap
+    const d2 = await H.mkDep({ capacity: 24 });
+    await H.holdT(H.pub(), [await H.line(d2, 10)]);
+    const st = await H.holdT(H.staff(), [await H.line(d2, 14)]);
+    check("8b STAFF can take the remaining 14 of 24 while PUBLIC holds 10 (> limit via first basket)", st.r.ok === true, "ok", fmt(st.r));
+    // 8c STAFF acting on channel WEB (allowed by parseCtx): are their holds counted against the PUBLIC cap?
+    const d3 = await H.mkDep({ capacity: 24 });
+    const sw = await H.holdT(H.staff({ ch: "WEB" }), [await H.line(d3, 12)]);
+    const p1 = await H.holdT(H.pub(), [await H.line(d3, 1)]);
+    check("8c STAFF holds (channel WEB) are not counted against the PUBLIC cap (spec §3.1 'ไม่รวม hold ของพนักงาน')", sw.r.ok === true && p1.r.ok === true, "staff ok · PUBLIC 1 ok",
+      `staff ${fmt(sw.r.ok === true ? "ok" : sw.r)} · public ${p1.r.ok === true ? "ok" : `${String(p1.r.code)}:${String(R(p1.r.details).reason ?? "")}`} · counted-by-definition ${await H.publicHeld(d3, NOW0)}`);
+    // 8d staff confirm of a staff WEB basket ⇒ SHOP_CONFIRM? (just record) + PUBLIC retryAfterSec when only staff WEB holds exist
+    note("8d", `PUBLIC refusal details when only staff-WEB holds exist: ${fmt(p1.r.details)}`);
+  }
+} catch (e) {
+  console.log(`💥 probe crashed: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await H.finish();
+}
+void sha256hex; void tok; void shareLimit;

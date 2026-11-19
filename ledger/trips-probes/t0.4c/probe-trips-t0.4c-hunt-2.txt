@@ -1,0 +1,206 @@
+// hunt-2 — T0.4c confirm in-tx sellability + Party + deadlocks + pool: (3) confirm vs close/stop-sell/cutoff (4) cross-departure deadlocks (5) Party (6) pool
+// run: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/probe-trips-t0.4c-hunt-2.mts
+import { addMin, BAD, BKK, fmt, HOLD_MIN, huntSetup, KEY, NOW0, R, sleep, stats, tally, type Rec } from "./probe-trips-t0.4c-hunt-lib.mjs";
+
+const H = await huntSetup("probe-t0.4c-hunt-2");
+const { check, note, q } = H;
+const rnd = (n: number) => Math.floor(Math.random() * n);
+type Hd = Awaited<ReturnType<typeof H.holdT>>;
+const holdMany = async (n: number, mk: () => Promise<Rec[]>, ctx: () => Rec = () => H.pub()): Promise<Hd[]> => {
+  const out: Hd[] = [];
+  for (let i = 0; i < n; i += 10) out.push(...(await Promise.all(Array.from({ length: Math.min(10, n - i) }, async () => H.holdT(ctx(), await mk())))));
+  const bad = out.filter((h) => h.r.ok !== true);
+  if (bad.length) throw new Error(`setup holds failed ${bad.length}: ${fmt(bad[0].r)}`);
+  return out;
+};
+const bookingsOf = async (basketIds: unknown[]) => (await q<{ n: number }>(`SELECT count(*)::int n FROM "TripBooking" WHERE "basketId" = ANY($1::text[])`, [basketIds.map(String)]))[0]?.n ?? -1;
+
+try {
+  await H.setV([{ key: KEY, scope: "UNIT", scopeId: H.uA, value: 100 }]); // cap off for the confirm/deadlock work (cap behaviour is hunt-1)
+
+  // ═════ 3. confirm vs shop closing the departure ═════
+  {
+    const lat: number[] = []; const odd: string[] = []; let lateOk = 0; let bookingsOnClosed = 0; let partyLeak = 0; const invBad: string[] = []; const closeLat: number[] = [];
+    const variants = ["CLOSED", "STOP_WEB", "CLOSED", "STOP_WEB", "CLOSED", "STOP_WEB", "CLOSED", "STOP_ALL", "CLOSED", "STOP_ALL"];
+    for (const [round, v] of variants.entries()) {
+      const d = await H.mkDep({ capacity: 40 });
+      const ch = v === "STOP_WEB" && round === 5 ? "LIFF" : round % 3 === 0 ? "EMBED" : "WEB";
+      const hs = await holdMany(20, async () => [await H.line(d, 1)], () => H.pub({ ch }));
+      const p0 = await H.orphanParties();
+      let closedAt = 0;
+      const closer = (async () => {
+        await sleep(40 + rnd(120));
+        const t = Date.now();
+        const r = v === "CLOSED" ? await H.closeDep(d) : await H.stopSell(d, v === "STOP_WEB" ? ["WEB"] : ["WEB", "LIFF", "EMBED", "CHAT_AI", "COUNTER"]);
+        closeLat.push(Date.now() - t); closedAt = Date.now();
+        return r;
+      })();
+      const starts: number[] = [];
+      const rs = await H.withTimer(Promise.all([closer, ...hs.map(async (h, i) => { await sleep(i * 15); starts[i] = Date.now(); return H.confirmT(h, {}, lat); })]), 180_000, `3 round ${round}`);
+      if (rs === "TIMEOUT") { odd.push(`round ${round} TIMEOUT`); continue; }
+      const cr = rs[0]; const cs = rs.slice(1);
+      if (cr.ok !== true) odd.push(`close ${fmt(cr)}`);
+      const webBlocked = v === "CLOSED" || v === "STOP_ALL" || ch === "WEB"; // STOP_WEB on LIFF/EMBED baskets ⇒ not blocked
+      for (const [i, r] of cs.entries()) {
+        const exp = v === "CLOSED" ? "SLOT_CLOSED" : "SLOT_CLOSED";
+        if (r.ok !== true && r.code !== exp) odd.push(`r${round} ${v} ${String(r.code)} ${fmt(r.details)}`);
+        if (webBlocked && r.ok === true && starts[i] > closedAt) lateOk++;
+        if (!webBlocked && r.ok !== true) odd.push(`r${round} ${v} LIFF refused ${String(r.code)}`);
+      }
+      const dr = await H.depRow(d);
+      if (webBlocked) {
+        // every ok booking must have been made before the close committed — cannot see tx order directly; count bookings vs ok results
+        const okN = cs.filter((r) => r.ok === true).length;
+        if ((await bookingsOf(hs.map((h) => h.v.basketId))) !== okN) bookingsOnClosed++;
+      }
+      partyLeak += (await H.orphanParties()) - p0;
+      invBad.push(...(await H.inv([d], NOW0, 100)).map((s) => `r${round} ${s}`));
+      void dr;
+    }
+    check("3a 10 rounds: 20 PUBLIC confirms ∥ close/stop-sell ⇒ only ok | SLOT_CLOSED · no confirm started after close succeeded · bookings = ok results · no orphan Party · invariants", odd.length === 0 && lateOk === 0 && bookingsOnClosed === 0 && partyLeak === 0 && invBad.length === 0,
+      "0/0/0/0/0", `odd ${odd.length} ${fmt(odd.slice(0, 4))} lateOk ${lateOk} bookingMismatch ${bookingsOnClosed} orphanParty +${partyLeak} inv ${fmt(invBad.slice(0, 3))}`);
+    note("3a", `confirm latency ${stats(lat)} · close/stop-sell latency ${stats(closeLat)}`);
+
+    // 3b cutoff: PUBLIC hold at 17:30 local the day before (hold 60 min) · confirm at 18:05 (after WEB cutoff 18:00) ⇒ CUTOFF_PASSED · STAFF basket confirm after COUNTER cutoff ⇒ CUTOFF_PASSED
+    const dc = await H.mkDep({ date: "2027-03-25", capacity: 20 });
+    const tHold = BKK("2027-03-24", "17:30"), tConf = BKK("2027-03-24", "18:05");
+    const ph = await holdMany(10, async () => [await H.line(dc, 1)], () => H.pub({ now: tHold }));
+    const sh = await H.holdT(H.staff({ now: BKK("2027-03-25", "06:50") }), [await H.line(dc, 1)]);
+    const p0 = await H.orphanParties();
+    const rs = await Promise.all([...ph.map((h) => H.confirmT(h, { ctx: H.withNow(h.ctx, tConf) })), H.confirmT(sh, { ctx: H.withNow(sh.ctx, BKK("2027-03-25", "07:05")) })]);
+    check("3b confirm after cutoff (10 PUBLIC after WEB 18:00 · 1 STAFF after COUNTER 07:00) ⇒ CUTOFF_PASSED all · no Party", rs.every((r) => r.code === "CUTOFF_PASSED") && (await H.orphanParties()) === p0, "11× CUTOFF_PASSED", fmt(tally(rs)));
+    // 3c Q7: PUBLIC hold expired + departure closed ⇒ HOLD_EXPIRED · STAFF expired + closed + onExpired REHOLD ⇒ SLOT_CLOSED (no REHOLD)
+    const dq = await H.mkDep({ capacity: 20 });
+    const pq = await H.holdT(H.pub(), [await H.line(dq, 1)]);
+    const sq = await H.holdT(H.staff(), [await H.line(dq, 1)]);
+    await H.closeDep(dq);
+    const late = addMin(NOW0, HOLD_MIN + 2);
+    const rp = await H.confirmT(pq, { ctx: H.withNow(pq.ctx, late) });
+    const rsq = await H.confirmT(sq, { ctx: H.withNow(sq.ctx, late), onExpired: "REHOLD" });
+    const holdsAfter = (await q<{ n: number }>(`SELECT count(*)::int n FROM "TripHold" WHERE "departureId" = $1 AND "idempotencyKey" LIKE 'rh_%'`, [dq]))[0]?.n ?? -1;
+    check("3c expired+closed: PUBLIC ⇒ HOLD_EXPIRED · STAFF REHOLD ⇒ SLOT_CLOSED and no rh_ hold", rp.code === "HOLD_EXPIRED" && rsq.code === "SLOT_CLOSED" && holdsAfter === 0, "HOLD_EXPIRED / SLOT_CLOSED / 0", `${String(rp.code ?? rp.ok)} / ${String(rsq.code ?? rsq.ok)} / rh ${holdsAfter}`);
+    // 3d reopen race: CLOSED → OPEN flips ×10 while 20 confirms run ⇒ results only ok|SLOT_CLOSED · invariants
+    const dr = await H.mkDep({ capacity: 40 });
+    const hr = await holdMany(20, async () => [await H.line(dr, 1)]);
+    const flipper = (async () => { const o: Rec[] = []; for (let i = 0; i < 10; i++) { o.push(await H.closeDep(dr, i % 2 === 0 ? "CLOSED" : "OPEN")); await sleep(rnd(20)); } return o; })();
+    const [fl, ...rr] = await Promise.all([flipper, ...hr.map((h) => H.confirmT(h)).map((p) => p as unknown as Promise<Rec>)]) as [Rec[], ...Rec[]];
+    check("3d confirms ∥ CLOSED/OPEN flips ×10 ⇒ only ok|SLOT_CLOSED · no deadlock · invariants", rr.every((r) => r.ok === true || r.code === "SLOT_CLOSED") && fl.every((x) => x.ok === true) && (await H.inv([dr], NOW0, 100)).length === 0,
+      "ok", `confirms ${fmt(tally(rr))} flips ${fmt(tally(fl))}`);
+  }
+
+  // ═════ 4. deadlocks across departures ═════
+  {
+    const A = await H.mkDep({ key: "A", capacity: 2000 });
+    const B = await H.mkDep({ key: "B", capacity: 2000 });
+    const lat: number[] = [];
+    const rs: Rec[] = [];
+    const t0 = Date.now();
+    for (let w = 0; w < 5; w++) {
+      const batch = await H.withTimer(Promise.all(Array.from({ length: 40 }, async (_, i) => (await H.holdT(H.pub(), i % 2 ? [await H.line(A, 1), await H.line(B, 1)] : [await H.line(B, 1), await H.line(A, 1)], lat)).r)), 180_000, `4a wave ${w}`);
+      if (batch === "TIMEOUT") { rs.push({ ok: "TIMEOUT" }); break; }
+      rs.push(...batch);
+    }
+    check("4a 200 PUBLIC baskets A+B ∥ B+A (5 waves × 40) ⇒ all ok · no 40P01/BUSY/THROW", rs.every((r) => r.ok === true), "200 ok", `${fmt(tally(rs))} ${stats(lat)} wall ${Date.now() - t0}ms`);
+    // 4b cross confirms: 60 baskets alternately A+B / B+A confirmed at once (+ 20 staff bookTripsNow B+A ∥ 20 PUBLIC holds A+B)
+    const hs = await holdMany(60, async () => (rnd(2) ? [await H.line(A, 1), await H.line(B, 1)] : [await H.line(B, 1), await H.line(A, 1)]));
+    const clat: number[] = [];
+    const r2 = await H.withTimer(Promise.all<Rec>([
+      ...hs.map((h) => H.confirmT(h, {}, clat)),
+      ...Array.from({ length: 20 }, async () => ({ who: "S", ...(await H.bookNow(H.staff(), [await H.line(B, 1), await H.line(A, 1)], {}, clat)) })),
+      ...Array.from({ length: 20 }, async () => ({ who: "P", ...(await H.holdT(H.pub(), [await H.line(A, 1), await H.line(B, 1)], clat)).r })),
+    ]), 240_000, "4b");
+    if (r2 === "TIMEOUT") check("4b cross confirms/bookNow/holds", false, "finish", "TIMEOUT (hang)");
+    else check("4b 60 cross confirms ∥ 20 STAFF bookTripsNow B+A ∥ 20 PUBLIC hold A+B ⇒ all ok · no deadlock surfaced · invariants", r2.every((r) => r.ok === true) && (await H.inv([A, B], NOW0, 100)).length === 0,
+      "100 ok", `${fmt(tally(r2))} ${stats(clat)} inv ${fmt(await H.inv([A, B], NOW0, 100))}`);
+    // 4c confirm ∥ scoped sweeper at expiry boundary (T0.7 known order inversion rekey→1a vs sweeper 1a→hold): 40 PUBLIC confirms at T5-ε ∥ sweeper at T5+ε
+    const C = await H.mkDep({ key: "C", capacity: 200 });
+    let dl = 0; const r4: Rec[] = [];
+    for (let k = 0; k < 5; k++) {
+      const hs4 = await holdMany(20, async () => [await H.line(C, 1), await H.line(A, 1)]);
+      const edge = addMin(NOW0, HOLD_MIN - 0.01);
+      const rr = await Promise.all([...hs4.map((h) => H.confirmT(h, { ctx: H.withNow(h.ctx, edge) })), H.sweep(addMin(NOW0, HOLD_MIN + 0.01)), H.sweep(addMin(NOW0, HOLD_MIN + 0.01))]);
+      for (const r of rr) if (/40P01|deadlock/i.test(fmt(r))) dl++;
+      r4.push(...rr.slice(0, 20));
+      await H.sweep(addMin(NOW0, HOLD_MIN + 0.02));
+    }
+    check("4c 100 PUBLIC confirms at expiry edge ∥ scoped sweeper ⇒ no 40P01 surfaced · only ok|HOLD_EXPIRED", dl === 0 && r4.every((r) => r.ok === true || r.code === "HOLD_EXPIRED"), "no deadlock", `deadlock-ish ${dl} tally ${fmt(tally(r4))} inv ${fmt(await H.inv([A, C], addMin(NOW0, HOLD_MIN + 1), 100))}`);
+  }
+
+  // ═════ 5. Party ═════
+  {
+    // 5a 20 failing confirms at once (5 HOLD_EXPIRED · 5 SLOT_CLOSED · 5 STAFF REHOLD SOLD_OUT · 5 HOLD_LIMIT via contact cap) ⇒ 0 new Party
+    await H.setV([{ key: "trips.public.holdCapPerContact", scope: "UNIT", scopeId: H.uA, value: 2 }]);
+    const late = addMin(NOW0, HOLD_MIN + 2);
+    const dExp = await H.mkDep({ capacity: 40 }), dClo = await H.mkDep({ capacity: 40 }), dSo = await H.mkDep({ capacity: 5 }), dLim = await H.mkDep({ capacity: 40 });
+    const hExp = await holdMany(5, async () => [await H.line(dExp, 1)]);
+    const hClo = await holdMany(5, async () => [await H.line(dClo, 1)]);
+    const hSo = await holdMany(5, async () => [await H.line(dSo, 1)], () => H.staff());
+    const hLim = await holdMany(5, async () => [await H.line(dLim, 1)]);
+    // contact already holds 2 (cap 2) ⇒ rekey of more ⇒ HOLD_LIMIT
+    const phone = `089${String(Date.now()).slice(-7)}`;
+    const pre = await holdMany(2, async () => [await H.line(dLim, 1)]);
+    for (const h of pre) { const r = await H.confirmT(h, { booker: H.booker({ phone }) }); if (r.ok !== true) note("5a-setup", fmt(r)); }
+    await H.closeDep(dClo);
+    // STAFF baskets' holds released, seats taken by PUBLIC (capacity 5) ⇒ REHOLD SOLD_OUT
+    for (const h of hSo) for (const id of (h.v.holdIds as string[]) ?? []) { const r = await H.call("releaseHold", H.staff(), { holdId: id, reason: "hunt" }); if (r.ok !== true) note("5a-release", fmt(r)); }
+    await holdMany(1, async () => [await H.line(dSo, 5)]);
+    const p0 = await H.partyCount();
+    const rs = await Promise.all([
+      ...hExp.map((h) => H.confirmT(h, { ctx: H.withNow(h.ctx, late) })),
+      ...hClo.map((h) => H.confirmT(h)),
+      ...hSo.map((h) => H.confirmT(h, { onExpired: "REHOLD" })),
+      ...hLim.map((h) => H.confirmT(h, { booker: H.booker({ phone }) })),
+    ]);
+    const p1 = await H.partyCount();
+    check("5a 20 failing confirms at once (HOLD_EXPIRED · SLOT_CLOSED · REHOLD SOLD_OUT · HOLD_LIMIT) ⇒ +0 Party · all fail", rs.every((r) => r.ok !== true) && p1 === p0, "+0 · 20 fails", `Party +${p1 - p0} · ${fmt(tally(rs))}`);
+    await H.setV([{ key: "trips.public.holdCapPerContact", scope: "UNIT", scopeId: H.uA, value: 20 }]);
+
+    // 5b 10 concurrent successful confirms with the SAME new phone in 10 baskets ⇒ all ok, all linked · duplicates count (pre-existing debt) · sequential baseline
+    const d5 = await H.mkDep({ capacity: 60 });
+    const phone2 = `087${String(Date.now()).slice(-7)}`;
+    const hs = await holdMany(10, async () => [await H.line(d5, 1)]);
+    const r5 = await Promise.all(hs.map((h) => H.confirmT(h, { booker: { name: `t04ch same ${phone2}`, phone: phone2 } })));
+    const parties = (await q<{ n: number }>(`SELECT count(*)::int n FROM "Party" WHERE "tenantId" = $1 AND "phoneNorm" LIKE $2`, [H.tA, `%${phone2.slice(-7)}`]))[0]?.n ?? -1;
+    const linked = (await q<{ n: number }>(`SELECT count(*)::int n FROM "TripBooking" WHERE "basketId" = ANY($1::text[]) AND "bookerPartyId" IS NOT NULL`, [hs.map((h) => String(h.v.basketId))]))[0]?.n ?? -1;
+    check("5b 10 concurrent confirms same NEW phone ⇒ 10 ok · 10 bookings linked to a Party", r5.every((r) => r.ok === true) && linked === 10, "10/10", `${fmt(tally(r5))} linked ${linked}`);
+    const phone3 = `086${String(Date.now()).slice(-7)}`;
+    const hs3 = await holdMany(10, async () => [await H.line(d5, 1)]);
+    for (const h of hs3) await H.confirmT(h, { booker: { name: `t04ch seq ${phone3}`, phone: phone3 } });
+    const parties3 = (await q<{ n: number }>(`SELECT count(*)::int n FROM "Party" WHERE "tenantId" = $1 AND "phoneNorm" LIKE $2`, [H.tA, `%${phone3.slice(-7)}`]))[0]?.n ?? -1;
+    note("5b Party duplicates (pre-existing debt, now amplified?)", `same new phone: concurrent 10 confirms ⇒ ${parties} Party rows · sequential 10 confirms ⇒ ${parties3} Party row(s)`);
+    // 5c same phone, different departures, crossing order, concurrently ×20 ⇒ no deadlock
+    const dx = await H.mkDep({ key: "B", capacity: 100 }), dy = await H.mkDep({ key: "C", capacity: 100 });
+    const phone4 = `085${String(Date.now()).slice(-7)}`;
+    const hs4 = await holdMany(20, async () => (rnd(2) ? [await H.line(dx, 1), await H.line(dy, 1)] : [await H.line(dy, 1), await H.line(dx, 1)]));
+    const r6 = await H.withTimer(Promise.all(hs4.map((h) => H.confirmT(h, { booker: { name: `t04ch x ${phone4}`, phone: phone4 } }))), 120_000, "5c");
+    check("5c 20 concurrent confirms same phone, two departures crossing ⇒ all ok · no deadlock/BUSY", r6 !== "TIMEOUT" && r6.every((r) => r.ok === true), "20 ok", r6 === "TIMEOUT" ? "TIMEOUT" : fmt(tally(r6)));
+    check("5d orphan hunt Parties (t04ch names, no booking) after all Party work", (await H.orphanParties()) === 0, "0", String(await H.orphanParties()));
+  }
+
+  // ═════ 6. pool / connections ═════
+  {
+    for (const n of [30, 60]) {
+      const d = await H.mkDep({ capacity: 200 });
+      const hs = await holdMany(n, async () => [await H.line(d, 1)]);
+      const lat: number[] = [];
+      const t0 = Date.now();
+      const rs = await H.withTimer(Promise.all(hs.map((h) => H.confirmT(h, {}, lat))), 240_000, `6 ${n}`);
+      const wall = Date.now() - t0;
+      if (rs === "TIMEOUT") { check(`6 ${n} confirms`, false, "finish", "TIMEOUT"); continue; }
+      check(`6 ${n} concurrent PUBLIC confirms on one departure (> pool) ⇒ all ok · no P2028/P2024/BUSY`, rs.every((r) => r.ok === true) && !rs.some(BAD), `${n} ok`, `${fmt(tally(rs))} ${stats(lat)} wall ${wall}ms ≈ ${(wall / n).toFixed(0)}ms per serialized confirm (≈ departure-row lock hold)`);
+    }
+    // 6b 30 confirms on 30 different departures (no row contention) ⇒ pure pool pressure
+    const ds = await Promise.all(Array.from({ length: 30 }, () => H.mkDep({ capacity: 10 })));
+    const hs = await holdMany(30, async () => [await H.line(ds[rnd(30)], 1)]);
+    const lat: number[] = [];
+    const rs = await Promise.all(hs.map((h) => H.confirmT(h, {}, lat)));
+    check("6b 30 concurrent confirms on 30 departures ⇒ all ok", rs.every((r) => r.ok === true), "30 ok", `${fmt(tally(rs))} ${stats(lat)}`);
+    check("6c no idle-in-transaction backends > 20s after the run", (await H.stuckTx()) === 0, "0", String(await H.stuckTx()));
+  }
+  await H.setV([{ key: KEY, scope: "UNIT", scopeId: H.uA, value: 50 }]);
+  void R;
+} catch (e) {
+  console.log(`💥 probe crashed: ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await H.finish();
+}
