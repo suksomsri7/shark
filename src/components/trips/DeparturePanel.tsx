@@ -165,7 +165,7 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
       ) : null}
       {vm.warnings.map((w) => (
         <p key={w.code} role="note" className="rounded-lg border border-dashed border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)] [overflow-wrap:anywhere]">
-          {t("departures.panel.overSeats", { cap: d.capacity, name: w.resourceName, seats: w.seats })}
+          {w.code === "CAPACITY_OVER_SEATS" ? t("departures.panel.overSeats", { cap: d.capacity, name: w.resourceName, seats: w.seats }) : t("departures.money.unavailable")}
         </p>
       ))}
 

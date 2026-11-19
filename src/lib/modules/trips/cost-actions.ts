@@ -1,20 +1,20 @@
 "use server";
 // ─────────────────────────────────────────────────────────────
 // trips/cost-actions.ts — server action ของจอ "ต้นทุนและกำไรของรอบ" (RUN TRIPS T1.7a1 §6)
-// 🔴 ส่งออกเฉพาะ async function ตัวเดียว · requireUnit (หน่วยจาก slug ทับ input) → assertCan ด่านแรก → แปลงยอดข้อความด้วย costRowsFromForm → บริการ
+// 🔴 ส่งออกเฉพาะ async function ตัวเดียว · requireUnit (หน่วยจาก slug ทับ input) → assertCan ด่านแรก → สิทธิ์ต้นทุนแคบ (Q6 · ก่อนแปลงยอด) → costRowsFromForm → บริการ
 // 🔴 สิทธิ์ต้นทุนแคบ (costAccessOf · trips.* ไม่พอ) ตรวจซ้ำในบริการ — assertCan ที่นี่เป็นด่านแรกเท่านั้น
 // 🔴 ไม่รับเวลาจากผู้เรียก (บริการใช้นาฬิกาเซิร์ฟเวอร์) · ไม่มีสิทธิ์ ⇒ { ok: false, code: "FORBIDDEN" } ไม่ throw
 // ─────────────────────────────────────────────────────────────
 import { requireUnit } from "@/lib/core/context";
 import { assertCan, ForbiddenError, type MembershipCtx } from "@/lib/core/rbac";
 import { saveDepartureCosts } from "./costs";
-import { costRowsFromForm } from "./report-core";
+import { costAccessOf, costRowsFromForm } from "./report-core";
 
 const NEEDS = ["trips.departure.view", "trips.cost.edit"] as const;
 const FORBIDDEN = { ok: false as const, code: "FORBIDDEN" as const, message: "บัญชีนี้ยังไม่ได้รับสิทธิ์ทำรายการนี้ — ติดต่อเจ้าของร้านหรือผู้จัดการเพื่อขอสิทธิ์" };
 const FORMAT_MSG: Record<string, string> = {
   COST_AMOUNT_FORMAT: "พิมพ์ยอดเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง",
-  COST_AMOUNT_INVALID: "ยอดต้นทุนต้องมากกว่าศูนย์และไม่เกินเพดานที่ระบบรับ",
+  COST_AMOUNT_INVALID: "ยอดต้นทุนต้องมากกว่าศูนย์ ไม่เกิน 10,000,000 บาทต่อรายการ และรวมทั้งรอบไม่เกิน 21 ล้านบาท",
   COST_ROWS_LIMIT: "ต้นทุนของรอบมีได้ไม่เกิน 30 รายการ",
   INVALID_INPUT: "ข้อมูลที่ส่งมายังไม่ครบหรือรูปแบบยังไม่ตรง — ตรวจแล้วลองอีกครั้ง",
 };
@@ -34,8 +34,11 @@ export async function saveDepartureCostsAction(unitSlug: string, input: unknown)
     if (err instanceof ForbiddenError) return FORBIDDEN;
     throw err;
   }
+  // Q6: ผู้ไม่มีสิทธิ์บันทึกได้ FORBIDDEN เสมอ (ไม่ใช่ข้อความรูปแบบยอด) — trips.* ผ่าน assertCan แต่ไม่ผ่านตัวตัดสินแคบ
+  if (!costAccessOf(m, unit.id).edit) return FORBIDDEN;
   const body = typeof input === "object" && input !== null && !Array.isArray(input) ? (input as Record<string, unknown>) : {};
   const rows = costRowsFromForm(body.rows);
-  if (!rows.ok) return { ok: false as const, code: rows.code, message: FORMAT_MSG[rows.code] ?? FORMAT_MSG.INVALID_INPUT };
+  // Q4: แถวแรกที่ผิด (เริ่ม 0) ส่งต่อให้จอชี้ช่อง
+  if (!rows.ok) return { ok: false as const, code: rows.code, message: FORMAT_MSG[rows.code] ?? FORMAT_MSG.INVALID_INPUT, ...(rows.row === undefined ? {} : { row: rows.row }) };
   return saveDepartureCosts({ tenantId: auth.active.tenantId, actorUserId: auth.user.id }, { unitId: unit.id, departureId: body.departureId, expectedToken: body.expectedToken, rows: rows.rows.map((r) => (r.id === null ? { kind: r.kind, amountSatang: r.amountSatang, note: r.note } : r)) });
 }

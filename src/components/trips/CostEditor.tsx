@@ -56,35 +56,55 @@ function TotalLine({ vm }: { vm: DepartureCostsVM }) {
   );
 }
 
-/** ตัวแก้ — key = token ของชุด (บันทึก/โหลดใหม่แล้วเริ่มจากชุดใหม่) */
+/** แถวของตัวแก้จากชุดใน VM (ยอดเป็นข้อความบาทแบบที่จอแสดง) */
+const draftsOf = (vm: DepartureCostsVM): Draft[] => vm.costs.rows.map((r) => ({ key: r.id, id: r.id, kind: r.kind, amountText: formatBaht(r.amountSatang), note: r.note ?? "" }));
+const ERROR_ID = "trips-cost-error-msg";
+
+/**
+ * ตัวแก้ — ไม่ผูก key กับ token (Q3: ข้อความ "บันทึกแล้ว" อยู่รอดหลังหน้ารีเฟรช)
+ * token ของ VM เปลี่ยน (บันทึกเอง/โหลดใหม่) ⇒ รับชุดใหม่จาก VM แทนแถวที่พิมพ์ไว้ (แถวใหม่ได้ id แล้ว — ไม่ถูกสร้างซ้ำ)
+ */
 export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
   const t = useTranslations("trips");
   const router = useRouter();
-  const [rows, setRows] = useState<Draft[]>(() => vm.costs.rows.map((r) => ({ key: r.id, id: r.id, kind: r.kind, amountText: formatBaht(r.amountSatang), note: r.note ?? "" })));
+  const [rows, setRows] = useState<Draft[]>(() => draftsOf(vm));
+  const [seenToken, setSeenToken] = useState(vm.costs.token);
+  const [savedToken, setSavedToken] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<{ text: string; row: number | null; field: "amount" | "note" } | null>(null);
   const [conflict, setConflict] = useState(false);
-  const [saved, setSaved] = useState(false);
+  // รับชุดใหม่ระหว่างเรนเดอร์ (รูปแบบ "ปรับ state ตาม prop" ของ React) เมื่อ token ของ VM เปลี่ยน
+  if (seenToken !== vm.costs.token) {
+    setSeenToken(vm.costs.token);
+    setRows(draftsOf(vm));
+    setConflict(false);
+    setError(null);
+  }
+  const saved = savedToken !== null && savedToken === vm.costs.token;
   const full = rows.length >= ROWS_MAX;
 
+  const touch = () => {
+    setSavedToken(null);
+    setError(null);
+  };
   const patch = (key: string, p: Partial<Draft>) => {
-    setSaved(false);
+    touch();
     setRows((xs) => xs.map((x) => (x.key === key ? { ...x, ...p } : x)));
   };
   const add = () => {
     if (full) return;
-    setSaved(false);
+    touch();
     setRows((xs) => [...xs, { key: newKey(), id: null, kind: "OTHER", amountText: "", note: "" }]);
   };
   const remove = (key: string) => {
-    setSaved(false);
+    touch();
     setRows((xs) => xs.filter((x) => x.key !== key));
   };
   const save = async () => {
     if (busy) return;
     setBusy(true);
     setError(null);
-    setSaved(false);
+    setSavedToken(null);
     try {
       const r = await saveDepartureCostsAction(vm.unit.slug, {
         departureId: vm.departure.id,
@@ -92,18 +112,23 @@ export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
         rows: rows.map((x) => ({ ...(x.id ? { id: x.id } : {}), kind: x.kind, amountText: x.amountText, note: x.note })),
       });
       if (!r.ok) {
-        if (r.code === "STATE_CONFLICT") setConflict(true);
-        else setError(KNOWN_ERRORS.has(r.code) ? t(`errors.${r.code}`) : t("common.failed"));
+        if (r.code === "STATE_CONFLICT") {
+          setConflict(true);
+          return;
+        }
+        const row = "row" in r && typeof r.row === "number" ? r.row : null;
+        setError({ text: KNOWN_ERRORS.has(r.code) ? t(`errors.${r.code}`) : t("common.failed"), row, field: r.code.startsWith("COST_AMOUNT") ? "amount" : "note" });
         return;
       }
-      setSaved(true);
+      setSavedToken(r.value.token);
       router.refresh();
     } catch {
-      setError(t("common.failed"));
+      setError({ text: t("common.failed"), row: null, field: "amount" });
     } finally {
       setBusy(false);
     }
   };
+  const bad = (i: number, field: "amount" | "note") => error !== null && error.row === i && error.field === field;
 
   return (
     <div data-testid="trips-cost-editor" className="flex min-w-0 flex-col gap-3">
@@ -128,13 +153,28 @@ export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
             </label>
             <label className="flex min-w-0 flex-col gap-1 text-sm">
               <span className="text-[color:var(--color-muted)] md:sr-only">{t("costs.editor.amount")}</span>
-              <input className={`${INPUT} text-right tabular-nums`} inputMode="decimal" value={x.amountText} maxLength={20} onChange={(e) => patch(x.key, { amountText: e.target.value })} />
+              <input
+                className={`${INPUT} text-right tabular-nums`}
+                inputMode="decimal"
+                value={x.amountText}
+                maxLength={20}
+                aria-invalid={bad(i, "amount") ? true : undefined}
+                aria-describedby={bad(i, "amount") ? ERROR_ID : undefined}
+                onChange={(e) => patch(x.key, { amountText: e.target.value })}
+              />
             </label>
             <label className="col-span-2 flex min-w-0 flex-col gap-1 text-sm md:col-span-1">
               <span className="text-[color:var(--color-muted)] md:sr-only">{t("costs.editor.note")}</span>
-              <input className={INPUT} value={x.note} maxLength={NOTE_MAX} onChange={(e) => patch(x.key, { note: e.target.value })} />
+              <input
+                className={INPUT}
+                value={x.note}
+                maxLength={NOTE_MAX}
+                aria-invalid={bad(i, "note") ? true : undefined}
+                aria-describedby={bad(i, "note") ? ERROR_ID : undefined}
+                onChange={(e) => patch(x.key, { note: e.target.value })}
+              />
             </label>
-            <button type="button" data-testid={`trips-cost-remove-${i}`} className={`${BTN_DANGER} col-span-2 md:col-span-1`} onClick={() => remove(x.key)}>
+            <button type="button" data-testid={`trips-cost-remove-${i}`} aria-label={t("costs.editor.removeAria", { n: i + 1 })} className={`${BTN_DANGER} col-span-2 md:col-span-1`} onClick={() => remove(x.key)}>
               {t("costs.editor.remove")}
             </button>
           </li>
@@ -163,8 +203,8 @@ export default function CostEditor({ vm }: { vm: DepartureCostsVM }) {
         </div>
       ) : null}
       {error ? (
-        <p data-testid="trips-cost-error" role="alert" className="rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)] [overflow-wrap:anywhere]">
-          {error}
+        <p id={ERROR_ID} data-testid="trips-cost-error" role="alert" className="rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)] [overflow-wrap:anywhere]">
+          {error.text}
         </p>
       ) : null}
     </div>

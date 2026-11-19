@@ -222,6 +222,10 @@ export function checkNoEscalation(actor: MembershipCtx, current: PermissionMap, 
       if (key.startsWith("hr.payroll.") && !canViewPayroll(actor)) {
         return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของกิจการหรือผู้มีสิทธิ์ดูเงินเดือน`);
       }
+      // TRIPS T1.7a1 ▸ Q5: สิทธิ์ต้นทุนรอบ (`trips.cost.*`) แจกได้เฉพาะ OWNER/MANAGER หรือผู้ถือคีย์นั้นแบบระบุตรง — `trips.*` ไม่พอ ◂
+      if (key.startsWith("trips.cost.") && actor.role !== "OWNER" && actor.role !== "MANAGER" && actor.permissions[key] !== true) {
+        return fail(`สิทธิ์ “${permissionLabel(key)}” ให้ได้เฉพาะเจ้าของร้าน ผู้จัดการ หรือผู้ที่ถือสิทธิ์ข้อนี้เอง`);
+      }
       if (!canGrantPermission(actor, moduleName, key)) {
         return fail(
           `คุณยังไม่มีสิทธิ์ “${permissionLabel(key)}” จึงมอบให้คนอื่นไม่ได้ — ให้เจ้าของร้านเป็นผู้เปิดสิทธิ์ข้อนี้แทน`,

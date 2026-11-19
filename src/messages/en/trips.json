@@ -422,7 +422,7 @@
   "loading": "Loading…",
   "errors": {
     "COST_ROWS_LIMIT": "A departure can have at most 30 cost lines",
-    "COST_AMOUNT_INVALID": "Cost amounts must be above zero and at most 10,000,000 baht per line",
+    "COST_AMOUNT_INVALID": "Cost amounts must be above zero, at most 10,000,000 baht per line and at most 21 million baht for the whole departure",
     "COST_AMOUNT_FORMAT": "Type the amount as a number with at most 2 decimal places",
     "HOLD_EXPIRED": "The hold has expired — ask the customer to book again",
     "IDEMPOTENCY_CONFLICT": "This was already sent with different details — close the box and open it again before retrying",
@@ -485,6 +485,9 @@
   },
   "departures": {
     "money": {
+      "unavailable": "This departure's money summary cannot be shown right now — try opening it again",
+      "detailLoss": "Gross loss {amount}",
+      "detailNoCost": "gross profit — (departure costs not deducted yet)",
       "title": "Departure money",
       "sales": "Bookings {amount}",
       "detail": "Departure money details",
@@ -497,9 +500,9 @@
       "vat": "VAT in selling prices (approx.) — not the VAT return figure",
       "estimate": "Estimate — trip not closed yet",
       "mgmt": "Management figures, not accounting reports",
-      "agentCollect": "Agents collect payment on {n} bookings",
-      "pendingRefund": "Refund pending on {n} bookings {amount}",
-      "noShowUnpaid": "No-show and not fully paid {n}",
+      "agentCollect": "Agents collect payment on {n, plural, one {# booking} other {# bookings}} · not yet in received/outstanding",
+      "pendingRefund": "Refund pending on {n, plural, one {# booking} other {# bookings}} {amount}",
+      "noShowUnpaid": "No-show and not fully paid: {n, plural, one {# booking} other {# bookings}}",
       "costs": "Costs and profit"
     },
     "title": "Departures & availability",
@@ -1364,6 +1367,7 @@
       "CANCELLED": "Departure cancelled"
     },
     "kpi": {
+      "noCosts": "Departure costs not deducted yet",
       "sales": "Sales",
       "revenue": "Revenue before VAT",
       "revenueNoVat": "Revenue",
@@ -1376,6 +1380,7 @@
       "loss": "Loss"
     },
     "breakdown": {
+      "noCosts": "Departure costs not deducted yet",
       "title": "Where the profit comes from",
       "sales": "Sales",
       "vat": "VAT in selling prices (approx.) — not the VAT return figure",
@@ -1386,17 +1391,18 @@
       "cost": "Departure cost",
       "profit": "Gross profit before VAT",
       "profitNoVat": "Gross profit",
-      "split": "Shown separately",
+      "split": "Money kept separate (not in profit)",
       "passThrough": "Collected on behalf of customers (not revenue)",
       "collected": "Received",
       "outstanding": "Outstanding",
-      "agentCollect": "Agents collect payment on {n} bookings",
-      "pendingRefund": "Refund pending on {n} bookings",
-      "retained": "Cancelled {n} bookings (shop kept {amount})",
-      "noShow": "No-show and not fully paid {n}",
-      "pendingHold": "Held or awaiting approval {n} bookings (not counted)"
+      "agentCollect": "Agents collect payment on {n, plural, one {# booking} other {# bookings}} · not yet in received/outstanding",
+      "pendingRefund": "Refund pending on {n, plural, one {# booking} other {# bookings}}",
+      "retained": "Cancelled {n, plural, one {# booking} other {# bookings}} (shop kept {amount})",
+      "noShow": "No-show and not fully paid: {n, plural, one {# booking} other {# bookings}}",
+      "pendingHold": "Held or awaiting approval {n, plural, one {# booking} other {# bookings}} (not counted)"
     },
     "editor": {
+      "removeAria": "Remove line {n}",
       "title": "Record departure costs",
       "kind": "Type",
       "amount": "Amount (baht)",
@@ -1404,7 +1410,7 @@
       "add": "+ Add line",
       "remove": "Remove",
       "save": "Save costs",
-      "saving": "Sending…",
+      "saving": "Saving…",
       "saved": "Saved",
       "limit": "30 lines reached",
       "reload": "Reload",
@@ -1415,10 +1421,10 @@
         "unknown": "VAT registration not set yet: enter the amount actually paid — check with the shop's accountant"
       }
     },
-    "conflict": "Someone saved this departure's costs first — reload and check again",
+    "conflict": "Someone saved this departure's costs first — the amounts you typed will be lost when you reload · reload and check again",
     "empty": "No costs recorded yet",
     "readOnly": "View only — recording costs needs permission from the shop owner",
-    "total": "Total cost",
+    "total": "Saved total",
     "channels": {
       "title": "Sales by channel",
       "channel": "Channel",

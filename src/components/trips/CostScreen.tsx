@@ -1,7 +1,8 @@
 "use client";
 // TRIPS T1.7a1 ▸ จอ "ต้นทุนและกำไรของรอบ" ฝั่งร้าน (ใบสั่ง T1.7 §5.2 · ไม่มีภาพออกแบบ — ผังตามใบสั่ง · ภาษาภาพเดียวกับจอใบรายชื่อ)
 //   หัว (กลับปฏิทิน · ชื่อ · สถานะรอบ · ป้ายประมาณการ) · บรรทัดตัวเลขบริหาร · การ์ด 6 ใบ · ที่มาของกำไร · คำเตือน · ตัวแก้ต้นทุน/รายการอ่านอย่างเดียว · ยอดตามช่องทาง
-//   🔴 แสดงผลเท่านั้น — ทุกตัวเลขจาก VM (loadDepartureCostsVM) · เงินผ่าน formatBaht · % ผ่าน pctText ตัวเดียว · ร้านไม่จด VAT ⇒ ไม่มีบรรทัด VAT/คำว่า "ก่อน VAT"
+//   🔴 แสดงผลเท่านั้น — ทุกตัวเลขจาก VM (loadDepartureCostsVM) · เงินผ่าน formatBaht · % ผ่าน pctText ตัวเดียว · บรรทัด VAT/คำว่า "ก่อน VAT" ตาม vatShown (Q11)
+//   🔴 ยังไม่มีแถวต้นทุน (noCosts) ⇒ กำไร "—" + ยังไม่หักต้นทุนรอบ (Q2) · vatMode ใช้เลือกข้อความวิธีใส่ยอดต้นทุนและป้ายคอมมิชชัน (ร้านไม่จด VAT รวม VAT ของคอมฯ)
 //   🔴 390: การ์ด 2 คอลัมน์ · ตัวแก้เป็นการ์ดต่อแถว · ไม่มีอะไรล้นจอ
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -9,7 +10,7 @@ import { useTranslations } from "next-intl";
 import type { DepartureCostsVM } from "@/lib/modules/trips";
 import { CANCEL_STRIPES, useDepDates, useTitle } from "./DepartureParts";
 import { formatBaht } from "./trips-shared";
-import { ESTIMATE_PILL, MGMT_LINE, WARN_LINE, pctText, useMoneyWarnText } from "./CostParts";
+import { ESTIMATE_PILL, MGMT_LINE, WARN_LINE, pctText, useMoneyWarnText, vatShown } from "./CostParts";
 import CostEditor, { CostRowsReadOnly } from "./CostEditor";
 
 const CARD = "flex min-w-0 flex-col gap-3 rounded-2xl border border-[color:var(--color-line)] bg-[color:var(--color-surface)] p-4";
@@ -54,7 +55,9 @@ export default function CostScreen({ vm }: { vm: DepartureCostsVM }) {
   const warnText = useMoneyWarnText();
   const d = vm.departure;
   const m = vm.money;
-  const noVat = m.vatMode === "NOT_REGISTERED";
+  const noVat = !vatShown(m);
+  const commissionWithVat = m.vatMode === "NOT_REGISTERED";
+  const noCosts = m.noCosts === true;
   const base = `/app/u/${vm.unit.slug}/trips/departures`;
   const backHref = `${base}?view=week&start=${d.localDate}&dep=${encodeURIComponent(d.id)}`;
   const title = T(d.titleTh, d.titleEn);
@@ -111,7 +114,7 @@ export default function CostScreen({ vm }: { vm: DepartureCostsVM }) {
           {vm.costs.perSeatSatang !== null ? <span>{t("costs.kpi.perSeat", { amount: formatBaht(vm.costs.perSeatSatang) })}</span> : null}
         </Kpi>
         <Kpi data-testid="trips-cost-kpi-profit" label={t("costs.kpi.profit")} value={money(m.grossProfitSatang)} danger={loss}>
-          {loss ? <span className="text-[color:var(--color-danger)]">{t("costs.kpi.loss")}</span> : m.marginBp !== null ? <span>{pctText(m.marginBp)}</span> : null}
+          {noCosts ? <span>{t("costs.kpi.noCosts")}</span> : loss ? <span className="text-[color:var(--color-danger)]">{t("costs.kpi.loss")}</span> : m.marginBp !== null ? <span>{pctText(m.marginBp)}</span> : null}
         </Kpi>
         <Kpi data-testid="trips-cost-kpi-load" label={t("costs.kpi.load")} value={t("costs.kpi.loadValue", { sold: m.sold, capacity: m.capacity, pct: pctText(m.loadFactorBp) })}>
           {m.charterLike ? (
@@ -140,9 +143,10 @@ export default function CostScreen({ vm }: { vm: DepartureCostsVM }) {
             <Line label={t("costs.breakdown.sales")} value={formatBaht(m.salesSatang)} />
             {noVat ? null : <Line testid="trips-cost-vat-line" sign="−" label={t("costs.breakdown.vat")} value={formatBaht(m.vatSatang)} />}
             <Line strong label={noVat ? t("costs.breakdown.revenueNoVat") : t("costs.breakdown.revenue")} value={formatBaht(m.revenueExVatSatang)} />
-            <Line sign="−" label={noVat ? t("costs.breakdown.commissionWithVat") : t("costs.breakdown.commission")} value={money(m.commissionCostSatang)} />
+            <Line sign="−" label={commissionWithVat ? t("costs.breakdown.commissionWithVat") : t("costs.breakdown.commission")} value={money(m.commissionCostSatang)} />
             <Line sign="−" label={t("costs.breakdown.cost")} value={money(m.costSatang)} />
             <Line strong sign="=" danger={loss} label={noVat ? t("costs.breakdown.profitNoVat") : t("costs.breakdown.profit")} value={money(m.grossProfitSatang)} />
+            {noCosts ? <p className="text-sm text-[color:var(--color-muted)]">{t("costs.breakdown.noCosts")}</p> : null}
           </div>
           <h3 className="pt-1 text-sm font-bold text-[color:var(--color-ink)]">{t("costs.breakdown.split")}</h3>
           <div className="flex min-w-0 flex-col">
@@ -160,7 +164,7 @@ export default function CostScreen({ vm }: { vm: DepartureCostsVM }) {
         {/* ── ต้นทุนของรอบ ── */}
         <section className={CARD}>
           <h2 className={H2}>{t("costs.editor.title")}</h2>
-          {vm.flags.canEdit ? <CostEditor key={vm.costs.token} vm={vm} /> : <CostRowsReadOnly vm={vm} />}
+          {vm.flags.canEdit ? <CostEditor vm={vm} /> : <CostRowsReadOnly vm={vm} />}
           <p data-testid="trips-cost-vat-note" className={MGMT_LINE}>
             {vatNote}
           </p>

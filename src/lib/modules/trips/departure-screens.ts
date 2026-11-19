@@ -621,10 +621,12 @@ type DeparturePanelBase = {
   warnings: { code: "CAPACITY_OVER_SEATS"; resourceName: string; seats: number }[];
 };
 // TRIPS T1.7a1 ▸ แผงรอบเติมเฉพาะ money (C7) — ตัวคิดเดียวกับ departureMoneySummary · ไม่ผ่านด่านเงิน ⇒ null · actions.costs = ไปจอต้นทุนได้ (สิทธิ์แคบ costAccessOf) ◂
-export type DeparturePanelVM = Omit<DeparturePanelBase, "money" | "actions"> & {
-  /** ด่าน: ดูรอบ ∧ (ดูการจอง ∨ ดูรายงาน ∨ เห็นต้นทุน) · ช่องต้นทุน/คอมฯ/กำไร = null เมื่อไม่เห็นต้นทุน */
+export type DeparturePanelVM = Omit<DeparturePanelBase, "money" | "actions" | "warnings"> & {
+  /** ด่าน: ดูรอบ ∧ (ดูการจอง ∨ ดูรายงาน ∨ เห็นต้นทุน) · ช่องต้นทุน/คอมฯ/กำไร = null เมื่อไม่เห็นต้นทุน · ตัวคิดล้ม ⇒ null + คำเตือน MONEY_UNAVAILABLE (Q7) */
   money: DepartureMoneyVM | null;
-  actions: PanelActions & { costs: boolean };
+  /** costs ตั้งเสมอก่อนคืน VM (Object.assign · งบบรรทัดของไฟล์นี้) */
+  actions: PanelActions & { costs?: boolean };
+  warnings: (DeparturePanelBase["warnings"][number] | { code: "MONEY_UNAVAILABLE" })[];
 };
 const SEAT_ORDER = ["ADULT", "CHILD", "INFANT"];
 const seatRank = (code: string) => (SEAT_ORDER.includes(code) ? SEAT_ORDER.indexOf(code) : SEAT_ORDER.length);
@@ -645,7 +647,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
 
   const resIds = d.resources.map((r) => r.resourceId);
   const [prod, opt, row, wl, priced, resRows, policies] = await Promise.all([
-    g.db.tripProduct.findFirst({ where: { tenantId: g.tenantId, unitId: g.unitId, id: d.productId }, select: { id: true, title: true, currency: true, productType: true } }),
+    g.db.tripProduct.findFirst({ where: { tenantId: g.tenantId, unitId: g.unitId, id: d.productId }, select: { id: true, title: true, currency: true, productType: true, sourceKind: true } }),
     d.optionId ? g.db.tripOption.findFirst({ where: { tenantId: g.tenantId, unitId: g.unitId, id: d.optionId }, select: { name: true } }) : Promise.resolve(null),
     g.db.tripDeparture.findFirst({ where: { tenantId: g.tenantId, unitId: g.unitId, id: d.id }, select: { cancelReason: true, cancelledAt: true } }),
     g.db.tripWaitlist.groupBy({ by: ["status"], where: { tenantId: g.tenantId, unitId: g.unitId, departureId: d.id, status: { in: ["WAITING", "OFFERED"] } }, _sum: { qty: true } }),
@@ -768,12 +770,14 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
   }
 
   // TRIPS T1.7a1 ▸ เงินของรอบ (ไม่เขียนสูตรซ้ำ — costs.ts) ◂
-  const { money, costs: costsAction } = await departureMoneyForPanel(g, d.id, now);
+  const { money, costs: costsAction, failed: moneyFailed } = await departureMoneyForPanel(g, { id: d.id, status: d.status, endsAt: new Date(d.endsAt), capacity: d.capacity, sold: d.sold }, prod.sourceKind, now);
+  Object.assign(actions, { costs: costsAction });
 
   // ── คำเตือน: ความจุเกินที่นั่งรวมของเรือที่มอบให้ (หนี้ T0.3 §12 ข้อ 10 · ไม่บล็อก) ──
   const boats = resources.filter((r) => r.kind === "BOAT" && typeof r.seats === "number");
   const boatSeats = boats.reduce((s, r) => s + (r.seats ?? 0), 0);
   const warnings: DeparturePanelVM["warnings"] = boats.length && d.capacity > boatSeats ? [{ code: "CAPACITY_OVER_SEATS", resourceName: boats.map((b) => b.name).join(" · "), seats: boatSeats }] : [];
+  if (moneyFailed) warnings.push({ code: "MONEY_UNAVAILABLE" }); // TRIPS T1.7a1 ▸ Q7 ◂
 
   return {
     ok: true,
@@ -796,7 +800,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
       bookings: null,
       reasonTitles: await reasonTitlesOf(g, [cell.cancelReason]),
       money,
-      actions: { ...actions, costs: costsAction },
+      actions,
       cancelBlocked: people > 0,
       // ผลหลังถอน = สถานะช่องของรอบเดียวกันเมื่อเป็น OPEN (ลำดับตัดสินเดียวกัน: เต็มชนะต่ำกว่าขั้นต่ำ)
       unguaranteeToBelowMin: d.status === "GUARANTEED" && departureCellState({ ...d, status: "OPEN" }, { now, today, lowAtOrBelow: null }) === "BELOW_MIN",

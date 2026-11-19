@@ -1,7 +1,8 @@
 "use client";
 // TRIPS T1.7a1 ▸ ชิ้นส่วนร่วมของเงินระดับรอบ: ตัวจัดรูป % จาก bp (ตัวเดียว) · ป้ายประมาณการ · การ์ดเงินในแผงรอบ (ภาพ 11 :56–:57)
 //   🔴 แสดงผลเท่านั้น — ทุกตัวเลขจาก VM (ตัวคิดเดียวที่ costs.ts) · เงินผ่าน formatBaht เท่านั้น · ช่อง null (ไม่มีสิทธิ์ต้นทุน) ไม่แสดง
-//   🔴 ทุกจอที่มีตัวเลขมีบรรทัด "ตัวเลขบริหาร" + ป้ายประมาณการ · ร้านไม่จด VAT ⇒ ไม่มีบรรทัด VAT / คำว่า "ก่อน VAT"
+//   🔴 ทุกจอที่มีตัวเลขมีบรรทัด "ตัวเลขบริหาร" + ป้ายประมาณการ · บรรทัด VAT / คำว่า "ก่อน VAT" ตาม vatShown (Σ VAT ของรอบ > 0 · Q11)
+//   🔴 รอบยังไม่มีแถวต้นทุน (noCosts) ⇒ ไม่แสดงกำไร ("—" + ยังไม่หักต้นทุนรอบ · Q2) · ขาดทุน ⇒ คำ "ขาดทุนขั้นต้น" + ยอดไม่มีเครื่องหมาย (Q14)
 import { useTranslations } from "next-intl";
 import type { DepartureMoneyVM } from "@/lib/modules/trips";
 import { formatBaht } from "./trips-shared";
@@ -12,6 +13,17 @@ export function pctText(bp: number | null): string {
   const v = Math.trunc(bp);
   const abs = Math.abs(v);
   return `${v < 0 ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}%`;
+}
+/** ยอดไม่มีเครื่องหมาย (ข้อความ "ขาดทุนขั้นต้น" บอกทิศเอง · ไม่พึ่งสี) — ตัดเครื่องหมายจากสตริงของ formatBaht */
+export function bahtUnsigned(satang: number): string {
+  return formatBaht(satang).replace(/^-/, "");
+}
+/**
+ * Q11 (C12 ชนะ N8): ตัวเลขตาม snapshot ของแต่ละการจอง — บรรทัด VAT และคำว่า "ก่อน VAT" แสดงเมื่อ Σ VAT ของรอบ > 0 (ไม่ใช่ตามค่าตั้งปัจจุบัน)
+ * ตัวตัดสินตัวเดียวของทุกจอ (VM ตรึงรูปไว้ 29 ช่อง — ไม่เพิ่มธง)
+ */
+export function vatShown(m: { vatSatang: number }): boolean {
+  return m.vatSatang > 0;
 }
 export const ESTIMATE_PILL = "inline-flex w-fit items-center whitespace-nowrap rounded-md border border-dashed border-[color:var(--color-ink)] px-2 py-0.5 text-sm text-[color:var(--color-ink)]";
 export const MGMT_LINE = "text-sm text-[color:var(--color-muted)] [overflow-wrap:anywhere]";
@@ -28,12 +40,13 @@ export function CostMoneyCard({ money }: { money: DepartureMoneyVM }) {
   const t = useTranslations("trips");
   const warnText = useMoneyWarnText();
   const m = money;
-  const noVat = m.vatMode === "NOT_REGISTERED";
   const parts: string[] = [];
   if (m.passThroughSatang > 0) parts.push(t("departures.money.detailPt", { amount: formatBaht(m.passThroughSatang) }));
-  if (m.costSatang !== null) parts.push(m.costRows === 0 ? t("departures.money.noCost") : t("departures.money.detailCost", { amount: formatBaht(m.costSatang) }));
+  if (m.costSatang !== null) parts.push(m.noCosts === true ? t("departures.money.noCost") : t("departures.money.detailCost", { amount: formatBaht(m.costSatang) }));
   if (m.commissionCostSatang !== null) parts.push(t("departures.money.detailCommission", { amount: formatBaht(m.commissionCostSatang) }));
-  if (m.grossProfitSatang !== null) parts.push(t(noVat ? "departures.money.detailProfitNoVat" : "departures.money.detailProfit", { amount: formatBaht(m.grossProfitSatang) }));
+  if (m.noCosts === true) parts.push(t("departures.money.detailNoCost"));
+  else if (m.grossProfitSatang !== null && m.grossProfitSatang < 0) parts.push(t("departures.money.detailLoss", { amount: bahtUnsigned(m.grossProfitSatang) }));
+  else if (m.grossProfitSatang !== null) parts.push(t(vatShown(m) ? "departures.money.detailProfit" : "departures.money.detailProfitNoVat", { amount: formatBaht(m.grossProfitSatang) }));
   return (
     <>
       <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
@@ -47,7 +60,7 @@ export function CostMoneyCard({ money }: { money: DepartureMoneyVM }) {
           {parts.join(" · ")}
         </p>
       ) : null}
-      {noVat ? null : (
+      {!vatShown(m) ? null : (
         <p data-testid="trips-dep-money-vat" className="text-sm text-[color:var(--color-ink-soft)] [overflow-wrap:anywhere]">
           {t("departures.money.vat")} <b className="whitespace-nowrap tabular-nums text-[color:var(--color-ink)]">{formatBaht(m.vatSatang)}</b>
         </p>
