@@ -25,6 +25,7 @@ import { createHmac, randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 import { loadTripsQcEnv } from "./trips-qc-env.mjs";
+import { changedOnlyByMainMerge, fromMainMerge } from "./trips-main-merge.mjs"; // ORACLE-EDIT (ผู้คุม 19 พ.ย.: รวม main) — commit ฝั่ง main ที่รวมเข้ามา อยู่ที่เดียว
 
 const LABEL = "qc-trips-a1.1";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -573,7 +574,8 @@ try {
   console.log("\n── M: migration ──");
   const baseMigs = new Set(git(["ls-tree", "--name-only", `${BASE_SHA}:prisma/migrations`]).split("\n").filter(Boolean));
   const nowMigs = readdirSync(join(ROOT, "prisma/migrations")).filter((d) => !d.endsWith(".toml")).sort();
-  const newMigs = nowMigs.filter((d) => !baseMigs.has(d));
+  // ORACLE-EDIT M-1 (ผู้คุม 19 พ.ย.: รวม main — migration ของ main ไม่ใช่ของใบ): โฟลเดอร์ที่มีตรงกันบน commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge) ไม่นับเป็น "ใหม่" · โฟลเดอร์ที่ฝั่ง TRIPS เพิ่ม/untracked ยังนับ
+  const newMigs = nowMigs.filter((d) => !baseMigs.has(d) && !fromMainMerge(ROOT, `prisma/migrations/${d}`));
   const migDir = newMigs.find((d) => /^\d{14}_agency$/.test(d));
   const migSql = migDir ? read(`prisma/migrations/${migDir}/migration.sql`) : "";
   const migCode = stripSqlComments(migSql);
@@ -635,7 +637,8 @@ try {
     ok(!/CREATE UNIQUE INDEX "AgentIdentity_taxIdHash/i.test(migCode), "taxIdHash ต้องไม่ unique (มติ R1)");
   });
   await st("M-6", "schema: agency.prisma + supplier.prisma ใหม่ · trips.prisma/sellable.prisma เพิ่มอย่างเดียว · ไม่แตะไฟล์ schema อื่น · ไม่ @@unique ซ้ำ SQL มือ", () => {
-    const ch = changedSinceBase(["prisma/schema"]).sort();
+    // ORACLE-EDIT M-6 (ผู้คุม 19 พ.ย.: รวม main): ไฟล์ schema ที่ตรงกับ commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge) หรือที่ต่างจาก BASE เพราะ main อย่างเดียว (changedOnlyByMainMerge · core.prisma) ไม่ใช่ของ TRIPS · ไฟล์ที่ฝั่ง TRIPS แก้/untracked ยังแดง
+    const ch = changedSinceBase(["prisma/schema"]).filter((f) => !fromMainMerge(ROOT, f) && !changedOnlyByMainMerge(ROOT, BASE_SHA, f)).sort();
     eq(ch, ["prisma/schema/agency.prisma", "prisma/schema/sellable.prisma", "prisma/schema/supplier.prisma", "prisma/schema/trips.prisma"], "ไฟล์ schema ที่เปลี่ยน");
     const del = git(["diff", "--numstat", BASE_SHA, "--", "prisma/schema/trips.prisma", "prisma/schema/sellable.prisma"]).trim().split("\n").filter(Boolean).filter((l) => Number(l.split("\t")[1]) > 0);
     ok(del.length === 0, `ลบบรรทัดในไฟล์เดิม: ${del.join(" · ")}`);

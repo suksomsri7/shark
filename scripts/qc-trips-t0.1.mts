@@ -30,6 +30,7 @@ import { randomBytes } from "node:crypto";
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 import { loadTripsQcEnv } from "./trips-qc-env.mjs";
+import { fromMainMerge } from "./trips-main-merge.mjs"; // ORACLE-EDIT (ผู้คุม 19 พ.ย.: รวม main) — commit ฝั่ง main ที่รวมเข้ามา อยู่ที่เดียว
 
 const LABEL = "qc-trips-t0.1";
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -467,7 +468,8 @@ try {
   await st("M-1", "migration ใหม่ = 2 โฟลเดอร์ `<ts>_trips_enum` + `<ts>_trips` · ts > ฐาน · enum มาก่อน", () => {
     ok(enumDir && mainDir, `ยังไม่มี (ใหม่: ${newMigs.join(", ") || "ไม่มี"})`);
     // ORACLE-EDIT M-1 (ผู้คุม 13 พ.ย.): A1.1 เพิ่ม `<ts>_agency` หลัง `_trips` (ใบ migration ถัดไป K1.1/L1.1 เพิ่มได้อีก)
-    const later = newMigs.filter((d) => d !== enumDir && d !== mainDir);
+    // ORACLE-EDIT M-1 (ผู้คุม 19 พ.ย.: รวม main — migration ของ main ไม่ใช่ของใบ): โฟลเดอร์ที่มีตรงกันบน commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge) ไม่ใช่ของ TRIPS · โฟลเดอร์ที่ฝั่ง TRIPS เพิ่ม/untracked ยังต้องอยู่ในรายการ
+    const later = newMigs.filter((d) => d !== enumDir && d !== mainDir && !fromMainMerge(ROOT, `prisma/migrations/${d}`));
     ok(later.every((d) => /^\d{14}_(agency|ticket_v2|liveaboard)[a-z0-9_]*$/.test(d) && d > (mainDir ?? "")), `โฟลเดอร์ใหม่นอกรายการ: ${later.join(", ")}`);
     ok((enumDir ?? "") > BASE_LAST_MIG && (enumDir ?? "") < (mainDir ?? ""), `ลำดับ ${enumDir} < ${mainDir}`);
   });
@@ -508,7 +510,8 @@ try {
     ok(miss.length === 0, `ขาด: ${miss.join(", ")}`);
   });
   await st("M-6", "schema: trips.prisma + sellable.prisma ใหม่ · แตะไฟล์เดิมแค่ core.prisma + account.prisma · ไม่ประกาศ @@unique ซ้ำกับ SQL มือ + มีคอมเมนต์ SQL มือ", () => {
-    const ch = changedFiles(["prisma/schema"]).sort();
+    // ORACLE-EDIT M-6 (ผู้คุม 19 พ.ย.: รวม main): ไฟล์ schema ที่ตรงกับ commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge) ไม่ใช่ของ TRIPS (ไฟล์ของใบไม่มีบน main ⇒ ยังนับ) · ไฟล์ที่ฝั่ง TRIPS แก้/untracked ยังแดง
+    const ch = changedFiles(["prisma/schema"]).filter((f) => !fromMainMerge(ROOT, f)).sort();
     eq(ch.filter((f) => !["prisma/schema/agency.prisma", "prisma/schema/supplier.prisma"].includes(f) /* ORACLE-EDIT M-6 (ผู้คุม 13 พ.ย.): A1.1 */), ["prisma/schema/account.prisma", "prisma/schema/core.prisma", "prisma/schema/sellable.prisma", "prisma/schema/trips.prisma"], "ไฟล์ schema ที่เปลี่ยน");
     const tp = stripComments(read("prisma/schema/trips.prisma"));
     const dup = [/@@unique\(\[\s*productId\s*,\s*optionId\s*,\s*startsAt\s*\]/, /@@unique\(\[\s*passengerId\s*\]/, /@@unique\(\[\s*unitId\s*,\s*day\s*,\s*channel\s*,\s*linkId\s*\]/, /@@unique\(\[\s*productId\s*,\s*optionId\s*,\s*paxTypeId/].filter((r) => r.test(tp));
@@ -814,7 +817,8 @@ try {
     ok(!/@\/lib\/modules|@prisma|next\//.test(src), "ลาก modules/prisma/next");
   });
   await st("S-7", "ไม่มี `any` ในไฟล์ src ที่ใบนี้เพิ่ม/แก้", () => {
-    const files = changedFiles(["src"]).filter((f) => /\.(ts|tsx)$/.test(f));
+    // ORACLE-EDIT S-7 (ผู้คุม 19 พ.ย.: รวม main): ไฟล์ src ที่ตรงกับ commit ฝั่ง main ที่รวมเข้ามา (เช่น modules/calendar/google.ts ของ main) ไม่ใช่ไฟล์ที่ใบนี้เพิ่ม/แก้ · ไฟล์ trips ที่มี any ยังแดง
+    const files = changedFiles(["src"]).filter((f) => /\.(ts|tsx)$/.test(f) && !fromMainMerge(ROOT, f));
     ok(files.length > 0, "ยังไม่มีไฟล์ src ที่เปลี่ยน");
     const hits: string[] = [];
     for (const f of files) { const s = stripComments(read(f)); if (/:\s*any\b|\bas\s+any\b|<any>|\bany\[\]/.test(s)) hits.push(f); }
@@ -829,7 +833,8 @@ try {
     const into = [...["supplier", "ticket"].flatMap((m) => walk(`src/lib/modules/${m}`)).filter((f) => /@\/lib\/modules\/trips/.test(read(f))), ...walk("src/lib/modules/agency").filter((f) => /@\/lib\/modules\/trips\//.test(read(f)))];
     ok(into.length === 0, `import trips: ${into.join(", ")}`);
     // ORACLE-EDIT S-8 (ผู้คุม 12 พ.ย.): ผู้คุมแก้ fitness.mts เอง (F5 baseline 50→51 · trips/jobs.ts ของ T0.3) — ตรวจว่า baseline ไม่เกิน 51 แทนการห้ามแก้ไฟล์
-    ok(/f5RawPrisma:\s*(50|51|52)\b/.test(read("scripts/fitness.mts")), "fitness F5 baseline ถูกขยับเกิน 52 (ORACLE-EDIT ผู้คุมเท่านั้น)"); // ORACLE-EDIT S-8 รอบ 3 (ผู้คุม 13 พ.ย.): 52 = agency/entry.ts ของ A1.1
+    // ORACLE-EDIT S-8 (ผู้คุม 19 พ.ย.: รวม main): เพดาน 54 = main 52 (CAL1.4 calendar/fire.ts · CAL1.5 calendar/brief.ts) + TRIPS 2 (trips/jobs.ts T0.3 · agency/entry.ts A1.1) — ดูคอมเมนต์เหนือ `const BASELINE` ใน scripts/fitness.mts · เกิน 54 ยังแดง
+    ok(/f5RawPrisma:\s*(50|51|52|53|54)\b/.test(read("scripts/fitness.mts")), "fitness F5 baseline ถูกขยับเกิน 54 (ORACLE-EDIT ผู้คุมเท่านั้น)"); // ORACLE-EDIT S-8 รอบ 3 (ผู้คุม 13 พ.ย.): 52 = agency/entry.ts ของ A1.1
   });
   await st("S-9", "permissions: trips.settings.edit + trips.settings.money ลงทะเบียนพร้อมป้ายไทย", () => {
     const keys = PERM?.PERMISSION_KEYS;
@@ -850,7 +855,8 @@ try {
   await st("S-12", "ไม่แตะ POS · โรงแรม · หอ · จองคิว · defs/rooms · defs/booking · legal/th-rental-2568 · seed/ฟิกซ์เจอร์ P0.1", () => {
     const ch = changedFiles(["src/lib/modules/pos", "src/lib/modules/hotel", "src/lib/modules/dorm", "src/lib/modules/booking", "src/lib/core/settings/defs/rooms.ts", "src/lib/core/settings/defs/booking.ts", "src/lib/core/settings/legal/th-rental-2568.ts"]); // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย. รอบ 2): seed/ฟิกซ์เจอร์ถูกขยายโดย T0.2+ ตามใบสั่ง — เอาออกจากรายการ · เดิม: ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย.): เอา qc-trips-p0.1.mts ออก — ผู้คุมแก้ไฟล์นั้นเอง (cast env)
     // ORACLE-EDIT S-12 (ผู้คุม 12 พ.ย. รอบ 3): เจ้าของสั่ง merge origin/main 6b991f34d (งานโรงแรม) — ไฟล์ที่ตรงกับ main ไม่นับว่า TRIPS แตะ
-    const ours = ch.filter((f) => git(["diff", "-w", "--ignore-blank-lines", "--name-only", "6b991f34d", "--", f]).trim() !== "");
+    // ORACLE-EDIT S-12 (ผู้คุม 19 พ.ย.: รวม main): 6b991f34d → commit ฝั่ง main ของ merge 19 พ.ย. ที่เดียวใน scripts/trips-main-merge.mts (main ใหม่มีงานโรงแรมเดิมอยู่แล้ว) · ไฟล์ POS/โรงแรม/หอ/จองคิวที่ฝั่ง TRIPS แก้ยังแดง
+    const ours = ch.filter((f) => !fromMainMerge(ROOT, f, { ignoreWs: true }));
     ok(ours.length === 0, `แตะ: ${ours.join(", ")}`);
   });
 
