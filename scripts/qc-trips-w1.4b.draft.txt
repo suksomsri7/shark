@@ -1,198 +1,217 @@
-// QC (ร่าง) — TRIPS W1.4b · ร้านรับเงินที่โอนหลังถือที่หมดเวลา (ภาพ 07ข) — ร่างของผู้ร่างใบสั่ง 26 พ.ย. 2569 · ยังไม่ใช่ .mts
-// ผู้เขียนข้อสอบแยกแปลงเป็น scripts/qc-trips-w1.4b.mts หลังผู้คุมรับใบ (มติ C-6 C-7 C-W14b-*) · builder ห้ามแก้ไฟล์ข้อสอบ
-// ใบสั่ง: ledger/trips-briefs/W1.4b.md · ขึ้นกับ T1.6a1 (รวมเข้า session/trips ก่อน) · BASE = session/trips หลังรวม T1.6a1 (ผู้คุมตรึง SHA)
+// QC (ร่างรอบ 1) — TRIPS W1.4b1 · ร้านรับเงินที่โอนหลังถือที่หมดเวลา: บริการ + ทางเงินครบวง + รายงาน (ไม่มีจอ) — ผู้ร่างใบสั่ง 26 พ.ย. 2569
+// รวมมติ P1–P12 + ข้อที่ผู้ตรวจเงิน/การออกแบบรอบ 0 ขอเพิ่ม · ผู้เขียนข้อสอบแยกแปลงเป็น scripts/qc-trips-w1.4b.mts · builder ห้ามแก้ไฟล์ข้อสอบ
+// ใบสั่ง: ledger/trips-briefs/W1.4b.md §1–§14 (b1) · b2 (จอ/หน้าลูกค้า) มีข้อสอบแยกหลัง b1 รับ — ข้อ PG ในไฟล์นี้มีแค่ส่วนความปลอดภัยของ b1
+// BASE = session/trips หลังรวม T1.6a1 (ผู้คุมตรึง SHA)
 //
-// ป้ายระดับในชื่อข้อ: [pure] ตัวช่วยบริสุทธิ์ · [service] บริการ modules/trips · [action] server action + FormData จริง · [page] เรนเดอร์หน้าจริง · [job] งานตามเวลาจริง · [code] อ่านโค้ด
-// ป้ายใบ: {b1} {b2} — ใบ b1 เขียวกลุ่ม {b1} ทั้งหมด · b2 เขียวทั้งไฟล์
-// กลุ่ม: PC ตัวควบคุม · S ขอบเขต/กติกาโค้ด · P บริสุทธิ์ · RV ฟื้น · RF ทางคืน · AM ยอด · EX โอนคืนครบวง · DP สถานะรอบ · PU ผู้จองถูกลบ
-//        PR โค้ดส่วนลด · PM สิทธิ์ · BP ทางเงินปลอม · ID กันซ้ำ · RC แข่งกัน · JB งานตามเวลา · EV อีเวนต์/audit · H ค่าคงที่เงิน · UI จอร้าน · PG หน้าลูกค้า · LG ข้อความ · X ข้ามร้าน/อินพุตอันตราย
+// ป้ายระดับ (อยู่ในชื่อข้อ): [pure] · [service] บริการ modules/trips · [action] server action + FormData จริง · [page] เรนเดอร์หน้าจริง · [job] งานจริง · [code] อ่านโค้ด
+// กลุ่ม: PC ตัวควบคุม · S ขอบเขต/โค้ด · P บริสุทธิ์ · RV ฟื้น · RF ทางคืน · OV โอนเกิน · EX โอนคืนครบวง · DP รอบ/สินค้า · PU ผู้จอง · PR โค้ดส่วนลด
+//        GR งวด/X11 · PM สิทธิ์ · BP เงินปลอม · ID กันซ้ำ · RC แข่งกัน · JB งาน · RP รายงาน · EV อีเวนต์/audit · H ค่าคงที่ · PG หน้าลูกค้า (ส่วน b1) · X ข้ามร้าน
 //
-// 🔴 นาฬิกา: [service]/[job] ส่ง now จำลองเสมอ · [action]/[page] นาฬิกาจริง — รอบทดสอบทุกตัวปี 2027
-//    NOW0 = 2027-03-01T03:00:00Z (10:00 เวลาร้าน · เวลาจอง) · NOWX = NOW0 + 20 นาที (รัน runExpireHolds จริง ⇒ EXPIRED) · NOWL = 2027-03-01T07:00:00Z (14:00 · รับเงินหลังหมดเวลา)
-// 🔴 ร้านชั่วคราว slug `trips-w14b-*` · ผู้ใช้ `trips-w14b-*@…` · ลบใน finally (รวมถังอัตรา `trips:*:<tenant>*` · AuditLog · OutboxEvent ของ tenant) + กวาดค้างตอนเริ่ม · ไม่พึ่งร้าน seed · ห้ามรันพร้อมข้อสอบ TRIPS อื่นบนฐานเดียวกัน
-// 🔴 ฟิกซ์เจอร์แยกต่อบล็อก: แต่ละกลุ่มสร้างการจองของตัวเองผ่านเส้นจริง (quoteTrips → bookTripsNow PUBLIC/WEB PAY_NOW ⇒ HOLD → runExpireHolds จริง ⇒ EXPIRED) · ยกเว้นที่ระบุ "แถวตรง"
-// 🔴 ค่าคาดหวังคิดมือในไฟล์นี้ (ด้านล่าง) — ไม่เรียกโค้ดที่ถูกทดสอบเพื่อหาคำตอบ · ตัวนับ SQL (แบบ qc-trips-w1.4 measure) ใช้เฉพาะ PF
-// รัน: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-trips-w1.4b.mts   (ห้าม timeout ครอบ · ห้าม kill กลางคัน)
-// ผลก่อนมีงาน: PC · S-1..S-3 · PU-2 · JB-1 · X-1 เขียว · ที่เหลือแดง "ยังไม่มี acceptLatePayment / ป้าย LATE_PAYMENT / …"
+// 🔴 นาฬิกา: [service]/[job] ส่ง now จำลองเสมอ · [action]/[page] นาฬิกาจริง · รอบทดสอบทั้งหมดปี 2027
+//    NOW0 = 2027-03-01T03:00:00Z (10:00 เวลาร้าน · จอง) · NOWX = NOW0 + 20 นาที (runExpireHolds จริง ⇒ EXPIRED) · NOWL = 2027-03-01T07:00:00Z (14:00 · รับเงินหลังหมดเวลา)
+// 🔴 ร้านชั่วคราว slug `trips-w14b-*` · ผู้ใช้ `trips-w14b-*@…` · ลบใน finally (แถว trips ทุกตาราง · AuditLog · OutboxEvent · ถังอัตรา `trips:*:<tenant>*`) + กวาดค้างตอนเริ่ม · ไม่พึ่งร้าน seed
+//    ห้ามรันพร้อมข้อสอบ TRIPS อื่นบนฐานเดียวกัน (with-gate-lock)
+// 🔴 ฟิกซ์เจอร์แยกต่อบล็อก (แต่ละกลุ่มมีการจอง/ผู้จองเบอร์ของตัวเอง) ผ่านเส้นจริง: quoteTrips → bookTripsNow PUBLIC/WEB PAY_NOW ⇒ HOLD → runExpireHolds(NOWX) จริง ⇒ EXPIRED · "แถวตรง" ระบุเมื่อใช้
+// 🔴 ค่าคาดหวังคิดมือในตารางข้างล่าง — ห้ามเรียกโค้ดที่ถูกทดสอบเพื่อหาคำตอบ · ตัวนับ SQL แบบ qc-trips-w1.4 (measure) ใช้เฉพาะ PF
+// รัน: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-trips-w1.4b.mts  (ห้าม timeout ครอบ · ห้าม kill กลางคัน)
+// ก่อนมีงาน: PC · S-1..S-3 · PU-2 · JB-1 · RP-0 · X-1 เขียว · ที่เหลือแดง "ยังไม่มี acceptLatePayment / ป้าย LATE_PAYMENT / …"
 
 // ═══════════════ ฟิกซ์เจอร์ (pinned) ═══════════════
-// ร้าน tA (slug trips-w14b-a) · หน่วย uA (TRIPS · tz Asia/Bangkok · จด VAT 7% · ราคารวม VAT) · ร้าน tB (ข้ามร้าน) · หน่วย uA2 ของ tA (ข้ามหน่วย)
-// สินค้า PR = FX.PRODUCT_RACHA: ผู้ใหญ่ 350,000 · อุทยานผู้ใหญ่ 60,000 (PARK_FEE · เก็บแทน · บังคับ) · ไม่มีกล้อง
-// ค่าตั้งหน่วย: trips.sell.holdMinutes 15 · trips.pay.depositPct 30 · trips.pay.depositBase TRIP_ONLY · trips.pay.balanceDueDaysBefore 20
-//   trips.pay.overdueAction AUTO_RELEASE (เพื่อพิสูจน์ JB-2 ว่าไม่มีงวดค้าง) · trips.pay.overdueGraceHours 0 · trips.cancel.autoApproveUpTo 100_000_000 (X12 สูงสุด · BP)
-//   trips.public.bookingEnabled true · trips.public.shopContact { phone "076-000-415", line "@w14bqc" }
-// รอบ (ทุกตัว capacity 10 เว้นที่ระบุ · 08:00 เวลาร้าน):
-//   dL  2027-04-20 — รอบหลัก (ฟื้น)                         dF  2027-04-21 capacity 2 — เต็มหลังหมดเวลา (แถวตรง sold 2 หลังตัวกวาด)
-//   dQ  2027-03-10 — งวดเดียว (dueYmd 2027-02-18 ≤ วันจอง)    dC  2027-04-22 — ร้านยกเลิกรอบหลังหมดเวลา (T1.6 cancelDepartureWithBookings จริง · รอบนี้มีการจองขายแล้ว 1 ใบเป็นตัวควบคุม)
-//   dS  2027-03-01 13:00 — ออกแล้ว ณ NOWL                       dK  2027-04-23 — เลยปิดรับหน้าร้าน (trips.sell.cutoff PRODUCT {daysBefore 60})
-//   dX  2027-04-24 — สินค้า PX (สถานะ INACTIVE หลังหมดเวลา)   dR  2027-04-25 capacity 2 — แข่ง RC-2 (ลูกค้าถือใหม่ผ่านลิงก์ W1.4a)
-//   dP  2027-04-26 — โค้ดส่วนลด W14BOFF 10% (TRIP_ONLY) · maxUses 1 (PR-1) · maxUses 2 (PR-2 สินค้าแยก)
-// การจอง (ต่อบล็อก · 2 ผู้ใหญ่ · ผู้จองเบอร์ 08x ต่างกันต่อบล็อก): payable 820,000 = ค่าทริป 700,000 + เก็บแทน 120,000
-//   งวด 1 DEPOSIT 210,000 (vatable 210,000 · pt 0 · dueAt 2027-03-01T03:00Z) · งวด 2 BALANCE 610,000 (vatable 490,000 · pt 120,000 · dueAt 2027-03-31T16:59Z = 23:59 เวลาร้าน)
-//   dueNow ณ NOWL = 210,000 · seats = 2 · VAT ต่อใบ = round(vatable × 7 / 107)
-//   งวดเดียว (dQ): BALANCE 820,000 (vatable 700,000 · pt 120,000 · dueAt NOW0) · dueNow = 820,000
-//   โค้ด 10% (dP): ค่าทริป 630,000 + pt 120,000 = 750,000 · งวด 1 189,000 (pt 0) · งวด 2 561,000 (pt 120,000) · dueNow 189,000
-// ผู้ใช้: OWNER (ทุกสิทธิ์) · U_USE (permissionsForLevel("trips","USE") จริง) · U_VIEW (VIEW) · U_PAYONLY ({trips.payment.record:true} ไม่มี booking.create) · U_APPROVER (USE + trips.refund.approve + trips.refund.execute) · U_OTHER (ร้าน tB)
+// ร้าน tA (trips-w14b-a) · หน่วย uA (TRIPS · Asia/Bangkok · จด VAT 7% · ราคารวม VAT) · หน่วย uA2 (ข้ามหน่วย) · ร้าน tB (ข้ามร้าน · มีการจอง EXPIRED ของตัวเอง)
+// สินค้า PR = FX.PRODUCT_RACHA: ผู้ใหญ่ 350,000 · อุทยานผู้ใหญ่ 60,000 (PARK_FEE · เก็บแทน · บังคับ) · ตัวเลือกเดียว
+// ค่าตั้ง uA: holdMinutes 15 · depositPct 30 · depositBase TRIP_ONLY · balanceDueDaysBefore 20 · overdueAction AUTO_RELEASE · overdueGraceHours 0 (บล็อก GR = 24)
+//   trips.cancel.autoApproveUpTo 100_000_000 (X12 สูงสุด — ทุกข้อ BP/RF ต้องยัง QUOTED) · trips.cancel.shopCancelRefund EXTERNAL 50 (T21 ต่ำกว่า 100 — พิสูจน์ว่าป้ายไม่อ่าน T21)
+//   trips.public.bookingEnabled true · trips.public.shopContact {phone "076-000-415", line "@w14bqc"}
+// รอบ (08:00 เวลาร้าน · capacity 10 เว้นระบุ):
+//   dL  2027-04-20 — หลัก (ฟื้น · RV/OV/PR-ควบคุม)          dF  2027-04-21 cap 2 — เต็มหลังหมดเวลา (แถวตรง sold 2) · EX ใช้ "ว่างแล้ว" = แถวตรง sold 0
+//   dQ  2027-03-10 — งวดเดียว (dueYmd 2027-02-18 ≤ วันจอง)   dC  2027-04-22 — ร้านยกเลิกรอบหลังหมดเวลา (T1.6 cancelDepartureWithBookings จริง · มีการจองขายแล้ว 1 ใบ)
+//   dS  2027-03-01 13:00 — ออกแล้ว ณ NOWL                      dK  2027-04-23 — ปิดรับ COUNTER (trips.sell.cutoff PRODUCT {daysBefore 60}) · dK2 ปิดรับ WEB เท่านั้น (ตัวควบคุม)
+//   dX  2027-04-24 — สินค้า PX ที่ archiveProduct หลังหมดเวลา  dO 2027-04-24 10:00 — สินค้า PR ตัวเลือก O2 ถูกปิด (active false) หลังหมดเวลา
+//   dR  2027-04-25 cap 2 — แข่งลูกค้าถือใหม่                   dP  2027-04-26 — โค้ด W14BOFF 10% maxUses 1 · dP2 (สินค้า PR2 · โค้ด W14BOFF2 maxUses 2)
+//   dL3 2027-04-20 10:00 — บล็อก GR (X11 24) · dA 2027-04-27 — ต่อคู่ archiveProduct (RC-8 · สินค้า PA)
+// งวดจากราคา (2 ผู้ใหญ่ · payable 820,000 = ค่าทริป 700,000 + เก็บแทน 120,000):
+//   งวด 1 DEPOSIT 210,000 (vatable 210,000 · pt 0 · dueAt = เวลาจอง) · งวด 2 BALANCE 610,000 (vatable 490,000 · pt 120,000 · dueAt 2027-03-31T16:59Z)
+//   dQ: BALANCE 820,000 (vatable 700,000 · pt 120,000 · dueAt = เวลาจอง) · dP: 630,000 + 120,000 = 750,000 · งวด 1 189,000 (pt 0) · งวด 2 561,000 (pt 120,000)
+//   VAT ต่อใบ = round(vatable × 7 / 107) · seats = 2
+// ผู้ใช้: OWNER · U_USE (permissionsForLevel("trips","USE")) · U_VIEW (VIEW) · U_PAYONLY ({trips.payment.record}) · U_APPROVER (USE + refund.approve + refund.execute) · U_OTHER (ร้าน tB)
 
-// ═══════════════ ตารางคิดมือ (สตางค์) — ทุกข้อ RV/RF/AM/EX เทียบกับตารางนี้ ═══════════════
-// id   รอบ  ยอดรับ   ผล       เหตุ               แถว RECEIVED (amount/pt/vat)                          สถานะหลัง  paid     sold(รอบ) คำขอ (status/amount/nonPt/pt/vat)
-// L1   dL   210,000  REVIVED  —                  210,000/0/13,738                                    PART_PAID  210,000  +2        —
-// L2   dL   820,000  REVIVED  —                  210,000/0/13,738 · 610,000/120,000/32,056           PAID       820,000  +2        —
-// L3   dL   500,000  REVIVED  —                  210,000/0/13,738 · 290,000/57,049/15,240            PART_PAID  500,000  +2        —   (งวด 2 PARTLY_PAID 290,000)
-// L4   dL   100,000  REFUND   SHORT              100,000/0/6,542                                     EXPIRED    100,000  +0        QUOTED/100,000/100,000/0/6,542
-// L5   dL   900,000  ✗ VALIDATION OVERPAYMENT   —                                                   EXPIRED    0        +0        —   (ไม่มีแถวใด · version เท่าเดิม)
-// L6   dF   210,000  REFUND   SOLD_OUT           210,000/0/13,738                                    EXPIRED    210,000  2 (เดิม)  QUOTED/210,000/210,000/0/13,738
-// L6′  dF   +50,000  REFUND   LATE_REFUND_OPEN   + 50,000/9,836/2,628                                EXPIRED    260,000  2         เดิม WITHDRAWN · ใหม่ QUOTED/260,000/250,164/9,836/16,366
-// L7   dQ   410,000  REFUND   SHORT              410,000/60,000/22,897                               EXPIRED    410,000  +0        QUOTED/410,000/350,000/60,000/22,897
-// L8   (L6 หลังอนุมัติ+บันทึกโอนคืน)             REFUNDED 210,000/0/13,738 (ต่อใบรับ)               EXPIRED    210,000 refunded 210,000 · sold dF ไม่เปลี่ยน · คำขอ DONE
-// L9   dP   189,000  REFUND   PROMO_UNAVAILABLE  189,000/0/12,364                                    EXPIRED    189,000  +0        QUOTED/189,000 · redemption RELEASED · usedCount 1 (ของอีกการจอง)
-// L9′  dP2  189,000  REVIVED  —                  189,000/0/12,364                                    PART_PAID  189,000  +2        — · redemption ACTIVE · usedCount 2
-// DC   dC   210,000  REFUND   DEPARTURE_CLOSED   210,000/0/13,738                                    EXPIRED    210,000  —         QUOTED/210,000
-// ST   dS   210,000  REFUND   STARTED            〃                                                   EXPIRED    210,000  +0        QUOTED/210,000
-// CU   dK   210,000  REFUND   CUTOFF             〃                                                   EXPIRED    210,000  +0        QUOTED/210,000
-// NS   dX   210,000  REFUND   NOT_SELLABLE       〃                                                   EXPIRED    210,000  +0        QUOTED/210,000
+// ═══════════════ ตารางคิดมือ (สตางค์) — RV/RF/OV/EX/PR/GR/DP เทียบตารางนี้ ═══════════════
+// id    รอบ   ยอด      ผล/เหตุ                     ใบรับ (ยอด/pt/VAT · dueId)                                  หลัง (สถานะ · paid · refunded · sold รอบ)       คำขอ (สถานะ/ยอด/nonPt/pt/VAT)
+// L1    dL    210,000  REVIVED                     210,000/0/13,738 · งวด1                                    PART_PAID · 210,000 · 0 · +2                   —
+// L2    dL    820,000  REVIVED                     210,000/0/13,738 งวด1 + 610,000/120,000/32,056 งวด2        PAID · 820,000 · 0 · +2                        —
+// L3    dL    500,000  REVIVED                     210,000/0/13,738 งวด1 + 290,000/57,049/15,240 งวด2         PART_PAID · 500,000 · 0 · +2                   —
+// L4    dL    100,000  REFUND SHORT                100,000/0/6,542 · null                                     EXPIRED · 100,000 · 0 · +0                     QUOTED/100,000/100,000/0/6,542
+// L5    dL    900,000  REFUND OVERPAID             900,000/120,000/51,028 · null                              EXPIRED · 900,000 · 0 · +0                     QUOTED/900,000/780,000/120,000/51,028
+// L6    dF    210,000  REFUND SOLD_OUT             210,000/0/13,738 · null                                    EXPIRED · 210,000 · 0 · 2                      QUOTED/210,000/210,000/0/13,738
+// L6′   dF    +50,000  REFUND LATE_HISTORY         50,000/9,836/2,628 · null                                  EXPIRED · 260,000 · 0                          r1 WITHDRAWN · r2 QUOTED/260,000/250,164/9,836/16,366
+// L8    L6′ อนุมัติ+โอนคืน  DONE                   REFUNDED 210,000/0/13,738 (trips-ref:r2:rcv1) + 50,000/9,836/2,628 (…:rcv2)  EXPIRED · 260,000 · 260,000 · 2       r2 DONE
+// L10   L8 + โอนครั้งที่สาม · dF ว่างแล้ว (sold 0)  REFUND LATE_HISTORY   210,000/0/13,738 · null      EXPIRED · 470,000 · 260,000 · 0 (ไม่ฟื้น)      r3 QUOTED/210,000/210,000/0/13,738
+// L10′  L10 อนุมัติ+โอนคืน  DONE                   REFUNDED 210,000/0/13,738 (trips-ref:r3:rcv3) · rcv1 rcv2 ไม่ถูกแตะ             EXPIRED · 470,000 · 470,000             r3 DONE
+// L7    dQ    410,000  REFUND SHORT                410,000/60,000/22,897 · null                               EXPIRED · 410,000                              QUOTED/410,000/350,000/60,000/22,897
+// L9    dP    189,000  REFUND PROMO_UNAVAILABLE    189,000/0/12,364 · null                                    EXPIRED · redemption RELEASED · usedCount 1   QUOTED/189,000/189,000/0/12,364
+// L9′   dP2   189,000  REVIVED                     189,000/0/12,364 · งวด1                                    PART_PAID · redemption ACTIVE · usedCount 2   —
+// L9″   dP2 + ป้ายลบ {v:1,erased:true} + RELEASED   REFUND PROMO_UNAVAILABLE   189,000/0/12,364 · null      EXPIRED · usedCount ไม่เปลี่ยน                  QUOTED/189,000
+// LG1   dL3 X11 24 · จอง 03-30 10:00 · รับ 03-30 14:00 · 210,000  REVIVED   210,000/0/13,738 งวด1          PART_PAID · งวด2 dueAt 03-31 23:59 คง           —
+// LG2   dL3 X11 24 · จอง 03-30 23:00 · รับ 03-31 08:00 · 210,000  REFUND SHORT (dueNow 820,000)  210,000/0/13,738 · null  EXPIRED                    QUOTED/210,000
+// DC ST CU NS NO · 210,000 · REFUND DEPARTURE_CLOSED / STARTED / CUTOFF / NOT_SELLABLE (dX archived) / NOT_SELLABLE (dO ตัวเลือกปิด) · 210,000/0/13,738 · null · EXPIRED · QUOTED/210,000
 
-// ═══════════════ PC ตัวควบคุม (เขียวก่อนและหลังงาน) ═══════════════
-// PC-1 [service]{b1} ฟิกซ์เจอร์ถูก: การจอง HOLD → runExpireHolds(NOWX) จริง ⇒ EXPIRED · hold EXPIRED · held ของ dL กลับ 0 · งวด 2 แถว OPEN ตามตาราง (amount/vatable/pt/dueAt)
-// PC-2 [service]{b1} recordTripPayment STAFF บนการจอง EXPIRED ⇒ STATE_CONFLICT BOOKING_EXPIRED ไม่มีแถว TripMoneyEvent (ก่อน/หลังงาน — ทางเดียวคือ late)
-// PC-3 [service]{b1} recordTripPayment บนการจอง HOLD ที่ยังไม่หมดเวลา (บล็อกแยก) ⇒ PART_PAID 210,000 · ผลเท่าก่อนงาน (แยก receiveInTx ไม่เปลี่ยนพฤติกรรม: แถวเงิน/VAT/อีเวนต์/audit เท่ากันทุกฟิลด์)
-// PC-4 [service]{b1} T1.6a1: resolveCancelledBooking REFUND บนรอบ dC (การจองขายแล้วตัวควบคุม) ⇒ APPROVED 100% (ทาง DEPARTURE_CANCEL ยังอนุมัติให้เอง · ไม่ถูกป้าย LATE กระทบ)
+// ═══════════════ PC ตัวควบคุม ═══════════════
+// PC-1 [service] ฟิกซ์เจอร์: HOLD → runExpireHolds(NOWX) ⇒ EXPIRED · hold EXPIRED · held 0 · งวด 2 แถว OPEN ตามตาราง (amount/vatable/pt/dueAt) — งวดค้าง OPEN บนการจองหมดเวลา (capacity.ts:1281–1294)
+// PC-2 [service] recordTripPayment STAFF บนการจอง EXPIRED ⇒ STATE_CONFLICT BOOKING_EXPIRED ไม่มีแถว
+// PC-3 [service] recordTripPayment บน HOLD ยังไม่หมด (บล็อกแยก) ⇒ PART_PAID 210,000 · แถวเงิน/งวด/อีเวนต์/audit ทุกฟิลด์เท่าก่อนงาน (แยก receiveInTx ไม่เปลี่ยนพฤติกรรม)
+// PC-4 [service] T1.6a1 resolveCancelledBooking REFUND บน dC (การจองขายแล้วตัวควบคุม จ่ายด้วย recordTripPayment ปกติ) ⇒ APPROVED 100% (กฎกลางไม่ปิดเมื่อไม่มีใบรับ rcv:late:)
 
-// ═══════════════ S ขอบเขต · กติกาโค้ด ═══════════════
-// S-1 [code]{b1}{b2} ขอบเขต (เทียบ BASE · **ไม่นับไฟล์ที่ตรงกับ session/trips** · ไม่นับที่มาจาก main ตาม trips-main-merge.mts · ไม่นับ scratchpad/ ledger/): แตะได้เฉพาะไฟล์ใบสั่ง §2 ตามงบ (ป้าย b1/b2) · ไฟล์ของ T1.6a1 ที่ตรงกับ session/trips ไม่นับ
-// S-2 [code]{b1} ไม่มี migration (prisma/ ตรงกับ BASE) · ไม่มีคีย์ค่าตั้งใหม่ (core/settings ตรง) · ไม่มีคีย์สิทธิ์ใหม่ (core/permissions* ตรง)
-// S-3 [code]{b1} ห้ามแตะ: capacity*.ts jobs.ts pdpa.ts promo.ts pricing*.ts snapshot.ts trips-self*.ts payment/** staff/** app/book/**/actions.ts — ตรงกับ BASE
-// S-4 [code]{b1} แก้ในไฟล์เดิมอยู่ในบล็อกรั้ว `// TRIPS W1.4b ▸ … ◂` (money.ts refund.ts booking.ts state.ts trips-book.ts) · late-payment-core.ts import ค่าได้เฉพาะ ./money-core (ที่เหลือ import type)
-// S-5 [code]{b1} มีแค่ late-payment.ts ที่ส่ง from:"EXPIRED" เข้า transitionBookingInTx / CAS `status = 'EXPIRED'` → HOLD (grep ทั้ง src/lib/modules/trips) · state.ts มีแถว EXPIRED→HOLD actors ["STAFF"] แถวเดียวที่ from EXPIRED
-// S-6 [code]{b1} hook shopCancelled ของ T1.6 (withdrawForPaymentInTx) อยู่ใน payTx · ไม่อยู่ใน receiveInTx (ตัวตรวจข้อความฟังก์ชัน)
-// S-7 [code]{b1} reasonKind ที่ late-payment.ts ส่ง = "EXTERNAL" · คำ "DEPARTURE_CANCEL" ไม่อยู่ใน late-payment*.ts · `computed.path` LATE_PAYMENT มาจากค่าคงที่ของ core
-// S-8 [code]{b2} คีย์ i18n §14 ครบ th/en · testid §9 ครบ · ไม่มี "use client" ใหม่ใต้ components/book · LatePaymentDialog เป็นฟอร์มที่ส่ง FormData
+// ═══════════════ S ขอบเขต · โค้ด ═══════════════
+// S-1 [code] ขอบเขต: เทียบ BASE · **ไม่นับไฟล์ที่ตรงกับ session/trips** (รวมไฟล์ของ T1.6a1 ที่ตรง) · ไม่นับที่มาจาก main (trips-main-merge.mts) · ไม่นับ scratchpad/ ledger/ · แตะเฉพาะไฟล์ §1 ตามงบ
+// S-2 [code] prisma/ · core/settings · core/permissions* ตรงกับ BASE (ไม่มี migration · ไม่มีคีย์ใหม่)
+// S-3 [code] ห้ามแตะตรงกับ BASE: capacity*.ts jobs.ts pdpa.ts promo.ts pricing*.ts snapshot.ts products.ts trips-self*.ts payment/** staff/** app/book/**/actions.ts components/** messages/**
+// S-4 [code] แก้ไฟล์เดิมอยู่ในรั้ว `// TRIPS W1.4b ▸ … ◂` · late-payment-core.ts import ค่าได้เฉพาะ ./money-core
+// S-5 [code] แถว from:"EXPIRED" ใน state.ts มีแถวเดียว (→ HOLD · actors ["STAFF"]) · ผู้เรียก transitionBookingInTx ด้วย from "EXPIRED" มีเฉพาะ late-payment.ts (grep src/lib/modules/trips)
+// S-6 [code] hook shopCancelled/withdrawForPaymentInTx อยู่ใน payTx ไม่อยู่ใน receiveInTx · late-payment.ts ไม่เรียก payTx/recordTripPayment
+// S-7 [code] กฎกลาง P6: ทุกที่ใน src/lib/modules/trips ที่เขียน status APPROVED (SQL `'APPROVED'` ใน UPDATE TripRefundRequest หรือค่าที่เลือกเป็น "APPROVED") นอก decideTripRefund อยู่หลังการเรียก autoApproveAllowedInTx ในฟังก์ชันเดียวกัน · autoApproveAllowedInTx อ่าน lateReceiptOf และป้าย LATE · ไม่มีสำเนาเงื่อนไข rcv:late: ที่อื่น
+// S-8 [code] executeTripRefund: ทาง LATE ถูกเลือกจาก latePathOf(computed ของคำขอ) แล้วตรวจ status EXPIRED หลัง lockMoneyBookingInTx (ไม่เลือกจากสถานะการจองอย่างเดียว) · ทาง LATE ไม่เรียก returnSeatsForRefundInTx · ไม่มี UPDATE "TripPaymentDue"
+// S-9 [code] tripRefundQuote ทางป้าย (ทั้งสองป้าย) ไม่อ่าน shopCancelRefundBpByReason/T21/cancelLadder (ไม่มีการเรียก refundQuoteFromSnapshot ในกิ่งป้าย)
+// S-10 [code] late-payment.ts ตัดสินด้วย assertProductSellableInTx + blockOf(…, "COUNTER", …, false) + publicLeftOf (import ตรง · ไม่มีเพรดิเคตขายได้ของตัวเอง) · ส่ง policy ตัวเดียวกันให้ reserveInTx
+// S-11 [code] reasonKind ที่ late-payment ส่ง = "EXTERNAL" · คำ "DEPARTURE_CANCEL" ไม่อยู่ใน late-payment*.ts
 
-// ═══════════════ P บริสุทธิ์ (late-payment-core.ts) ═══════════════
-// P-1 [pure]{b1} LATE_OUTCOMES · LATE_REASONS · LATE_PAYMENT_PATH ตรงใบ §5.5 (ลำดับด้วย)
-// P-2 [pure]{b1} dueNowOf: งวดตารางฟิกซ์เจอร์ ณ NOWL ⇒ 210,000 · ณ 2027-04-01T00:00Z ⇒ 820,000 · งวด PAID ไม่นับ · PARTLY_PAID นับส่วนค้าง · ผิดรูป ⇒ null
-// P-3 [pure]{b1} lateDecisionOf ลำดับเหตุ §5.2: ทุกคู่เหตุพร้อมกัน ⇒ ข้อแรก (เช่น depOpen=false + SOLD_OUT ⇒ DEPARTURE_CLOSED · SHORT + SOLD_OUT ⇒ SOLD_OUT) · amount > outstanding ⇒ {ok:false, VALIDATION OVERPAYMENT} ก่อนทุกเหตุ
-// P-4 [pure]{b1} ไม่ throw กับอินพุตผิดรูป (null · NaN · ติดลบ · สตริง) ⇒ VALIDATION
+// ═══════════════ P บริสุทธิ์ ═══════════════
+// P-1 [pure] LATE_OUTCOMES · LATE_REASONS (ลำดับตามใบ §5.6) · LATE_PAYMENT_PATH
+// P-2 [pure] dueNowOf(งวดฟิกซ์เจอร์, NOWL, 0) = 210,000 · (…, 2027-03-31T01:00Z, 24) = 820,000 (งวด 2 ภายใน 24 ชม.) · (…, 2027-03-30T07:00Z, 24) = 210,000 · งวด PAID ไม่นับ · PARTLY_PAID นับส่วนค้าง · ผิดรูป ⇒ null
+// P-3 [pure] lateDecisionOf ลำดับ D1–D8: ไม่สะอาด + เต็ม ⇒ LATE_HISTORY · OVERPAID + ARCHIVED ⇒ OVERPAID · ARCHIVED + cancelKind ⇒ NOT_SELLABLE · SOLD_OUT + SHORT ⇒ SOLD_OUT · SHORT + PROMO ⇒ SHORT · ผ่านหมด ⇒ REVIVED · ไม่ throw (null/NaN/ติดลบ ⇒ VALIDATION)
+// P-4 [pure] lateSplitOf(drafts, priorNet, amount, vatCtx): (0,100,000) ⇒ 100,000/0/6,542 · (0,210,000) ⇒ 210,000/0/13,738 · (210,000,50,000) ⇒ 50,000/9,836/2,628 · (0,900,000) ⇒ 900,000/120,000/51,028 · (0,410,000 งวดเดียว) ⇒ 410,000/60,000/22,897 · (260,000→0 หลังคืน · 0,210,000) ⇒ 210,000/0/13,738
+// P-5 [pure] remainingReceiptsOf: ใบ [rcv1 210,000 · rcv2 50,000 · rcv3 210,000] + REFUNDED [trips-ref:r2:rcv1 210,000 · trips-ref:r2:rcv2 50,000] ⇒ คงเหลือ [0, 0, 210,000] (VAT/pt คงเหลือตามใบ) · REFUNDED ชี้ใบที่ไม่มี ⇒ INTEGRITY · คืนเกินใบ ⇒ INTEGRITY
 
 // ═══════════════ RV ฟื้น ═══════════════
-// RV-1 [service]{b1} L1: outcome REVIVED · status PART_PAID · code และ publicTokenHash เดิม · policySnapshot ไม่เปลี่ยน (deep-equal) · version มากกว่าเดิม และ = version ที่บริการคืน
-// RV-2 [service]{b1} L1 ที่นั่ง: dL sold +2 · held 0 · มี TripHold ใหม่ 1 แถว purpose PAYMENT status CONVERTED bookingId = การจองนี้ · hold เดิมยัง EXPIRED · ไม่มี hold ACTIVE ของการจองนี้
-// RV-3 [service]{b1} L1 เงิน: แถว RECEIVED ตามตาราง (dueId งวด 1 · tender TRANSFER · reference ตรง) · งวด 1 PAID · งวด 2 OPEN dueAt เดิม (ไม่ย้าย) · ไม่มีงวดใดค้างที่ dueAt ≤ NOWL
-// RV-4 [service]{b1} L2 PAID 820,000 · VAT รวม 45,794 · pt 120,000 · งวดทั้งสอง PAID
-// RV-5 [service]{b1} L3 PART_PAID 500,000 · ใบที่ 2 pt 57,049 VAT 15,240 · งวด 2 PARTLY_PAID paid 290,000
-// RV-6 [service]{b1} ถือแบบพนักงานไม่นับเพดานลูกค้าออนไลน์ (T0.4d): ตั้งเพดานถือสาธารณะของรอบ = 0 ที่ว่างแล้วยังฟื้นได้ · capKeyHash ของ hold ใหม่ไม่ใช่ basket:/contact:
-// RV-7 [service]{b1} การจองฟื้นแล้วใช้ทางเดิมได้: recordTripPayment 610,000 ⇒ PAID · cancelTripBooking QUOTE ⇒ ตารางยกเลิกของ snapshot เดิม (วันเดินทาง 2027-04-20 · ≥30 วัน ⇒ คืนตามขั้นเดิม)
-// RV-8 [service]{b1} การจองฟื้นแล้วไม่มีคำขอคืนเงินใด ๆ · paidSatang − refundedSatang = Σ RECEIVED
+// RV-1 [service] L1: REVIVED · PART_PAID · code + publicTokenHash เดิม · policySnapshot deep-equal เดิม · version > เดิม และ = ที่บริการคืน
+// RV-2 [service] L1 ที่นั่ง: dL sold +2 · held 0 · TripHold ใหม่ 1 แถว PAYMENT CONVERTED bookingId นี้ · hold เดิมคง EXPIRED · ไม่มี hold ACTIVE ของการจอง
+// RV-3 [service] L1 เงิน: RECEIVED ตามตาราง (dueId งวด 1 · tender TRANSFER · reference ตรง · คีย์ขึ้นต้น rcv:late:) · งวด 1 PAID · งวด 2 OPEN dueAt เดิม
+// RV-4 [service] L2 PAID (VAT Σ 45,794 · pt 120,000) · L3 PART_PAID (ใบ 2 pt 57,049 VAT 15,240 · งวด 2 PARTLY_PAID 290,000)
+// RV-5 [service] ถือแบบพนักงานไม่นับเพดานสาธารณะ: ตั้งเพดานถือสาธารณะของ dL = 0 ⇒ ยังฟื้นได้ · capKeyHash ไม่ใช่ basket:/contact:
+// RV-6 [service] การจองที่ฟื้นใช้ทางเดิม: recordTripPayment 610,000 ⇒ PAID · cancelTripBooking QUOTE ⇒ ตารางยกเลิกของ snapshot เดิม (≥30 วัน ⇒ ขั้นเดิม)
+// RV-7 [service] สินค้า DRAFT (พนักงานถือได้) ⇒ REVIVED (ตัวควบคุมของ NS · ตรงกับ productGateInTx)
 
-// ═══════════════ RF ทางคืน ═══════════════
-// RF-1 [service]{b1} L6: outcome REFUND reason SOLD_OUT · status EXPIRED · sold dF = 2 (ไม่แตะ) · ไม่มี hold ใหม่ · แถว RECEIVED ตามตาราง (งวด 1)
-// RF-2 [service]{b1} L6 คำขอ: 1 แถว status QUOTED (ไม่ใช่ APPROVED แม้ X12 = 100,000,000) · by SYSTEM · reasonKind EXTERNAL · choice MONEY · amountSatang 210,000 · computed.path LATE_PAYMENT · computed.fullRefund true · refundNonPtSatang 210,000 · refundPassThroughSatang 0 · refundVatSatang 13,738
-// RF-3 [service]{b1} L4 SHORT ตามตาราง · L7 งวดเดียว SHORT 410,000 (nonPt 350,000 · pt 60,000 · VAT 22,897)
-// RF-4 [service]{b1} L6′ โอนครั้งที่สอง: reason LATE_REFUND_OPEN · คำขอเดิม WITHDRAWN (audit trips.refund.withdraw actor SYSTEM `trips.latePayment` ตามมติ C-W14b-8) · คำขอใหม่ QUOTED 260,000 / 250,164 / 9,836 / 16,366 · ไม่ลองฟื้นแม้ทำให้ dF ว่างก่อนโอนครั้งที่สอง (แถวตรง sold 0)
-// RF-5 [service]{b1} ยอดเกิน L5: VALIDATION OVERPAYMENT · ไม่มี TripMoneyEvent/TripRefundRequest/TripHold/AuditLog ใหม่ · version เท่าเดิม (ทั้งรอบว่าง dL และรอบเต็ม dF)
-// RF-6 [service]{b1} decideTripRefund REJECT บนคำขอ LATE ⇒ VALIDATION LATE_PAYMENT_REFUND_ONLY · APPROVE + manualDeltaSatang −1 / +1 ⇒ VALIDATION DEPARTURE_CANCEL_FULL_REFUND · withdrawTripRefund (ทางผู้ใช้) ⇒ VALIDATION LATE_PAYMENT_REFUND_ONLY — ไม่มีการเขียนทุกข้อ
-// RF-7 [service]{b1} requote: คำขอ LATE APPROVED แล้วข้อเท็จจริงเปลี่ยน (แถวตรง: เพิ่ม TripPassThroughEvidence ของรอบ) ⇒ executeTripRefund ⇒ QUOTE_REFRESHED · คำขอกลับ QUOTED (ไม่อนุมัติซ้ำ) · ยอดยังเต็ม 210,000
-// RF-8 [service]{b1} การจองเอเจนซี่ (แถวตรง collectMode AGENT) ⇒ FORBIDDEN AGENCY_NOT_ENABLED · สกุล USD (แถวตรง) ⇒ CURRENCY_NOT_ALLOWED · PENDING ที่หมดเวลา (SHOP_CONFIRMS ⇒ EXPIRED) ⇒ VALIDATION NOT_LATE_PAYMENT_CASE · การจอง CONFIRMED ⇒ STATE_CONFLICT NOT_EXPIRED — ไม่มีการเขียน
+// ═══════════════ RF ทางคืน (ไม่แตะงวด · P3) ═══════════════
+// RF-1 [service] L6: REFUND SOLD_OUT · EXPIRED · sold dF คง 2 · ไม่มี hold ใหม่ · ใบรับ dueId **null** · TripPaymentDue ทุกแถวของการจองเท่าก่อนรับเงิน (status/paidSatang/updatedAt)
+// RF-2 [service] L6 คำขอ: QUOTED (X12 = 100,000,000 ยังไม่อนุมัติ) · by SYSTEM · reasonKind EXTERNAL · choice MONEY · computed.path LATE_PAYMENT · fullRefund true · computed.late.reason SOLD_OUT · ตัวเลขตามตาราง (T21 50% ไม่ถูกใช้)
+// RF-3 [service] L4 SHORT · L7 งวดเดียว SHORT ตามตาราง · งวดไม่แตะทั้งคู่
+// RF-4 [service] L6′: LATE_HISTORY · r1 WITHDRAWN (audit trips.refund.withdraw actor SYSTEM trips.latePayment) · r2 QUOTED 260,000/250,164/9,836/16,366 · ไม่ลองฟื้นแม้ทำให้ dF ว่างก่อนโอนครั้งที่สอง
+// RF-5 [service] decideTripRefund REJECT บนคำขอ LATE ⇒ VALIDATION LATE_PAYMENT_REFUND_ONLY · APPROVE delta ±1 ⇒ VALIDATION DEPARTURE_CANCEL_FULL_REFUND · withdrawTripRefund ⇒ VALIDATION LATE_PAYMENT_REFUND_ONLY — ไม่มีการเขียน
+// RF-6 [service] requote: คำขอ LATE APPROVED แล้วแถวตรงเพิ่ม TripPassThroughEvidence ของรอบ ⇒ executeTripRefund ⇒ QUOTE_REFRESHED · กลับ QUOTED (ไม่อนุมัติซ้ำ) · ยอดยังเต็ม
+// RF-7 [service] ปฏิเสธไม่มีการเขียน: เอเจนซี่ (แถวตรง collectMode AGENT) FORBIDDEN AGENCY_NOT_ENABLED · USD (แถวตรง) CURRENCY_NOT_ALLOWED · PENDING หมดเวลา (SHOP_CONFIRMS) VALIDATION NOT_LATE_PAYMENT_CASE · CONFIRMED STATE_CONFLICT NOT_EXPIRED
+// RF-8 [service] HOLD ที่ hold หมดเวลาแล้วแต่ยังไม่รันตัวกวาด ⇒ STATE_CONFLICT NOT_EXPIRED (ไม่มีการเขียน) · รันตัวกวาดแล้วกดซ้ำ ⇒ ผ่าน
 
-// ═══════════════ AM อินพุตเงิน ═══════════════
-// AM-1 [service]{b1} tender CASH / CARD ⇒ VALIDATION TENDER_NOT_ALLOWED · ไม่มี reference ⇒ VALIDATION fields [reference] · reference ผิดรูป ⇒ VALIDATION
-// AM-2 [service]{b1} amountSatang 0 / ติดลบ / ทศนิยม / > INT4 ⇒ VALIDATION
-// AM-3 [service]{b1} slipId ของสลิปที่ไม่ APPROVED ⇒ STATE_CONFLICT SLIP_NOT_APPROVED · สลิปยอดไม่ตรง ⇒ SLIP_MISMATCH (slipGate เดิม)
+// ═══════════════ OV โอนเกิน (P4) ═══════════════
+// OV-1 [service] L5 บนรอบว่าง dL: REFUND OVERPAID (ไม่ใช่ VALIDATION) · ใบรับ 900,000/120,000/51,028 dueId null · sold ไม่แตะ · QUOTED 900,000/780,000/120,000/51,028
+// OV-2 [service] L5 อนุมัติ + โอนคืน ⇒ REFUNDED 900,000 · paid = refunded = 900,000 · EXPIRED
+// OV-3 [service] โอนเกินบนรอบเต็ม dF (900,000) ⇒ REFUND เหตุ OVERPAID (D2 มาก่อน D6) ยอดเดียวกัน
+// OV-4 [service] โอนครั้งที่สองที่ทำให้สุทธิเกิน payable (L6 + 700,000 ⇒ สุทธิ 910,000): ใบที่สอง pt = 120,000 − 0 ⇒ 700,000/120,000/37,944 (vatable 580,000) · r2 QUOTED 910,000/790,000/120,000/51,682
 
-// ═══════════════ EX โอนคืนครบวง (ห้ามเงินค้าง) ═══════════════
-// EX-1 [service]{b1} L8: U_APPROVER decideTripRefund APPROVE ⇒ APPROVED → executeTripRefund (bankTender TRANSFER) ⇒ DONE · REFUNDED 210,000/0/13,738 คีย์ trips-ref:<req>:<rcv> · การจองคง EXPIRED · refundedSatang 210,000 · sold dF ยัง 2 (ไม่เรียก returnSoldInTx) · งวดเปิด ⇒ CANCELLED
-// EX-2 [service]{b1} L8 อีเวนต์: trips.refund.done มี · trips.booking.cancelled ไม่มี · audit trips.refund.execute after.bookingVersion = version จริง
-// EX-3 [service]{b1} L6′ ครบวง: อนุมัติ + โอนคืน 260,000 ⇒ REFUNDED 2 แถว (210,000/0/13,738 · 50,000/9,836/2,628) · paid = refunded = 260,000
-// EX-4 [service]{b1} executeTripRefund ซ้ำคีย์เดิม ⇒ replayed · คีย์ใหม่หลัง DONE ⇒ STATE_CONFLICT · ไม่มีแถว REFUNDED ซ้ำ
-// EX-5 [service]{b1} หลัง DONE โอนครั้งที่สาม 210,000 บน dF ที่ยังเต็ม ⇒ REFUND SOLD_OUT คำขอใหม่ QUOTED 210,000 (ไม่ใช่ 470,000 · คิดจาก RECEIVED − REFUNDED)
+// ═══════════════ EX โอนคืนครบวง (P2 · ห้ามเงินค้าง) ═══════════════
+// EX-1 [service] L6 → U_APPROVER APPROVE → executeTripRefund ⇒ DONE · REFUNDED 210,000/0/13,738 คีย์ trips-ref:<r1>:<rcv1> · EXPIRED · refunded 210,000 · sold dF คง 2 · งวดไม่แตะ · ไม่มี RETAINED
+// EX-2 [service] EX-1 อีเวนต์: trips.refund.done มี · trips.booking.cancelled ไม่มี · audit trips.refund.execute after.bookingVersion = จริง
+// EX-3 [service] L8 (หลัง L6′): REFUNDED 2 แถวตามตาราง · paid = refunded = 260,000
+// EX-4 [service] **L10 โอนครั้งที่สามหลัง DONE แล้วโอนคืน:** accept ⇒ LATE_HISTORY r3 QUOTED 210,000 → APPROVE → executeTripRefund ⇒ DONE (ไม่ INTEGRITY) · REFUNDED 1 แถว trips-ref:<r3>:<rcv3> 210,000/0/13,738 · rcv1 rcv2 ไม่ถูกแตะ · paid = refunded = 470,000
+// EX-5 [service] **ฟื้นถูกปฏิเสธหลัง LATE DONE:** L8 แล้ว dF ว่าง (sold 0) โอน 210,000 ⇒ REFUND LATE_HISTORY (ไม่ใช่ REVIVED) · sold dF คง 0 · ไม่มี hold ใหม่
+// EX-6 [service] execute ซ้ำคีย์เดิม ⇒ replayed · คีย์ใหม่หลัง DONE ⇒ STATE_CONFLICT · ไม่มี REFUNDED ซ้ำ
+// EX-7 [service] คำขอป้าย LATE บนการจองที่ไม่ใช่ EXPIRED (แถวตรง: เปลี่ยนสถานะเป็น CONFIRMED) ⇒ execute STATE_CONFLICT INTEGRITY ไม่มีการเขียน · การจอง EXPIRED + คำขอไม่มีป้าย (แถวตรง) ⇒ INTEGRITY
+// EX-8 [service] ตัวควบคุม T0.7: การจอง PAID ปกติที่มี RETAINED ก่อนหน้า (แถวตรง) ⇒ execute ยัง INTEGRITY ตามเดิม (refund.ts:754–756 คงไว้นอกทาง LATE)
 
-// ═══════════════ DP สถานะรอบ ═══════════════
-// DP-1 [service]{b1} DC: ร้านยกเลิกรอบ dC ด้วย cancelDepartureWithBookings จริง (confirmBookings 1 = ตัวควบคุม) หลังการจองหมดเวลา ⇒ late ⇒ REFUND DEPARTURE_CLOSED · การจอง EXPIRED ไม่มีแถว TripDepartureCancelOutcome
-// DP-2 [service]{b1} DP-1 ต่อ: คำขอ LATE ไม่ถูกถอนเมื่อมีการยกเลิกรอบอื่น/เรียก resolveCancelledBooking ของตัวควบคุม · recordTripPayment บนการจอง EXPIRED ของ dC ยัง BOOKING_EXPIRED (ไม่ผ่าน hook withdrawForPaymentInTx)
-// DP-3 [service]{b1} ST (ออกแล้ว) · CU (เลยปิดรับ COUNTER) · NS (สินค้า INACTIVE) ⇒ REFUND เหตุตามตาราง · sold ไม่แตะ
-// DP-4 [service]{b1} ตัวควบคุมของ CU: ปิดรับเฉพาะช่องทาง WEB (หน้าร้านยังเปิด) ⇒ REVIVED (ตัดสินด้วยช่องทาง COUNTER ไม่ใช่ WEB)
+// ═══════════════ DP รอบ · สินค้า (P8 — ตัดสินตรงกับตัวถือ ไม่มี abort) ═══════════════
+// DP-1 [service] DC: cancelDepartureWithBookings จริงบน dC หลังหมดเวลา ⇒ late ⇒ REFUND DEPARTURE_CLOSED · การจอง EXPIRED ไม่มีแถว TripDepartureCancelOutcome · คำขอ LATE ไม่ถูกถอนเมื่อ resolveCancelledBooking ของตัวควบคุม
+// DP-2 [service] ST STARTED · CU CUTOFF · ตัวควบคุม dK2 (ปิดรับ WEB เท่านั้น) ⇒ REVIVED
+// DP-3 [service] NS: archiveProduct(PX) หลังหมดเวลา ⇒ late ⇒ REFUND NOT_SELLABLE · ผลเป็น ok (ไม่ใช่ SLOT_CLOSED/BUSY) · ใบรับ + คำขอถูกเขียน · ไม่มี TripHold ใหม่
+// DP-4 [service] NO: ตัวเลือก O2 ปิด ⇒ REFUND NOT_SELLABLE · ok · ไม่มี abort
+// DP-5 [service] หยุดขาย (stopSell ของรอบ) ⇒ REFUND NOT_SELLABLE · รอบ status FULL (แถวตรง) ⇒ SOLD_OUT
+// DP-6 [service] ไม่มี "ตัดสินแล้วถือล้ม": ทุกข้อ DP/RF ตรวจว่า ok:true (ไม่มี STATE_CONFLICT INTEGRITY · ไม่มี logOps CHECK_23514)
 
-// ═══════════════ PU ผู้จองถูกลบ ═══════════════
-// PU-1 [service]{b1} การจอง EXPIRED ที่ผ่าน runTripsPdpaPurge จริง (นาฬิกา NOWX + 31 วัน · X22 30) ⇒ piiPurgedAt · late ⇒ STATE_CONFLICT BOOKER_PURGED ไม่มีการเขียน (ทั้งรอบว่าง/รอบเต็ม)
-// PU-2 [service]{b1} ตัวควบคุม: pdpa purge ไม่ลบการจอง EXPIRED ที่มีแถวเงิน (L6 หลังรับเงิน + 31 วัน) — bookerPartyId/booker ยังอยู่
-// PU-3 [page]{b1} หน้าลูกค้าของการจองที่ถูกลบยังเปิดได้ (ก้อนหมดเวลาเดิม · ไม่มีก้อน late)
+// ═══════════════ PU ผู้จอง ═══════════════
+// PU-1 [service] runTripsPdpaPurge จริง (NOWX + 31 วัน · X22 30) ⇒ piiPurgedAt ⇒ late ⇒ STATE_CONFLICT BOOKER_PURGED ไม่มีการเขียน (รอบว่าง/เต็ม)
+// PU-2 [service] ตัวควบคุม: pdpa ไม่ลบการจอง EXPIRED ที่มีใบรับ late (L6 + 31 วัน)
+// PU-3 [service] ป้ายลบผู้จอง (W1.2b · CRM erase) ไม่มีโค้ด ⇒ REVIVED (ป้ายไม่ใช่ BOOKER_PURGED) · มีโค้ด RELEASED ⇒ L9″ PROMO_UNAVAILABLE ok (ไม่ throw)
 
 // ═══════════════ PR โค้ดส่วนลด ═══════════════
-// PR-1 [service]{b1} L9: consumer trips.booking.expired (runOutbox จริง) คืนโค้ด ⇒ อีกการจองใช้โค้ดจน usedCount 1 = maxUses ⇒ late ⇒ REFUND PROMO_UNAVAILABLE · redemption ของการจองนี้ RELEASED · usedCount 1
-// PR-2 [service]{b1} L9′ maxUses 2: late ⇒ REVIVED · redemption แถวเดิมกลับ ACTIVE · usedCount 2 · ยอดรับ 189,000 = งวด 1 ของราคาลด
-// PR-3 [service]{b1} ฟื้นก่อน consumer ทำงาน (ยังไม่รัน outbox) ⇒ REVIVED · redemption ACTIVE · จากนั้นรัน consumer ⇒ released 0 · usedCount ไม่ลด (แก้ onTripBookingExpired)
-// PR-4 [service]{b1} consumer ∥ late บนการจองเดียว 30 รอบ ⇒ ทุกรอบ: (ฟื้น ∧ redemption ACTIVE ∧ usedCount นับมัน) หรือ (REFUND ∧ RELEASED) — ไม่มี "PART_PAID + RELEASED"
+// PR-1 [service] L9: outbox จริงรัน trips.booking.expired ⇒ คืนโค้ด · อีกการจองใช้จน usedCount 1 = max ⇒ late ⇒ PROMO_UNAVAILABLE · redemption RELEASED · usedCount 1
+// PR-2 [service] L9′ maxUses 2 ⇒ REVIVED · redemption แถวเดิม ACTIVE · usedCount 2 · ยอด 189,000 = งวด 1 ราคาลด
+// PR-3 [service] ฟื้นก่อน consumer ⇒ redemption ACTIVE · รัน consumer ⇒ released 0 · usedCount ไม่ลด
+// PR-4 [service] consumer ∥ late 30 รอบ ⇒ (ฟื้น ∧ ACTIVE ∧ usedCount นับ) หรือ (REFUND ∧ RELEASED) เท่านั้น
+// PR-5 [service] ช่วงวันของโค้ดหมด (validTo < วันรับเงิน · แถวตรง) + RELEASED ⇒ PROMO_UNAVAILABLE
 
-// ═══════════════ PM สิทธิ์ (ทุกทาง · 4 ระดับ) ═══════════════
-// PM-1 [service]{b1} U_VIEW ⇒ FORBIDDEN · U_PAYONLY (ไม่มี booking.create) ⇒ FORBIDDEN · U_OTHER (ร้านอื่น) ⇒ NOT_FOUND · หน่วย uA2 ⇒ NOT_FOUND — ไม่มีการเขียน · สิทธิ์อ่านจาก membership สดในบริการ (เปลี่ยนสิทธิ์ในฐานแล้วเรียกซ้ำ ⇒ ผลตามใหม่)
-// PM-2 [service]{b1} U_USE (permissionsForLevel USE จริง) ⇒ รับได้ทั้งสองผล · U_USE decideTripRefund ⇒ FORBIDDEN (ไม่มี refund.approve) · executeTripRefund ⇒ FORBIDDEN
-// PM-3 [action]{b1} acceptLatePaymentAction FormData: U_VIEW ⇒ {ok:false, code:"FORBIDDEN"} · U_USE ⇒ ผลเดียวกับบริการ · ทุกช่องของฟอร์มถึงบริการ (confirmSibling · slipId · reference) — บทเรียน W1.3 P1
-// PM-4 [page]{b2} ปุ่ม trips-bk-late แสดงเฉพาะ OWNER/U_USE บนการจอง EXPIRED ลูกค้าตรง · ไม่แสดงกับ U_VIEW · ไม่แสดงบนเอเจนซี่/ผู้จองถูกลบ/ไม่ใช่ EXPIRED
-// PM-5 [code]{b1} trips.payment.record ไม่อ่อนไหว และ trips.refund.approve อ่อนไหว (isSensitiveKey จริง) — สมมติฐานของ §10 ยังจริง
+// ═══════════════ GR งวด / X11 (P9) ═══════════════
+// GR-1 [service] LG1 (X11 24): REVIVED ด้วย 210,000 · งวด 2 dueAt 2027-03-31T16:59Z คงเดิม
+// GR-2 [job] LG1 ต่อ: runPaymentDue ณ รับ + 24 ชม. (2027-03-31T07:00Z) ⇒ ไม่มี OVERDUE · ไม่มีคำขอ · ณ 2027-04-01T17:00Z (dueAt + 24 ชม. + 1 นาที) ⇒ งวด 2 OVERDUE + AUTO_RELEASE ยื่นคำขอ CUSTOMER QUOTED (กฎกลาง: มีใบรับ late ⇒ ไม่อนุมัติเองแม้ X12 สูง)
+// GR-3 [service] LG2: dueNow 820,000 ⇒ REFUND SHORT ตามตาราง (งวดครบใน 15:59 ≤ 24)
+// GR-4 [service] quoteLatePayment คืน dueNowSatang ตรงกับ GR-1 (210,000) / GR-3 (820,000)
 
-// ═══════════════ BP ทางเงินปลอม (ปิดด้วยการออกแบบ) ═══════════════
-// BP-1 [service]{b1} U_USE บันทึก "เงินปลอม" 210,000 บน dF (เต็ม) ด้วย X12 = 100,000,000 ⇒ คำขอ QUOTED (ไม่ APPROVED) · ไม่มีแถว audit trips.refund.approve ของคำขอนี้
-// BP-2 [service]{b1} BP-1 ต่อ: U_USE executeTripRefund ⇒ FORBIDDEN/STATE_CONFLICT · ผู้ใดก็ตาม execute ก่อนอนุมัติ ⇒ STATE_CONFLICT · ไม่มี REFUNDED
-// BP-3 [service]{b1} BP-1 ต่อ: ข้อเท็จจริงเปลี่ยน + requote (เรียกผ่าน execute ของ OWNER หลังอนุมัติแล้วแถวตรงเพิ่มหลักฐานเก็บแทน) ⇒ กลับ QUOTED ไม่อนุมัติซ้ำ (ต่างจาก DEPARTURE_CANCEL ใน PC-4)
-// BP-4 [service]{b1} (มติ C-W14b-4) ฟื้นด้วยเงินปลอมแล้ว cancelTripBooking EXECUTE (STAFF · X12 สูงสุด) ⇒ คำขอ QUOTED ไม่อนุมัติให้เอง · ตัวควบคุม: การจองที่จ่ายด้วย recordTripPayment ปกติยังอนุมัติตาม X12 เดิม
-// BP-5 [service]{b1} เลขอ้างอิงเดียวกันบนการจองเดียวกันด้วยคีย์ใหม่ ⇒ IDEMPOTENCY_CONFLICT REFERENCE_ALREADY_USED ไม่มีแถวเงินที่สอง (ทั้งหลังฟื้นและหลังทางคืน)
+// ═══════════════ PM สิทธิ์ ═══════════════
+// PM-1 [service] U_VIEW FORBIDDEN · U_PAYONLY FORBIDDEN · U_OTHER NOT_FOUND · หน่วย uA2 NOT_FOUND — ไม่มีการเขียน · เปลี่ยนสิทธิ์ในฐานแล้วเรียกซ้ำ ⇒ ผลตามใหม่ (membership สด)
+// PM-2 [service] U_USE รับได้ทั้งสองผล · U_USE decideTripRefund FORBIDDEN · executeTripRefund FORBIDDEN
+// PM-3 [action] acceptLatePaymentAction FormData: U_VIEW {ok:false, FORBIDDEN} · U_USE ผลเดียวกับบริการ · ทุกช่อง (amountSatang tender reference slipId confirmSibling expectedVersion idempotencyKey) ถึงบริการ
+// PM-4 [code] isSensitiveKey: trips.payment.record เท็จ · trips.booking.create เท็จ · trips.refund.approve จริง · trips.refund.execute จริง
+
+// ═══════════════ BP เงินปลอม ═══════════════
+// BP-1 [service] U_USE "เงินปลอม" 210,000 บน dF (X12 สูงสุด) ⇒ QUOTED · ไม่มี audit trips.refund.approve ของคำขอ
+// BP-2 [service] BP-1 ต่อ: execute ก่อนอนุมัติ (OWNER) ⇒ STATE_CONFLICT · U_USE ⇒ FORBIDDEN · ไม่มี REFUNDED
+// BP-3 [service] **ฟื้นด้วยเงินปลอมแล้วร้านยกเลิกรอบ (P6):** L1-แบบบน dC2 (U_USE ฟื้น 210,000) → OWNER cancelDepartureWithBookings (confirmBookings ตามจริง) → resolveCancelledBooking REFUND ⇒ ok · คำขอ DEPARTURE_CANCEL **QUOTED** (ไม่ APPROVED · ไม่ INTEGRITY) · ตัวควบคุม PC-4 ยัง APPROVED
+// BP-4 [service] BP-3 ต่อ: OWNER อนุมัติ → แถวตรงเพิ่มหลักฐานเก็บแทน → execute ⇒ requote ⇒ กลับ QUOTED (อนุมัติซ้ำของ T1.6 ถูกปิดด้วยกฎกลาง)
+// BP-5 [service] ฟื้นด้วยเงินปลอม → cancelTripBooking EXECUTE (STAFF · X12 สูงสุด) ⇒ QUOTED · ตัวควบคุม: การจองที่จ่ายด้วย recordTripPayment ปกติ ⇒ APPROVED ตาม X12
+// BP-6 [service] **เลขอ้างอิงเดียวกันบนสองการจองของร้าน:** การจอง A รับด้วย "BBL 123/45" → การจอง B (คนละผู้จอง คนละรอบ) ด้วย " bbl 123/45 " ⇒ IDEMPOTENCY_CONFLICT REFERENCE_ALREADY_USED ไม่มีการเขียน · ร้าน tB ใช้เลขเดียวกันได้ (ทั้งร้าน ไม่ข้ามร้าน) · ใบรับปกติ (recordTripPayment) ที่มีเลขนี้ก็นับ
 
 // ═══════════════ ID กันซ้ำ ═══════════════
-// ID-1 [service]{b1} คีย์เดิมเนื้อหาเดิม (L1) ⇒ replayed true · ผล REVIVED เดิม · ไม่มีแถวใหม่ (นับ TripMoneyEvent/TripHold/AuditLog/OutboxEvent ก่อน-หลัง)
-// ID-2 [service]{b1} คีย์เดิมเนื้อหาต่าง (ยอด/เลขอ้างอิง) ⇒ IDEMPOTENCY_CONFLICT
-// ID-3 [service]{b1} คีย์เดิมหลังสถานะเปลี่ยน (L6 → โอนครั้งที่สองด้วยคีย์ใหม่ทำให้คำขอเดิม WITHDRAWN) แล้วส่งคีย์แรกซ้ำ ⇒ ผลตามสถานะปัจจุบัน (refundRequestId = คำขอที่เปิดอยู่ หรือ STATE_CONFLICT) — ไม่คืน id คำขอที่ถูกถอน (T1.6 F4)
-// ID-4 [service]{b1} slipId เดียวกันสองครั้ง (สลิป APPROVED แถวตรง domain TRIPS refType TRIP_DUE) ⇒ ครั้งที่สอง replay/IDEMPOTENCY_CONFLICT SLIP_ALREADY_USED · สลิปที่ใช้กับ recordTripPayment แล้ว ⇒ ใช้กับ late ไม่ได้
-// ID-5 [service]{b1} expectedVersion เก่า ⇒ STATE_CONFLICT ไม่มีการเขียน
+// ID-1 [service] คีย์เดิมเนื้อหาเดิม (L1) ⇒ replayed · ไม่มีแถวใหม่ (นับ TripMoneyEvent/TripHold/TripRefundRequest/AuditLog/OutboxEvent)
+// ID-2 [service] คีย์เดิมเนื้อหาต่าง ⇒ IDEMPOTENCY_CONFLICT
+// ID-3 [service] คีย์ของ L6 ส่งซ้ำหลัง L6′ (r1 ถูกถอน) ⇒ refundRequestId = r2 (คำขอเปิดปัจจุบัน) หรือ STATE_CONFLICT — ไม่คืน r1
+// ID-4 [service] slipId เดียวกันสองครั้ง (สลิป APPROVED แถวตรง TRIPS/TRIP_DUE) ⇒ SLIP_ALREADY_USED · สลิปที่ recordTripPayment ใช้แล้ว ⇒ ใช้กับ late ไม่ได้
+// ID-5 [service] expectedVersion เก่า ⇒ STATE_CONFLICT
 
 // ═══════════════ RC แข่งกัน (50 รอบ · ไม่มี 40P01 · ค่าคงที่ทุกรอบ) ═══════════════
-// RC-1 [service]{b1} พนักงาน 2 คน (คีย์ต่าง · เลขอ้างอิงเดียวกัน) พร้อมกันบนการจองเดียว ⇒ สำเร็จ 1 · อีกตัว STATE_CONFLICT NOT_EXPIRED หรือ REFERENCE_ALREADY_USED · RECEIVED Σ = 210,000
-// RC-2 [service]{b1} dR capacity 2: late (2 ที่) ∥ ลูกค้าถือใหม่ผ่าน href ลิงก์ W1.4a → startBookHold จริง (2 ที่) ⇒ ได้ที่ฝ่ายเดียว · ร้านแพ้ ⇒ REFUND SOLD_OUT · sold + held ≤ 2 ทุกรอบ
-// RC-3 [service]{b1} RC-2 ต่อ (ลูกค้าชนะ ยืนยันแล้ว): quoteLatePayment คืน sibling {code ของการจองใหม่} · accept โดยไม่ confirmSibling ⇒ STATE_CONFLICT SIBLING_BOOKING ไม่มีการเขียน · confirmSibling true ⇒ ผ่าน (REFUND SOLD_OUT)
-// RC-4 [service]{b1} late ∥ runExpireHolds (การจองอื่นของ dL หมดเวลาพร้อมกัน) ⇒ ไม่มี 40P01 · held/sold ตรง Σ hold ACTIVE / Σ ที่นั่งการจองขายแล้ว
-// RC-5 [service]{b1} late ∥ pdpa purge ที่เส้นเวลา ⇒ (BOOKER_PURGED ∧ ไม่มีเงิน) หรือ (มีเงิน ∧ ไม่ถูกลบ) เท่านั้น
-// RC-6 [service]{b1} late ∥ cancelDepartureWithBookings บน dL (confirmBookings = จำนวนก่อนฟื้น) ⇒ (ฟื้น ∧ ยกเลิกรอบล้ม BOOKINGS_CHANGED) หรือ (ยกเลิกรอบสำเร็จ ∧ late REFUND DEPARTURE_CLOSED)
-// RC-7 [service]{b1} late ∥ recordTripPayment (การจองเดียว) ⇒ recordTripPayment BOOKING_EXPIRED หรือหลังฟื้นรับได้ตามงวด · ไม่มี OVERPAYMENT หลุด (Σ ≤ payable)
+// RC-1 [service] พนักงาน 2 คน คีย์ต่าง เลขอ้างอิงเดียวกัน ⇒ สำเร็จ 1 · อีกตัว NOT_EXPIRED / REFERENCE_ALREADY_USED · Σ RECEIVED = 210,000
+// RC-2 [service] dR cap 2: late ∥ ลูกค้าถือใหม่ผ่าน href ลิงก์ W1.4a → startBookHold จริง ⇒ ได้ที่ฝ่ายเดียว · ร้านแพ้ ⇒ SOLD_OUT · sold + held ≤ 2
+// RC-3 [service] RC-2 ต่อ (ลูกค้าชนะ+ยืนยัน): quoteLatePayment sibling = รหัสใหม่ · ไม่ confirmSibling ⇒ SIBLING_BOOKING · confirmSibling ⇒ REFUND SOLD_OUT
+// RC-4 [service] late ∥ runExpireHolds (การจองอื่นของ dL หมดพร้อมกัน) ⇒ held/sold ตรง
+// RC-5 [service] late ∥ pdpa purge ที่เส้นเวลา ⇒ (BOOKER_PURGED ∧ ไม่มีเงิน) หรือ (มีเงิน ∧ ไม่ถูกลบ)
+// RC-6 [service] late ∥ cancelDepartureWithBookings บน dL ⇒ (ฟื้น ∧ ยกเลิกรอบ BOOKINGS_CHANGED) หรือ (ยกเลิกรอบ ∧ late REFUND DEPARTURE_CLOSED)
+// RC-7 [service] late ∥ recordTripPayment ⇒ BOOKING_EXPIRED หรือรับหลังฟื้นตามงวด · Σ ≤ payable ของการจองที่ฟื้น
+// RC-8 [service] **late ∥ archiveProduct(PA)** ⇒ (REVIVED ∧ archive สำเร็จหลัง commit) หรือ (archive ก่อน ∧ late REFUND NOT_SELLABLE ok) · ไม่มี abort/INTEGRITY · ไม่มี 40P01
 
-// ═══════════════ JB งานตามเวลา ═══════════════
-// JB-1 [job]{b1} ตัวควบคุม: runPaymentDue ไม่เลือกการจอง EXPIRED (มีเงินหรือไม่)
-// JB-2 [job]{b1} L1 หลังฟื้น: runPaymentDue ณ NOWL + 1 ชม. (AUTO_RELEASE · grace 0) ⇒ ไม่มี OVERDUE · ไม่มีคำขอคืน · ณ 2027-04-01T00:00Z (เลยงวด 2) ⇒ OVERDUE + AUTO_RELEASE ตามปกติ (พิสูจน์ว่างานยังทำงานกับการจองที่ฟื้น)
-// JB-3 [job]{b1} runExpireHolds หลังฟื้น ⇒ ไม่แตะการจองที่ฟื้น (สถานะ/version เท่าเดิม)
-// JB-4 [job]{b1} tripCashDay วันที่ 2027-03-01 รวมใบรับของ L1 และ L6 · วันโอนคืน รวม REFUNDED ของ L8
+// ═══════════════ JB งาน ═══════════════
+// JB-1 [job] runPaymentDue ไม่เลือกการจอง EXPIRED (มี/ไม่มีเงิน)
+// JB-2 [job] L1 หลังฟื้น: runPaymentDue ณ NOWL + 1 ชม. ⇒ ไม่ OVERDUE
+// JB-3 [job] runExpireHolds หลังฟื้น ⇒ ไม่แตะการจองที่ฟื้น
+// JB-4 [job] tripCashDay 2027-03-01: RECEIVED รวม L1 L4 L5 L6 (ยอดตามตาราง) · วันที่โอนคืน: REFUNDED ของ EX-1 EX-4
+
+// ═══════════════ RP เงินของรอบ · รายงาน T1.7 (P5) ═══════════════
+// RP-0 [service] ตัวควบคุม (ก่อนงาน): การจอง EXPIRED ไม่มีเงินไม่ถูกอ่านในเงินของรอบ — หลังงานยังไม่ถูกอ่าน
+// RP-1 [service] แผงเงินรอบ dF หลัง L6: pendingRefundBookings 1 · heldSatang 210,000 · seats 0 · salesSatang/outstanding ไม่รวม (ก่อนงาน: เงินนี้หาย = แดง)
+// RP-2 [service] dL หลัง L4+L5 (+ L1 ที่ฟื้น): LIVE 1 (seats 2 · collected 210,000) + PENDING_REFUND 2 (seats 0 · held 1,000,000) · รวมที่นั่งของรอบ = 2 = sold
+// RP-3 [service] หลัง EX-1 DONE: การจอง L6 ⇒ EXCLUDED (net 0 · ไม่มีคำขอเปิด) · heldSatang ของรอบลด 210,000
+// RP-4 [service] รายงาน T1.7 ตามวันจอง (createdAt 2027-03-01) ชุดเดียวกัน: pendingRefundBookings/held/seats ตรงกับ RP-1/RP-2
+// RP-5 [service] กระทบ: Σ collected(LIVE) + Σ held(PENDING_REFUND) + Σ retained(CANCELLED) ของร้านทดสอบ = Σ RECEIVED − Σ REFUNDED ของ tripCashDay ทุกวันในช่วงทดสอบ
+// RP-6 [code] costs.ts ไม่ดึงการจอง EXPIRED ที่ paid = 0 และไม่มีคำขอ LATE (เงื่อนไขใน SQL)
 
 // ═══════════════ EV อีเวนต์ · audit ═══════════════
-// EV-1 [service]{b1} trips.booking.paid_after_expiry 1 แถวต่อการรับ · payload {bookingId, unitId, departureId, status, channel, amountSatang, outcome, reason?, refundRequestId?} · ไม่มีชื่อ/เบอร์/อีเมล/reference · คีย์ไม่ซ้ำระหว่าง L6 และ L6′
-// EV-2 [service]{b1} ทางฟื้น: trips.booking.confirmed + trips.booking.part_paid (L1) / trips.booking.paid (L2) + trips.payment.received ต่อชิ้น · ทางคืน: trips.payment.received + trips.refund.requested · ไม่มี confirmed/part_paid/paid
-// EV-3 [service]{b1} audit trips.booking.late_payment ครบฟิลด์ §13 · actor = ผู้ใช้ STAFF · reference อยู่ใน after · trips.refund.request actor SYSTEM trips.latePayment · trips.payment.record after.late = true
-// EV-4 [code]{b1} trips.booking.paid_after_expiry ลง outbox-consumers.ts + automation/labels.ts (ทะเบียน J.1)
+// EV-1 [service] trips.booking.paid_after_expiry 1 แถวต่อการรับ · payload ตาม J.1 · ไม่มีชื่อ/เบอร์/อีเมล/reference · คีย์ไม่ซ้ำ L6 / L6′ / L10
+// EV-2 [service] ฟื้น: confirmed + part_paid (L1) / paid (L2) + payment.received ต่อชิ้น · คืน: payment.received (dueId null) + refund.requested · ไม่มีอีเวนต์สถานะ
+// EV-3 [service] audit trips.booking.late_payment ครบฟิลด์ (ใบ §12) · actor ผู้ใช้ · trips.refund.request actor SYSTEM trips.latePayment · trips.payment.record after.late true
+// EV-4 [code] paid_after_expiry ลง outbox-consumers.ts + automation/labels.ts
 
-// ═══════════════ H ค่าคงที่เงิน (ทุกการจองของทุกบล็อก ท้ายไฟล์) ═══════════════
-// H-1 [service]{b1} Σ RECEIVED − Σ REFUNDED = paidSatang − refundedSatang ทุกการจอง
-// H-2 [service]{b1} การจอง EXPIRED ที่ paid − refunded > 0 ⇒ มีคำขอ LATE QUOTED/APPROVED หนึ่งใบเท่านั้น และ amountSatang = paid − refunded
-// H-3 [service]{b1} ทุกรอบ: sold = Σ seats ของการจองสถานะขายแล้ว · held = Σ qty hold ACTIVE · sold + held + reserved ≤ capacity
-// H-4 [service]{b1} ไม่มีงวด OPEN/PARTLY_PAID/OVERDUE ที่ dueAt ≤ เวลาฟื้น บนการจองที่ฟื้น
+// ═══════════════ H ค่าคงที่ (ท้ายไฟล์ · ทุกการจองทุกบล็อก) ═══════════════
+// H-1 [service] Σ RECEIVED − Σ REFUNDED = paid − refunded
+// H-2 [service] EXPIRED ∧ paid − refunded > 0 ⇒ คำขอ LATE QUOTED/APPROVED หนึ่งใบ ยอด = ส่วนต่าง (ไฟล์นี้ไม่มีการย้อนใบรับ)
+// H-3 [service] ทุกรอบ: sold = Σ seats การจองขายแล้ว · held = Σ hold ACTIVE · sold + held + reserved ≤ capacity
+// H-4 [service] การจองที่ฟื้น: ไม่มีงวด OPEN/PARTLY_PAID/OVERDUE ที่ dueAt ≤ เวลาฟื้น + X11
+// H-5 [service] ทุกใบรับ late ทางคืน dueId null · Σ REFUNDED ต่อใบรับ ≤ ยอดใบรับ (ต่อ amount/pt/vat)
 
-// ═══════════════ UI จอร้าน {b2} ═══════════════
-// UI-1 [page]{b2} loadBookingDetailVM การจอง EXPIRED: actions.late true · late.dueNowSatang 210,000 · predicted {REVIVED} บน dL / {REFUND, SOLD_OUT} บน dF · sibling ตาม RC-3
-// UI-2 [action]{b2} ฟอร์ม LatePaymentDialog (FormData ชื่อ §9.1) ⇒ ผล trips-late-result[data-outcome] · ผิด ⇒ trips-late-error role=alert · ไม่มีรหัสดิบในข้อความ (ข้อความจาก bookings.late.reason.*)
-// UI-3 [page]{b2} ป้ายแถว "หมดเวลา · มีเงินรอคืน" บนการจอง L6 · ไม่ขึ้นบน L1 (ฟื้นแล้ว) และ L8 (DONE)
-// UI-4 [page]{b2} 390 ไม่ล้น · อังกฤษไม่มีอักษรไทย · ปุ่ม ≥ 44px
+// ═══════════════ PG หน้าลูกค้า (ส่วน b1) ═══════════════
+// PG-1 [page] L6: ไม่มี book-res-rehold · ไม่มี book-full · ไม่มี book-res-expired-money · ตัวควบคุม: EXPIRED ไม่มีเงิน ยังมีลิงก์ถือใหม่ (W1.4a)
+// PG-2 [page] L1: สถานะ PART_PAID ด้วย token เดิม · ไม่มีก้อนหมดเวลา
 
-// ═══════════════ PG หน้าลูกค้า ═══════════════
-// PG-1 [page]{b1} L6 หน้า my/[token]: ไม่มี book-res-rehold · ไม่มี book-full · ไม่มี book-res-expired-money (ตัวควบคุม: การจอง EXPIRED ไม่มีเงินยังมีลิงก์ถือใหม่ตาม W1.4a)
-// PG-2 [page]{b1} L1 หลังฟื้น: หน้าแสดงสถานะ PART_PAID (ก้อนจ่ายงวดถัดไป 610,000) ด้วย token เดิม · ไม่มีก้อนหมดเวลา
-// PG-3 [page]{b2} L6: book-res-late · book-res-late-received "฿2,100.00" · book-res-late-status QUOTED ข้อความ res.lateQuoted · หลังอนุมัติ ⇒ res.lateApproved · หลัง DONE ⇒ res.lateDone "฿2,100.00"
-// PG-4 [page]{b2} VM ไม่มีคีย์ภายใน (INTERNAL_KEYS ของ w1.4 + "reference" "refundRequestId" "requestId") · ไม่มีเลขอ้างอิงธนาคารใน HTML
-// PG-5 [page]{b2} ปิด JS: หน้า 200 · ไม่มี "use client" ใหม่ · ร้านไม่มีช่องทางติดต่อ ⇒ res.lateContactNoContact
+// ═══════════════ X ข้ามร้าน · อินพุต ═══════════════
+// X-1 [service] การจองของ tB ด้วย ctx tA ⇒ NOT_FOUND · unitId ของ tB ⇒ NOT_FOUND
+// X-2 [service] ฟิลด์เกิน (strict) · now ในอินพุต · ctx ไม่ใช่ TripCtx ผู้ใช้ ⇒ VALIDATION/FORBIDDEN ไม่มีการเขียน · tender CASH/CARD ⇒ TENDER_NOT_ALLOWED · ไม่มี reference ⇒ VALIDATION · amount 0/ทศนิยม/> INT4 ⇒ VALIDATION
+// X-3 [action] unitSlug หน่วยที่ไม่มีสิทธิ์ ⇒ ตาม requireUnit
 
-// ═══════════════ LG ข้อความ ═══════════════
-// LG-1 [code]{b2} คีย์ใหม่ทุกตัว (th/en · trips.json + book.json) ไม่มี /อัตโนมัติ|automatic/i /ทันที|immediately/i /วันทำการ|business day|within \d+|ภายใน \d+/i /ระบบคืนเงิน/ /LINE/
-// LG-2 [code]{b2} res.expiredPaidHow แก้ตาม §14 (th มี "ยอดโอนครบ" · en มี "covers what is due") — ขึ้นกับมติ OQ76 เพิ่ม
-// LG-3 [code]{b2} ทุกคีย์ที่มี {contact} มีคู่ไม่มีช่องทาง (มติ L8)
-
-// ═══════════════ X ข้ามร้าน · อินพุตอันตราย ═══════════════
-// X-1 [service]{b1} bookingId ของร้าน tB ด้วย ctx ร้าน tA ⇒ NOT_FOUND · unitId ของ tB ⇒ NOT_FOUND (ก่อน/หลังงาน)
-// X-2 [service]{b1} อินพุตเกินฟิลด์ (strictObject) · now ในอินพุต · actor PUBLIC/SYSTEM (ctx ไม่ใช่ TripCtx ผู้ใช้) ⇒ VALIDATION/FORBIDDEN ไม่มีการเขียน
-// X-3 [action]{b1} unitSlug ของหน่วยที่ผู้ใช้ไม่มีสิทธิ์ ⇒ 404/FORBIDDEN ตาม requireUnit
-
-// ═══════════════ PF ต้นทุน (บันทึก ไม่ใช่เกณฑ์แข็ง · แบบ w1.4 measure) ═══════════════
-// PF-1 [service]{b1} จำนวนคำสั่ง SQL ของ acceptLatePayment ทางฟื้น/ทางคืน (รอบที่สอง · แคชอุ่น) — จดใน wo-notes · ผู้คุมตั้งเพดานหลังวัด
+// ═══════════════ PF ต้นทุน (บันทึก · ไม่ใช่เกณฑ์แข็ง) ═══════════════
+// PF-1 [service] คำสั่ง SQL ของ acceptLatePayment ทางฟื้น/ทางคืน (แคชอุ่น) · PF-2 ต้นทุน referenceUsedOf บนร้านที่มีใบรับ 10,000 แถว (แถวตรง) — จดใน wo-notes
+//
+// คำนวณเพิ่ม (OV-4): ใบที่สอง 700,000 · priorNet 210,000 ⇒ cap payable 820,000 ⇒ pt(หลัง) = 120,000 · pt(ก่อน 210,000) = 0 ⇒ pt 120,000 · vatable 580,000 · VAT round(580,000×7/107) = 37,944
+//   คำขอ r2 = Σ RECEIVED 910,000 · pt 120,000 · nonPt 790,000 · VAT 13,738 + 37,944 = 51,682
