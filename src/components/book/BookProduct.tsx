@@ -3,8 +3,10 @@
 // จอใหญ่ (xl ขึ้นไป) = สองคอลัมน์ + แผงสรุปติดจอ 430 · เล็กกว่านั้น = คอลัมน์เดียว + แถบล่างติดจอ · ไม่มีตรรกะธุรกิจ/นาฬิกา/การคิดเงินในไฟล์นี้
 // วันเดียวหลายรอบ: หัวหน้า · ตารางราคา · ราคาเริ่มต้น อ้างรอบที่ VM ทำเครื่องหมาย selected รอบเดียวเสมอ — รอบอื่นเลือกด้วยลิงก์ `?t=` (ตัวอ้างเวลา ไม่ใช่ id)
 import { formatYmd } from "@/components/trips/trips-shared";
+import { bookSelectHref } from "@/lib/platform/trips-book-core";
 import { bookHref, type BookCarry, type BookProductVM } from "@/lib/platform/trips-public-core";
 import { BookCalendar } from "./BookCalendar";
+import { BookFull } from "./BookFull"; // TRIPS W1.4a ▸ ◂
 import { BookSection, BookUntranslated, shopLang } from "./BookContent";
 import { BookCancel, BookPrices, bookMoney } from "./BookPrices";
 import { BookSelectBottom, BookSelectPanel, BookSummaryPanel, type BookSelectData } from "./BookSelect";
@@ -34,6 +36,10 @@ export function BookProduct({ vm, carry, select, closed: closedByHold }: { vm: B
   /** ร้านปิดปุ่มจองออนไลน์ / สินค้าที่ร้านต้องยืนยันก่อน (มติ R7 R8) ⇒ บอกให้ติดต่อร้าน */
   const closed = closedByHold === true || vm.cta.reason === "BOOKING_OFF" || vm.cta.reason === "SHOP_CONFIRMS";
   const view = { a: carry.a, m: vm.month, d: sel?.date ?? null, t: multi ? (chosen?.token ?? null) : null };
+  // TRIPS W1.4a ▸ มีก้อนรอบเต็ม ⇒ ลิงก์สลับภาษาคงวันที่ขอและจำนวนคน (มติ E6) · แถบสรุปบอกวันที่ของรอบที่จะถือ (E1 · หน้าอาจเลือกวันอื่นแทนวันที่เต็ม) ◂
+  const full = vm.full;
+  const fullLang = (lang: "th" | "en") => bookSelectHref(shop, { productSlug: slug, query: { lang, m: vm.month, d: full?.date ?? "", ...(full?.keep ?? {}) } });
+  const holdDate = full && select?.summary ? <p data-testid="book-hold-date" className="text-sm font-semibold">{t("full.holdDate", { date: formatYmd(select.summary.date, names) })}</p> : null;
   /** "YYYY-MM-DD HH:MM" (เวลาร้านจาก VM) ⇒ วันแบบอ่านง่าย + เวลา */
   const closeText = (cutoffLocal: string): string => {
     const [ymd, hm] = cutoffLocal.split(" ");
@@ -45,7 +51,7 @@ export function BookProduct({ vm, carry, select, closed: closedByHold }: { vm: B
       brand={vm.shop}
       locale={vm.locale}
       homeHref={bookHref(shop, null, { lang: carry.lang, a: carry.a })}
-      langHrefs={{ th: bookHref(shop, slug, { ...view, lang: "th" }), en: bookHref(shop, slug, { ...view, lang: "en" }) }}
+      langHrefs={full ? { th: fullLang("th"), en: fullLang("en") } : { th: bookHref(shop, slug, { ...view, lang: "th" }), en: bookHref(shop, slug, { ...view, lang: "en" }) }}
       bottomBar
     >
       <article data-testid="book-product" className="grid grid-cols-1 gap-6 xl:grid-cols-[minmax(0,1fr)_430px] xl:gap-10">
@@ -76,6 +82,8 @@ export function BookProduct({ vm, carry, select, closed: closedByHold }: { vm: B
             </p>
           ) : null}
 
+          {/* TRIPS W1.4a ▸ ก้อนรอบเต็มของวันที่ขอ (ทางเลือกเป็นลิงก์ · ไม่ต้องมี JS) ◂ */}
+          {vm.full ? <BookFull full={vm.full} locale={vm.locale} /> : null}
           <BookCalendar vm={vm} carry={carry} />
           {select ? <BookSelectPanel data={select} locale={vm.locale} /> : null}
           {sel ? <BookPrices price={price} locale={vm.locale} /> : null}
@@ -134,6 +142,7 @@ export function BookProduct({ vm, carry, select, closed: closedByHold }: { vm: B
             )}
             {select ? (
               <div className="border-t pt-4">
+                {holdDate}
                 <BookSummaryPanel data={select} locale={vm.locale} />
               </div>
             ) : (
@@ -166,7 +175,7 @@ export function BookProduct({ vm, carry, select, closed: closedByHold }: { vm: B
 
       {/* แถบล่างติดจอ (จอเล็กกว่า xl): ราคาเริ่มต้นต่อคน + ปุ่มหลัก (ยังปิด) — เปลือกเว้นท้ายหน้าไว้แล้ว ไม่บังเนื้อหา */}
       <div data-testid="book-bottom-bar" className="fixed inset-x-0 bottom-0 z-10 border-t bg-[color:var(--color-surface)] px-4 py-3 xl:hidden">
-        {select ? <BookSelectBottom data={select} locale={vm.locale} /> : (
+        {select ? <>{holdDate}<BookSelectBottom data={select} locale={vm.locale} /></> : (
         <div className="mx-auto flex w-full max-w-[1360px] items-center justify-between gap-3">
           <div className="min-w-0">
             {price?.headline ? (

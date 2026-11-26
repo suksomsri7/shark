@@ -469,6 +469,8 @@ export type BookProductVM = {
   selected: null | { date: string; slots: BookSlotVM[]; moreSlots: number; price: BookPriceVM | null; priceError: string | null };
   /** ปุ่มจองออนไลน์ (W1.2): เปิดเมื่อรอบที่เลือกขายได้ + ร้านเปิดปุ่ม + สินค้าไม่ใช่ "ร้านยืนยันก่อน" · reason = เหตุที่ปิดซึ่งหน้าต้องบอกลูกค้า (null = ไม่มีรอบให้จอง) */
   cta: { enabled: boolean; reason: BookCtaReason };
+  /** TRIPS W1.4a ▸ ก้อนรอบเต็มของวันที่ขอ (`d` · ไม่ใช่วันที่หน้าเลือกแทน) — ไม่เต็ม/ไม่มี `d` ⇒ null ◂ */
+  full: BookFullVM | null;
 };
 /** เหตุที่ปุ่มจองปิด (W1.2 มติ R7 · R8) */
 export type BookCtaReason = null | "BOOKING_OFF" | "SHOP_CONFIRMS" | "UNAVAILABLE";
@@ -499,4 +501,64 @@ export function cancelRowsOf(ladder: readonly { daysBefore: number; refundBp: nu
 /** ร้อยละคืนเงินจาก basis point (ไม่ใช่ยอดเงิน — ใช้แสดงตารางยกเลิกเท่านั้น) */
 export function refundPercentOf(refundBp: number): number {
   return Number.isFinite(refundBp) ? Math.trunc(refundBp / 100) : 0;
+}
+
+// ═══════════════ TRIPS W1.4a ▸ ก้อนรอบเต็ม (ใบสั่ง W1.4 §4.1 · ภาพ 07ก · ไม่มีรายการรอ · ไม่มีราคา C-4) ◂ ═══════════════
+/** สินค้าอื่นของหน่วยเดียวกันที่อ่านสูงสุดต่อการเปิดหน้า (มติ C-5) · แสดงสูงสุด */
+export const BOOK_SAMEDAY_SCAN_CAP = 20;
+export const BOOK_SAMEDAY_MAX = 3;
+/**
+ * สินค้าที่ผ่านตัวกรองหยาบใน SQL ที่ตรวจจริง (bookSaleState + listAvailability) สูงสุดต่อการเปิดหน้า ตามลำดับหลังตัวกรอง แล้วหยุดแม้ได้ไม่ถึง 3 (มติ D12)
+ * วัดจริง 26 พ.ย.: ฐานของก้อน 8 · ตรวจหนึ่งตัว 9 · ช่องทางติดต่อ 2 ⇒ แย่สุด 8 + 36 + 2 = 46 ≤ เพดาน +50 ของวันเต็ม
+ */
+export const BOOK_SAMEDAY_CHECK_CAP = 4;
+/** วันใกล้เคียง: ช่วง ±วันของวันที่เลือก (มติ C-10) · แสดงสูงสุด */
+export const BOOK_NEARBY_SPAN_DAYS = 7;
+export const BOOK_NEARBY_MAX = 2;
+/** ช่องทางติดต่อร้านบรรทัดเดียว (ชื่อ · เบอร์ · LINE) — "" = ร้านไม่มีเบอร์/LINE ⇒ ข้อความรูปไม่มีช่องทาง (มติ L8) */
+export type BookContact = string;
+export type BookFullVM = {
+  want: number | null;
+  left: number;
+  date: string;
+  nearby: { date: string; left: number; href: string }[];
+  sameDay: { title: BookText; left: number; href: string }[];
+  contact: BookContact;
+  /** จำนวนคนที่ขอ (`n.*` ที่ตรวจรูปแล้ว) — ลิงก์สลับภาษาของหน้าพาต่อ (มติ E6) */
+  keep: Record<string, string>;
+};
+/** ข้อความติดต่อร้าน (สูตรเดียวกับ bookContactText ของจอ) — ไม่มีทั้งเบอร์และ LINE ⇒ "" */
+export function bookReachOf(name: string, phone: string | null | undefined, line: string | null | undefined): BookContact {
+  if (!phone && !line) return "";
+  return [name, phone, line ? `LINE ${line}` : null].filter((x): x is string => typeof x === "string" && x !== "").join(" · ");
+}
+const dayMs = (ymd: string): number => Date.parse(`${ymd}T00:00:00Z`);
+/** วัน ± n (ปฏิทิน UTC ล้วน) */
+export function addBookDays(ymd: string, n: number): string {
+  return new Date(dayMs(ymd) + n * 86_400_000).toISOString().slice(0, 10);
+}
+/**
+ * วันใกล้เคียงที่ยังว่างพอ: ช่วงวันที่เลือก ±BOOK_NEARBY_SPAN_DAYS (ไม่ยึดวันนี้) · ตัดวันที่เลือก/วันที่ขายไม่ได้ · ว่าง ≥ max(want, 1)
+ * เรียงห่างน้อยก่อน แล้ววันก่อนก่อน · ไม่เกิน BOOK_NEARBY_MAX · `days` = หนึ่งแถวต่อวัน (left = ที่ว่างมากสุดของวันนั้น)
+ */
+export function nearbyDatesOf(i: { selected: string; want: number | null; days: readonly { date: string; left: number; sellable: boolean }[] }): { date: string; left: number }[] {
+  const need = Math.max(i.want ?? 1, 1);
+  const base = dayMs(i.selected);
+  return i.days
+    .map((d) => ({ date: d.date, left: d.left, ok: d.sellable, gap: Math.abs(Math.round((dayMs(d.date) - base) / 86_400_000)) }))
+    .filter((d) => d.ok && d.date !== i.selected && d.gap <= BOOK_NEARBY_SPAN_DAYS && d.left >= need)
+    .sort((a, b) => a.gap - b.gap || (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
+    .slice(0, BOOK_NEARBY_MAX)
+    .map((d) => ({ date: d.date, left: d.left }));
+}
+/**
+ * วันนี้ต้องแสดงก้อนรอบเต็มไหม: มีรอบที่ไม่ปิดเพราะเหตุอื่น (saleBlock null) และ (ทุกรอบนั้นเหลือ 0 หรือ e=SOLD_OUT ที่ต้องการมากกว่าที่ว่างจริง)
+ * `left` = ที่ว่างของรอบที่ `t` ชี้ (ไม่ให้ ⇒ มากสุดของวัน) · SOLD_OUT ที่ไม่รู้จำนวน/ยังพอ (ลิงก์เก่า · พิมพ์เอง) ⇒ false (มติ D2) · ไม่มีรอบ/ปิดทุกรอบ ⇒ false
+ */
+export function fullStateOf(i: { slots: readonly { left: number; saleBlock: string | null }[]; error: string | null; want: number | null; left?: number }): boolean {
+  const open = i.slots.filter((s) => s.saleBlock === null);
+  if (!open.length) return false;
+  if (open.every((s) => !(s.left > 0))) return true;
+  const left = i.left ?? Math.max(...open.map((s) => (s.left > 0 ? s.left : 0)));
+  return i.error === "SOLD_OUT" && i.want !== null && i.want > left;
 }

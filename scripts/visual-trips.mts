@@ -251,7 +251,45 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     // K6: การจองที่ถูกลองเบอร์ผิดครบเพดาน (w13Prepare ยิงผิด 20 ครั้งจาก 20 เครื่อง) ⇒ กรอกเบอร์ถูกแล้วยังเห็น "ถูกล็อก ติดต่อร้าน"
     { name: "self-locked", mockup: "07", public: true, path: () => w13Path("locked", "th", "cancel"), actions: [...W13_VERIFY, { waitFor: '[data-testid="book-self-locked"]' }] },
   ],
+  // TRIPS W1.4a ▸ 07ก รอบเต็ม + 07ข หมดเวลา · public 1440+390 · w14Prepare: รอบชั่วคราว full (เต็ม) · near · exo/exf/exc (การจองที่ตัวกวาดจริงปล่อยหมดเวลา แล้ว exf เต็ม · exc ร้านยกเลิก) — เก็บใน W13 ⇒ w13Cleanup ลบใน finally ◂
+  "w1.4": [
+    { name: "full-select", mockup: "07", public: true, path: () => w14Path("full", "th"), actions: [{ waitFor: '[data-testid="book-full"]' }, { reveal: '[data-testid="book-full"]' }] },
+    { name: "full-select-en", mockup: "07", public: true, path: () => w14Path("full", "en"), actions: [{ waitFor: '[data-testid="book-full"]' }, { reveal: '[data-testid="book-full"]' }] },
+    { name: "res-expired-open", mockup: "07", public: true, path: () => w14Path("exo", "th"), actions: [{ waitFor: '[data-testid="book-res-rehold"]' }] },
+    { name: "res-expired-full", mockup: "07", public: true, path: () => w14Path("exf", "th"), actions: [{ waitFor: '[data-testid="book-full"]' }] },
+    { name: "res-expired-off", mockup: "07", public: true, path: () => w14Path("exc", "th"), actions: [{ waitFor: '[data-testid="book-res-expired-now"]' }] },
+  ],
 };
+const W14_DAY = (n: number) => new Date(Date.parse(`${W13_DATES.d1}T00:00:00.000Z`) + (5 + n) * 86_400_000).toISOString().slice(0, 10);
+const w14Path = (k: "full" | "exo" | "exf" | "exc", lang: "th" | "en") =>
+  k === "full" ? `/book/${SHOP_DIVE.tenant.slug}/t/${BOOK_RACHA}?lang=${lang}&m=${W14_DAY(0).slice(0, 7)}&d=${W14_DAY(0)}&n.ADULT=2` : `/book/${SHOP_DIVE.tenant.slug}/my/${W13.tokens[`w14:${k}`] ?? "none"}?lang=${lang}`;
+async function w14Prepare(ids: Ids): Promise<void> {
+  const tenantId = SHOP_DIVE.tenant.id, unitId = SHOP_DIVE.units.trips.id, shop = SHOP_DIVE.tenant.slug;
+  const opt = await prisma.tripOption.findFirst({ where: { tenantId, productId: ids.racha, active: true }, orderBy: { sortOrder: "asc" }, select: { id: true } });
+  if (!opt) throw new Fatal("ไม่พบตัวเลือกของราชา — รัน scripts/seed-trips-qc.mts ก่อน");
+  const book = (await import("@/lib/platform/trips-book")) as unknown as Record<string, W13Fn> & { issueBookFormNonce: (o: unknown) => string | null };
+  const pub = (await import("@/lib/platform/trips-public")) as unknown as { bookClientKey: (ip: string) => string | null; bookSlotToken: (t: string, d: string) => string | null };
+  const dep: Record<string, string> = {};
+  for (const [k, n, cap] of [["full", 0, 2], ["near", 1, 30], ["exo", 2, 30], ["exf", 3, 2], ["exc", 4, 30]] as const) {
+    const startsAt = new Date(`${W14_DAY(n)}T06:14:00+07:00`);
+    W13.deps.push((dep[k] = (await prisma.tripDeparture.create({ data: { tenantId, unitId, productId: ids.racha, optionId: opt.id, localDate: new Date(`${W14_DAY(n)}T00:00:00.000Z`), startsAt, endsAt: new Date(startsAt.getTime() + 8.5 * 3_600_000), status: "OPEN", capacity: cap, sold: k === "full" ? cap : 0, cutoffAt: startsAt }, select: { id: true } })).id));
+  }
+  for (const [i, k] of (["exo", "exf", "exc"] as const).entries()) {
+    const clientKey = pub.bookClientKey(`198.51.103.${i + 1}`), t = pub.bookSlotToken(tenantId, dep[k] ?? ""), d = W14_DAY(i + 2), sel = { "n.ADULT": "2" };
+    if (!clientKey || !t) throw new Fatal("ทำกุญแจเครื่อง/ตัวอ้างรอบไม่ได้ (ไม่มี SESSION_SECRET?)");
+    else W13.clientKeys.push(clientKey);
+    const nonce = (purpose: "hold" | "confirm") => book.issueBookFormNonce({ now: new Date(Date.now() - 60_000), scope: { tenantId, purpose } });
+    const total = String(((await book.quoteBookSelection({ shop, productSlug: BOOK_RACHA, query: { d, t, ...sel }, acceptLanguage: "th", clientKey })).summary as { totalSatang?: number } | null)?.totalSatang ?? "");
+    const h = await book.startBookHold({ shop, productSlug: BOOK_RACHA, form: { d, t, ...sel, nonce: nonce("hold"), seen: total }, acceptLanguage: "th", clientKey });
+    const c = h.ok === true ? await book.confirmBookHold({ shop, basketToken: h.basketToken, sel: h.sel, form: { name: `ภาพทดสอบ W1.4 ${k}`, phone: W13_PHONE, email: "", accept: "on", nonce: nonce("confirm"), seen: total }, clientKey }) : h;
+    if (c.ok !== true || typeof c.token !== "string") throw new Fatal(`ฉาก w1.4: จอง ${k} ไม่ได้ (${JSON.stringify(c).slice(0, 160)})`);
+    W13.tokens[`w14:${k}`] = c.token;
+  }
+  W13.bookingIds.push(...(await prisma.tripBooking.findMany({ where: { tenantId, departureId: { in: W13.deps } }, select: { id: true } })).map((b) => b.id));
+  await prisma.tripHold.updateMany({ where: { tenantId, departureId: { in: W13.deps }, status: "ACTIVE" }, data: { expiresAt: new Date(Date.now() - 60_000) } });
+  await ((await import("@/lib/modules/trips")) as unknown as { runExpireHolds: (now: Date, o: unknown) => Promise<unknown> }).runExpireHolds(new Date(), { tenantIds: [tenantId] });
+  await Promise.all([prisma.tripDeparture.update({ where: { id: dep.exf ?? "" }, data: { sold: 2 } }), prisma.tripDeparture.update({ where: { id: dep.exc ?? "" }, data: { status: "CANCELLED" } })]);
+}
 // TRIPS W1.2 ▸ token ของการจอง 0142 (ฉาก book-voucher) — เติมก่อนถ่ายเมื่อใบ = w1.2 · ไม่มีกุญแจเซิร์ฟเวอร์/ไม่พบการจอง ⇒ หยุด ◂
 let W12_VOUCHER_TOKEN = "";
 async function w12VoucherToken(bookingId: string): Promise<string> {
@@ -573,6 +611,7 @@ try {
   const ids = await idsFromSeed();
   if (WO === "w1.2") W12_VOUCHER_TOKEN = await w12VoucherToken(ids.booking0142); // TRIPS W1.2 ▸ ◂
   if (WO === "w1.3") await w13Prepare(ids); // TRIPS W1.3 ▸ รอบ/การจองของตัวเอง (ลบใน finally) ◂
+  if (WO === "w1.4") await w14Prepare(ids); // TRIPS W1.4a ▸ รอบ/การจองของตัวเอง (ลบใน finally ด้วย w13Cleanup) ◂
   const cookies = specs.some((s) => !s.public) ? await mintSession() : [];
   const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string).catch((e: unknown) => {
     throw new Fatal(`เปิด puppeteer-core ไม่ได้ (${e instanceof Error ? e.message : e})`);
@@ -628,6 +667,7 @@ try {
   let count = 0;
   let cleaned: number | null = null;
   if (WO === "w1.3") cleaned = await w13Cleanup().catch((e: unknown) => { console.error(`⚠️ w1.3: ล้างไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`); return -1; }); // TRIPS W1.3 ▸ ◂
+  if (WO === "w1.4") cleaned = await w13Cleanup().catch((e: unknown) => { console.error(`⚠️ w1.4: ล้างไม่สำเร็จ — ${e instanceof Error ? e.message : String(e)}`); return -1; }); // TRIPS W1.4a ▸ ◂
   if (MINE.sessionIds.length) count = (await prisma.session.deleteMany({ where: { id: { in: MINE.sessionIds } } })).count;
   const stale = await prisma.session.deleteMany({ where: { userAgent: UA, expiresAt: { lt: new Date() } } });
   await prisma.$disconnect();

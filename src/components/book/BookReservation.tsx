@@ -7,6 +7,7 @@ import type { BookReservationVM } from "@/lib/platform/trips-book-core";
 import type { BookLocale } from "@/lib/platform/trips-public-core";
 import { BookCancelRows } from "./BookCheckout";
 import { BookUntranslated } from "./BookContent";
+import { BookFull } from "./BookFull"; // TRIPS W1.4a ▸ ◂
 import { BookLines, BookShopBox, BookSteps, bookContactText } from "./BookFlowParts";
 import { bookMoney } from "./BookPrices";
 import { BookShell } from "./BookShell";
@@ -21,6 +22,7 @@ export function BookReservation({ vm, frame, selfTop, selfManage }: { vm: BookRe
   const t = bookT(vm.locale);
   const names = bookDateNames(vm.locale);
   const pay = vm.pay;
+  const ex = vm.expired ?? null;
   return (
     <BookShell brand={vm.brand} locale={vm.locale} homeHref={frame.homeHref} langHrefs={frame.langHrefs}>
       <div data-testid="book-res" data-state={vm.state} className="mx-auto flex w-full max-w-[640px] flex-col gap-5">
@@ -106,12 +108,34 @@ export function BookReservation({ vm, frame, selfTop, selfManage }: { vm: BookRe
 
         {vm.state === "EXPIRED" ? (
           <section data-testid="book-res-expired" role="status" className={BOX}>
-            <h1 className="text-lg font-semibold">{t("res.expired")}</h1>
-            <p data-testid="book-expired-contact" className="text-base">
-              {t("res.expiredPaid", { contact: bookContactText(vm.shop), code: vm.code })}
-            </p>
+            {/* TRIPS W1.4a ▸ เกิดอะไร · เงินอยู่ไหน · ทำอะไรต่อ (ใบสั่ง W1.4 §4.2 · ลิงก์ GET ไม่ต้องมี JS · ไม่สัญญาระยะเวลา OQ76) ◂ */}
+            <h1 className="text-lg font-semibold">{t(ex ? "res.expiredTitle" : "res.expired")}</h1>
+            {ex?.heldUntilLocal && ex.heldUntilDate ? <p data-testid="book-res-expired-when" className="text-base">{t("res.expiredWhen", { time: ex.heldUntilLocal, date: formatYmd(ex.heldUntilDate, names) })}</p> : null}
+            {ex && vm.paidSatang === 0 ? <p data-testid="book-res-expired-money" className="text-base">{t("res.expiredMoney")}</p> : null}
+            {ex?.now && (ex.open || ex.now.state === "FULL" || ex.now.state === "CLOSED") ? (
+              <p data-testid="book-res-expired-now" data-state={ex.now.state} className="text-base font-semibold">
+                {ex.now.state === "CLOSED" ? t("res.expiredNowClosed") : ex.now.state === "FULL" ? t("res.expiredNowFull") : t("res.expiredNowOpen", { n: ex.now.left })}
+              </p>
+            ) : null}
+            {ex?.rehold ? (
+              <div data-testid="book-res-rehold" className="flex flex-col gap-2">
+                {ex.rehold.partial ? <p data-testid="book-res-rehold-partial" className={`${NOTE} border-[color:var(--color-danger)]`}>{t("res.reholdPartial")}</p> : null}
+                <a href={ex.rehold.href} className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-[color:var(--color-accent)] px-5 text-base font-semibold text-[color:var(--color-accent-fg)]">
+                  {t("res.reholdSubmit")}
+                </a>
+                <p className="text-sm text-[color:var(--color-ink-soft)]">{t("res.reholdNote")}</p>
+              </div>
+            ) : null}
+            <div data-testid="book-res-expired-paid" className="flex flex-col gap-1 border-t pt-3">
+              {ex ? <h2 className="text-base font-semibold">{t("res.expiredPaidTitle")}</h2> : null}
+              <p data-testid="book-expired-contact" className="text-base">
+                {t("res.expiredPaid", { contact: bookContactText(vm.shop), code: vm.code })}
+              </p>
+              {ex && !ex.agency ? <p className="text-sm text-[color:var(--color-ink-soft)]">{t("res.expiredPaidHow")}</p> : null}
+            </div>
           </section>
         ) : null}
+        {vm.state === "EXPIRED" && vm.expired?.full ? <BookFull full={vm.expired.full} locale={vm.locale} /> : null}
         {vm.state === "CANCELLED" ? (
           <section data-testid="book-res-cancelled" role="status" className={BOX}>
             <h1 className="text-lg font-semibold">{t("res.cancelled")}</h1>

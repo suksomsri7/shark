@@ -24,12 +24,22 @@ import { rateBucketCte } from "@/lib/core/rate-limit-db";
 import { resolveSettings } from "@/lib/core/settings";
 import { getPublicBranding } from "@/lib/branding/service";
 import { storagePathFromCdnUrl } from "@/lib/storage/service";
-import { findPublicProduct, loadBookDay, loadPublicCatalog, loadPublicProduct, normalizeTimezone, utcToLocal, type PublicRef, type PublicSlot } from "@/lib/modules/trips";
+import { findPublicProduct, listAvailability, loadBookCatalog, loadBookDay, loadPublicCatalog, loadPublicProduct, loadSameDayProducts, normalizeTimezone, utcToLocal, type PublicRef, type PublicSlot } from "@/lib/modules/trips";
+import { bookErrorParam, bookSelectHref, parseBookSelection, selectionQuery } from "./trips-book-core"; // TRIPS W1.4a ▸ ◂
 import {
   BOOK_CODE_RE,
   BOOK_LIMITER_DOWN_RETRY_SEC,
   BOOK_MISS_LIMIT,
   BOOK_PRODUCT_CAP,
+  BOOK_SAMEDAY_CHECK_CAP,
+  BOOK_SAMEDAY_MAX,
+  BOOK_SAMEDAY_SCAN_CAP,
+  addBookDays,
+  bookReachOf,
+  fullStateOf,
+  nearbyDatesOf,
+  type BookFullVM,
+  type BookLocale,
   BOOK_PUBLIC_CHANNELS,
   BOOK_READ_LIMIT,
   BOOK_SLOT_CAP,
@@ -53,6 +63,7 @@ import {
   parseBookQuery,
   parseBookSlot,
   sellableCountOf,
+  slotSellable,
   type BookBrandVM,
   type BookCarry,
   type BookDayVM,
@@ -502,6 +513,7 @@ async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<Bo
     requestedUnavailable,
     selected,
     cta: { enabled: false, reason: null },
+    full: null,
   };
 }
 
@@ -588,6 +600,30 @@ export async function openBookProduct(
     const st = await bookSaleState({ tenantId: r.shop.tenantId, unitId: p.unit.id, productId: p.productId }, now);
     vm.cta = { enabled: st === "OPEN", reason: st === "OPEN" ? null : st };
   }
+  // TRIPS W1.4a ▸ ก้อนรอบเต็มของวันที่ขอ (`d` ในเดือนที่แสดง) — ตัดสินจากรอบที่หน้าโหลดแล้ว (มติ D9): ช่องวันเต็ม · หรือ e=SOLD_OUT ที่ต้องการมากกว่าที่ว่างของรอบ (D2) ◂
+  vm.full = null;
+  if (q.d !== null && q.d.slice(0, 7) === vm.month) {
+    const cell = vm.weeks.flat().find((c) => c?.date === q.d), slot = parseBookSlot(i.query), pax = parseBookSelection(i.query)?.pax ?? null;
+    const shown = vm.selected?.date === q.d ? vm.selected.slots.filter((s) => s.selectable) : [];
+    // E5: `t` ที่ไม่อยู่ในรอบที่เลือกได้ (รอบเวลาที่เต็ม · VM ไม่มีตัวอ้างของรอบนั้น) ⇒ ให้ bookFullOf หาจากทุกรอบของวัน
+    const hit = slot !== null ? shown.find((s) => s.token === slot) : undefined, unknownSlot = slot !== null && !hit;
+    const left = cell?.state === "FULL" ? 0 : (hit?.left ?? Math.max(-1, ...shown.map((s) => s.left ?? 0)));
+    const seatCodes = vm.selected?.price ? vm.selected.price.pax.filter((x) => x.seat).map((x) => x.code) : null;
+    const wantOf = async (): Promise<number | null> => {
+      if (!pax) return null;
+      const seat = new Set(seatCodes ?? (await loadBookCatalog({ tenantId: r.shop.tenantId, unitId: p.unit.id, productId: p.productId }, vm.locale)).paxTypes.filter((x) => x.seat && x.active).map((x) => x.code));
+      const n = pax.reduce((sum, x) => sum + (seat.has(x.code) ? x.qty : 0), 0);
+      return n > 0 ? n : null;
+    };
+    const sold = bookErrorParam(i.query)?.code === "SOLD_OUT" && (left >= 0 || unknownSlot);
+    const want = cell?.state === "FULL" || sold ? await wantOf().catch(() => null) : null;
+    // E4: สินค้าที่ไม่รับจองทันทีทางเว็บ ⇒ ไม่มีก้อน (cta คิดแล้วใช้ผลนั้น · ยังไม่คิด ⇒ ถามด่านเดียวกัน)
+    const candidate = cell?.state === "FULL" || (sold && want !== null && (unknownSlot || want > left));
+    const saleOk = candidate && (vm.cta.enabled || (vm.cta.reason === null && (await bookSaleState({ tenantId: r.shop.tenantId, unitId: p.unit.id, productId: p.productId }, now)) === "OPEN"));
+    if (saleOk) {
+      vm.full = await bookFullOf(r.shop, { ...p, date: q.d, slot, error: sold ? "SOLD_OUT" : null, want, nq: pax ? selectionQuery({ pax, extras: [], zone: null }) : {}, lang: q.lang, locale: vm.locale }, now);
+    }
+  }
   const link = await bindLink(r.shop.tenantId, p.productId, q.a);
   if (i.countView !== false) await countBookView({ tenantId: r.shop.tenantId, unit: p.unit, channel: "WEB", clientKey, link, now }, opts);
   return { ok: true, vm, carry: { lang: q.lang, a: link !== null ? q.a : null } };
@@ -623,4 +659,52 @@ export async function bookMiss(clientKey: string, opts?: BookOpts): Promise<Book
 /** ตราสินค้าของร้าน (ตัวอ่านเดียวกับหน้าสินค้า · ล้ม ⇒ ชื่อร้านอย่างเดียว) */
 export async function bookBrandOf(shop: BookShop): Promise<BookBrandVM> {
   return brandOf(shop);
+}
+
+// ═══════════════ TRIPS W1.4a ▸ ก้อนรอบเต็ม (ใบสั่ง W1.4 §4.1 · ใช้ทั้งหน้าสินค้าและหน้าการจองที่หมดเวลา) ◂ ═══════════════
+const K_SHOP_CONTACT = "trips.public.shopContact";
+const ymdOfRow = (v: unknown): string => (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10);
+export type BookFullAsk = { productId: string; productSlug: string; unit: { id: string; tz: string }; date: string; slot: string | null; error: string | null; want: number | null; nq: Record<string, string>; lang: BookLocale | null; locale: BookLocale };
+/**
+ * ผู้เรียกตัดสินแล้วว่าวันนั้นน่าจะเต็ม ⇒ อ่าน listAvailability 15 วันครั้งเดียว (ยืนยันซ้ำด้วย fullStateOf · ไม่เต็มแล้ว ⇒ null) + วันใกล้เคียง
+ * + ทริปอื่นวันเดียวกัน: SQL กรองที่ว่างหยาบก่อน แล้วตรวจจริง (bookSaleState + listAvailability) ไม่เกิน BOOK_SAMEDAY_CHECK_CAP ตัว หยุดเมื่อได้ BOOK_SAMEDAY_MAX (มติ D3)
+ * + ช่องทางติดต่อร้านเฉพาะเมื่อไม่มีทางเลือก (D9) · ไม่กินถังอัตรา · อ่านล้ม ⇒ null / รายการว่าง (หน้าไม่ล่ม)
+ */
+export async function bookFullOf(shop: BookShop, a: BookFullAsk, now: Date): Promise<BookFullVM | null> {
+  try {
+    const ctx = { tenantId: shop.tenantId, unitId: a.unit.id, channel: "WEB" as const, actor: { kind: "PUBLIC" as const, clientKey: "book-view" }, now, locale: a.locale };
+    const av = await listAvailability(ctx, { productId: a.productId, from: addBookDays(a.date, -7), to: addBookDays(a.date, 7) });
+    if (!av.ok) return null;
+    const open = av.value.filter((x) => ymdOfRow(x.localDate) === a.date && x.saleBlock === null);
+    const pick = a.slot ? open.find((x) => bookSlotToken(shop.tenantId, x.slotId) === a.slot) : undefined;
+    const left = pick ? pick.publicLeft : Math.max(0, ...open.map((x) => x.publicLeft));
+    if (!fullStateOf({ slots: open.map((x) => ({ left: x.publicLeft, saleBlock: null })), error: a.error, want: a.want, left })) return null;
+    const need = Math.max(a.want ?? 1, 1);
+    const byDay = new Map<string, { date: string; left: number; sellable: boolean }>();
+    for (const x of av.value) {
+      const d = ymdOfRow(x.localDate), cur = byDay.get(d) ?? { date: d, left: 0, sellable: false };
+      byDay.set(d, x.saleBlock === null && x.publicLeft > 0 ? { date: d, left: Math.max(cur.left, x.publicLeft), sellable: true } : cur);
+    }
+    const back = (d: string, nq: Record<string, string>) => ({ ...(a.lang ? { lang: a.lang } : {}), m: d.slice(0, 7), d, ...nq });
+    const nearby = nearbyDatesOf({ selected: a.date, want: a.want, days: [...byDay.values()] }).map((x) => ({ ...x, href: bookSelectHref(shop.slug, { productSlug: a.productSlug, query: back(x.date, a.nq) }) }));
+    const sameDay: BookFullVM["sameDay"] = [];
+    const others = await loadSameDayProducts({ tenantId: shop.tenantId, unitId: a.unit.id }, { date: a.date, excludeProductId: a.productId, need, locale: a.locale, take: BOOK_SAMEDAY_SCAN_CAP }).catch(() => []);
+    for (const o of others.slice(0, BOOK_SAMEDAY_CHECK_CAP)) {
+      if (sameDay.length >= BOOK_SAMEDAY_MAX) break;
+      if ((await bookSaleState({ tenantId: shop.tenantId, unitId: a.unit.id, productId: o.productId }, now)) !== "OPEN") continue;
+      const oa = await listAvailability(ctx, { productId: o.productId, from: a.date, to: a.date }).catch(() => null);
+      // E3: เกณฑ์เดียวกับปุ่มจองของหน้าสินค้า — bookSaleState OPEN (บน) + รอบขายได้ด้วย slotSellable ตัวเดียวกับปฏิทิน/รอบของหน้า · "มีราคา" กรองหยาบใน SQL (TripPrice)
+      const best = oa && oa.ok ? Math.max(0, ...oa.value.filter(slotSellable).map((x) => x.publicLeft)) : 0;
+      if (best >= need) sameDay.push({ title: o.title, left: best, href: bookSelectHref(shop.slug, { productSlug: o.slug, query: back(a.date, a.nq) }) }); // E7: พา n.* (รหัสที่สินค้านั้นไม่มีถูกทิ้งที่หน้าปลายทาง)
+    }
+    let contact = "";
+    if (!nearby.length && !sameDay.length) {
+      const c = await resolveSettings({ tenantId: shop.tenantId }, [K_SHOP_CONTACT], { unitId: a.unit.id }, now).then((x) => x[K_SHOP_CONTACT]?.value).catch(() => null);
+      const field = (k: string): string | null => { const v = isRec(c) ? c[k] : null; return typeof v === "string" && v.trim() ? v.trim() : null; };
+      contact = bookReachOf(shop.name, field("phone"), field("line"));
+    }
+    return { want: a.want, left, date: a.date, nearby, sameDay, contact, keep: a.nq };
+  } catch {
+    return null;
+  }
 }

@@ -755,7 +755,8 @@ try {
     const deps = (await q<{ id: string }>(`SELECT id FROM "TripDeparture" WHERE "productId" = $1`, [seedRacha?.id])).map((r) => r.id);
     const sub = (await q<{ id: string }>(`SELECT id FROM "TripPaxType" WHERE "productId" = $1 UNION SELECT id FROM "TripExtra" WHERE "productId" = $1 UNION SELECT id FROM "TripOption" WHERE "productId" = $1`, [seedRacha?.id])).map((r) => r.id);
     noInternal(vm, [...seedIds, ...deps, ...sub], "หน้าสินค้า");
-    eq(Object.keys(vm).sort(), ["cta", "locale", "month", "nextMonth", "prevMonth", "product", "requestedUnavailable", "selected", "shop", "today", "tz", "weeks"], "คีย์ VM");
+    // ORACLE-EDIT (W1.4a มติ D10): VM หน้าสินค้ามีช่องบังคับ `full` (ก้อนรอบเต็ม | null) เพิ่มจากใบ W1.4
+    eq(Object.keys(vm).sort(), ["cta", "full", "locale", "month", "nextMonth", "prevMonth", "product", "requestedUnavailable", "selected", "shop", "today", "tz", "weeks"], "คีย์ VM");
     eq(Object.keys(asRec(vm.shop) ?? {}).sort(), ["brandColor", "brandFg", "logoUrl", "name", "slug"], "คีย์ shop");
   });
   await st("SD-10", "ตัวโหลดไม่เขียนฐาน: TripLinkStat / ถังอัตรา / AuditLog / OutboxEvent ของร้าน seed เท่าเดิมหลังทุกข้อ SD", async () => {

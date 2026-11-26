@@ -7,7 +7,7 @@
 // 🔴 ตัวตรวจทุกตัวไม่ throw (อินพุตจากผู้ใช้ทุกรูป ⇒ null/false)
 // ─────────────────────────────────────────────────────────────
 import type { SelfManageVM } from "./trips-self-core"; // TRIPS W1.3 ▸ ◂
-import type { BookBrandVM, BookCancelRow, BookLocale, BookText } from "./trips-public-core";
+import type { BookBrandVM, BookCancelRow, BookFullVM, BookLocale, BookText } from "./trips-public-core";
 
 // ═══════════════ ค่าคงที่ (ที่เดียว) ═══════════════
 /** คน (ที่นั่ง + ทารก) ต่อการถือหนึ่งครั้งของหน้าสาธารณะ (มติ R7) */
@@ -464,4 +464,65 @@ export type BookReservationVM = {
   selfVerifyNonce: string | null;
   /** TRIPS W1.3 ▸ การยกเลิกเป็นของเส้นลูกค้าเอง (แบนเนอร์หลังยกเลิก · V2) ◂ */
   selfCancelled: boolean;
+  /** TRIPS W1.4a ▸ ก้อนหมดเวลา (มีเฉพาะ state EXPIRED · ใบสั่ง W1.4 §4.2) ◂ */
+  expired: BookExpiredVM | null;
 };
+
+// ═══════════════ TRIPS W1.4a ▸ หน้าการจองที่หมดเวลา (ใบสั่ง W1.4 §4.2 · ภาพ 07ข) ◂ ═══════════════
+/**
+ * heldUntil* = เวลาหมดถือล่าสุด (เวลาร้าน) · now = ที่ว่างของรอบเดิมตอนนี้ (CLOSED = ปิด/ยกเลิก/เลยปิดรับ) · rehold = ลิงก์ GET ไปหน้าสินค้าพร้อมการเลือกเดิม (มติ C-2)
+ * full = ก้อนรอบเต็มของวันเดิม (เมื่อรอบเดิมเต็ม) — ไม่มี token เดิม/ข้อมูลผู้จองในลิงก์ (มติ C-3)
+ */
+export type BookExpiredVM = {
+  heldUntilDate: string | null;
+  heldUntilLocal: string | null;
+  now: { state: "OPEN" | "LOW" | "FULL" | "CLOSED"; left: number } | null;
+  rehold: { href: string; partial: boolean } | null;
+  full: BookFullVM | null;
+  /** ถือใหม่ทางเว็บได้ (ไม่ใช่เอเจนซี่ · รอบเดิมไม่ปิด · ร้านเปิดจองทันที) — ไม่ได้ ⇒ ไม่แสดงที่ว่างตอนนี้/ก้อนรอบเต็ม (มติ D4 D6) */
+  open: boolean;
+  /** การจองผ่านเอเจนซี่ (เงินอยู่ที่เอเจนซี่ ⇒ ไม่มีข้อความ "ร้านจะตรวจรายการโอน" · มติ D7) */
+  agency: boolean;
+};
+const lineIdOf = (l: Record<string, unknown>, field: string, prefix: string): string | null =>
+  typeof l[field] === "string" && l[field] !== "" ? String(l[field]) : typeof l.itemRef === "string" && l.itemRef.startsWith(prefix) ? (l.itemRef.slice(prefix.length).split(":")[0] ?? null) || null : null;
+/**
+ * การเลือกเดิมจากบรรทัด snapshot → พารามิเตอร์ของหน้าสินค้า (`n.<CODE>` · `x.<ref>=1` · `z`) · รายการเดิมที่จับคู่ไม่ได้ (ประเภทคนปิด · เสริมเลิกขาย · เขตปิด) ⇒ ตัดออก + partial
+ * รายการเสริมส่ง `1` เสมอ (ฟอร์มเป็นช่องติ๊ก · qty ใน snapshot = ที่ขอ × วัน/คืน/คน ⇒ ส่งต่อแล้วคิดเงินซ้ำ · มติ D1)
+ * เขตรับส่งที่พาไปไม่ได้ (เขตไม่มีค่าบริการไม่อยู่ใน snapshot) ไม่ตั้ง partial — ข้อความใต้ปุ่มบอกให้ตรวจรับส่งเสมอ (มติ E2 แทน D5)
+ * `skipExtras` = รายการเสริมบังคับ (คิดเองที่หน้าสินค้า ไม่ใช่การเลือก) · ไม่ใช่อาร์เรย์ / ไม่มี SEAT / ไม่เหลือประเภทคน ⇒ null · ไม่ throw
+ */
+export function reholdSelectionOf(lines: unknown, cat: { paxCodes: readonly string[]; extras: readonly { id: string; ref: string }[]; zones: readonly { id: string; ref: string }[]; skipExtras?: readonly string[] }): { query: Record<string, string>; partial: boolean } | null {
+  try {
+    if (!Array.isArray(lines)) return null;
+    const seats = new Map<string, number>();
+    const query: Record<string, string> = {};
+    let partial = false;
+    for (const l of lines) {
+      if (!isRec(l) || typeof l.qty !== "number" || !Number.isInteger(l.qty) || l.qty < 1) continue;
+      if (l.kind === "SEAT" && typeof l.paxTypeCode === "string") seats.set(l.paxTypeCode, (seats.get(l.paxTypeCode) ?? 0) + l.qty);
+      else if (l.kind === "EXTRA") {
+        const id = lineIdOf(l, "extraId", "extra:");
+        if (id === null || cat.skipExtras?.includes(id)) continue;
+        const x = cat.extras.find((e) => e.id === id);
+        if (x) query[`x.${x.ref}`] = "1";
+        else partial = true;
+      } else if (l.kind === "PICKUP") {
+        const z = cat.zones.find((e) => e.id === lineIdOf(l, "zoneId", "pickup:"));
+        if (z) query.z = z.ref;
+        else partial = true;
+      }
+    }
+    let kept = 0;
+    for (const [code, qty] of seats) {
+      if (!cat.paxCodes.includes(code) || qty > BOOK_MAX_SEATS) partial = true;
+      else {
+        query[`n.${code}`] = String(qty);
+        kept++;
+      }
+    }
+    return kept > 0 ? { query, partial } : null;
+  } catch {
+    return null;
+  }
+}
