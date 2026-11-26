@@ -1,0 +1,107 @@
+// ⚠️ ร่างข้อสอบ T1.6 (ผู้ร่าง · 26 พ.ย. 2569) — ไม่ใช่ข้อสอบที่รันได้ (.txt ตั้งใจ) · ผู้เขียนข้อสอบแยกเป็น scripts/qc-trips-t1.6a.mts / qc-trips-t1.6b.mts หลังผู้คุมตัดสิน C1–C9 ของใบ
+// ใบสั่ง: ledger/trips-briefs/T1.6.md · ทุกข้อติดระดับในชื่อ: [บริการ] [action] [หน้า] [โค้ด] [บริสุทธิ์] [งาน] — ห้ามเชื่อแค่ฟังก์ชันใน (บทเรียน W1.3a / T1.7a1)
+// โครงตามตระกูล qc-trips-t1.7a2.mts: harness (st · record · groupLine · JSON_SUMMARY) · ตัวนับ SQL (PrismaClient event query ฉีดก่อน import) · ตัวเรียก action ในขอบเขตคำขอ (workAsyncStorage
+//   + workUnitAsyncStorage + คุกกี้ session จริง · FormData) · ตัวเรนเดอร์ (NextIntlClientProvider + AppRouterContext) · ตัวเรนเดอร์หน้า (page.tsx phase "render") · ขอบเขตเทียบ BASE
+//   ("ไฟล์ที่ตรงกับ session/trips ไม่นับ" + fromMainMerge ของ scripts/trips-main-merge.mts) · ร้านชั่วคราว slug `trips-t16-*` ลบใน finally + กวาดค้างตอนเริ่ม · seed อ่านอย่างเดียว · นาฬิกาฉีดเท่านั้น
+// รัน (เมื่อเป็น .mts): bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-trips-t1.6a.mts
+//
+// ═══════════════ ฟิกซ์เจอร์ (ร้านชั่วคราว · หน่วย a กรุงเทพ จด VAT · ผู้ใหญ่ 3,500 + อุทยาน 600 เก็บแทน · NOW = 2027-04-15T05:00Z = 12:00 เวลาร้าน) ═══════════════
+// สินค้า PR · รอบ dC 2027-04-20 08:00 ความจุ 20 (รอบที่จะยกเลิก) · รอบ dT 2027-04-21 ความจุ 20 (ปลายทางย้าย · ราคาเฉพาะรอบ 4,000 ⇒ ทดสอบราคาเดิม C5) · dU 2027-08-30 (เกิน X16 90 วัน)
+// การจองใน dC (สร้างผ่านทางระบบจริงเท่าที่สร้างได้ · ที่สร้างไม่ได้ = แถวตรงตาม N12 พร้อมเหตุ):
+//   b1 PAID LIFF 2 ผู้ใหญ่ จ่าย 820,000            b2 PART_PAID WEB 2 ผู้ใหญ่ จ่าย 300,000 จาก 820,000      b3 CONFIRMED COUNTER 1 ผู้ใหญ่ จ่าย 0
+//   b4 เอเจนซี่เก็บเงิน (collectMode AGENT) 2 ผู้ใหญ่ จ่าย 0 (แถวตรง · A1.4)   b5 ลิงก์เอเจนซี่ร้านเก็บ (SHOP + agentAccountId) PAID 1 ผู้ใหญ่ 410,000 (แถวตรง)
+//   b6 PAID 1 ผู้ใหญ่ 410,000 + TripPassThroughEvidence ของรอบ (ร้านซื้อตั๋วอุทยานแล้ว)   b7 PAID 1 ผู้ใหญ่ 410,000 + คำขอคืนเงินเหตุลูกค้า QUOTED (ตารางยกเลิก 50%)
+//   h1 HOLD 1 ผู้ใหญ่ (ถือที่ ACTIVE)   p1 PENDING 1 ผู้ใหญ่ (SHOP_CONFIRM)   w1 รายการรอ WAITING 2
+//   ⇒ sold 10 · Σ เงินที่รับของการจองที่ถูกกระทบ = 820,000 + 300,000 + 410,000 + 410,000 + 410,000 = 2,350,000 · เอเจนซี่ 2 (b4 b5)
+// รอบอื่น: dS เริ่มแล้ว (startsAt < NOW · มีการจอง) · dE มีคำขอคืนเงิน EXECUTING · dV รอบว่าง (ทางเดิม cancelDeparture ต้องเหมือนเดิม) · หน่วย a2 / ร้าน B (ข้าม)
+// ผู้ใช้: OWNER · MANAGER · MANAGER หน่วยอื่น · STAFF departure.status อย่างเดียว · STAFF departure.status + refund.approve · STAFF trips.* · STAFF ระดับ "ทัวร์: ใช้งาน" (ตั้งผ่าน setStaffLevels จริง)
+//   · STAFF booking.edit · STAFF refund.request · STAFF refund.execute · ไม่มีสิทธิ์ · ร้าน B
+// ค่าคาดหวังคิดมือ: decideBy = สิ้นวัน 2027-04-17 เวลาร้าน = 2027-04-17T16:59:59.999Z (T22 2 วัน · OQ-ง)
+
+// ═══════════════ PC ตัวควบคุม (ต้องเขียวก่อนมีงาน) ═══════════════
+PC-1  [บริสุทธิ์] คิดมือ: Σ เงินรับ 2,350,000 · คืนเต็ม b2 = 300,000 (ไม่ใช่ 820,000) · b6 = 410,000 รวมเก็บแทน 60,000 แม้จ่ายออกแล้ว · b7 คืน 410,000 (ไม่ใช่ 50%) · decideBy ตาม Intl
+PC-2  [บริการ] ของเดิม: cancelDeparture รอบที่มีคน ⇒ HAS_BOOKINGS ไม่เปลี่ยนแถว (departures.ts:1115) · รอบว่าง dV ⇒ CANCELLED (ทางเดิมคงอยู่หลังงาน — ข้อนี้ต้องเขียวทั้งก่อนและหลัง)
+PC-3  [บริการ] ของเดิม: requestTripRefund เหตุ EXTERNAL บน b1 (รอบยังไม่ยกเลิก) ⇒ 100% · เหตุ CUSTOMER ⇒ ตามตาราง · ทางโอนคืน executeTripRefund STAFF เท่านั้น (SYSTEM ⇒ FORBIDDEN)
+PC-4  [บริการ] ของเดิม: changeTripBooking b1 → dT ราคา 4,000 ⇒ STATE_CONFLICT PRICE_CHANGED_AFTER_PAYMENT (booking.ts:1710) — เหตุผลของ C5
+PC-5  [งาน] ของเดิม: runPaymentDue เลือกงวดของ b2 ได้วันนี้ (ยังไม่ดูสถานะรอบ · jobs.ts:268) — ข้อ GD-2 กลับข้อนี้หลังงาน
+PC-6  [โค้ด] trips-main-merge positive/negative control · BASE มีจริง
+PC-7  [ฐาน] ฟิกซ์เจอร์สอดคล้องจากแถวดิบ: sold = Σ ที่นั่ง LIVE · held = ถือที่ ACTIVE · เอเจนซี่จ่าย 0 (b4) · คำขอ b7 QUOTED เหตุ CUSTOMER · snapshot ครบ
+PC-8  [ตัวช่วย] ตัวเรียก action (FormData) ตอบ FORBIDDEN ของ action เดิม · ตัวเรนเดอร์หน้า /trips/departures?dep=dC เรนเดอร์ได้ · ตัวนับ SQL ทำงาน
+
+// ═══════════════ S ไฟล์/ขอบเขต/กติกาโค้ด ═══════════════
+S-1   [โค้ด] ไฟล์ใหม่ครบ: cancel-departure.ts · cancel-departure-core.ts · cancel-departure-actions.ts · DepartureCancel*.tsx · migration โฟลเดอร์ใหม่ 1 โฟลเดอร์
+S-2   [โค้ด] facade บล็อก T1.6 (รายชื่อชัด): cancelDepartureWithBookings resolveCancelledBooking loadCancelChoicesVM runDepartureCancelDefault cancelChoiceStateOf decideByOf CANCEL_CHOICE_STATES
+S-3   [โค้ด] ขอบเขตเทียบ BASE (ไม่นับไฟล์ที่ตรง session/trips หรือฝั่ง main): ไฟล์ต้องห้ามไม่แตะ · ไฟล์จำกัดอยู่ในงบ §1 · ไม่มีคีย์สิทธิ์/ค่าตั้งใหม่ (permissions.ts · settings/defs ตรง BASE)
+S-4   [โค้ด] migration: เฉพาะ 3 คอลัมน์ + 2 CHECK + ดัชนีบางส่วน (§7) · schema.prisma ตรง migration (`prisma migrate diff` ว่าง — ผู้คุม) · ไม่แตะตารางอื่น
+S-5   [โค้ด] cancel-departure-actions.ts: "use server" · export async function 2 ตัว · requireUnit (หน่วยจาก slug ทับ input) · assertCan ทุกคีย์ของทาง (C2) + ForbiddenError · อ่านฟิลด์ FormData ครบตามใบ · ไม่รับเวลา
+S-6   [โค้ด] ทางเงินไม่ซ้ำ: cancel-departure.ts ยื่นคืนผ่านแกนของ refund.ts (ไม่มี INSERT "TripRefundRequest" เอง) · ไม่มี INSERT "TripMoneyEvent" · ไม่เรียก account/pos · ไม่ใช้นาฬิกาฐาน · ไม่มี await ในลูป (ยกเว้นงานที่ใช้ tx ต่อการจองโดยตั้งใจ — ระบุในใบ)
+S-7   [โค้ด] ลำดับล็อก CC :495: advisory → รอบ FOR UPDATE → ถือที่ → การจองเรียง id (ตรวจลำดับคำสั่งในโค้ด + ข้อ CD-9 ยิงพร้อมกัน)
+
+// ═══════════════ P บริสุทธิ์ (cancel-departure-core) ═══════════════
+P-1   [บริสุทธิ์] cancelChoiceStateOf: ตารางครบ 5 สถานะ × (สถานะการจอง · คำขอเปิด · รอบ) · การจองนอกรอบยกเลิก ⇒ null
+P-2   [บริสุทธิ์] decideByOf(now, days, tz): กรุงเทพ 2 วัน ⇒ 2027-04-17T16:59:59.999Z · 0 วัน ⇒ สิ้นวันนี้ · โตเกียว · วันเปลี่ยนเวลาของยุโรป
+P-3   [บริสุทธิ์] refundQuoteFromSnapshot(…, { fullRefund: true }): bp 10000 ทุกบรรทัด · เก็บแทนคืนแม้ passThroughPaidOut · ไม่มี deductions · คงการแยก VAT/เก็บแทนตาม snapshot · รับ 0 ⇒ 0
+P-4   [บริสุทธิ์] options ของ T22 ตัด CREDIT เสมอ (มติ 7) · ว่างหลังตัด ⇒ [REFUND_100]
+
+// ═══════════════ CD ยกเลิกรอบที่มีคน (T1.6a) ═══════════════
+CD-1  [บริการ] OWNER ยกเลิก dC เหตุ EXTERNAL ⇒ รอบ CANCELLED · cancelKind EXTERNAL · decideBy ตาม PC-1 · options [MOVE_DATE, REFUND_100] · version +1
+CD-2  [บริการ] ผลต่อการจอง: b1 b2 b3 b4 b5 b6 ⇒ PENDING_CHOICE (สถานะการจองเดิม) · b7 คำขอเหตุลูกค้าถูกถอน (WITHDRAWN · actor SYSTEM) ⇒ PENDING_CHOICE · h1 p1 ⇒ CANCELLED ปล่อยที่ · w1 ปิด · held 0
+CD-3  [บริการ] sold ยังเท่าเดิม (ที่นั่งคืนเมื่อการจองจบ) · CHECK ตัวนับไม่ล้ม · ไม่มี TripMoneyEvent ใหม่ · ไม่มีคำขอคืนเงินใหม่ (ยังไม่เลือก)
+CD-4  [บริการ] อีเวนต์: departure.cancelled (+kind decideBy affected 7) · cancel_choice_offered 7 แถว (คีย์ไม่ซ้ำ) · recipient AGENT ของ b4 b5 · CUSTOMER ที่เหลือ · payload ไม่มีชื่อ/เบอร์
+CD-5  [บริการ] audit trips.departure.cancel (kind · decideBy · จำนวนแยกสถานะ · Σ รับ 2,350,000) · ไม่มีข้อมูลบุคคล
+CD-6  [บริการ] ปฏิเสธ: dS เริ่มแล้ว ⇒ DEPARTURE_STARTED · dE คำขอ EXECUTING ⇒ REFUND_IN_PROGRESS · ยกเลิกซ้ำ ⇒ FORBIDDEN_TRANSITION · expectedVersion เก่า ⇒ STATE_CONFLICT · kind นอกชุด/เหตุผล < 3 ⇒ VALIDATION · ไม่เขียนอะไร
+CD-7  [บริการ] กันซ้ำ: คีย์เดิม เนื้อหาเดิม ⇒ ผลเดิม (replayed) · คีย์เดิม เนื้อหาต่าง ⇒ IDEMPOTENCY_CONFLICT
+CD-8  [บริการ] ข้ามหน่วย/ร้าน ⇒ NOT_FOUND ไม่เขียน
+CD-9  [บริการ] พร้อมกัน: 2 ทางยกเลิก dC ⇒ สำเร็จ 1 · ยกเลิก ∥ ลูกค้าถือที่ใหม่ ⇒ ไม่มีถือที่ค้างบนรอบยกเลิก · ยกเลิก ∥ บันทึกรับเงิน b2 ⇒ เงินไม่เข้ารอบยกเลิกหรือเข้าก่อนแล้ว Σ ตรง
+CD-10 [บริการ] ตัวตัดสินต่ำกว่าขั้นต่ำ (decideBelowMin CANCEL) บนรอบที่มีคน ⇒ ไปทางใหม่ (ต้องสิทธิ์ C2 · ไม่มี ⇒ FORBIDDEN) · รอบว่างยังเป็นทางเดิม
+
+// ═══════════════ RV ร้านตัดสินแทน (T1.6a) ═══════════════
+RV-1  [บริการ] MOVE b1 → dT (ราคา 4,000) ⇒ ย้ายได้ราคาเดิม (payable 820,000 · งวดคงรูป เลื่อน dueAt) · ที่นั่ง dC −2 dT +2 · paid ไม่เปลี่ยน · ไม่มี MoneyEvent · audit + cancel_choice_made MOVE
+RV-2  [บริการ] MOVE ปฏิเสธ: ไป dU (เกิน 90 วัน) · ไปรอบยกเลิก · ไปสินค้าอื่น · ที่ไม่พอ · ไม่อยู่ใน options · การจองไม่ใช่ PENDING_CHOICE
+RV-3  [บริการ] REFUND b2 ⇒ คำขอ APPROVED อัตโนมัติ (C4) 300,000 เหตุ EXTERNAL · REFUND b6 ⇒ 410,000 (รวมเก็บแทนที่จ่ายออกแล้ว · C3) · REFUND b3 (จ่าย 0) ⇒ CANCELLED ทันที ไม่มีคำขอ ปล่อยที่ 1
+RV-4  [บริการ] เอเจนซี่: b4 (เอเจนซี่เก็บ) REFUND ⇒ CANCELLED_NO_MONEY · ต้องมี reason · b5 (ร้านเก็บ) ⇒ คืนลูกค้า 410,000 · ไม่มีรายการสมุดเอเจนซี่ (หนี้ A1.5)
+RV-5  [บริการ] หลังโอนคืนทางเดิม (STAFF executeTripRefund) ⇒ REFUNDED · ที่นั่งคืน · ใบเสนอยังสด (ไม่ STALE_QUOTE)
+RV-6  [บริการ] ถอนคำขอ (withdraw) ⇒ กลับ PENDING_CHOICE ก่อนเส้นตาย
+
+// ═══════════════ GD รั้ว (T1.6a · ทุกทาง) ═══════════════
+GD-1  [บริการ] R-1 requestTripRefund เหตุ CUSTOMER บนการจองในรอบยกเลิก ⇒ VALIDATION DEPARTURE_CANCELLED_USE_SHOP_REASON · tripSellable.cancel ⇒ เดียวกัน
+GD-2  [งาน] R-2 runPaymentDue ไม่เตือน/ไม่ OVERDUE/ไม่ AUTO_RELEASE งวดของ b2 (กลับ PC-5) · การจองรอบอื่นยังทำงาน (ตัวควบคุม)
+GD-3  [บริการ] R-3 recordTripPayment / tripPaymentIntent b2 ⇒ STATE_CONFLICT DEPARTURE_CANCELLED · ไม่มีแถวเงิน
+GD-4  [บริการ] R-4 joinWaitlist dC ⇒ ปฏิเสธ · offerWaitlistForDeparture dC ⇒ 0
+GD-5  [บริการ] R-5 changeTripBooking จากรอบอื่นเข้า dC ⇒ ปฏิเสธ · R-6 holdTrips/bookTripsNow dC ⇒ ปฏิเสธ (ของเดิม)
+GD-6  [หน้า+บริการ] W1.3 ลูกค้า (หน้า my/[token] ผ่าน OTP จริง) ยกเลิกเอง b1 ⇒ ปฏิเสธ STATE_CONFLICT DEPARTURE_CANCELLED · ไม่มีคำขอเหตุ CUSTOMER เกิด
+GD-7  [โค้ด] ทุกทางยื่นคืนเงิน/รับเงิน/งานงวด/รายการรอ อ่านสถานะรอบใต้ล็อก (ไม่ใช่ค่าก่อนล็อก)
+
+// ═══════════════ RC กระทบยอด ═══════════════
+RC-1  [บริการ+ฐาน] ต่อการจองหลังทุกทางออก: paid(ก่อน) = คืน + ค่าที่ย้าย · refundedSatang เพิ่ม = คืน · ทุกแถว
+RC-2  [บริการ+ฐาน] ต่อรอบ: Σ รับ 2,350,000 = Σ คืน (300,000 + 410,000 + 410,000 + 410,000) + Σ ย้าย (820,000) · sold dC = 0 เมื่อทุกการจองจบ
+RC-3  [บริการ] departureMoneySummary (a1) ของ dC ระหว่างทาง: held = เงินรอคืน · หลังจบ: ยอดขาย 0 · ไม่มีค่าติดลบ · ตรงตัวโหลดรายงาน (a2) ของช่วง
+RC-4  [บริการ] คำขอคืนทุกใบของทางนี้: reasonKind = EXTERNAL · refundBp 10000 · amount = paid − refunded ณ ตอนยื่น
+
+// ═══════════════ JB งานเลยเส้นตาย (T1.6b) ═══════════════
+JB-1  [งาน] now < decideBy ⇒ ไม่ทำอะไร · now ≥ decideBy ⇒ ทุก PENDING_CHOICE: จ่าย > 0 ⇒ คำขอ APPROVED (คีย์ sys:trips.departureCancelDefault) · จ่าย 0 ⇒ CANCELLED_NO_MONEY · made by SYSTEM_DEFAULT
+JB-2  [งาน] idempotent: รัน 2 ครั้ง ⇒ ผลเดิม ไม่มีคำขอใบที่ 2 · รัน 5 ทางพร้อมกัน ⇒ คำขอ 1 ใบต่อการจอง
+JB-3  [งาน+บริการ] race: ร้านกด MOVE ∥ งาน (วินาทีเดียวกัน · 20 รอบ) ⇒ ต่อการจองเกิดอย่างใดอย่างหนึ่งเท่านั้น (ย้าย XOR คำขอ) · ฝ่ายแพ้ได้ STATE_CONFLICT · RC-1 ยังจริง
+JB-4  [งาน] ข้ามรอบที่ไม่มี cancelKind (ยกเลิกทางเดิม) · ข้ามหน่วยที่ไม่ใช่ TRIPS · เพดานหน้า/เส้นตายของงาน (signal · deadline) · ล้ม 1 การจองไม่หยุดทั้งงาน
+JB-5  [งาน] ร้านถอนคำขอของงาน (ไม่ใช่ในธุรกรรมย้าย) ⇒ ปฏิเสธ (C7)
+JB-6  [โค้ด] ลงทะเบียนใน minute-jobs.ts แบบงานเดิม · settled event เมื่อไม่เหลือค้าง
+
+// ═══════════════ AC action / FormData (ทางจริงของจอ) ═══════════════
+AC-1  [action] cancelDepartureWithBookingsAction ด้วย FormData ที่ประกอบจากฟอร์มที่เรนเดอร์จริง (ทุก name ของ <form> ถูกอ่าน · ไม่มีช่องหาย) ⇒ ผลเท่ากับบริการ
+AC-2  [action] resolveCancelledBookingAction MOVE/REFUND ผ่าน FormData · unitId ใน input ถูกทับด้วยหน่วยของ slug · targetDepartureId หน่วยอื่น ⇒ NOT_FOUND
+AC-3  [action] ปฏิเสธทุกผู้ใช้ในตารางสิทธิ์ (§9) ⇒ FORBIDDEN แบบมีรูป (ไม่ throw · ไม่มีตัวเลขเงิน) · ไม่เขียน
+
+// ═══════════════ PG หน้า ═══════════════
+PG-1  [หน้า] แผงรอบ dC (page.tsx ของ /trips/departures เรนเดอร์จริง): ปุ่ม trips-dep-cancel-bookings ขึ้นเฉพาะผู้มีสิทธิ์ C2 · กล่องยืนยันสรุป 7 การจอง ฿23,500.00 เอเจนซี่ 2 เส้นตาย
+PG-2  [หน้า] หลังยกเลิก: การ์ด trips-depcancel-status ตัวเลขรอ/ย้าย/คืน/ต้องโอน ตรง VM · ลิงก์รายการ
+PG-3  [หน้า] รายการการจอง ตัวกรอง trips-bk-filter-cancel-choice = 6 แถว (หลังย้าย 1) · ลิ้นชักมีปุ่มย้าย/คืนตามสิทธิ์
+PG-4  [หน้า · T1.6b] my/[token] ของ b1 (OTP จริง): แถบ book-res-depcancel ข้อความ + ยอด ฿8,200.00 + เส้นตาย · ไม่มีปุ่มยกเลิกเอง · b4 แสดง "เอเจนซี่ของคุณได้รับแจ้งแล้ว" · th/en
+PG-5  [หน้า] 390 ไม่ล้น · ไม่มีรหัสดิบ (EXTERNAL PENDING_CHOICE …) ทั้งสองภาษา
+
+// ═══════════════ PM สิทธิ์ทุกทาง (บทเรียน T1.7a1) ═══════════════
+PM-1  [บริการ+action+หน้า] ตาราง §9 ครบ: departure.status อย่างเดียว ⇒ FORBIDDEN + ไม่มีปุ่ม · + refund.approve ⇒ ได้ · trips.* ⇒ ได้ (ตามมติ C2) · MANAGER หน่วยอื่น ⇒ NOT_FOUND
+PM-2  [บริการ] ระดับสำเร็จรูปจริง: setStaffLevels "ทัวร์: ใช้งาน" ⇒ ยกเลิกรอบที่มีคนไม่ได้ · ย้ายได้ (booking.edit) · คืนไม่ได้ (ไม่มี refund.request)
+PM-3  [บริการ] แจกสิทธิ์: checkNoEscalation ของผู้ไม่มี refund.approve แจก refund.approve ไม่ได้ (ของเดิม — ตัวควบคุมว่าเส้นนี้ยังปิด)
+
+// ═══════════════ รายงานท้าย ═══════════════
+// JSON_SUMMARY {"suite":"qc-trips-t1.6a", total, passed, failed[], skipped[], groups{}} · บรรทัด "เหลือให้ด่านภาพ + กดจริง (ผู้คุม · visual-trips t1.6)"
