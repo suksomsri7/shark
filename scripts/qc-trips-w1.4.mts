@@ -112,8 +112,9 @@ const MSG_TH = "src/messages/th/book.json", MSG_EN = "src/messages/en/book.json"
 const VISUAL = "scripts/visual-trips.mts";
 /** [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด] — ใบสั่ง §3 */
 // ORACLE-EDIT S-1 (ผู้คุม 26 พ.ย. · "งบรอบนี้" ท้ายมติ D): page.tsx หน้าสินค้า ≤ +10/−5 · ไฟล์ platform/modules ที่แตะ +25/−8 ต่อไฟล์ · BookReservation +10 · ข้อความ +4 ต่อภาษา
-const LIMITED: [string, number, number][] = [[PCORE, 10, 95], [PSVC, 14, 95], [BCORE, 10, 85], [BSVC, 14, 85], [PUBMOD, 10, 70], [FACADE, 8, 28], [PAGE_PROD, 5, 10], [PAGE_RES, 1, 4],
-  [COMP_FULL, 0, 110], [COMP_PROD, 2, 10], [COMP_RES, 8, 55], [MSG_TH, 2, 28], [MSG_EN, 2, 28], [VISUAL, 0, 40]];
+// ORACLE-EDIT S-1 (ผู้คุม 26 พ.ย. · "งบรอบนี้" ของมติ E): ไฟล์ที่แตะเพิ่มได้อีกไฟล์ละ +15/−6 · BookProduct.tsx ≤ +20/−6
+const LIMITED: [string, number, number][] = [[PCORE, 16, 110], [PSVC, 20, 110], [BCORE, 16, 100], [BSVC, 20, 100], [PUBMOD, 16, 85], [FACADE, 14, 43], [PAGE_PROD, 11, 25], [PAGE_RES, 7, 19],
+  [COMP_FULL, 6, 125], [COMP_PROD, 6, 20], [COMP_RES, 14, 70], [MSG_TH, 8, 43], [MSG_EN, 8, 43], [VISUAL, 6, 55]];
 const FORBIDDEN_PATHS = ["prisma", "src", "next.config.ts", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts", "scripts/fitness.mts", "scripts/with-gate-lock.sh", "scripts/trips-main-merge.mts",
   "scripts/qc-trips-*.mts", ":(exclude)scripts/qc-trips-w1.4.mts", ":(exclude)scripts/qc-trips-w1.1.mts" /* ORACLE-EDIT ผู้คุม: w1.1 SD-9 ถูกแก้ตามมติ D10 (ช่อง full) */, ...LIMITED.map(([f]) => `:(exclude)${f}`)];
 const NEW_KEYS = ["full.title", "full.short", "full.want", "full.nearby", "full.left", "full.choose", "full.sameDay", "full.none", "full.noneNoContact",
@@ -132,7 +133,8 @@ const D0 = "2027-05-12"; // วันเต็มของสินค้า A
 const XKAYAK = 20_000, XSNORKEL = 15_000, XCABIN = 10_000; // ต่อวัน · ต่อคน · ต่อคืน (สตางค์)
 const ZONE_PAID = 30_000;
 // หน่วย uS: DS1 วันเต็ม (21 ตัวไม่ผ่านตัวกรองหยาบ) · DS2 วันเต็ม (20 ตัว · 3 ตัวท้ายผ่าน) · DS3 วันตัวที่ต้องไม่ขึ้น · DS4 พิสูจน์เพดาน 20 (มติ D11) · DSO วันว่าง (ฐาน)
-const DS1 = "2027-07-01", DS2 = "2027-07-02", DS3 = "2027-07-03", DS4 = "2027-07-04", DSO = "2027-07-05", DS5 = "2027-07-06";
+const DS1 = "2027-07-01", DS2 = "2027-07-02", DS3 = "2027-07-03", DS4 = "2027-07-04", DSO = "2027-07-05", DS5 = "2027-07-06", DS6 = "2027-07-07";
+const DT = "2027-06-20"; // มติ E5: สองรอบวันเดียว
 const D6 = "2027-05-22"; // ว่าง 5 · FA (ร้านขายตัดหน้า 3 ที่ระหว่างเปิดฟอร์มกับกดส่ง)
 const D5 = "2027-05-21"; // รอบเหลือ 2 (want 3 ⇒ SOLD_OUT) · D0+9 นอกช่วง ±7 ของ D0 (ไม่กระทบวันใกล้เคียง · ไม่ชนรอบ D0+8)
 const IP_PREFIX = "100.68.";
@@ -225,7 +227,7 @@ try {
     const r = asRec(await (f as AnyFn)(OWNER, { tenantId: tA }, changes, { ackLegalWarn: true })) ?? {};
     if (r.ok !== true) throw new AssertFail(`setSettings: ${fmt(r)}`);
   };
-  const mkProd = async (key: string, unit: string, o: { status?: string; published?: boolean; nights?: number } = {}) => {
+  const mkProd = async (key: string, unit: string, o: { status?: string; published?: boolean; nights?: number; noPrices?: boolean } = {}) => {
     const id = rid(`p${key}`), opt = rid(`o${key}`), slug = `w14qc-${key.toLowerCase()}-${STAMP}`;
     await insertRow("TripProduct", { id, tenantId: tA, unitId: unit, slug, productType: "TOUR", sourceKind: "OWN", status: o.status ?? "ACTIVE", title: JSON.stringify({ th: `${R.name} ${key}`, en: `Racha test ${key}` }),
       body: JSON.stringify({ summary: { th: `สรุป ${key}` } }), currency: "THB", deepDive: false, crossBorder: false, publishedAt: o.published === false ? null : new Date("2027-01-01T00:00:00Z"), updatedAt: new Date() });
@@ -235,7 +237,7 @@ try {
       ageMin: code === "CHILD" ? R.childAge.min : code === "ADULT" ? 12 : null, ageMax: code === "CHILD" ? R.childAge.max : code === "INFANT" ? 3 : null, countsCapacity: code !== "INFANT", active: true, sortOrder: i, updatedAt: new Date() });
     await insertRow("TripExtra", { id: rid("xpark"), tenantId: tA, unitId: unit, productId: id, kind: "PARK_FEE", basis: "PER_PAX", mandatory: true, priceMinor: PA, currency: "THB", commissionable: false, discountable: false, passThrough: true, taxKind: "NONE", name: JSON.stringify({ th: "ค่าอุทยาน", en: "Park fee" }), paxPrices: JSON.stringify({ ADULT: PA, CHILD: PC_ }), active: true, sortOrder: 0, updatedAt: new Date() });
     const cam = await insertRow("TripExtra", { id: rid("xcam"), tenantId: tA, unitId: unit, productId: id, kind: "EQUIPMENT", basis: "PER_BOOKING", mandatory: false, priceMinor: CAM, currency: "THB", commissionable: true, discountable: true, passThrough: false, taxKind: "VAT7", name: JSON.stringify({ th: R.extras.camera.name, en: "Camera" }), active: true, sortOrder: 1, updatedAt: new Date() });
-    for (const [code, amount] of [["ADULT", AD], ["CHILD", CH], ["INFANT", 0]] as const) await insertRow("TripPrice", { id: rid("pr"), tenantId: tA, unitId: unit, productId: id, optionId: null, paxTypeId: pt[code], cabinTypeId: null, seasonId: null, departureId: null, currency: "THB", amountMinor: amount, weekdayMask: null, priority: 0, updatedAt: new Date() });
+    if (!o.noPrices) for (const [code, amount] of [["ADULT", AD], ["CHILD", CH], ["INFANT", 0]] as const) await insertRow("TripPrice", { id: rid("pr"), tenantId: tA, unitId: unit, productId: id, optionId: null, paxTypeId: pt[code], cabinTypeId: null, seasonId: null, departureId: null, currency: "THB", amountMinor: amount, weekdayMask: null, priority: 0, updatedAt: new Date() });
     // ไม่ตั้งเขตรับส่ง: TripPickupZone ผูกระดับหน่วย (ไม่ใช่สินค้า · schema trips.prisma:124) — การแปลงเขตในลิงก์ถือใหม่ตรวจที่ตัวช่วยบริสุทธิ์ P-5
     PRD[key] = { id, slug, opt, unit, pt, cam };
   };
@@ -290,9 +292,11 @@ try {
   }); await fixBlock("Z", async () => {
     // ── มติ D5: หน่วย uZ มีเขตรับส่ง 2 เขต (ไม่มีค่าบริการ / มีค่าบริการ) · TripPickupZone ผูกหน่วย (trips.prisma:124 · v2 ต้องครบ kind windowMin active basis) ──
     await insertRow("BusinessUnit", { id: uZ, tenantId: tA, type: "TRIPS", status: "ACTIVE", name: "หน่วย z", slug: `${SLUG}z-${STAMP}`, settings: JSON.stringify({}), updatedAt: new Date() });
-    await mkProd("Z", uZ); await mkDep("Z1", "Z", "2027-06-12"); await mkDep("Z2", "Z", "2027-06-13");
+    await mkProd("Z", uZ); await mkDep("Z1", "Z", "2027-06-12"); await mkDep("Z2", "Z", "2027-06-13"); await mkDep("Z3", "Z", "2027-06-14"); await mkDep("Z4", "Z", "2027-06-15");
     for (const [tag, surcharge] of [["free", 0], ["paid", ZONE_PAID]] as const)
       ZN[tag] = await insertRow("TripPickupZone", { id: rid(`z${tag}`), tenantId: tA, unitId: uZ, name: `เขต ${tag} ${STAMP}`, nameEn: `Zone ${tag}`, pickupOffsetMin: 30, surchargeSatang: surcharge, kind: "ZONE", windowMin: 30, active: true, basis: "PER_BOOKING", sortOrder: tag === "free" ? 0 : 1, updatedAt: new Date() });
+    // มติ E2: "มาเอง" (kind SELF · ไม่มีค่าบริการ)
+    ZN.self = await insertRow("TripPickupZone", { id: rid("zself"), tenantId: tA, unitId: uZ, name: `เขต self ${STAMP}`, nameEn: "Come yourself", pickupOffsetMin: 0, surchargeSatang: 0, kind: "SELF", windowMin: 0, active: true, basis: "PER_BOOKING", sortOrder: 2, updatedAt: new Date() });
   }); await fixBlock("S", async () => {
     // ── มติ D3 D9: หน่วย uS — SM (สินค้าหลัก) + S01..S21 (ทริปอื่นวันเดียวกัน) + I1..I5 G1 (ตัวที่ต้องไม่ขึ้น/ตัวที่ขึ้น) ──
     await insertRow("BusinessUnit", { id: uS, tenantId: tA, type: "TRIPS", status: "ACTIVE", name: "หน่วย s", slug: `${SLUG}s-${STAMP}`, settings: JSON.stringify({}), updatedAt: new Date() });
@@ -322,6 +326,16 @@ try {
     await setV([...Array.from({ length: 20 }, (_, i) => `C${String(i + 1).padStart(2, "0")}`), "P01", "P02", "P03", "P04"].map((k) => ({ key: "trips.sell.confirmMode", scope: "PRODUCT", scopeId: PRD[k]?.id, value: "SHOP_CONFIRMS" })));
     await fillSeats("SM", "SM1", 1); await fillSeats("SM", "SM2", 1); await fillSeats("SM", "SM3", 1); await fillSeats("SM", "SM4", 1); await fillSeats("SM", "SM5", 1);
   });
+  // ── ฟิกซ์เจอร์ของมติ E (ผู้เขียนข้อสอบแยก รอบ 4 · บล็อกแยก) ──
+  await fixBlock("E3", async () => { // ทริปอื่นวันเดียวกันที่ถือไม่ได้เพราะไม่มีราคา (NP) · ตัวที่ถือได้ (G2) · DS6 ในหน่วย uS
+    ok(!FIXERR.S, `ต้องมีฟิกซ์เจอร์ S (${FIXERR.S})`);
+    await mkDep("SM6", "SM", DS6, { capacity: 1 }); await fillSeats("SM", "SM6", 1);
+    await mkProd("NP", uS, { noPrices: true }); await mkDep("NPd", "NP", DS6, { capacity: 30, hm: "07:00" });
+    await mkProd("G2", uS); await mkDep("G2d", "G2", DS6, { capacity: 30, hm: "09:00" });
+  });
+  await fixBlock("E4", async () => { await mkDep("CF", "C", "2027-05-13", { capacity: 1 }); await fillSeats("C", "CF", 1); }); // สินค้าร้านยืนยันก่อนวันเต็ม
+  await fixBlock("E5", async () => { await mkDep("T1", "A", DT, { capacity: 2, hm: "08:00" }); await mkDep("T2", "A", DT, { capacity: 30, hm: "13:00" }); await fillSeats("A", "T1", 2); }); // สองรอบวันเดียว รอบแรกเต็ม
+  await fixBlock("E7", async () => { await mkProd("W", uA); await mkDep("W0", "W", "2027-08-10", { capacity: 1 }); await mkDep("Wm1", "W", "2027-08-09", { capacity: 2 }); await mkDep("Wp1", "W", "2027-08-11", { capacity: 1 }); await fillSeats("W", "W0", 1); });
 
   // ── การจองสาธารณะผ่านเส้นจริงของ W1.2a (ถือ → ยืนยัน) แล้วปล่อยให้หมดเวลาด้วยตัวกวาดจริง (runExpireHolds) ──
   let phoneN = 0;
@@ -387,7 +401,9 @@ try {
     if (!FIXERR.Z) {
       await tryBk("EZF", () => mkHeld("EZF", "Z1", { adults: 1, prod: "Z", zone: `เขต free ${STAMP}` })); // มติ D5: เขตไม่มีค่าบริการ (ไม่อยู่ใน snapshot)
       await tryBk("EZP", () => mkHeld("EZP", "Z2", { adults: 1, prod: "Z", zone: `เขต paid ${STAMP}` })); // มติ D5: เขตมีค่าบริการ (อยู่ใน snapshot)
-    } else for (const t of ["EZF", "EZP"]) BKERR[t] = `ฟิกซ์เจอร์ Z: ${FIXERR.Z}`;
+      await tryBk("EZN", () => mkHeld("EZN", "Z3", { adults: 1, prod: "Z" })); // มติ E2: ไม่ใช้รับส่ง
+      await tryBk("EZS", () => mkHeld("EZS", "Z4", { adults: 1, prod: "Z", zone: `เขต self ${STAMP}` })); // มติ E2: มาเอง
+    } else for (const t of ["EZF", "EZP", "EZN", "EZS"]) BKERR[t] = `ฟิกซ์เจอร์ Z: ${FIXERR.Z}`;
     try {
       const ex = await tcall("runExpireHolds", LATER.now, { tenantIds: [tA] });
       ok(ex.ok !== "THROW" && ex.ok !== false, `runExpireHolds: ${fmt(ex)}`);
@@ -572,12 +588,13 @@ try {
       eq([qs.get("d"), qs.get("n.ADULT"), qs.has("t"), qs.get("m")], [String(x.date), "3", false, String(x.date).slice(0, 7)], "พารามิเตอร์");
     }
   });
-  await st("FS-3", "[service] ทริปอื่นวันเดียวกัน = [B ว่าง 6] เท่านั้น (C ร้านยืนยันก่อน · D ไม่เผยแพร่ · E เต็ม · X หน่วยอื่น ⇒ ไม่มี) · href หน้า B d=D0 ไม่มี n.*", async () => {
+  await st("FS-3", "[service] ทริปอื่นวันเดียวกัน = [B ว่าง 6] เท่านั้น (C ร้านยืนยันก่อน · D ไม่เผยแพร่ · E เต็ม · X หน่วยอื่น ⇒ ไม่มี) · href หน้า B d=D0 + n.ADULT=3 (มติ E7)", async () => {
     needFx(); const { full } = await fullA({ d: D0, "n.ADULT": "3" }); ok(full, "ไม่มี vm.full");
     const sd = asArr(full?.sameDay);
     eq(sd.map((x) => [String(x.href ?? "").split("?")[0], x.left]), [[`/book/${SA}/t/${PRD.B?.slug}`, 6]], "รายการ");
     const qs = qsOf(String(sd[0]?.href ?? ""));
-    eq([qs.get("d"), [...qs.keys()].some((k) => k.startsWith("n."))], [D0, false], "พารามิเตอร์");
+    // ORACLE-EDIT FS-3 (ผู้คุม 26 พ.ย. · มติ E7): ลิงก์ทริปอื่นวันเดียวกันพา n.* ไปด้วย (รหัสที่สินค้าปลายทางไม่มีถูกทิ้ง)
+    eq([qs.get("d"), qs.get("n.ADULT")], [D0, "3"], "พารามิเตอร์");
   });
   await st("FS-4", "[service] want 7 ⇒ ทริปอื่นวันเดียวกันว่าง 6 ไม่พอ ⇒ sameDay [] · วันใกล้เคียง [D0−1 ว่าง 30, D0+3 ว่าง 10] (D0−7 ว่าง 5 ไม่พอ)", async () => {
     needFx(); const { full } = await fullA({ d: D0, "n.ADULT": "7" }); ok(full, "ไม่มี vm.full");
@@ -764,9 +781,10 @@ try {
     const [b] = needBk("EO"); const ex = expiredOf(await openRes(b.token)); ok(ex, "ไม่มี vm.expired"); const rh = asRec(ex?.rehold); const qs = qsOf(String(rh?.href ?? ""));
     eq([qs.get("n.ADULT"), qs.get("n.CHILD"), [...qs.keys()].some((k) => k.startsWith("x.")), rh?.partial], ["2", "1", false, true], "ลิงก์");
   });
-  await st("EX-6", "[service] รอบเดิมเต็ม (EF · เติม 3 ที่หลังหมดเวลา) ⇒ now FULL · rehold ยังมี · full = ก้อนรอบเต็มของวันเดิม {want 3 · left 0}", async () => {
+  // ORACLE-EDIT EX-6 EP-3 EL-3 (ผู้คุม 26 พ.ย. · มติ E1): รอบเดิมเต็ม ⇒ ไม่มีลิงก์ถือใหม่ (rehold null) · ก้อนรอบเต็มเป็นทางไปต่อ
+  await st("EX-6", "[service] มติ E1: รอบเดิมเต็ม (EF · เติม 3 ที่หลังหมดเวลา) ⇒ now FULL · rehold = null · full = ก้อนรอบเต็มของวันเดิม {want 3 · left 0}", async () => {
     const [b] = needBk("EF"); const x = expiredOf(await openRes(b.token)); ok(x, "ไม่มี vm.expired");
-    eq([asRec(x?.now)?.state, !!asRec(x?.rehold)?.href, asRec(x?.full)?.want, asRec(x?.full)?.left], ["FULL", true, 3, 0], "ผล");
+    eq([asRec(x?.now)?.state, x?.rehold ?? null, asRec(x?.full)?.want, asRec(x?.full)?.left], ["FULL", null, 3, 0], "ผล");
   });
   await st("EX-7", "[service] รอบเดิมถูกยกเลิก (EC) ⇒ now CLOSED · rehold null · full = null หรือก้อนทางเลือก (ไม่มีปุ่มถือรอบเดิม)", async () => {
     const [b] = needBk("EC"); const x = expiredOf(await openRes(b.token)); ok(x, "ไม่มี vm.expired");
@@ -805,9 +823,9 @@ try {
     const [b] = needBk("EO"); const t = unent(await resHtml(b, { lang: "en" }));
     ok(t.includes(tpl("en", "res.expiredTitle")) && t.includes(tpl("en", "res.reholdSubmit")), `en: ${t.slice(0, 200)}`);
   });
-  await st("EP-3", "[page] รอบเดิมเต็ม (EF) ⇒ res.expiredNowFull + ก้อน book-full ในหน้าการจอง · รอบถูกยกเลิก (EC) ⇒ res.expiredNowClosed · ไม่มีลิงก์ถือใหม่", async () => {
+  await st("EP-3", "[page] มติ E1: รอบเดิมเต็ม (EF) ⇒ res.expiredNowFull + ก้อน book-full · ไม่มี book-res-rehold · รอบถูกยกเลิก (EC) ⇒ res.expiredNowClosed · ไม่มีลิงก์ถือใหม่", async () => {
     const [ef, ec] = needBk("EF", "EC");
-    const hf = await resHtml(ef); ok(unent(hf).includes(tpl("th", "res.expiredNowFull")) && hf.includes('data-testid="book-full"'), "EF");
+    const hf = await resHtml(ef); ok(unent(hf).includes(tpl("th", "res.expiredNowFull")) && hf.includes('data-testid="book-full"') && !hf.includes('data-testid="book-res-rehold"'), "EF");
     const hc = await resHtml(ec); ok(unent(hc).includes(tpl("th", "res.expiredNowClosed")) && !hc.includes('data-testid="book-res-rehold"'), "EC");
   });
   await st("EP-4", "[page] ไม่ต้องมี JS: ลิงก์ถือใหม่เป็น <a href> (GET) ไม่ใช่ปุ่มของฟอร์ม · หน้าไม่ตั้ง referrer no-referrer", async () => {
@@ -837,10 +855,12 @@ try {
     ok(r.kind === "REDIRECT" && new RegExp(`^/book/${SA}/c/`).test(r.url), `ผล: ${fmt([r.kind, r.url, r.err])}`);
     eq(await bRow(b.id), r0, "การจองเดิม");
   });
-  await st("EL-3", "[service] ลิงก์ถือใหม่ของ EF (รอบเดิมเต็ม) ⇒ หน้าสินค้าตามลิงก์มี vm.full ของวันนั้น (want 3)", async () => {
-    const [b] = needBk("EF"); const href = String(asRec(expiredOf(await openRes(b.token))?.rehold)?.href ?? "");
-    const sp = Object.fromEntries(qsOf(href).entries());
-    eq(fullOf(await openProduct(PRD.A?.slug ?? "", sp))?.want, 3, "want");
+  await st("EL-3", "[service] มติ E1: EF (รอบเดิมเต็ม) ไม่มีลิงก์ถือใหม่ · ลิงก์วันใกล้เคียงแรกในก้อนรอบเต็มพาไปหน้าสินค้าที่เลือกวันนั้นได้ (selected.date = วันของลิงก์ · requestedUnavailable false)", async () => {
+    const [b] = needBk("EF"); const x = expiredOf(await openRes(b.token)); ok(x, "ไม่มี vm.expired");
+    eq(x?.rehold ?? null, null, "rehold");
+    const nb = asArr(asRec(x?.full)?.nearby)[0]; ok(nb, "ก้อนรอบเต็มไม่มีวันใกล้เคียง");
+    const r = await openProduct(PRD.A?.slug ?? "", Object.fromEntries(qsOf(String(nb?.href ?? "")).entries()));
+    eq([asRec(asRec(r.vm)?.selected)?.date, asRec(r.vm)?.requestedUnavailable], [nb?.date, false], "หน้าสินค้าตามลิงก์");
   });
   groupLine("EL");
 
@@ -1023,13 +1043,14 @@ try {
     const hs = [await resHtml(eaf), await bookingOff(false, () => resHtml(ef)), await shopConfirms(() => resHtml(ef))];
     eq(hs.map((h) => [h.includes('data-testid="book-full"'), h.includes('data-testid="book-res-rehold"')]), hs.map(() => [false, false]), "ก้อน/ลิงก์");
   });
-  await st("D5-1", "[service] มติ D5: การจองที่เลือกเขตไม่มีค่าบริการ (EZF · เขตไม่อยู่ใน snapshot) ⇒ partial true หรือลิงก์มี z ของเขตนั้น · เขตมีค่าบริการ (EZP) ⇒ ลิงก์มี z ของเขตนั้น และ partial false", async () => {
-    const [f, pz] = needBk("EZF", "EZP");
-    const rf = asRec((await reholdOf(f)).rehold), rp = asRec((await reholdOf(pz)).rehold);
-    ok(rf, "EZF ไม่มีลิงก์"); ok(rp, "EZP ไม่มีลิงก์");
-    const zf = qsOf(String(rf?.href ?? "")).get("z"), zp = qsOf(String(rp?.href ?? "")).get("z");
-    ok(rf?.partial === true || zf === ORIG.EZF?.query.z, `EZF: partial ${fmt(rf?.partial)} · z ${fmt(zf)}`);
-    eq([zp, rp?.partial], [ORIG.EZP?.query.z, false], "EZP");
+  // ORACLE-EDIT D5-1 (ผู้คุม 26 พ.ย. · มติ E2 แทน D5): เขตที่พาไปไม่ได้ไม่ตั้ง partial
+  await st("D5-1", "[service] มติ E2: เขตไม่มีค่าบริการ (EZF) · ไม่ใช้รับส่ง (EZN) · มาเอง (EZS) ⇒ partial false · เขตมีค่าบริการ (EZP) ⇒ ลิงก์มี z ของเขตนั้น และ partial false", async () => {
+    const [f, pz, n, sf] = needBk("EZF", "EZP", "EZN", "EZS");
+    const rs = [f, n, sf].map(async (b) => asRec((await reholdOf(b)).rehold));
+    const parts = await Promise.all(rs);
+    eq(parts.map((r) => [!!r?.href, r?.partial]), [[true, false], [true, false], [true, false]], "EZF EZN EZS");
+    const rp = asRec((await reholdOf(pz)).rehold); ok(rp, "EZP ไม่มีลิงก์");
+    eq([qsOf(String(rp?.href ?? "")).get("z"), rp?.partial], [ORIG.EZP?.query.z, false], "EZP");
   });
   const noText = (h: string, k: string, lang: "th" | "en") => !unent(h).includes(head(tpl(lang, k)));
   await st("D6-1", "[page] มติ D6 D7: การจองเอเจนซี่ที่รอบยังว่าง (EA) ⇒ ไม่มีบรรทัด \"ตอนนี้รอบเดิมยังว่าง N ที่\" และไม่มี res.expiredPaidHow (ทั้ง th และ en) · ก้อนหมดเวลายังอยู่", async () => {
@@ -1055,6 +1076,88 @@ try {
     ok(!/JSON\.(parse|stringify)\(/.test(pp), "หน้าสินค้ายังส่ง/อ่าน JSON ผ่านอาร์กิวเมนต์ของ openOnce");
   });
   groupLine("D1"); groupLine("D2"); groupLine("D3"); groupLine("D4"); groupLine("D5"); groupLine("D6"); groupLine("D10");
+
+  // ═══════════════ มติ E1–E7 (ผู้เขียนข้อสอบแยก รอบ 4 · 26 พ.ย. — ยังไม่ได้รัน · ผู้คุมรันหลังผู้สร้าง) ═══════════════
+  console.log("\n── E: มติผู้คุมรอบ 3 (หลังนักล่าเบราว์เซอร์) ──");
+  const textOfTestid = (h: string, id: string): string => unent(new RegExp(`data-testid="${id}"[^>]*>([\\s\\S]*?)</`).exec(h)?.[1] ?? "");
+  const blockOf = (h: string, id: string, endId: string): string => { const i = h.indexOf(`data-testid="${id}"`); if (i < 0) return ""; const j = h.indexOf(`data-testid="${endId}"`, i); return h.slice(i, j < 0 ? i + 4000 : j); };
+  const hasHoldForm = (h: string) => (h.match(/<form\b[\s\S]*?<\/form>/g) ?? []).some((f) => /name="nonce"/.test(f));
+  await st("E1-1", "[page] มติ E1: หน้าสินค้า A ?d=D0&n.ADULT=3 (ก้อนรอบเต็ม · หน้าถอยไปเลือกวันอื่น) ⇒ แถบสรุปข้างปุ่มถือ (book-summary ถึงปุ่ม book-continue) มีวันที่ของรอบที่จะถือ (ข้อความเดียวกับ book-selected-date)", async () => {
+    needFx(); const h = await productHtml(PRD.A?.slug ?? "", { d: D0, "n.ADULT": "3" });
+    ok(h.includes('data-testid="book-full"') && hasHoldForm(h), "ตัวควบคุม: ต้องมีทั้งก้อนรอบเต็มและฟอร์มถือ");
+    const date = textOfTestid(h, "book-selected-date"); ok(date, "ไม่พบ book-selected-date");
+    const sum = unent(blockOf(h, "book-summary", "book-continue"));
+    ok(sum.includes(date), `แถบสรุปไม่มีวันที่ "${date}": ${sum.slice(0, 200)}`);
+  });
+  const neutral = (lang: "th" | "en") => head(tpl(lang, "res.reholdNote"));
+  await st("E2-1", "[service+page] มติ E2: EZF (เขตฟรี) · EZN (ไม่ใช้รับส่ง) · EZS (มาเอง) ⇒ partial false · หน้ามีลิงก์ถือใหม่ + บรรทัดกลาง res.reholdNote (th · en) · ไม่มีกล่องเตือน book-res-rehold-partial", async () => {
+    const bs = needBk("EZF", "EZN", "EZS");
+    for (const b of bs) {
+      eq(asRec((await reholdOf(b)).rehold)?.partial, false, `${b.tag} partial`);
+      for (const lang of ["th", "en"] as const) {
+        const h = await resHtml(b, lang === "en" ? { lang: "en" } : {});
+        ok(h.includes('data-testid="book-res-rehold"') && unent(h).includes(neutral(lang)), `${b.tag} ${lang}: ไม่มีลิงก์ถือใหม่หรือบรรทัดกลาง`);
+        ok(!h.includes('data-testid="book-res-rehold-partial"'), `${b.tag} ${lang}: มีกล่องเตือน`);
+      }
+    }
+  });
+  await st("E2-2", "[service+page] มติ E2 D13: รายการเสริมถูกตัด (EO · กล้องเลิกขาย) ⇒ partial true · หน้ามีกล่องเตือน book-res-rehold-partial (res.reholdPartial) และบรรทัดกลาง", async () => {
+    const [b] = needBk("EO");
+    eq(asRec((await reholdOf(b)).rehold)?.partial, true, "partial");
+    const h = await resHtml(b);
+    ok(h.includes('data-testid="book-res-rehold-partial"') && unent(h).includes(tpl("th", "res.reholdPartial")) && unent(h).includes(neutral("th")), "กล่องเตือน/บรรทัดกลาง");
+  });
+  await st("E3-1", "[service] มติ E3: วัน DS6 (SM เต็ม) ทริปอื่นวันเดียวกัน NP (ACTIVE · ว่าง 30 · ไม่มีแถวราคา · ออก 07:00 = ตรวจก่อน) ไม่ขึ้น · G2 ขึ้น", async () => {
+    needFix("E3");
+    const full = fullOf(await openProduct(PRD.SM?.slug ?? "", { d: DS6, "n.ADULT": "3" })); ok(full, "ไม่มี vm.full");
+    eq(asArr(full?.sameDay).map((x) => String(x.href ?? "").split("?")[0]), [`/book/${SA}/t/${PRD.G2?.slug}`], "sameDay");
+  });
+  await st("E3-2", "[page] มติ E3: กดทุกลิงก์ทริปอื่นวันเดียวกันที่เสนอ (A·D0 ⇒ B · SM·DS2 ⇒ S18–S20 · SM·DS6 ⇒ G2) ⇒ หน้าปลายทางมีฟอร์มถือที่ (ฟอร์มที่มี nonce)", async () => {
+    needFix("S"); needFix("E3");
+    const links: { slug: string; href: string }[] = [];
+    for (const [slug, d] of [[PRD.A?.slug, D0], [PRD.SM?.slug, DS2], [PRD.SM?.slug, DS6]] as const) {
+      const full = fullOf(await openProduct(String(slug), { d, "n.ADULT": "3" })); ok(full, `ไม่มี vm.full (${d})`);
+      for (const x of asArr(full?.sameDay)) links.push({ slug: String(x.href).split("?")[0]?.split("/").pop() ?? "", href: String(x.href) });
+    }
+    eq(links.length, 5, "จำนวนลิงก์ที่เสนอ (B · S18 · S19 · S20 · G2)");
+    const bad: string[] = [];
+    for (const l of links) if (!hasHoldForm(await productHtml(l.slug, Object.fromEntries(qsOf(l.href).entries())))) bad.push(l.slug);
+    ok(bad.length === 0, `หน้าปลายทางไม่มีฟอร์มถือ: ${bad.join(", ")}`);
+  });
+  await st("E4-1", "[service+page] มติ E4: สินค้าร้านยืนยันก่อน (C · วันเต็ม 2027-05-13) ⇒ vm.full = null และหน้าไม่มี book-full · ร้านปิดปุ่มจอง (A · D0) ⇒ vm.full = null และหน้าไม่มี book-full — คืนค่าตั้ง", async () => {
+    needFix("E4");
+    const sp = { d: "2027-05-13", "n.ADULT": "1" };
+    eq(fullOf(await openProduct(PRD.C?.slug ?? "", sp)) ?? null, null, "C vm.full");
+    ok(!(await productHtml(PRD.C?.slug ?? "", sp)).includes('data-testid="book-full"'), "C หน้ามี book-full");
+    const [vmA, hA] = await bookingOff(false, async () => [fullOf(await openProduct(PRD.A?.slug ?? "", { d: D0, "n.ADULT": "3" })) ?? null, await productHtml(PRD.A?.slug ?? "", { d: D0, "n.ADULT": "3" })] as const);
+    eq(vmA, null, "A ปิดปุ่ม vm.full"); ok(!String(hA).includes('data-testid="book-full"'), "A ปิดปุ่ม หน้ามี book-full");
+  });
+  await st("E5-1", "[service+page] มติ E5: วัน DT สองรอบ (08:00 เต็ม · 13:00 ว่าง) · e=SOLD_OUT&t=<รอบ 08:00>&n.ADULT=2 ⇒ vm.full {want 2 · left 0} · หน้ามี book-full และไม่มีข้อความ err.SOLD_OUT คู่กับรอบ 13:00", async () => {
+    needFix("E5");
+    const t = String(pfn(PUBI, "bookSlotToken", "W1.1")(tA, DEP.T1));
+    const sp = { d: DT, t, "n.ADULT": "2", e: "SOLD_OUT" };
+    const full = fullOf(await openProduct(PRD.A?.slug ?? "", sp)); ok(full, "ไม่มี vm.full");
+    eq([full?.want, full?.left], [2, 0], "want · left");
+    const h = await productHtml(PRD.A?.slug ?? "", sp);
+    ok(h.includes('data-testid="book-full"'), "หน้าไม่มี book-full");
+    ok(!unent(h).includes(head(tpl("th", "err.SOLD_OUT"))), "หน้ามีข้อความที่นั่งไม่พอ (err.SOLD_OUT) คู่กับรอบอื่น");
+  });
+  await st("E6-1", "[page] มติ E6: หน้าที่มีก้อนรอบเต็ม (A ?d=D0&n.ADULT=3) ⇒ ลิงก์ภาษา (book-lang-en) คง d=D0 และ n.ADULT=3 · เปิดตามลิงก์ (en) มี book-full", async () => {
+    needFx(); const h = await productHtml(PRD.A?.slug ?? "", { d: D0, "n.ADULT": "3" });
+    const tag = /<a\b[^>]*data-testid="book-lang-en"[^>]*>/.exec(h)?.[0] ?? "";
+    const href = unent(/\bhref="([^"]*)"/.exec(tag)?.[1] ?? "");
+    ok(href, "ไม่พบลิงก์ภาษาอังกฤษ");
+    const qs = qsOf(href); eq([qs.get("d"), qs.get("n.ADULT"), qs.get("lang")], [D0, "3", "en"], "พารามิเตอร์ลิงก์ภาษา");
+    ok((await productHtml(PRD.A?.slug ?? "", Object.fromEntries(qs.entries()))).includes('data-testid="book-full"'), "หน้าภาษาอังกฤษไม่มี book-full");
+  });
+  await st("E7-1", "[page] มติ E7: en เอกพจน์/พหูพจน์ — สินค้า W วันเต็ม 2027-08-10 วันใกล้เคียง 08-09 (ว่าง 2) · 08-11 (ว่าง 1) ⇒ ก้อนภาษาอังกฤษมี \"2 seats\" และ \"1 seat\" ไม่มี \"1 seats\"", async () => {
+    needFix("E7");
+    const full = fullOf(await openProduct(PRD.W?.slug ?? "", { d: "2027-08-10" })); ok(full, "ไม่มี vm.full");
+    eq(asArr(full?.nearby).map((x) => [x.date, x.left]), [["2027-08-09", 2], ["2027-08-11", 1]], "ตัวควบคุม: วันใกล้เคียง");
+    const blk = unent(blockOf(await productHtml(PRD.W?.slug ?? "", { d: "2027-08-10", lang: "en" }), "book-full", "book-cal-prev"));
+    ok(/\b2 seats\b/.test(blk) && /\b1 seat\b/.test(blk) && !/\b1 seats\b/.test(blk), `ข้อความ: ${blk.slice(0, 240)}`);
+  });
+  groupLine("E1"); groupLine("E2"); groupLine("E3"); groupLine("E4"); groupLine("E5"); groupLine("E6"); groupLine("E7");
   exitCode = cks.some((c) => c.res !== "PASS") ? 1 : 0;
 } catch (e) {
   record("FATAL", "ข้อสอบล้มกลางทาง (ไม่ควรเกิด)", "FAIL", errMsg(e));
