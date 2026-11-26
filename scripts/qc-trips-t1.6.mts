@@ -125,7 +125,7 @@ const SOLD_ST = ["CONFIRMED", "PART_PAID", "PAID", "TRAVELLED", "NO_SHOW"];
 const RAW_CODES = ["EXTERNAL", "MIN_NOT_MET", "SHOP_FAULT", "PENDING", "NO_MONEY", "AGENCY_MONEY_HELD", "MOVE_DATE", "REFUND_100", "DEPARTURE_CANCEL", "MOVE_NOT_AVAILABLE_YET"];
 /** ไฟล์เดิมที่แก้ได้แบบจำกัด (§1 · a1): [ไฟล์ (หลายไฟล์ = งบรวม), ลบได้สูงสุด, เพิ่มได้สูงสุด (null = ไม่จำกัด)] */
 const LIMITED: [string[], number, number | null][] = [
-  [["prisma/schema/trips.prisma"], 0, 26] /* ORACLE-EDIT ผู้คุม: +4 ฟิลด์ relation ของ FK RESTRICT 2 ตัวที่ §3 บังคับ */, [["src/lib/core/scope.ts"], 0, 1], [[MOD + "refund.ts"], 4, 70], [[MOD + "money-core.ts"], 0, 35], [[MOD + "money.ts"], 0, 25], [[MOD + "booking.ts"], 2, 25],
+  [["prisma/schema/trips.prisma"], 0, 26] /* ORACLE-EDIT ผู้คุม: +4 ฟิลด์ relation ของ FK RESTRICT 2 ตัวที่ §3 บังคับ */, [["src/lib/core/scope.ts"], 0, 1], [[MOD + "refund.ts"], 6, 70] /* ORACLE-EDIT T1.6 รอบ 5: มติ F3 งบลบ −6 */, [[MOD + "money-core.ts"], 0, 35], [[MOD + "money.ts"], 0, 25], [[MOD + "booking.ts"], 2, 25],
   [[MOD + "capacity.ts", MOD + "capacity-service.ts"], 0, 16], [[MOD + "jobs.ts"], 1, 8], [[MOD + "departure-desk.ts"], 2, 14], [[MOD + "departures.ts"], 0, 4], [[MOD + "departure-screens.ts"], 2, 45], [[MOD + "booking-screens.ts"], 0, 30],
   [["src/lib/platform/trips-self.ts", "src/lib/platform/trips-self-core.ts"], 2, 20], [[`${COMP}/DeparturePanel.tsx`, `${COMP}/DepartureDialogs.tsx`, `${COMP}/BookingsScreen.tsx`, `${COMP}/BookingDrawer.tsx`], 6, 70],
   [["src/lib/outbox-consumers.ts"], 0, 3], [["src/lib/automation/labels.ts"], 0, 3], [[MOD + "index.ts"], 0, null], [["src/messages/th/trips.json"], 2, null], [["src/messages/en/trips.json"], 2, null], [["scripts/trips-ui-inventory.json"], 0, null],
@@ -324,8 +324,9 @@ try {
   const depRow = async (id: string): Promise<Rec> => (await q<Rec>(`SELECT * FROM "TripDeparture" WHERE id = $1`, [id]))[0] ?? {};
   const outbox = async (type: string, tenantId = tA) => q<{ payload: Rec; idempotencyKey: string; createdAt: Date }>(`SELECT payload, "idempotencyKey", "createdAt" FROM "OutboxEvent" WHERE "tenantId" = $1 AND type = $2 ORDER BY "createdAt", id`, [tenantId, type]).catch(() => []);
   const audits = async (action: string, tenantId = tA) => q<Rec>(`SELECT * FROM "AuditLog" WHERE "tenantId" = $1 AND action = $2 ORDER BY "createdAt", id`, [tenantId, action]);
-  const pay = async (b: Bk, amount: number, o: { now?: Date; who?: string; key?: string } = {}) =>
-    call("recordTripPayment", staff({ unit: b.unit, now: o.now ?? addMs(NOW0, 60_000), who: o.who }), { bookingId: b.id, amountSatang: amount, tender: "PROMPTPAY", idempotencyKey: o.key ?? `p${hex(6)}` });
+  // ORACLE-EDIT T1.6 รอบ 5 (มติ F1 ตามที่สร้าง): หลังร้านยกเลิก รับเฉพาะ slipId หรือช่องทางธนาคารที่มีเลขอ้างอิง ⇒ ทุกการรับเงินของข้อสอบแนบ reference (ไม่ใส่ = null)
+  const pay = async (b: Bk, amount: number, o: { now?: Date; who?: string; key?: string; tender?: string; reference?: string | null } = {}) =>
+    call("recordTripPayment", staff({ unit: b.unit, now: o.now ?? addMs(NOW0, 60_000), who: o.who }), { bookingId: b.id, amountSatang: amount, tender: o.tender ?? "PROMPTPAY", idempotencyKey: o.key ?? `p${hex(6)}`, ...(o.reference === null ? {} : { reference: o.reference ?? `QCREF${hex(4)}` }) });
   const payOk = async (b: Bk, amount: number, now?: Date) => V(await pay(b, amount, { now }), `recordTripPayment ${b.key}`);
   const reqRefund = async (b: Bk, o: { now?: Date; reasonKind?: string } = {}) =>
     call("requestTripRefund", staff({ unit: b.unit, now: o.now ?? NOW }), { bookingId: b.id, expectedVersion: num((await bk(b.id)).version), reasonKind: o.reasonKind ?? "CUSTOMER", choice: "MONEY", reason: "ลูกค้าขอยกเลิก", idempotencyKey: `r${hex(6)}` });
@@ -776,7 +777,7 @@ try {
     V(await cancelSvc("oa", D(tag), { confirm: keys.length, now: new Date(real - DAY) }), `ยกเลิก ${tag}`); return out;
   };
   const MACT = await tryImport("@/lib/modules/trips/money-actions");
-  const actPay = (tag: string, b: Bk, amount: number, tender: string, key?: string) => runAction(MACT.mod?.recordTripPaymentAction, tag, `/app/u/${SLUG_A}/trips/bookings`, [SLUG_A, { bookingId: b.id, amountSatang: amount, tender, idempotencyKey: key ?? `ap${hex(6)}` }]);
+  const actPay = (tag: string, b: Bk, amount: number, tender: string, key?: string, reference: string | null = `QCREF${hex(4)}`) => runAction(MACT.mod?.recordTripPaymentAction, tag, `/app/u/${SLUG_A}/trips/bookings`, [SLUG_A, { bookingId: b.id, amountSatang: amount, tender, idempotencyKey: key ?? `ap${hex(6)}`, ...(reference === null ? {} : { reference }) }]); // ORACLE-EDIT T1.6 รอบ 5 (F1: reference)
   const actDecide = (tag: string, requestId: unknown, delta?: number) => runAction(MACT.mod?.decideTripRefundAction, tag, `/app/u/${SLUG_A}/trips/bookings`, [SLUG_A, { requestId, decision: "APPROVE", ...(delta !== undefined ? { manualDeltaSatang: delta, manualReason: "ปรับยอดทดสอบ" } : {}), idempotencyKey: `ad${hex(6)}` }]);
   const openMarked = async (b: Bk) => q<Rec>(`SELECT * FROM "TripRefundRequest" WHERE "bookingId" = $1 AND status = ANY($2::text[]) AND computed->>'path' = 'DEPARTURE_CANCEL' ORDER BY "createdAt" DESC, id DESC`, [b.id, OPEN_REQ]);
   const choiceAudits = async (b: Bk) => (await audits("trips.booking.cancel_choice")).filter((a) => a.targetId === b.id || JSON.stringify(a.after ?? {}).includes(b.id));
@@ -1178,15 +1179,16 @@ try {
       eq([bad, await moneyInv(b.id)], [[], []], "สลิป");
     });
     // ORACLE-EDIT T1.6 รอบ 4 (F1 F2) — รอบบนเส้นเวลาจริง (action ใช้นาฬิกาจริง)
-    await st("NM-8", "[action+บริการ] F1(ก): บนรอบที่ร้านยกเลิก ผู้มีแต่ trips.payment.record (recordTripPaymentAction): เงินสด / บัตร ⇒ STATE_CONFLICT DEPARTURE_CANCELLED_SLIP_ONLY ไม่เขียน (ยอดจ่าย · แถวเงิน · คำขอเดิม) · พร้อมเพย์/โอน (สลิป) ⇒ รับได้ · บริการก็ปฏิเสธเงินสดเช่นกัน", async () => {
+    await st("NM-8", "[action+บริการ] F1(ก) ตามที่สร้าง (มติรอบ 5): บนรอบที่ร้านยกเลิก ผู้มีแต่ trips.payment.record (recordTripPaymentAction): เงินสด / บัตร ⇒ STATE_CONFLICT DEPARTURE_CANCELLED_SLIP_ONLY แม้มีเลขอ้างอิง · พร้อมเพย์/โอนไม่มีเลขอ้างอิง (ไม่ส่ง หรือช่องว่าง) ⇒ ปฏิเสธเช่นกัน · พร้อมเพย์/โอนมีเลขอ้างอิง ⇒ รับได้ · บริการ: เงินสดปฏิเสธ · พร้อมเพย์มีเลขอ้างอิงรับได้ · ที่ปฏิเสธไม่เขียนอะไร", async () => { // ORACLE-EDIT T1.6 รอบ 5
       needFix(); const M = await mkRealMini("SO", [{ k: "a", pay: "deposit" }]); const b = M.a as Bk; const bad: string[] = [];
-      const p0 = num((await bk(b.id)).paidSatang), e0 = (await evs(b.id)).length;
-      for (const t of ["CASH", "CARD"]) { const r = await actPay("pay", b, 10_000, t); if (!(r.ok === false && tags(r).includes("STATE_CONFLICT") && tags(r).includes("DEPARTURE_CANCELLED_SLIP_ONLY"))) bad.push(`action ${t}: ${fmt(r).slice(0, 100)}`); }
-      V(await pay(b, 10_000, { now: new Date() }), "บริการ PROMPTPAY (สลิป) รับได้");
-      const sv = await call("recordTripPayment", staff({ now: new Date() }), { bookingId: b.id, amountSatang: 10_000, tender: "CASH", idempotencyKey: `sc${hex(6)}` });
-      if (!(sv.ok === false && tags(sv).includes("DEPARTURE_CANCELLED_SLIP_ONLY"))) bad.push(`บริการ CASH: ${fmt(sv).slice(0, 100)}`);
-      if (num((await bk(b.id)).paidSatang) !== p0 + 10_000 || (await evs(b.id)).length !== e0 + 1) bad.push(`เขียนเกิน/ขาด: paid ${(await bk(b.id)).paidSatang} (ต้อง ${p0 + 10_000}) แถว ${(await evs(b.id)).length}`);
-      const ok2 = await actPay("pay", b, 10_000, "TRANSFER"); if (ok2.ok !== true) bad.push(`action TRANSFER: ${fmt(ok2).slice(0, 100)}`);
+      const p0 = num((await bk(b.id)).paidSatang), e0 = (await evs(b.id)).length; const slipOnly = (r: Rec) => r.ok === false && tags(r).includes("STATE_CONFLICT") && tags(r).includes("DEPARTURE_CANCELLED_SLIP_ONLY");
+      for (const [t, ref] of [["CASH", "REF123"], ["CARD", "REF123"], ["CASH", null], ["PROMPTPAY", null], ["TRANSFER", null], ["PROMPTPAY", "   "], ["TRANSFER", ""]] as const) { const r = await actPay("pay", b, 10_000, t, undefined, ref); if (!(slipOnly(r) || (ref === "" && r.ok === false && r.code === "VALIDATION" /* ORACLE-EDIT T1.6 รอบ 5: ช่องว่างล้วนถูก schema ของ reference ปฏิเสธก่อน = ปฏิเสธเหมือนกัน */))) bad.push(`action ${t} ref=${fmt(ref)}: ${fmt(r).slice(0, 100)}`); }
+      const sv = await pay(b, 10_000, { now: new Date(), tender: "CASH", reference: "REF123" }); if (!slipOnly(sv)) bad.push(`บริการ CASH: ${fmt(sv).slice(0, 100)}`);
+      if (num((await bk(b.id)).paidSatang) !== p0 || (await evs(b.id)).length !== e0) bad.push(`ที่ปฏิเสธเขียน: paid ${(await bk(b.id)).paidSatang} แถว ${(await evs(b.id)).length}`);
+      const s1 = await pay(b, 10_000, { now: new Date() }); if (s1.ok !== true) bad.push(`บริการ PROMPTPAY + เลขอ้างอิง: ${fmt(s1).slice(0, 100)}`);
+      const a1 = await actPay("pay", b, 10_000, "TRANSFER"); if (a1.ok !== true) bad.push(`action TRANSFER + เลขอ้างอิง: ${fmt(a1).slice(0, 100)}`);
+      const a2 = await actPay("pay", b, 10_000, "PROMPTPAY"); if (a2.ok !== true) bad.push(`action PROMPTPAY + เลขอ้างอิง: ${fmt(a2).slice(0, 100)}`);
+      if (num((await bk(b.id)).paidSatang) !== p0 + 30_000) bad.push(`รับได้ ${num((await bk(b.id)).paidSatang) - p0} (ต้อง 30,000)`);
       ok(bad.length === 0, bad.join(" · ")); eq(await moneyInv(b.id), [], "ค่าคงที่เงิน");
     });
     await st("NM-9", "[action+บริการ] F1(ข): ใบรับหลังเวลาแถวผล ⇒ คำขอคืนเต็มไม่อนุมัติให้เอง — (1) มีคำขอติดป้าย APPROVED แล้ว pay สลิป ⇒ เปิดใบเดียว QUOTED ยอดใหม่เต็ม (2) ไม่มีคำขอ pay สลิปแล้ว resolve REFUND ⇒ QUOTED · ผู้ไม่มี refund.approve (req) อนุมัติไม่ได้ (FORBIDDEN) · ปรับยอดไม่ได้ · ผู้มี refund.approve (sta) อนุมัติ ⇒ APPROVED เต็ม 100% · execute บน QUOTED ⇒ ไม่อนุมัติ · สลิปซ้ำบน QUOTED ⇒ ยื่นใหม่ยัง QUOTED · ตัวควบคุม: ไม่มีใบรับหลังยกเลิก ⇒ อนุมัติให้เอง", async () => {
@@ -1207,12 +1209,12 @@ try {
       V(await actDecide("sta", qa1), "sta อนุมัติ"); const ra = await reqRow(qa1); if (ra.status !== "APPROVED" || num(ra.amountSatang) !== paidA || num(asRec(ra.computed)?.refundBp) !== 10_000) bad.push(`หลังอนุมัติ ${fmt([ra.status, ra.amountSatang])}`);
       ok(bad.length === 0, bad.join(" · "));
     });
-    await st("NM-10", "[บริการ] F2: การยื่นใหม่หลังรับเงิน (มีคำขอติดป้ายเปิด) เขียน audit trips.booking.cancel_choice +1 และ outbox trips.booking.cancel_choice_made +1 (คีย์ใหม่ ไม่ถูกกลืนเป็นซ้ำ) ที่ payload.refundRequestId = คำขอใหม่ และ payload.amountSatang = ยอดใหม่", async () => {
+    await st("NM-10", "[บริการ] F2: การยื่นใหม่หลังรับเงิน (มีคำขอติดป้ายเปิด) เขียน audit trips.booking.cancel_choice +1 และ outbox trips.booking.cancel_choice_made +1 (คีย์ใหม่ ไม่ถูกกลืนเป็นซ้ำ) ที่ payload.refundRequestId = คำขอใหม่ · ยอดใหม่อยู่ที่คำขอที่ payload ชี้ (ORACLE-EDIT T1.6 รอบ 5: payload ไม่มีช่องยอด — §8 / F2 ระบุแค่ refundRequestId)", async () => {
       needFix(); const M = await mkRealMini("RE", [{ k: "a", pay: "deposit" }]); const b = M.a as Bk;
       V(await resolveSvc("oa", b, "REFUND", { now: new Date(Date.now() - 12 * HOUR) }), "REFUND"); const a0 = (await choiceAudits(b)).length, e0 = await choiceMade(b);
       V(await pay(b, 30_000, { now: new Date() }), "สลิป"); const nw = (await openMarked(b))[0]; ok(nw, "ไม่มีคำขอเปิดหลังรับเงิน");
       const e1 = await choiceMade(b); const last = asRec(e1[e1.length - 1]?.payload) ?? {};
-      eq([(await choiceAudits(b)).length - a0, e1.length - e0.length, new Set(e1.map((e) => e.idempotencyKey)).size === e1.length, last.refundRequestId, num(last.amountSatang)], [1, 1, true, nw?.id, num(nw?.amountSatang)], "audit/อีเวนต์");
+      eq([(await choiceAudits(b)).length - a0, e1.length - e0.length, new Set(e1.map((e) => e.idempotencyKey)).size === e1.length, last.refundRequestId, num((await reqRow(String(last.refundRequestId ?? ""))).amountSatang)], [1, 1, true, nw?.id, num((await bk(b.id)).paidSatang)], "audit/อีเวนต์");
     });
   });
 
@@ -1256,7 +1258,9 @@ try {
   let AC: { dep: string; paid?: Bk; unpaid?: Bk } | null = null;
   await gated("AC", "server action ด้วย FormData (ใบ §5.3 §9)", async () => {
     await st("AC-1", "[action] cancelDepartureWithBookingsAction(slug, FormData) บนรอบ dAC (1 จ่าย + 1 ยังไม่จ่าย) โดย OWNER: ทุกฟิลด์ถูกอ่าน — confirmBookings 1 ⇒ BOOKINGS_CHANGED · expectedVersion เก่า ⇒ STATE_CONFLICT · kind SHOP_FAULT ⇒ cancelKind SHOP_FAULT · reason ลงรอบ · idempotencyKey ซ้ำ ⇒ replayed · ถ้าฟอร์ม trips-depcancel-dialog เรนเดอร์ฝั่งเซิร์ฟเวอร์ ชื่อช่องต้องเป็นชุด §9", async () => {
-      needFix(); AC = await mkMini("AC"); const dep = AC.dep;
+      // ORACLE-EDIT T1.6 รอบ 5 (F1ข): action ยกเลิกด้วยนาฬิกาจริง ⇒ ใบรับต้องอยู่ก่อนเวลาจริงด้วย (เดิมจอง/รับเงินด้วยนาฬิกาฉีด 2027 ⇒ ทุกใบรับดูเหมือน "หลังยกเลิก" ⇒ QUOTED)
+      needFix(); { const real = Date.now(); miniN++; await mkDep("AC", ymdBkk(new Date(real + 40 * DAY)), { hm: "11:40" }); const P0 = await mkBk("ACp", "AC", { now: new Date(real - 20 * DAY) }); await payOk(P0, ONE, new Date(real - 20 * DAY + 60_000)); const U0 = await mkBk("ACu", "AC", { now: new Date(real - 20 * DAY) }); AC = { dep: D("AC"), paid: P0, unpaid: U0 }; }
+      const dep = AC.dep;
       codeR(await actCancel("oa", await cancelFields(dep, { confirmBookings: 1 })), "STATE_CONFLICT", "confirmBookings", "BOOKINGS_CHANGED");
       codeR(await actCancel("oa", await cancelFields(dep, { expectedVersion: num((await depRow(dep)).version) - 1 })), "STATE_CONFLICT", "expectedVersion");
       const f = await cancelFields(dep, { kind: "SHOP_FAULT", reason: "เรือเสียทดสอบจอ" }); V(await actCancel("oa", f), "ยกเลิก"); const d = await depRow(dep);
