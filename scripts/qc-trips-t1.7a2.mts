@@ -176,11 +176,11 @@ const TESTIDS_FIXED = ["trips-dep-reports", "trips-rp", "trips-rp-title", "trips
 const TESTID_PATTERNS = ["trips-rp-preset-", "trips-rp-group-", "trips-rp-warn-", "trips-rp-period-", "trips-rp-period-note-", "trips-rp-load-", "trips-rp-lead-", "trips-rp-chgroup-", "trips-rp-ch-", "trips-rp-dep-", "trips-rp-dep-link-"];
 const VISUAL_SCENES = ["reports-sales", "reports-load", "reports-lead", "reports-channel", "reports-booked", "reports-sales-en", "departure-costs-en", "calendar-reports-link", "reports-filter-error"];
 /** ไฟล์เดิมที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด (null = ไม่จำกัด)] */
-const LIMITED: [string, number, number | null][] = [[PURE, 10, 340], [COSTS, 60, 45], [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 1, 4], [DEPSCREEN, 0, 10], [`${COMP}/CostScreen.tsx`, 10, 16],
+const LIMITED: [string, number, number | null][] = [[PURE, 10, 340], [COSTS, 60, 45], [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 2, 6] /* ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ H2): ประกาศ canReport ในชนิด VM ตรง ๆ */, [DEPSCREEN, 0, 10], [`${COMP}/CostScreen.tsx`, 10, 16],
   [`${COMP}/CostParts.tsx`, 4, 12], [`${COMP}/ProductsScreenParts.tsx`, 0, 6], ["src/messages/th/trips.json", 2, null], ["src/messages/en/trips.json", 2, null], ["scripts/trips-ui-inventory.json", 0, null], ["scripts/parity-trips.sh", 0, 4]];
 const LIMITED_SET = new Set(LIMITED.map(([f]) => f));
 /** ไฟล์ที่ผู้ร่างแก้ในใบนี้ (ไม่นับเป็นการแตะของ builder): ข้อสอบตัวนี้ + ฉาก t1.7a2 */
-const DRAFTER_FILES = ["scripts/qc-trips-t1.7a2.mts", "scripts/visual-trips.mts"];
+const DRAFTER_FILES = ["scripts/qc-trips-t1.7a2.mts", "scripts/visual-trips.mts", "scripts/qc-trips-t1.7.mts" /* ORACLE-EDIT (ผู้คุม 26 พ.ย. · C15): ข้อสอบ a1 ที่ผู้เขียนข้อสอบแก้ S-3/S-13/S-20 ตามใบ a2 */];
 // seed
 const DIVE_TENANT = FX.SHOP_DIVE.tenant.id;
 const U0 = FX.SHOP_DIVE.units.trips.id;
@@ -716,12 +716,17 @@ try {
   });
   await st("S-10", `ข้อความ report.*: ข้อความไทยที่ตรึง ${Object.keys(PINNED).length} คีย์ตรงตัวอักษร · คีย์ขั้นต่ำ ${I18N_REQUIRED.length} ครบสองภาษา · ชุดคีย์ report.* เท่ากัน · ไม่มีคำต้องห้าม/รหัสดิบ/รหัสใบงาน · อังกฤษไม่มีอักษรไทย · revenueNoVat ไม่มีคำ VAT · อังกฤษเอกพจน์/พหูพจน์ (noCosts · charter · lead.notCounted · lead.negative)`, () => {
     const wrong = Object.entries(PINNED).filter(([k, v]) => fth[k] !== v); ok(wrong.length === 0, `ข้อความไม่ตรง ${wrong.length}: ${fmt(wrong.map(([k]) => [k, fth[k]]).slice(0, 3))}`);
-    const miss = I18N_REQUIRED.filter((k) => !fth[k] || !fen[k]); ok(miss.length === 0, `ขาด ${miss.length}: ${miss.slice(0, 8).join(", ")}`);
+    // ORACLE-EDIT S-10 (ผู้คุม 26 พ.ย. · มติ J5): คีย์ report.* ที่ไม่มีผู้ใช้ต้องลบ ⇒ คีย์ขั้นต่ำบังคับเฉพาะคีย์ที่โค้ดใช้จริง (ตรงตัว หรือคำนำ `report.x.${…}`) · คีย์ที่ไม่ใช้ตรวจการลบใน RS-19
+    const usedSrc = [...walk("src/components/trips"), ...walk("src/lib/modules/trips"), ...walk(APP)].map((f) => stripComments(read(f))).join("\n");
+    const usedLits = new Set([...usedSrc.matchAll(/["'`](report\.[\w.]+)["'`]/g)].map((m) => m[1])); const usedPre = [...usedSrc.matchAll(/`(report\.[\w.]*?)\$\{/g)].map((m) => m[1] ?? "").filter(Boolean);
+    const isUsed = (k: string) => !k.startsWith("report.") || usedLits.has(k) || usedPre.some((p0) => k.startsWith(p0));
+    const miss = I18N_REQUIRED.filter((k) => isUsed(k) && (!fth[k] || !fen[k])); ok(miss.length === 0, `ขาด ${miss.length}: ${miss.slice(0, 8).join(", ")}`);
     eq(mineK(fth).map(([k]) => k).sort(), mineK(fen).map(([k]) => k).sort(), "ชุดคีย์สองภาษา");
-    const bad = [...mineK(fth), ...mineK(fen)].filter(([, v]) => forbiddenHit(v) !== null || /\b[TAWKLSCX]\d\.\d+[a-z]?\d?\b|\bOQ\d+\b/.test(v) || v.split(/[^A-Z_0-9]+/).some((w) => RAW_CODES.has(w)));
+    // ORACLE-EDIT S-10 (ผู้คุม 26 พ.ย. · มติ J5): report.channel.POS = "เครื่องคิดเงิน (POS)" ตามมติ ⇒ ยกเว้นคำ "(POS)" ในคีย์นี้คีย์เดียว (คำต้องห้ามอื่นยังตรวจ)
+    const bad = [...mineK(fth), ...mineK(fen)].filter(([k, v]) => forbiddenHit(k === "report.channel.POS" ? v.replace(/\(POS\)/, "") : v) !== null || /\b[TAWKLSCX]\d\.\d+[a-z]?\d?\b|\bOQ\d+\b/.test(v) || v.split(/[^A-Z_0-9]+/).some((w) => RAW_CODES.has(w)));
     ok(bad.length === 0, `ข้อความต้องห้าม: ${fmt(bad.slice(0, 4))}`);
     ok(!mineK(fen).some(([, v]) => THAI.test(v)) && !THAI.test(fen["departures.actions.reports"] ?? "ก"), "อังกฤษมีอักษรไทย");
-    ok(!/VAT/i.test(fth["report.kpi.revenueNoVat"] ?? "VAT") && !/VAT/i.test(fen["report.kpi.revenueNoVat"] ?? "VAT") && !/VAT/i.test(fen["report.csv.revenueNoVat"] ?? "VAT"), "revenueNoVat มีคำ VAT");
+    ok(!/VAT/i.test(fth["report.kpi.revenueNoVat"] ?? "VAT") && !/VAT/i.test(fen["report.kpi.revenueNoVat"] ?? "VAT") /* ORACLE-EDIT S-10 (J5): report.csv.revenueNoVat เป็นคีย์ตายที่มติให้ลบ — ไม่ตรวจแล้ว (การลบตรวจใน RS-19) */, "revenueNoVat มีคำ VAT");
     const tr = (RX?.ui.createTranslator as AnyFn)({ locale: "en", messages: { trips: en }, namespace: "trips" }) as AnyFn; const pl: string[] = [];
     for (const [k, w] of [["report.noCosts", "departure"], ["report.charter", "departure"], ["report.lead.notCounted", "booking"], ["report.lead.negative", "booking"]] as const) {
       const one = String(tr(k, { n: 1, ended: 1, upcoming: 0 })), two = String(tr(k, { n: 2, ended: 1, upcoming: 1 }));
@@ -790,7 +795,15 @@ try {
   });
   await st("S-17", "ทางเข้า: departure-screens.ts DepFlags มี canReport = can(\"trips.report.view\") · DeparturesScreen แสดง trips-dep-reports เมื่อ cal.flags.canReport · href ไป /trips/reports · ใช้ข้อความ departures.actions.reports", () => {
     const ds = stripComments(read(MOD + "departure-screens.ts")), sc = stripComments(read(DEPSCREEN));
-    ok(/canReport:\s*g\.can\(\s*["']trips\.report\.view["']\s*\)/.test(ds) && /canReport:\s*boolean/.test(ds), "flagsOf/DepFlags ไม่มี canReport");
+    ok(/canReport:\s*g\.can\(\s*["']trips\.report\.view["']\s*\)/.test(ds), "ไม่ได้ตั้ง canReport = can(\"trips.report.view\")");
+    // ORACLE-EDIT S-17 (ผู้คุม 26 พ.ย. · มติ H2): ห้าม cast `as DepFlags & …` · DepartureCalendarVM.flags ประกาศ canReport: boolean ตรง ๆ · จออ่าน cal.flags.canReport ได้โดยไม่ต้องเช็ก "in"
+    ok(!/\bas\s+DepFlags\s*&/.test(ds), "ยังใช้ cast as DepFlags & { canReport }");
+    const calAt = ds.indexOf("export type DepartureCalendarVM"); const calBlk = calAt < 0 ? "" : ds.slice(calAt, ds.indexOf("\n};", calAt));
+    ok(/flags:\s*\{[^}]*\bcanReport:\s*boolean/.test(calBlk), `DepartureCalendarVM.flags ไม่ประกาศ canReport: boolean: ${(/flags:[^\n]*/.exec(calBlk)?.[0] ?? "").slice(0, 160)}`);
+    // ORACLE-EDIT S-17 (มติ J2): canReport อยู่ใน DepartureCalendarVM.flags เท่านั้น — DepFlags/flagsOf ที่แผงรอบใช้ร่วมคงเดิม
+    ok(/type DepFlags = \{ canEdit: boolean; canStatus: boolean; canPrice: boolean; canSeePrices: boolean \};/.test(ds), "DepFlags เปลี่ยน");
+    const fo = ds.slice(ds.indexOf("function flagsOf"), ds.indexOf("\n}", ds.indexOf("function flagsOf"))); ok(fo && !/canReport/.test(fo), "flagsOf มี canReport");
+    ok(!/["']canReport["']\s+in\s+cal\.flags/.test(sc), "จอยังเช็ก \"canReport\" in cal.flags (ชนิดควรประกาศแล้ว)");
     const at = sc.indexOf('"trips-dep-reports"'); ok(at >= 0, "ไม่มี trips-dep-reports");
     const around = sc.slice(Math.max(0, at - 400), at + 400);
     ok(/cal\.flags\.canReport/.test(around) && /\/trips\/reports/.test(around) && /departures\.actions\.reports/.test(around), "ลิงก์ไม่ผูกธง/ปลายทาง/ข้อความ");
@@ -807,6 +820,16 @@ try {
     ok(/bookingMoneyInOfRow\(/.test(c), "costs.ts ไม่เรียก bookingMoneyInOfRow");
     ok(!/isSafeInteger\(\s*b\.payableJson|inclVatJson\s*===\s*false|typeof\s+b\.vatRegJson/.test(c), "costs.ts ยังมีตรรกะแปลงแถวของตัวเอง");
     ok(/bookingMoneyInOfRow|from\s+["']\.\/costs["']/.test(r), "reports.ts ไม่ใช้ตัวอ่าน/ตัวแปลงร่วม");
+  });
+  // ═══ ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ J3 J4 — ส่วนที่ตรวจได้ในโค้ด) ═══
+  await st("S-20", "J3/J4 ในโค้ด: ReportExport ไม่แสดงข้อความของ BUSY (ล้มตอนเขียน audit ⇒ report.export.error) · revokeObjectURL อยู่ใน callback ที่หน่วงไว้ (setTimeout/requestAnimationFrame) · ตัวอ่านสถานะ VAT ของหน่วยมีที่เดียว: reports.ts ไม่เรียก resolveSettings และไม่มีคีย์ trips.tax.vatRegistered (ใช้ตัวช่วยที่ costs.ts ส่งออก)", () => {
+    needOwn(); const ex = stripComments(read(`${COMP}/ReportExport.tsx`)), rp = stripComments(read(REPORTS)), cs = stripComments(read(COSTS)); const bad: string[] = [];
+    const known = /const\s+KNOWN\s*=\s*new Set\(\[([^\]]*)\]\)/.exec(ex)?.[1] ?? ""; if (/["']BUSY["']/.test(known)) bad.push("BUSY อยู่ในชุดรหัสที่แสดง errors.BUSY (ต้องเป็น report.export.error)");
+    if (!/report\.export\.error/.test(ex)) bad.push("ไม่มี report.export.error");
+    if (!/(setTimeout|requestAnimationFrame)\(\s*\(\)\s*=>\s*\{?[^;{}]*URL\.revokeObjectURL\(/.test(ex)) bad.push(`revokeObjectURL ไม่หน่วง: ${ex.slice(Math.max(0, ex.indexOf("revokeObjectURL") - 100), ex.indexOf("revokeObjectURL") + 30)}`);
+    if (/resolveSettings\(/.test(rp) || /["']trips\.tax\.vatRegistered["']/.test(rp)) bad.push("reports.ts อ่านสถานะ VAT ของหน่วยเอง");
+    if ((cs.match(/resolveSettings\(/g) ?? []).length !== 1) bad.push(`costs.ts เรียก resolveSettings ${(cs.match(/resolveSettings\(/g) ?? []).length} ที่`);
+    ok(bad.length === 0, bad.join(" · "));
   });
   groupLine("S");
 
@@ -966,12 +989,14 @@ try {
     codeR(await rep("oa", { productId: PRD.PA2.id }), "NOT_FOUND", "สินค้าหน่วยอื่น");
     const ps = await repVM("oa", { productId: PRD.PS.id }); eq([T(ps).departures, T(ps).salesSatang, depRows(ps).length, asRec(ps.departures)?.pageCount], [0, 0, 0, 1], "PS เม.ย.");
   });
-  await st("RP-11", "ตารางรอบ: 7 แถวเรียงวัน (dR dN dX dQ dH dP dI) · สถานะ ENDED×4 CANCELLED UPCOMING×2 · estimate ทุกแถว · dX อัตราเต็ม null · dQ ต้นทุน/กำไร null noCosts true · dH charterLike · pageCount 1 · page 2 ⇒ แถวว่าง pageCount 1", async () => {
+  await st("RP-11", "ตารางรอบ: 7 แถวเรียงวัน (dR dN dX dQ dH dP dI) · สถานะ ENDED×4 CANCELLED UPCOMING×2 · estimate ทุกแถว · dX อัตราเต็ม null · dQ (ไม่มีแถวต้นทุน) = DepartureMoneyVM: ต้นทุน 0 · แถว 0 · กำไร/มาร์จิน null · noCosts true (H1) · dH charterLike · pageCount 1 · page 2 ⇒ หน้าสุดท้าย (หน้า 1 · 7 แถว · J4)", async () => {
     needSetup(); const vm = await repVM("oa"); const rows = depRows(vm);
     eq(rows.map((r) => r.departureId), ["R", "N", "X", "Q", "H", "P", "I"].map((k) => DEP[k]), "ลำดับ");
     eq(rows.map((r) => r.state), ["ENDED", "ENDED", "CANCELLED", "ENDED", "ENDED", "UPCOMING", "UPCOMING"], "สถานะ"); ok(rows.every((r) => r.estimate === true), "estimate");
-    eq([rows[2]?.loadFactorBp, pick(rows[3] ?? {}, ["costSatang", "grossProfitSatang", "noCosts"]), rows[4]?.charterLike, asRec(vm.departures)?.pageCount, asRec(vm.departures)?.total], [null, [null, null, true], true, 1, 7], "แถว");
-    const p2 = await repVM("oa", { page: 2 }); eq([depRows(p2).length, asRec(p2.departures)?.page, asRec(p2.departures)?.pageCount, T(p2).salesSatang], [0, 2, 1, 10_940_000], "หน้า 2");
+    // ORACLE-EDIT RP-11 (ผู้คุม 26 พ.ย. · มติ H1): เดิมตรึง costSatang null ขัด RC-1/PC-8 · แถวรอบ = DepartureMoneyVM ของรอบนั้นทุกช่อง ⇒ ต้นทุน 0 + noCosts true (จอ "—" ตรวจใน RS-17 · CSV ช่องว่างตรวจใน EX-2)
+    eq([rows[2]?.loadFactorBp, pick(rows[3] ?? {}, ["costSatang", "costRows", "grossProfitSatang", "marginBp", "noCosts"]), rows[4]?.charterLike, asRec(vm.departures)?.pageCount, asRec(vm.departures)?.total], [null, [0, 0, null, null, true], true, 1, 7], "แถว");
+    // ORACLE-EDIT RP-11 (ผู้คุม 26 พ.ย. · มติ J4): page เกินจำนวนหน้า ⇒ แสดงหน้าสุดท้าย (เดิมตรึงแถวว่าง)
+    const p2 = await repVM("oa", { page: 2 }); eq([depRows(p2).length, asRec(p2.departures)?.page, asRec(p2.departures)?.pageCount, T(p2).salesSatang], [7, 1, 1, 10_940_000], "หน้า 2 ⇒ หน้าสุดท้าย");
   });
   await st("RP-12", "นาฬิกาฉีด: now 2027-04-10T00:00Z ⇒ dR dN dQ dH UPCOMING · dX CANCELLED · now 2027-05-01 ⇒ dP dI ENDED", async () => {
     needSetup(); const r1 = depRows(await repVM("oa", {}, uA, { now: new Date("2027-04-10T00:00:00Z") })), r2 = depRows(await repVM("oa", {}, uA, { now: new Date("2027-05-01T00:00:00Z") }));
@@ -1108,6 +1133,11 @@ try {
     const bad: string[] = []; for (const t of ["cvo", "bv", "none", "a2", "ob", "mgx"]) { const r = await rep(t); if (r.ok !== false || /\d{4,}/.test(String(r.message ?? "")) || hasNum(JSON.stringify(r), COST_NUMS).length) bad.push(`${t}: ${fmt(r).slice(0, 100)}`); }
     ok(bad.length === 0, bad.join(" · "));
   });
+  // ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ H3): flags.commissionWithVat = null สำหรับผู้ไม่เห็นต้นทุน (รับ) · ผู้เห็นต้นทุน = boolean ตามที่คิดจริง
+  await st("LK-5", "flags.commissionWithVat (H3): report.view · trips.* ⇒ null ทั้งหน่วยจด VAT และหน่วยไม่จด VAT (ไม่บอกว่ามีคอมฯ รวม VAT) · OWNER หน่วยจด VAT ⇒ false · MANAGER หน่วยไม่จด VAT ⇒ true", async () => {
+    needSetup(); const f = async (tag: string, unit: string) => asRec((await repVM(tag, {}, unit)).flags)?.commissionWithVat;
+    eq({ rv: await f("rv", uA), wild: await f("wild", uA), rlN: await f("rl", uN), oa: await f("oa", uA), mgN: await f("mg", uN) }, { rv: null, wild: null, rlN: null, oa: false, mgN: true }, "commissionWithVat");
+  });
   groupLine("LK");
 
   // ═══════════════ EX. CSV ═══════════════
@@ -1182,6 +1212,7 @@ try {
     for (let i = 0; i < 20; i++) rs.push(String((await exp("rl")).ok));
     const n0 = await auditN(A_EXP); const r21 = await exp("rl"); const mm = /ลองใหม่ในอีก (\d{1,2}) นาที/.exec(String(r21.message ?? ""));
     eq([rs.every((x) => x === "true"), r21.code, await auditN(A_EXP) - n0, !!mm && Number(mm[1]) >= 1 && Number(mm[1]) <= 60], [true, "RATE_LIMITED", 0, true], `ครั้งที่ 21 (${String(r21.message ?? "").slice(0, 80)})`);
+    eq(r21.minutes, Number(mm?.[1]), "ผลมี minutes = ตัวเลขในข้อความ (จอใช้สร้างข้อความตามภาษา · ORACLE-EDIT 26 พ.ย. ทางเลือกของ builder ที่ผู้คุมรับ)");
     eq([(await exp("rl", {}, uN)).ok, (await exp("rv")).ok, (await exp("rl", {}, uA, { now: new Date(NOW_R.getTime() + 61 * 60_000) })).ok], [true, true, true], "ต่อหน่วย/ต่อคน/หน้าต่างใหม่");
     eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "ChatRateBucket" WHERE key = ANY($1::text[])`, [[`${RATE_PREFIX}${tA}:${uA}:${U.rl.userId}`, `${RATE_PREFIX}${tA}:${uN}:${U.rl.userId}`]]))[0]?.n, 2, "key ของถัง (ต่อหน่วย)");
   });
@@ -1189,6 +1220,19 @@ try {
     needSetup(); const v = V(await exp("oa", { productId: PRD.PX.id }), "export PX"); eq([v.rows, v.total, v.truncated, lines(String(v.csv)).length], [1, 1, false, 2], "แถว");
     eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "AuditLog" WHERE action = $1 AND "tenantId" = $2 AND after->>'productId' = $3`, [A_EXP, tA, PRD.PX.id]))[0]?.n, 1, "audit after.productId");
     codeR(await exp("oa", { productId: PRD.PA2.id }), "NOT_FOUND", "สินค้าหน่วยอื่น");
+  });
+  // ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ J3): ลำดับตรวจสินค้าก่อนนับโควตา · ผลเกินเพดานยังนับโควตา · อ่านเขตเวลาครั้งเดียวในทางส่งออก
+  await st("EX-12", "J3: ส่งออกสินค้าหน่วยอื่น/ไม่มีจริง ⇒ NOT_FOUND และถังโควตาไม่ขยับ · REPORT_TOO_LARGE (opts.caps ที่บริการ) ⇒ ถังขยับ 1 · ทางส่งออกแตะ BusinessUnit ไม่เกินทางโหลดรายงาน (เขตเวลาอ่านครั้งเดียว)", async () => {
+    needSetup(); const key = `${RATE_PREFIX}${tA}:${uA}:${U.cv.userId}`;
+    const cnt = async () => (await q<{ c: number }>(`SELECT count AS c FROM "ChatRateBucket" WHERE key = $1`, [key]))[0]?.c ?? 0;
+    const c0 = await cnt(); const bad: string[] = [];
+    for (const pid of [PRD.PA2.id, "t17b_no_such_product"]) { const r = await exp("cv", { productId: pid }); if (r.ok !== false || r.code !== "NOT_FOUND") bad.push(`สินค้า ${pid.slice(0, 12)}: ${fmt(r).slice(0, 80)}`); }
+    const c1 = await cnt(); if (c1 !== c0) bad.push(`ถังขยับเมื่อ NOT_FOUND: ${c0} → ${c1}`);
+    const big = await exp("cv", {}, uA, { ...optsR, caps: { departures: 1 } }); if (big.ok !== false || big.code !== "REPORT_TOO_LARGE") bad.push(`caps: ${fmt(big).slice(0, 80)}`);
+    const c2 = await cnt(); if (c2 !== c1 + 1) bad.push(`ถังไม่ขยับเมื่อ REPORT_TOO_LARGE: ${c1} → ${c2}`);
+    const bu = (sql: string[]) => sql.filter((x) => /"BusinessUnit"/.test(x)).length;
+    const me = await measure(() => exp("cv")), ml = await measure(() => rep("cv")); if (bu(me.sql) > bu(ml.sql)) bad.push(`ส่งออกแตะ BusinessUnit ${bu(me.sql)} คำสั่ง > ตัวโหลด ${bu(ml.sql)}`);
+    ok(bad.length === 0, bad.join(" · "));
   });
   groupLine("EX");
 
@@ -1216,7 +1260,8 @@ try {
   });
   await st("AC-2", "OWNER ผ่าน action (คุกกี้ session จริง): ไฟล์ = exportTripReportCsv ของบริการที่ใช้นาฬิกาจริง (ทุกไบต์) · audit actor = ผู้ใช้ของคุกกี้ · locale th", async () => {
     needSetup(); const ids0 = new Set((await q<{ id: string }>(`SELECT id FROM "AuditLog" WHERE action = $1 AND "tenantId" = $2`, [A_EXP, tA])).map((x) => x.id));
-    const r = await actExport("oa", { from: APR.from, to: APR.to, productId: null }); ok(r.ok === true, `action: ${fmt(r)}`);
+    // ORACLE-EDIT AC-2 (ผู้คุม 26 พ.ย.): payload = ที่ ReportExport ส่งจริง (vm.filter ของจอเดือน เม.ย.) ไม่ใช่ค่าที่ข้อสอบพิมพ์เอง
+    const fv = asRec((await repVM("oa", APR)).filter) ?? {}; const r = await actExport("oa", { from: fv.from, to: fv.to, productId: fv.productId }); ok(r.ok === true, `action: ${fmt(r)}`);
     const mid = (await q<{ id: string; actorId: string; after: Rec }>(`SELECT id, "actorId", after FROM "AuditLog" WHERE action = $1 AND "tenantId" = $2`, [A_EXP, tA])).filter((x) => !ids0.has(x.id));
     eq(mid.map((x) => [x.actorId, asRec(x.after)?.locale]), [[U.oa.userId, "th"]], "audit ของ action (1 แถว · ผู้ใช้ของคุกกี้)");
     const sv = V(await call("exportTripReportCsv", ctxOf("oa"), { unitId: uA, ...APR }), "บริการนาฬิกาจริง");
@@ -1258,6 +1303,18 @@ try {
     for (const p of asArr(vm.presets)) check(`trips-rp-preset-${p.key}`, { from: p.from, to: p.to });
     check("trips-rp-group-week", { group: "week", from: APR.from, to: APR.to });
     ok(bad.length === 0, bad.slice(0, 5).join(" · "));
+  });
+  // ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ H3): ฟอร์มตัวกรองไม่ส่ง group (รับ) · ลิงก์แท็บ/หน้าคง group ที่ผู้ใช้เลือก
+  await st("AC-8", "group (H3): จอ group=week ของ เม.ย. — ฟอร์มที่เรนเดอร์ไม่มีช่อง group · ส่งฟอร์ม ⇒ กลุ่มปริยายของช่วง (day) · ลิงก์แท็บ load/lead/channel คง group=week · ลิงก์หน้าถัดไป/ก่อนหน้า (VM เดิมที่ตั้ง pageCount 3 หน้า 2) คง group=week · ทุกช่องที่ฟอร์มเรนเดอร์ ตัวโหลดอ่าน (ไม่มีช่องที่เรนเดอร์แต่ไม่ถูกอ่าน)", async () => {
+    needSetup(); const vm = await repVM("oa", { group: "week" }); const html = screenR(vm); const bad: string[] = [];
+    if (asRec(vm.filter)?.group !== "week") bad.push(`VM group ${fmt(asRec(vm.filter)?.group)}`);
+    const f = formOf(html); if (f.fields.some(([k]) => k === "group")) bad.push("ฟอร์มมีช่อง group");
+    const unread = f.fields.map(([k]) => k).filter((k) => !QPARAMS.includes(k)); if (unread.length) bad.push(`ช่องที่เรนเดอร์แต่ reportQueryOf ไม่อ่าน: ${unread.join(",")}`);
+    const vm2 = await repVM("oa", { ...(asRec(pure("reportQueryOf", toSp(f.fields))) ?? {}) }); if (asRec(vm2.filter)?.group !== "day") bad.push(`ส่งฟอร์มแล้ว group ${fmt(asRec(vm2.filter)?.group)} (ต้องเป็นปริยาย day)`);
+    for (const t of ["load", "lead", "channel"]) { const h = hrefOf(html, `trips-rp-tab-${t}`); const qq = asRec(pure("reportQueryOf", queryOfHref(h ?? ""))) ?? {}; if (qq.group !== "week" || qq.tab !== t) bad.push(`แท็บ ${t}: ${h}`); }
+    const deps0 = asRec(vm.departures) ?? {}; const html2 = screenR({ ...vm, departures: { ...deps0, page: 2, pageCount: 3 } });
+    for (const id of ["trips-rp-page-next", "trips-rp-page-prev"]) { const h = hrefOf(html2, id); const qq = asRec(pure("reportQueryOf", queryOfHref(h ?? ""))) ?? {}; if (!h || qq.group !== "week") bad.push(`${id}: ${h}`); }
+    ok(bad.length === 0, bad.join(" · "));
   });
   groupLine("AC");
 
@@ -1395,6 +1452,41 @@ try {
     if (screenR(await repVM("oa", { basis: "booked" })).includes('data-testid="trips-rp-preset-next30"')) bad.push("ฐานวันจองมี next30");
     ok(bad.length === 0, bad.join(" · "));
   });
+  // ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ H1): แถวรอบที่ไม่มีแถวต้นทุน — VM มี costSatang 0 + noCosts true แต่จอต้องแสดง "—" (ไม่ใช่ 0.00)
+  await st("RS-17", "H1 จอตารางรอบ: แถว dQ (ไม่มีแถวต้นทุน · OWNER) แสดง ต้นทุนรอบ \"—\" · กำไรขั้นต้น \"—\" + \"(ยังไม่หักต้นทุนรอบ)\" · ไม่มี \"0.00\" ในช่องต้นทุน · แถว dR แสดงยอดต้นทุนจริง 21,500.00 · ผู้ไม่เห็นต้นทุนไม่มีช่องต้นทุน/ข้อความนี้", async () => {
+    needSetup(); const vm = await repVM("oa"); const rows = depRows(vm); const qi = rows.findIndex((r) => r.departureId === DEP.Q), ri = rows.findIndex((r) => r.departureId === DEP.R); const h = screenR(vm); const bad: string[] = [];
+    const tq = txtOf(h, `trips-rp-dep-${qi}`), tr = txtOf(h, `trips-rp-dep-${ri}`); const costL = String(fth["report.dep.cost"]), profL = String(fth["report.dep.profit"]), noC = String(fth["report.dep.noCosts"] ?? "\u0000");
+    if (!tq.includes(`${costL} —`) || !tq.includes(`${profL} —`) || !tq.includes(noC)) bad.push(`dQ: "${tq.slice(0, 220)}"`);
+    if (new RegExp(`${costL} 0\\.00`).test(tq)) bad.push("dQ ต้นทุน 0.00");
+    if (!tr.includes(`${costL} 21,500.00`) || tr.includes(noC)) bad.push(`dR: "${tr.slice(0, 220)}"`);
+    const hv = screenR(await repVM("rv")); const tv = txtOf(hv, `trips-rp-dep-${qi}`); if (tv.includes(costL) || tv.includes(noC)) bad.push(`report.view เห็นช่องต้นทุน: "${tv.slice(0, 160)}"`);
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  // ═══ ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ J4 J5) ═══
+  await st("RS-18", "J4: ข้อความ \"(ยังไม่หักต้นทุนรอบ)\" ของแถวรอบ dQ ไม่อยู่ใน element ที่ห้ามตัดบรรทัด (ไม่มีบรรพบุรุษที่มีคลาส whitespace-nowrap ภายในแถว)", async () => {
+    needSetup(); const vm = await repVM("oa"); const qi = depRows(vm).findIndex((r) => r.departureId === DEP.Q); const row = byTestid(screenR(vm), `trips-rp-dep-${qi}`); const noC = String(fth["report.dep.noCosts"] ?? "\u0000");
+    const stack: string[] = []; let hit: string[] | null = null;
+    for (const m of row.matchAll(/<(\/?)(\w+)\b([^>]*?)(\/?)>|([^<]+)/g)) {
+      if (m[5] !== undefined) { if (m[5].includes(noC)) { hit = [...stack]; break; } continue; }
+      if (m[4] || /^(br|img|input|hr|meta|link)$/i.test(m[2] ?? "")) continue;
+      if (m[1]) stack.pop(); else stack.push(/class="([^"]*)"/.exec(m[3] ?? "")?.[1] ?? "");
+    }
+    ok(hit, `ไม่พบข้อความ ${noC} ในแถว dQ`); ok(!(hit ?? []).some((c) => /\bwhitespace-nowrap\b/.test(c)), `อยู่ใน element ห้ามตัดบรรทัด: ${fmt((hit ?? []).filter((c) => /nowrap/.test(c)))}`);
+  });
+  await st("RS-19", "J5 ข้อความ: en report.lead.median เอกพจน์/พหูพจน์ (1 day / 2 days) · en report.noCosts มี \"({ended} travelled · {upcoming} not yet travelled)\" · report.lead.D0 = \"จองวันเดียวกับวันเดินทาง\" / \"Booked on the day of travel\" · report.channel.WEB = \"หน้าจองออนไลน์\" · report.channel.POS = \"เครื่องคิดเงิน (POS)\" · ไม่มี report.csv.revenueNoVat · ทุกคีย์ report.* มีผู้ใช้ในโค้ด (ตรงตัว หรือคำนำของคีย์แบบประกอบ `report.x.${…}`)", () => {
+    const bad: string[] = []; const tr = (RX?.ui.createTranslator as AnyFn)({ locale: "en", messages: { trips: en }, namespace: "trips" }) as AnyFn;
+    try { const one = String(tr("report.lead.median", { n: 1 })), two = String(tr("report.lead.median", { n: 2 })); if (!/\b1 day\b(?!s)/.test(one) || !/\b2 days\b/.test(two)) bad.push(`median: "${one}" / "${two}"`); } catch (e) { bad.push(`median: ${errMsg(e).slice(0, 80)}`); }
+    if (!String(fen["report.noCosts"] ?? "").includes("({ended} travelled · {upcoming} not yet travelled)")) bad.push(`en noCosts: ${fen["report.noCosts"]}`);
+    for (const [k, th0, en0] of [["report.lead.D0", "จองวันเดียวกับวันเดินทาง", "Booked on the day of travel"], ["report.channel.WEB", "หน้าจองออนไลน์", null], ["report.channel.POS", "เครื่องคิดเงิน (POS)", null]] as const) {
+      if (fth[k] !== th0) bad.push(`${k} th: ${fth[k]}`); if (en0 && fen[k] !== en0) bad.push(`${k} en: ${fen[k]}`);
+    }
+    if (fth["report.csv.revenueNoVat"] !== undefined || fen["report.csv.revenueNoVat"] !== undefined) bad.push("ยังมี report.csv.revenueNoVat");
+    const src = [...walk("src/components/trips"), ...walk("src/lib/modules/trips"), ...walk(APP)].map((f) => stripComments(read(f))).join("\n");
+    const lits = new Set([...src.matchAll(/["'`](report\.[\w.]+)["'`]/g)].map((m) => m[1])); const pre = [...src.matchAll(/`(report\.[\w.]*?)\$\{/g)].map((m) => m[1] ?? "").filter(Boolean);
+    const unused = Object.keys(fth).filter((k) => k.startsWith("report.") && !lits.has(k) && !pre.some((p) => k.startsWith(p)));
+    if (unused.length) bad.push(`คีย์ไม่มีผู้ใช้ ${unused.length}: ${unused.slice(0, 8).join(", ")}`);
+    ok(bad.length === 0, bad.join(" · "));
+  });
   groupLine("RS");
 
   // ═══════════════ PF. ร้านใหญ่ ═══════════════
@@ -1463,6 +1555,8 @@ try {
       if (big.sql.some((x) => /"policySnapshot"(?!\s*->)/.test(x) && /"TripBooking"/.test(x))) bad.push(`${fmt(input)}: ดึง policySnapshot ทั้งก้อน`);
     }
     const rvq = await measure(() => rep("rl", Y366, uA)); if (rvq.sql.some((s) => /"TripCost"/.test(s))) bad.push("ผู้ไม่เห็นต้นทุนอ่าน TripCost");
+    // ORACLE-EDIT PF-3 (ผู้คุม 26 พ.ย.): positive control ของตัวจับ — เจ้าของบนหน่วยเดียวกันต้องเห็นคำสั่งที่แตะ "TripCost" (ไม่งั้นข้อข้างบนผ่านเพราะตัวนับไม่เห็นคำสั่งนั้น)
+    const oaq = await measure(() => rep("oa", Y366, uA)); if (!oaq.sql.some((s) => /"TripCost"/.test(s))) bad.push("ตัวควบคุม: เจ้าของไม่มีคำสั่ง TripCost ในบันทึก (ตัวนับใช้ไม่ได้)");
     console.log(`     ℹ️ คิวรี (366/31 วัน): ${ns.join(" · ")}`); ok(bad.length === 0, bad.join(" · "));
   });
   await st("PF-4", "CSV 366 วัน (D2): 2,000 แถวข้อมูล (TRIPS_REPORT_CSV_CAP) · ไฟล์ = หัว + 2,000 แถวเท่านั้น (บรรทัดสุดท้ายเป็นแถวข้อมูล) · ผล truncated true total 2196 · ชื่อไฟล์ …-partial.csv · audit rows 2000 total 2196 truncated true", async () => {
@@ -1480,10 +1574,37 @@ try {
     if (hrefOf(screenR(await repVM("oa", Y366, uP)), "trips-rp-page-prev")) bad.push("หน้า 1 มีก่อนหน้า"); if (hrefOf(screenR(await repVM("oa", { ...Y366, page: 44 }, uP)), "trips-rp-page-next")) bad.push("หน้า 44 มีถัดไป");
     ok(bad.length === 0, bad.join(" · "));
   });
+  // ═══ ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ J1 J4) ═══
+  const SLUG_P = `${SLUG}perf-${STAMP}`;
+  /** เรนเดอร์ page.tsx จริงในขอบเขตคำขอของ Next (แบบ RS-13 · slug ใดก็ได้) — throw ของหน้า (notFound/redirect) ⇒ AssertFail */
+  const pageAt = async (slug: string, sp: Record<string, string>, tag = "oa"): Promise<string> => {
+    const PG = await tryImport("@/app/app/u/[unitSlug]/trips/reports/page"); ok(typeof PG.mod?.default === "function", `ยังไม่มีหน้า reports (${PG.err.slice(0, 100)})`);
+    const cookie = await sessionCookie(tag); const path = `/app/u/${slug}/trips/reports`; const reqq = new Request(`http://qc.local${path}`, { headers: { cookie, "user-agent": "qc-t17b-page" } });
+    const jar = new (nextCookies?.RequestCookies as new (h: Headers) => unknown)(reqq.headers);
+    const workStore = { route: path, page: `${path}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [] };
+    const unitStore = { type: "request", phase: "render", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: reqq.headers, draftMode: undefined, rootParams: {}, url: { pathname: path, search: "" } };
+    const run = (st0: Rec | null, store: unknown, g: () => unknown) => (st0?.run as (s1: unknown, g: () => unknown) => unknown).call(st0, store, g);
+    let el: unknown;
+    try { el = await run(asRec(nextWork?.workAsyncStorage), workStore, () => run(asRec(nextWorkUnit?.workUnitAsyncStorage), unitStore, () => (PG.mod?.default as AnyFn)({ params: Promise.resolve({ unitSlug: slug }), searchParams: Promise.resolve(sp) }))); }
+    catch (e) { throw new AssertFail(`หน้า throw (notFound/redirect?): ${errMsg(e).slice(0, 80)} ${String(asRec(e)?.digest ?? "")}`); }
+    const ce = RX?.react.createElement as AnyFn; const router = { push() {}, replace() {}, refresh() {}, back() {}, forward() {}, prefetch() {} };
+    return String((RX?.rds.renderToStaticMarkup as AnyFn)(ce(asRec(RX?.arc.AppRouterContext)?.Provider, { value: router }, ce(RX?.intl.NextIntlClientProvider, { locale: "th", messages: { trips: th }, timeZone: "Asia/Bangkok" }, el))));
+  };
+  await st("PF-8", "J4 page เกินจำนวนหน้า ⇒ หน้าสุดท้าย: 366 วันร้านใหญ่ (44 หน้า) page=99 ⇒ VM หน้า 44 · 46 แถวท้าย (2,196 − 43×50) · จอ \"หน้า 44 จาก 44\" · ลิงก์ก่อนหน้า ⇒ หน้า 43 · ไม่มีลิงก์ถัดไป · ผ่านหน้า page.tsx จริงด้วย", async () => {
+    await buildPerf(); const vm = await repVM("oa", { ...Y366, page: 99 }, uP); const d = asRec(vm.departures) ?? {}; const bad: string[] = [];
+    if (d.page !== 44 || d.pageCount !== 44 || depRows(vm).length !== 2196 - 43 * 50) bad.push(`VM ${fmt(pick(d, ["page", "pageCount", "total"]))} แถว ${depRows(vm).length}`);
+    const h = await pageAt(SLUG_P, { from: Y366.from, to: Y366.to, page: "99" }); const prev = hrefOf(h, "trips-rp-page-prev");
+    if (!unent(byTestid(h, "trips-rp-page")).includes("44") || !prev || (asRec(pure("reportQueryOf", queryOfHref(prev))) ?? {}).page !== 43 || hrefOf(h, "trips-rp-page-next")) bad.push(`จอ: "${unent(byTestid(h, "trips-rp-page"))}" ก่อนหน้า ${prev} ถัดไป ${hrefOf(h, "trips-rp-page-next")}`);
+    ok(bad.length === 0, bad.join(" · "));
+  });
   await st("PF-6", "เพดานรอบ: เพิ่มรอบไม่มีการจองจนเกิน 4,000 ในช่วง ⇒ loadTripReportVM และ exportTripReportCsv ⇒ REPORT_TOO_LARGE (ไม่ตัดเงียบ · ไม่ throw) · ช่วง 31 วันยังโหลดได้", async () => {
     await buildPerf(); const cs = (await cols("TripDeparture")).map((c) => c.column_name);
-    const over: Record<string, string> = { id: `t.id || '_x' || g`, localDate: `(DATE '2027-01-01' + (g % 366))`, startsAt: `((DATE '2027-01-01' + (g % 366))::timestamp + make_interval(hours => 10, mins => g))`, endsAt: `((DATE '2027-01-01' + (g % 366))::timestamp + make_interval(hours => 12, mins => g))`, cutoffAt: `((DATE '2027-01-01' + (g % 366))::timestamp + make_interval(hours => 10, mins => g))`, sold: "0" };
+    // ORACLE-EDIT PF-6 (ผู้คุม 26 พ.ย.): เดิม +g นาที ⇒ g ≥ 900 ข้ามวันไปชนรอบ PF เดิม (ชั่วโมงเต็ม 1 + 5s) บน unique (productId, optionId, startsAt) ⇒ ฟิกซ์เจอร์ throw ก่อนถึงโค้ด
+    //   ⇒ เวลาเสริม = 10:00 + (g + 0.5) วินาที (อยู่ในวันเดียวกับ localDate · ไม่ตรงชั่วโมงเต็มของรอบเดิม · g ต่างกันไม่ชนกันเอง)
+    const T0 = `(DATE '2027-01-01' + (g % 366))::timestamp`;
+    const over: Record<string, string> = { id: `t.id || '_x' || g`, localDate: `(DATE '2027-01-01' + (g % 366))`, startsAt: `(${T0} + make_interval(hours => 10, secs => g + 0.5))`, endsAt: `(${T0} + make_interval(hours => 12, secs => g + 0.5))`, cutoffAt: `(${T0} + make_interval(hours => 10, secs => g + 0.5))`, sold: "0" };
     await pool.query(`INSERT INTO "TripDeparture" (${cs.map((c) => `"${c}"`).join(", ")}) SELECT ${cs.map((c) => over[c] ?? `t."${c}"`).join(", ")} FROM "TripDeparture" t CROSS JOIN generate_series(1, 1805) g WHERE t.id = $1`, [tplDeps[1]]);
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripDeparture" WHERE "unitId" = $1 AND "localDate" BETWEEN DATE '2027-01-01' AND DATE '2028-01-01'`, [uP]))[0]?.n > 4_000, true, "ฟิกซ์เจอร์: รอบในช่วงเกิน 4,000 จริง");
     codeR(await rep("oa", Y366, uP), "REPORT_TOO_LARGE", "ตัวโหลด"); codeR(await exp("oa", Y366, uP), "REPORT_TOO_LARGE", "ส่งออก");
     eq((await rep("oa", { from: "2027-03-01", to: "2027-03-31" }, uP)).ok, true, "31 วัน");
   });
@@ -1494,6 +1615,42 @@ try {
     const vm = await repVM("oa", { from: "2027-03-01", to: "2027-03-31" }, uP);
     eq([asArr(vm.products).length, vm.productsTotal, vm.productsTruncated], [200, 201, true], "ตัวเลือก");
     eq(txtOf(screenR(vm), "trips-rp-product-truncated"), String(PINNED["report.products.truncated"]).replace("{shown}", "200").replace("{total}", "201"), "ข้อความบนจอ");
+  });
+  await st("PF-9", "J4 สินค้าที่เลือกอยู่นอก 200 รายการแรก: มี <option selected> ของตัวเองในตัวเลือกสินค้า · ส่งฟอร์มซ้ำ (เรนเดอร์ → ฟิลด์ → reportQueryOf → ตัวโหลด) ได้สินค้าเดิม ไม่หลุดเป็นทุกสินค้า", async () => {
+    await buildPerf(); const all = (await q<{ id: string }>(`SELECT id FROM "TripProduct" WHERE "unitId" = $1`, [uP])).map((x) => x.id); ok(all.length > 200, `ต้องรัน PF-7 ก่อน (สินค้า ${all.length})`);
+    const shown = new Set(asArr((await repVM("oa", { from: "2027-03-01", to: "2027-03-31" }, uP)).products).map((p) => String(p.id))); const out = all.find((x) => !shown.has(x)); ok(out, "ไม่พบสินค้านอก 200");
+    const vm = await repVM("oa", { from: "2027-03-01", to: "2027-03-31", productId: out }, uP); const html = screenR(vm); const sel = byTestid(html, "trips-rp-product"); const bad: string[] = [];
+    if (!new RegExp(`<option\\b[^>]*value="${String(out)}"[^>]*\\sselected`).test(sel) && !new RegExp(`<option\\b[^>]*\\sselected[^>]*value="${String(out)}"`).test(sel)) bad.push("ไม่มี option selected ของสินค้าที่เลือก");
+    const vm2 = await repVM("oa", { ...(asRec(pure("reportQueryOf", toSp(formOf(html).fields))) ?? {}) }, uP); if (asRec(vm2.filter)?.productId !== out) bad.push(`ส่งฟอร์มซ้ำได้ productId ${fmt(asRec(vm2.filter)?.productId)}`);
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("PF-10", "J1 REPORT_TOO_LARGE ผ่านหน้า page.tsx จริง: (ก) 366 วันเกินเพดาน + ช่องทาง WEB ⇒ ทิ้งช่วง/สินค้า/ฐาน/ช่องทาง ⇒ หน้าโหลดเดือนนี้ · กล่อง errors.REPORT_TOO_LARGE · ฟอร์มช่องทาง = ทุกช่องทาง · (ข) เดือนนี้ก็เกินเพดาน (เติม 4,001 รอบในเดือนปัจจุบันของหน่วย) ⇒ ไม่ notFound · กล่อง role=alert ข้อความ errors.REPORT_TOO_LARGE + ลิงก์ช่วง 7 วันที่ผ่านมา + ลิงก์กลับปฏิทิน · ทั้งสองกรณีโหลดหนัก (อ่านรอบของช่วง) ≤ 3 ครั้งต่อคำขอ", async () => {
+    await buildPerf(); const bad: string[] = []; const TOO = String(fth["errors.REPORT_TOO_LARGE"] ?? "\u0000");
+    const heavy = (sql: string[]) => sql.filter((x) => /FROM "TripDeparture"/.test(x) && /\bLIMIT\b/.test(x)).length;
+    const a = await measure(() => pageAt(SLUG_P, { from: Y366.from, to: Y366.to, channel: "WEB", basis: "travel" }).catch((e) => `THROW ${errMsg(e)}`)); const ha = String(a.r);
+    if (ha.startsWith("THROW")) bad.push(`(ก) ${ha.slice(0, 100)}`); else {
+      if (!unent(byTestid(ha, "trips-rp-error")).includes(TOO)) bad.push(`(ก) กล่อง: "${unent(byTestid(ha, "trips-rp-error")).slice(0, 60)}"`);
+      const ch = formOf(ha).fields.find(([k]) => k === "channel")?.[1]; if (ch !== "") bad.push(`(ก) ช่องทางยังเป็น ${fmt(ch)} (ต้องทิ้ง)`);
+    }
+    if (heavy(a.sql) > 3) bad.push(`(ก) โหลดหนัก ${heavy(a.sql)} ครั้ง`);
+    // เติมรอบในเดือนปัจจุบันของหน่วย (เวลาไทย) ให้เกินเพดาน 4,000
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const m0 = `${today.slice(0, 7)}-01`; const days = new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate();
+    const cs = (await cols("TripDeparture")).map((c) => c.column_name); const T1 = `(DATE '${m0}' + (g % ${days}))::timestamp`;
+    const over: Record<string, string> = { id: `t.id || '_m' || g`, localDate: `(DATE '${m0}' + (g % ${days}))`, startsAt: `(${T1} + make_interval(hours => 3, secs => g + 0.25))`, endsAt: `(${T1} + make_interval(hours => 5, secs => g + 0.25))`, cutoffAt: `(${T1} + make_interval(hours => 3, secs => g + 0.25))`, sold: "0" };
+    await pool.query(`INSERT INTO "TripDeparture" (${cs.map((c) => `"${c}"`).join(", ")}) SELECT ${cs.map((c) => over[c] ?? `t."${c}"`).join(", ")} FROM "TripDeparture" t CROSS JOIN generate_series(1, 4001) g WHERE t.id = $1`, [tplDeps[2]]);
+    const b = await measure(() => pageAt(SLUG_P, {}).catch((e) => `THROW ${errMsg(e)}`)); const hb = String(b.r);
+    if (hb.startsWith("THROW")) bad.push(`(ข) ${hb.slice(0, 100)}`); else {
+      const alertAt = hb.search(/role="alert"/); const box = alertAt < 0 ? "" : unent(hb.slice(hb.lastIndexOf("<", alertAt), hb.lastIndexOf("<", alertAt) + 2000));
+      if (alertAt < 0 || !box.includes(TOO)) bad.push(`(ข) ไม่มีกล่อง role=alert ข้อความ REPORT_TOO_LARGE`);
+      const hrefs = [...hb.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => decode(m[1] ?? ""));
+      const d7 = (k: number) => { const t = new Date(`${today}T00:00:00Z`); t.setUTCDate(t.getUTCDate() - k); return t.toISOString().slice(0, 10); };
+      const short = hrefs.some((h) => { const qq = asRec(pure("reportQueryOf", queryOfHref(h))) ?? {}; return /\/trips\/reports/.test(h) && qq.to === today && (qq.from === d7(6) || qq.from === d7(7)); });
+      if (!short) bad.push(`(ข) ไม่มีลิงก์ช่วง 7 วันที่ผ่านมา (${hrefs.slice(0, 4).join(" ")})`);
+      if (!hrefs.some((h) => new URL(h, "http://qc.local").pathname === `/app/u/${SLUG_P}/trips/departures`)) bad.push("(ข) ไม่มีลิงก์กลับปฏิทิน");
+    }
+    if (heavy(b.sql) > 3) bad.push(`(ข) โหลดหนัก ${heavy(b.sql)} ครั้ง`);
+    ok(bad.length === 0, bad.join(" · "));
   });
   groupLine("PF");
 
