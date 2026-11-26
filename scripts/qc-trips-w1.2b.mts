@@ -11,12 +11,17 @@
 //   CC ยิงพร้อมกัน (ล็อกผู้จอง T0.4d D2/G1 ไม่ถอย)   RL เพดานลองผิด (K6 · L2) ไม่เปลี่ยน
 //   ST จอร้าน (T1.3 รายการ/รายละเอียด · T1.4 ใบรายชื่อ) แสดงผู้จองตามที่พิมพ์   PII ไม่มีใน audit/outbox/log/VM สาธารณะ · ลบตาม T0.8
 //   S  ขอบเขตไฟล์/กติกาโค้ด (ไม่แตะ party/platform/prisma · งบไฟล์ · ลำดับล็อกเดิม)
+//   ── รอบผู้เขียนข้อสอบแยก 26 พ.ย. (ผู้คุมสั่งหลังรายงาน r1 · ข้อเพิ่มทั้งหมดเป็นของใหม่ ไม่แก้ข้อเดิม) ──
+//   SN ตัวเขียน policySnapshot ทุกตัว (เลื่อนรอบพกต่อ · รายการตัวเขียน · ไม่ฟื้นหลังลบ)   RV ตัวอ่านการจองสาธารณะ (ผลทั้งก้อน · ขอบโมดูล)
+//   SV จอร้านไม่มีเบอร์เต็ม/อีเมลที่พิมพ์ · ไม่มีสิทธิ์ = ไม่เห็น · รูปเบอร์ปิดบังของ 0066…   AF ผู้โจมตีเลือกทางสำรอง (เบอร์ normalize < 8 หลัก + ชื่อ+อีเมลของเหยื่อ)
+//   ── มติผู้คุมรอบ 1 E1–E6 (ชนะ C-3 · ผู้เขียนข้อสอบแยกรอบ 2 · 26 พ.ย.) — ORACLE-EDIT FB-3 FB-4 AF-1 SN-2 S-1 ตามมติ ──
+//   ER ลบลูกค้า (crm.contact.erased · member.erased ผ่าน consumers จริง) ⇒ ตัดสำเนาที่พิมพ์   E2 มีคีย์ ⇒ ไม่ถอยไป Party   E3 ขอบโมดูล/หน้า   E5 ไม่มีชนิดพกอีเมล   AU แฮชไม่รวมข้อมูลบุคคล
 //
 // 🔴 แถวทดสอบอยู่ใต้ร้านชั่วคราว slug `trips-w12b-*` · ลบใน finally + กวาดค้างตอนเริ่ม · ค่าคาดหวังคิดเองจากมติ (ไม่เรียกโค้ดที่ถูกทดสอบเพื่อหาคำตอบ)
 // 🔴 การจองสาธารณะสร้างผ่านเส้นจริงของ W1.2a (startBookHold → confirmBookHold) + ร้านรับเงิน (recordTripPayment STAFF) · การจองของร้าน = bookTripsNow STAFF PAY_LATER
 // 🔴 "ก่อนแก้" (FB-1 · ST-4) จำลองด้วยการลบคีย์ booker ออกจาก snapshot ตรง ๆ หลังจอง (ฐานเก่าไม่มีคีย์นี้ · กู้ค่าที่พิมพ์ย้อนหลังไม่ได้)
 // รัน: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-trips-w1.2b.mts   (ห้าม timeout ครอบ · ห้าม kill กลางคัน)
-// ผลที่ถูกต้องก่อนมีงาน W1.2b-1: PC · S · FB-1 FB-2 · FS-2 · CC-1 CC-3 · RL-3 · ST-4 · PII-1..3 เขียว · ที่เหลือแดงพร้อมเหตุ (เบอร์ที่พิมพ์ไม่ถูกเก็บ/ไม่ใช่กุญแจ)
+// ผลที่ถูกต้องก่อนมีงาน W1.2b-1 (ข้อชุดแรก 42 ข้อ): PC · S · FB-1 FB-2 · FS-2 · CC-1 CC-3 · RL-3 · ST-4 · PII-1..3 เขียว · ที่เหลือแดงพร้อมเหตุ (เบอร์ที่พิมพ์ไม่ถูกเก็บ/ไม่ใช่กุญแจ)
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -95,9 +100,17 @@ const SSVC = "src/lib/platform/trips-self.ts";
 const SCORE = "src/lib/platform/trips-self-core.ts";
 const PARTY = "src/lib/modules/party";
 /** ไฟล์ที่แก้ได้: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด] — ใบสั่ง §3 */
-const LIMITED: [string, number, number][] = [[BOOKING, 2, 10], [PUBMOD, 3, 8], [PDPA, 1, 2], [SCREENS, 4, 12], [MANIFEST, 3, 8], [VIEWCORE, 0, 24]];
+const REFUNDF = "src/lib/modules/trips/refund.ts";
+const CONSUMERS = "src/lib/outbox-consumers.ts";
+const FACADE = "src/lib/modules/trips/index.ts";
+// ORACLE-EDIT S-1 (ผู้คุม 26 พ.ย. · มติ E1 E6): booking ≤ +14/−4 · refund ≤ +3/−2 · outbox-consumers ≤ +16/−0 (รั้ว trips) · ฟังก์ชันตัวรับ E1 หนึ่งตัวใน pdpa.ts หรือ public-booking.ts (+14)
+//   · facade +2 (ส่งออกตัวรับ — ไม่อยู่ในมติ E6 · ผู้ร่างเผื่อ ให้ผู้คุมยืนยัน) · รวมทั้งใบ ≤ +110/−20
+const LIMITED: [string, number, number][] = [[BOOKING, 4, 14], [PUBMOD, 3, 22], [PDPA, 1, 16], [SCREENS, 4, 12], [MANIFEST, 3, 8], [VIEWCORE, 2, 24], [REFUNDF, 2, 3], [CONSUMERS, 0, 16], [FACADE, 0, 2]];
+const TOTAL_BUDGET = { add: 110, del: 20 };
+/** ข้อสอบเดิมที่ผู้คุมสั่ง ORACLE-EDIT ในใบนี้ (มติ C-2) — ไม่ใช่ของผู้สร้าง */
+const ORACLE_EDITED = ["scripts/qc-trips-w1.2.mts", "scripts/qc-trips-w1.3.mts"];
 const FORBIDDEN_PATHS = ["prisma", "src", "next.config.ts", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts", "scripts/fitness.mts", "scripts/with-gate-lock.sh", "scripts/trips-main-merge.mts", "scripts/visual-trips.mts",
-  "scripts/qc-trips-*.mts", ":(exclude)scripts/qc-trips-w1.2b.mts", ...LIMITED.map(([f]) => `:(exclude)${f}`)];
+  "scripts/qc-trips-*.mts", ":(exclude)scripts/qc-trips-w1.2b.mts", ...ORACLE_EDITED.map((f) => `:(exclude)${f}`), ...LIMITED.map(([f]) => `:(exclude)${f}`)];
 const WRONG_LIMIT = 20; // K6 ผิดได้ 20 ครั้ง / 24 ชม. / การจอง (ไม่เปลี่ยน)
 const X8_VERIFY = 5; // TRIPS-DEFAULTS X8 otpPer15Min (ไม่เปลี่ยน)
 const R = FX.PRODUCT_RACHA;
@@ -326,7 +339,8 @@ try {
     BK[tag] = b;
     return b;
   };
-  const line = () => ({ productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: DEP.gen, optionId: PRD.A?.opt, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 1 }] });
+  const lineOn = (depId: string | undefined) => ({ productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: depId, optionId: PRD.A?.opt, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 1 }] });
+  const line = () => lineOn(DEP.gen);
   const quoteGen = async (): Promise<Rec> => {
     const qt = await tcall("quoteTrips", staffCtx(), { lines: [line()] });
     const qv = asRec(qt.value);
@@ -360,6 +374,13 @@ try {
   /** จำลองการจองก่อนแก้: ไม่มีคีย์ booker ใน snapshot */
   const makeLegacy = async (bookingId: string) => { await pool.query(`UPDATE "TripBooking" SET "policySnapshot" = "policySnapshot" - 'booker' WHERE id = $1`, [bookingId]); };
   let partyXBefore: Rec | null = null;
+  const NV = `เหยื่อ W12b ${STAMP}`, EV = `${EMAIL_PREFIX}v.${STAMP}@example.com`; // AF-1
+  const ATTACK_PHONE = "+00661234"; // ผ่านรูป "+ 8–15 หลัก" ของ bookerPhoneOf · normalizePartyPhone ⇒ "1234" (< 8 หลัก)
+  const NOVIEW: { id: string } = { id: "" };
+  const NE = `ผู้จอง E ${STAMP}`, EE = `${EMAIL_PREFIX}e.${STAMP}@example.com`; // E1
+  const tB = rid("tB"), uB = rid("uB");
+  const OTHER_T: { bookingId: string } = { bookingId: "" };
+  const REFREQ: { rfb1: string; rfl: string } = { rfb1: "", rfl: "" };
   if (!setupErr) {
     try {
       await mkPublic("A0", "gen", { name: NX, phone: who("P1"), email: EX });
@@ -384,6 +405,39 @@ try {
       await mkStaff("SMAIL", { name: NX, email: EX }); // อีเมลอย่างเดียว ⇒ X
       await mkStaff("SSHORT", { name: NX, phone: "081234", email: EX }, "081234"); // เบอร์ < 8 หลัก ⇒ ไม่จับเบอร์ · ชื่อ+อีเมล ⇒ X
       await mkStaff("SNONE", { name: `ไม่มีเบอร์ W12b ${STAMP}`, email: `${EMAIL_PREFIX}n.${STAMP}@example.com` }); // คนใหม่ ไม่มีเบอร์ใดเลย
+      // ── รอบผู้เขียนข้อสอบแยก (26 พ.ย. · ผู้คุมสั่งเพิ่ม a–f) ──
+      await mkStaff("SCHG", { name: NX, phone: e164(who("CH1")), email: EX }, who("CH1")); // CONFIRMED ของร้าน มีค่าที่พิมพ์ ⇒ เลื่อนรอบ (SN-1)
+      await mkPublic("CHP", "gen", { name: `ผู้จอง CHP ${STAMP}`, phone: who("CH2"), email: `${EMAIL_PREFIX}chp.${STAMP}@example.com` }); // PAID สาธารณะ ⇒ เลื่อนรอบ (SN-1)
+      await mkPublic("PG2", "pg", { name: `ผู้จอง PG2 ${STAMP}`, phone: who("PG2"), email: `${EMAIL_PREFIX}pg2.${STAMP}@example.com` }, { pay: false }); // HOLD ⇒ ลบ ⇒ แก้ค้าง (SN-3)
+      await mkStaff("S66", { name: `ผู้จอง 0066 ${STAMP}`, phone: "0066812345678" }, "0812345678"); // รูปเบอร์ปิดบัง (SV-3)
+      await mkPublic("VB", "gen", { name: NV, phone: who("PV"), email: EV }); // เหยื่อ: สร้าง Party V
+      await mkPublic("FA", "gen", { name: NV, phone: ATTACK_PHONE, email: EV }); // ผู้โจมตี: ชื่อ+อีเมลของเหยื่อ + เบอร์ที่ normalize < 8 หลัก (AF-1)
+      { // ผู้ใช้ที่ไม่มีสิทธิ์ดูการจอง (มีแค่ดูสินค้า)
+        const id = rid("upv");
+        await insertRow("User", { id, email: `${EMAIL_PREFIX}pv-${STAMP}@shark.local`, name: "ผู้ทดสอบ pv", updatedAt: new Date() });
+        await insertRow("Membership", { id: rid("mbpv"), userId: id, tenantId: tA, role: "STAFF", unitAccess: JSON.stringify([uA]), permissions: JSON.stringify({ "trips.product.view": true }), acceptedAt: new Date(), updatedAt: new Date() });
+        NOVIEW.id = id;
+      }
+      // ── มติ E1–E5 (ผู้เขียนข้อสอบแยก รอบ 2 · 26 พ.ย.) ──
+      await mkPublic("E0", "gen", { name: NE, phone: who("PE1"), email: EE }); // Party E (ลบผ่าน CRM)
+      await mkPublic("E1", "gen", { name: NE, phone: who("PE2"), email: EE });
+      await mkPublic("M0", "gen", { name: `ผู้จอง M ${STAMP}`, phone: who("PM"), email: `${EMAIL_PREFIX}m.${STAMP}@example.com` }); // Party M (ลบผ่านสมาชิก)
+      await mkPublic("U0", "gen", { name: `ผู้จอง U ${STAMP}`, phone: who("PU"), email: `${EMAIL_PREFIX}u.${STAMP}@example.com` }); // Party U (CRM ตัดการผูก ไม่ล้าง Party)
+      for (const [tag, ph] of [["E2a", "+66123456"], ["E2b", "+00661234567"], ["E2c", "+6612345678"]] as const) await mkPublic(tag, "gen", { name: NX, phone: ph, email: EX });
+      await mkStaff("E2s", { name: NX, phone: "08123456", email: EX }, "08123456");
+      await mkPublic("RFB1", "gen", { name: `ผู้จอง RF1 ${STAMP}`, phone: who("RF1"), email: `${EMAIL_PREFIX}rf1.${STAMP}@example.com` });
+      await mkPublic("RFB2", "gen", { name: `ผู้จอง RF2 ${STAMP}`, phone: who("RF2"), email: `${EMAIL_PREFIX}rf2.${STAMP}@example.com` });
+      await mkPublic("RFL", "gen", { name: `ผู้จอง RFL ${STAMP}`, phone: who("RFL"), email: `${EMAIL_PREFIX}rfl.${STAMP}@example.com` });
+      await mkStaff("SAU", { name: `ผู้จอง AU ${STAMP}`, phone: e164(who("AU")) }, who("AU"));
+      await makeLegacy(BK.RFL?.id ?? "");
+      { // ร้านอื่น (tB): การจองที่ชี้ id ของ Party E (ปลูกตรง) — ตัวรับของร้าน A ห้ามแตะ
+        await insertRow("Tenant", { id: tB, name: "ทดสอบ W1.2b b", slug: `${SA}-b`, status: "ACTIVE", updatedAt: new Date() }); tenantIds.push(tB);
+        await insertRow("BusinessUnit", { id: uB, tenantId: tB, type: "TRIPS", status: "ACTIVE", name: "หน่วย b", slug: `${SLUG}b-${STAMP}`, settings: JSON.stringify({}), updatedAt: new Date() });
+        const pe = (await partyOf(BK.E0?.id ?? ""))?.id ?? "";
+        OTHER_T.bookingId = await insertRow("TripBooking", { id: rid("bkB"), tenantId: tB, unitId: uB, code: `QB-${hex(3)}`, publicTokenHash: sha256hex(rid("tok")), status: "PAID", productId: rid("p"), departureId: rid("d"), travelDate: "2027-04-24",
+          channel: "WEB", collectMode: "SHOP", payMethod: "PAY_NOW", bookerPartyId: pe, contactRoute: "DIRECT", currency: "THB", accountingState: "NONE", version: 0,
+          policySnapshot: JSON.stringify({ v: 1, booker: { v: 1, name: NE, phone: e164(who("PE1")), email: EE } }), updatedAt: new Date() });
+      }
       await makeLegacy(BK.L1?.id ?? "");
     } catch (e) { bookErr = e instanceof AssertFail ? e.message : errMsg(e); console.log(`  ⚠️ สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`); }
   }
@@ -593,15 +647,17 @@ try {
     GRANT(await verify(s, who("P1")), "SPID + P1");
     ERR(await verify(s, who("P6")), "VERIFY_FAILED", "SPID + P6");
   });
-  await st("FB-3", "ร้านจองด้วยอีเมลอย่างเดียว (ชื่อ+อีเมลตรง X) ⇒ booker { phone: null, email } · ไม่มีเบอร์ที่พิมพ์ ⇒ ยืนยันด้วยเบอร์ของ Party X (P1) ได้", async () => {
+  await st("FB-3", "ร้านจองด้วยอีเมลอย่างเดียว (ชื่อ+อีเมลตรง X) ⇒ booker { phone: null, email } · E2: ไม่มีเบอร์ที่พิมพ์ ⇒ ยืนยันไม่ได้ (เบอร์ของ Party X ก็ไม่ได้)", async () => {
     needSelf(); const [s] = needBk("SMAIL");
     eq(await typedOf(s.id), { v: 1, name: NX, phone: null, email: EX }, "policySnapshot.booker");
-    GRANT(await verify(s, who("P1")), "SMAIL + P1");
+    // ORACLE-EDIT FB-3 (ผู้คุม 26 พ.ย. · มติ E2 แทน C-3): มีคีย์ booker แต่ไม่มีเบอร์ ⇒ ไม่มีใครยืนยันได้ (ไม่ถอยไปเบอร์ของ Party)
+    ERR(await verify(s, who("P1")), "VERIFY_FAILED", "SMAIL + P1 (เบอร์ของ Party)");
   });
-  await st("FB-4", "ร้านพิมพ์เบอร์สั้นกว่า 8 หลัก (081234 · Party ไม่จับด้วยเบอร์ · ล็อก T0.4d ไม่ถือ p:) ⇒ เก็บตามที่พิมพ์ แต่ไม่นับเป็นเบอร์ที่พิมพ์ ⇒ ยืนยันด้วยเบอร์ของ Party X (P1) ได้", async () => {
+  await st("FB-4", "ร้านพิมพ์เบอร์สั้นกว่า 8 หลัก (081234 · Party ไม่จับด้วยเบอร์ · ล็อก T0.4d ไม่ถือ p:) ⇒ เก็บตามที่พิมพ์ · E2: ใช้ไม่ได้ ⇒ ยืนยันไม่ได้ (เบอร์ของ Party X ก็ไม่ได้)", async () => {
     needSelf(); const [s] = needBk("SSHORT");
     eq(await typedOf(s.id), { v: 1, name: NX, phone: "081234", email: EX }, "policySnapshot.booker");
-    GRANT(await verify(s, who("P1")), "SSHORT + P1");
+    // ORACLE-EDIT FB-4 (ผู้คุม 26 พ.ย. · มติ E2 แทน C-3): เบอร์ที่พิมพ์ใช้ไม่ได้ ⇒ ไม่มีใครยืนยันได้ (ไม่ถอยไปเบอร์ของ Party)
+    ERR(await verify(s, who("P1")), "VERIFY_FAILED", "SSHORT + P1 (เบอร์ของ Party)");
   });
   groupLine("FB");
 
@@ -762,6 +818,299 @@ try {
   });
   groupLine("PII");
 
+  // ═══════════════ รอบผู้เขียนข้อสอบแยก (26 พ.ย. · ผู้คุมสั่งเพิ่ม a–f หลังรายงาน r1) ═══════════════
+  const bkRow = async (id: string) => (await q<{ version: number; departureId: string; status: string; bookerPartyId: string | null; piiPurgedAt: Date | null; s: Rec }>(
+    `SELECT version, "departureId", status, "bookerPartyId", "piiPurgedAt", "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [id]))[0];
+  const changeTo = async (b: Bk, depId: string | undefined, o: { version?: number; qv?: Rec } = {}): Promise<Rec> => {
+    const ln = lineOn(depId);
+    const qt = o.qv ?? asRec((await tcall("quoteTrips", staffCtx(), { lines: [ln] })).value);
+    ok(qt && typeof qt.quoteId === "string", `quoteTrips (เลื่อน ${b.tag}): ${fmt(qt)}`);
+    const v = o.version ?? Number((await bkRow(b.id))?.version);
+    return tcall("changeTripBooking", staffCtx(), { bookingId: b.id, expectedVersion: v, line: ln, quoteId: qt?.quoteId, quoteExpiresAt: qt?.expiresAt, idempotencyKey: `w12bmv_${hex(6)}` });
+  };
+  console.log("\n── SN: ทุกตัวเขียน policySnapshot พกผู้จองที่พิมพ์ต่อ / ไม่ฟื้นหลังลบ (ก · ข) ──");
+  await st("SN-1", "ร้านเลื่อนรอบ (changeTripBooking STAFF) ของ CONFIRMED ที่ร้านจอง (SCHG) และ PAID สาธารณะ (CHP) ⇒ สำเร็จ · version +1 · รอบใหม่ · policySnapshot.booker เท่าเดิมทั้งก้อน · ยืนยันด้วยเบอร์ที่พิมพ์ได้ต่อ", async () => {
+    needSelf(); const [sc, cp] = needBk("SCHG", "CHP");
+    for (const [b, local] of [[sc, who("CH1")], [cp, who("CH2")]] as const) {
+      const r0 = await bkRow(b.id);
+      typedRed(r0?.s.booker, `${b.tag} ก่อนเลื่อน`);
+      const r = await changeTo(b, DEP.r11);
+      ok(r.ok === true, `เลื่อน ${b.tag}: ${fmt(r)}`);
+      const r1 = await bkRow(b.id);
+      eq([r1?.version, r1?.departureId, r1?.s.booker], [Number(r0?.version) + 1, DEP.r11, r0?.s.booker], `${b.tag} หลังเลื่อน`);
+      GRANT(await verify(b, local), `${b.tag} + เบอร์ที่พิมพ์ (หลังเลื่อน)`);
+    }
+  });
+  await st("SN-2", "ตัวเขียน TripBooking.policySnapshot ใน src/ มี 4 ที่เท่านั้น (สร้าง finalizeCoreInTx · เลื่อน changeImpl · ลบ T0.8 pdpa · ตัวรับการลบลูกค้า E1) — ที่ใหม่ต้องเพิ่มข้อสอบแบบ SN-1", () => {
+    const files = git(["ls-files", "src"]).split("\n").filter((f) => /\.(ts|tsx)$/.test(f));
+    const hits: string[] = [];
+    for (const f of files) {
+      const t = stripComments(read(f));
+      if (!/"TripBooking"|tripBooking\./.test(t)) continue;
+      for (const m of t.matchAll(/"policySnapshot"\s*=|jsonb_set\(\s*"policySnapshot"|tripBooking\.(?:create|createMany|update|updateMany|upsert)\(\{[\s\S]{0,4000}?policySnapshot\s*:/g)) hits.push(`${f}:${t.slice(0, m.index ?? 0).split("\n").length}`);
+    }
+    // ORACLE-EDIT SN-2 (ผู้คุม 26 พ.ย. · มติ E1): ตัวรับการลบลูกค้า (ตัด booker) = ตัวเขียนที่ 4 ใน pdpa.ts หรือ public-booking.ts
+    const fs4 = hits.map((h) => h.replace(/:\d+$/, "")).sort();
+    ok(fs4.length === 4 && [[BOOKING, BOOKING, PDPA, PDPA].sort(), [BOOKING, BOOKING, PDPA, PUBMOD].sort()].some((e) => isDeepStrictEqual(e, fs4)), `ตัวเขียนต้องเป็น สร้าง · เลื่อน · ลบ T0.8 · ตัวรับ E1 (ได้ ${hits.join(" · ")})`);
+  });
+  await st("SN-3", "ไม่ฟื้นหลังลบ: PG2 (HOLD มีคีย์ booker) เตรียมคำขอเลื่อน (quote + version ก่อนลบ) → หมดเวลา + runPdpaPurge → ส่งคำขอเลื่อนค้าง ⇒ ไม่สำเร็จ · ส่งด้วย version ปัจจุบันก็ไม่สำเร็จ · คีย์ booker ไม่กลับ · bookerPartyId ยัง null · version ไม่ขยับหลังลบ", async () => {
+    const [b] = needBk("PG2");
+    const r0 = await bkRow(b.id);
+    typedRed(r0?.s.booker, "PG2 ก่อนลบ");
+    const qv = asRec((await tcall("quoteTrips", staffCtx(), { lines: [lineOn(DEP.r11)] })).value) ?? {};
+    const staleV = Number(r0?.version);
+    await pool.query(`UPDATE "TripBooking" SET status = 'EXPIRED' WHERE id = $1`, [b.id]);
+    await pool.query(`UPDATE "TripHold" SET status = 'EXPIRED', "expiresAt" = $2 WHERE "bookingId" = $1`, [b.id, HOLD_EXPIRED_AT]);
+    const pr = await tcall("runPdpaPurge", PURGE_AT, { tenantIds: [tA] });
+    ok(pr.ok === true, `runPdpaPurge: ${fmt(pr)}`);
+    const r1 = await bkRow(b.id);
+    eq([r1?.bookerPartyId ?? null, r1?.piiPurgedAt instanceof Date, r1 ? "booker" in r1.s : true], [null, true, false], "หลังลบ");
+    const a = await changeTo(b, DEP.r11, { version: staleV, qv });
+    const c = await changeTo(b, DEP.r11, { version: Number(r1?.version) });
+    ok(a.ok !== true && c.ok !== true && a.ok !== "THROW" && c.ok !== "THROW", `คำขอเลื่อนหลังลบต้องถูกปฏิเสธ: ${fmt([a, c])}`);
+    const r2 = await bkRow(b.id);
+    eq([r2?.version, r2?.bookerPartyId ?? null, r2 ? "booker" in r2.s : true, r2?.departureId], [r1?.version, null, false, r1?.departureId], "หลังคำขอค้าง");
+  });
+  groupLine("SN");
+
+  console.log("\n── RV: ตัวอ่านการจองสาธารณะ (ค) ──");
+  const piiOf = (b: Bk, extra: string[] = []) => (b.phone && b.phone.length >= 9 ? [...extra, b.phone, e164(b.phone), b.phone.slice(1)] : [...extra]);
+  await st("RV-1", "ผลทั้งก้อนของ openBookReservation (ที่หน้าได้รับ รวมนอก vm) ของ A1 · S0066 · SMAIL ไม่มีชื่อ/เบอร์/อีเมลที่พิมพ์ และไม่มีคีย์ booker", async () => {
+    const [a1, s66, sm] = needBk("A1", "S0066", "SMAIL");
+    for (const [b, extra] of [[a1, [NX, EX]], [s66, [NX, EX, `0066${who("P4").slice(1)}`]], [sm, [NX, EX]]] as const) {
+      const r = await bcall("openBookReservation", { shop: SA, token: b.token, lang: "th", acceptLanguage: "th", clientKey: ck() }, ACT);
+      ok(r.ok === true, `openBookReservation ${b.tag}: ${fmt(r)}`);
+      const s = JSON.stringify(r);
+      const leak = piiOf(b, [...extra]).filter((x) => s.includes(x));
+      ok(leak.length === 0, `${b.tag}: พบข้อมูลผู้จองในผลของหน้า ${leak.length} ค่า`);
+      ok(!findDeep(r, (x) => "booker" in x).length, `${b.tag}: มีคีย์ booker ในผลของหน้า`);
+    }
+  });
+  await st("RV-2", "ขอบโมดูล: findBookReservation (facade trips → platform/trips-book) ไม่ส่งคีย์ booker ออกนอกโมดูล (ใบสั่ง §5 \"ใครอ่าน: โค้ดโมดูล trips\") — ถ้าโค้ดไม่ตัด = แดง · ผู้คุมตัดสิน", async () => {
+    const [a1] = needBk("A1");
+    const row = asRec(await tfn("findBookReservation")({ tenantId: tA, unitIds: [uA] }, sha256hex(a1.token)));
+    ok(row, "findBookReservation ไม่คืนแถวของ A1");
+    const hit = findDeep(row, (x) => "booker" in x);
+    ok(hit.length === 0, `findBookReservation ส่ง policySnapshot.booker ออกนอกโมดูล (ชื่อ/เบอร์/อีเมลที่พิมพ์ถึง platform · VM ไม่มีเพราะ platform ไม่หยิบ)`);
+  });
+  groupLine("RV");
+
+  console.log("\n── SV: จอร้านไม่มีเบอร์เต็ม/อีเมลที่พิมพ์ · ไม่มีสิทธิ์ = ไม่เห็น (ง · จ) ──");
+  const staffBlobs = async (ctx: Rec, bs: Bk[]): Promise<{ results: Rec[]; blob: string }> => {
+    const results: Rec[] = [];
+    for (const b of bs) {
+      results.push(await tcall("loadBookingListVM", ctx, { unitId: uA, q: b.code }, { now: ACT.now }));
+      results.push(await tcall("loadBookingDetailVM", ctx, { unitId: uA, bookingId: b.id }, { now: ACT.now }));
+    }
+    for (const d of [...new Set(bs.map((b) => b.dep))]) {
+      results.push(await tcall("loadManifestVM", ctx, { unitId: uA, departureId: d }, { now: ACT.now }));
+      results.push(await tcall("exportManifestCsv", ctx, { unitId: uA, departureId: d }, { now: ACT.now }));
+    }
+    return { results, blob: JSON.stringify(results) };
+  };
+  const fullPhones = (locals: string[]) => locals.flatMap((l) => [l, e164(l), l.slice(1), `0066${l.slice(1)}`]);
+  await st("SV-1", "เจ้าของร้าน (สิทธิ์สูงสุด): รายการ · รายละเอียด · ใบรายชื่อ · CSV ของ A1 · S0066 · SMAIL · A2 ไม่มีเบอร์เต็มที่พิมพ์ (ทุกรูป) และไม่มีอีเมลที่พิมพ์ · มีชื่อที่พิมพ์ (ตัวควบคุม)", async () => {
+    const bs = needBk("A1", "S0066", "SMAIL", "A2");
+    const { results, blob } = await staffBlobs(scr(), bs);
+    ok(results.every((r) => r.ok === true), `ตัวโหลดจอ: ${fmt(results.filter((r) => r.ok !== true).slice(0, 2))}`);
+    const leak = [...fullPhones([who("P1"), who("P2"), who("P4")]), EX].filter((x) => blob.includes(x));
+    ok(leak.length === 0, `จอร้านมีเบอร์เต็ม/อีเมลที่พิมพ์: ${leak.length} ค่า`);
+    ok(blob.includes(N2), "ตัวควบคุม: ไม่พบชื่อที่พิมพ์ (N2) ในจอร้าน");
+  });
+  await st("SV-2", "พนักงานที่ไม่มีสิทธิ์ดูการจอง (มีแค่ trips.product.view): รายการ/รายละเอียด ⇒ FORBIDDEN · ใบรายชื่อ/CSV ไม่สำเร็จ · ไม่มีชื่อ/เบอร์/อีเมลที่พิมพ์ในผลใดเลย", async () => {
+    const bs = needBk("A1", "A2");
+    ok(NOVIEW.id, "ไม่มีผู้ใช้ไม่มีสิทธิ์");
+    const { results, blob } = await staffBlobs({ tenantId: tA, actorUserId: NOVIEW.id }, bs);
+    const lists = results.filter((_, i) => i < bs.length * 2);
+    ok(lists.every((r) => r.ok === false && r.code === "FORBIDDEN"), `รายการ/รายละเอียด: ${fmt(lists.map((r) => [r.ok, r.code]))}`);
+    ok(results.slice(bs.length * 2).every((r) => r.ok !== true), `ใบรายชื่อ/CSV: ${fmt(results.slice(bs.length * 2).map((r) => [r.ok, r.code]))}`);
+    const leak = [NX, N2, EX, ...fullPhones([who("P1"), who("P2")])].filter((x) => blob.includes(x));
+    ok(leak.length === 0, `ผลของผู้ไม่มีสิทธิ์มีข้อมูลผู้จอง: ${leak.length} ค่า`);
+  });
+  await st("SV-3", "เบอร์ปิดบังของผู้จองที่ร้านพิมพ์ 0066812345678 = 081-xxx-5678 (รูปเดียวกับเบอร์เดียวกันที่เก็บเป็น +66… · ใบสั่ง §4 \"เบอร์ที่พิมพ์ที่ใช้ได้\" ปิดบังแบบเบอร์ไทย)", async () => {
+    const [s66] = needBk("S66");
+    eq(await typedOf(s66.id), { v: 1, name: `ผู้จอง 0066 ${STAMP}`, phone: "0066812345678", email: null }, "policySnapshot.booker");
+    const c = await detailOf(s66);
+    eq(c.phoneMasked, "081-xxx-5678", "phoneMasked");
+  });
+  groupLine("SV");
+
+  console.log("\n── AF: ผู้โจมตีเลือกทางสำรอง (ฉ) ──");
+  await st("AF-1", `ผู้โจมตีจองสาธารณะด้วยชื่อ+อีเมลของเหยื่อ + เบอร์ ${ATTACK_PHONE} (ผ่านรูปฟอร์ม · normalize ⇒ "1234" < 8 หลัก): การจองชี้ Party ของเหยื่อ (ชื่อ+อีเมล · มีมาก่อน) · เก็บเบอร์ตามที่พิมพ์ · ตามมติ E2 ⇒ ไม่มีใครยืนยันได้ (ทั้งเบอร์ของผู้โจมตีและของเหยื่อ) · จอร้านไม่แสดงเบอร์ของเหยื่อ`, async () => {
+    needSelf(); const [vb, fa] = needBk("VB", "FA");
+    eq((await partyOf(fa.id))?.id, (await partyOf(vb.id))?.id, "FA ชี้ Party ของเหยื่อ");
+    eq(await typedOf(fa.id), { v: 1, name: NV, phone: ATTACK_PHONE, email: EV }, "policySnapshot.booker");
+    ERR(await verify(fa, ATTACK_PHONE), "VERIFY_FAILED", "FA + เบอร์ของผู้โจมตี");
+    // ORACLE-EDIT AF-1 (ผู้คุม 26 พ.ย. · มติ E2): มีคีย์ booker ⇒ ไม่ถอยไปเบอร์ของ Party ⇒ เบอร์ของเหยื่อก็ยืนยันการจองของผู้โจมตีไม่ได้
+    ERR(await verify(fa, who("PV")), "VERIFY_FAILED", "FA + เบอร์ของเหยื่อ");
+    ERR(await verify(vb, ATTACK_PHONE), "VERIFY_FAILED", "การจองของเหยื่อ + เบอร์ของผู้โจมตี");
+    eq((await detailOf(fa)).phoneMasked ?? null, null, "จอร้านของ FA ไม่แสดงเบอร์ของ Party (E2 · เบอร์ที่พิมพ์ใช้ไม่ได้)");
+  });
+  groupLine("AF");
+
+  // ═══════════════ มติ E1–E5 (ผู้เขียนข้อสอบแยก รอบ 2 · 26 พ.ย.) ═══════════════
+  const OBI = await tryImport("@/lib/outbox-consumers");
+  const fire = async (type: string, payload: Rec): Promise<Rec> => {
+    const h = asRec(OBI.mod?.consumers)?.[type];
+    ok(typeof h === "function", `ไม่มีตัวรับ ${type} (${OBI.err.slice(0, 80)})`);
+    return captured(async () => { try { await (h as AnyFn)({ id: rid("ev"), tenantId: tA, type, payload, systemId: null, unitId: null }); return { ok: true }; } catch (e) { return { ok: "THROW", e: errMsg(e) }; } });
+  };
+  /** ฝั่ง CRM/สมาชิกล้างตัวตนของ Party ตอนลบ (แบบ crm/privacy.ts eraseInTx: ไม่มีผู้ถืออื่น ⇒ ชื่อ CRM_ERASED_NAME · เบอร์/อีเมล null) */
+  const ERASED_NAME = "ลบข้อมูลแล้ว";
+  const anonymise = async (partyId: string | undefined) => { await pool.query(`UPDATE "Party" SET name = $2, phone = NULL, "phoneNorm" = NULL, email = NULL, "updatedAt" = now() WHERE id = $1`, [partyId, ERASED_NAME]); };
+  const vOf = async (id: string) => Number((await bkRow(id))?.version);
+  const hasTyped = async (id: string) => { const r = await bkRow(id); return !!r && "booker" in r.s; };
+  console.log("\n── ER: ลบลูกค้าในรายชื่อกลาง ⇒ ลบสำเนาที่พิมพ์ (มติ E1) ──");
+  let erDone = false;
+  await st("ER-1", "crm.contact.erased {contactId, systemId, partyId=E} (Party ถูกล้างแบบ eraseContact) ผ่านตัวรับจริง consumers[…] ⇒ การจองทุกตัวของ Party E ในร้าน (E0 E1) ไม่มีคีย์ booker · version +1 · การจองของ Party อื่น (A0) และของร้านอื่นที่ชี้ id เดียวกัน ไม่ถูกแตะ", async () => {
+    const [e0, e1, a0] = needBk("E0", "E1", "A0");
+    const pe = (await partyOf(e0.id))?.id;
+    eq((await partyOf(e1.id))?.id, pe, "E1 ชี้ Party E");
+    typedRed((await bkRow(e1.id))?.s.booker, "E1 ก่อนลบ");
+    const v0 = [await vOf(e0.id), await vOf(e1.id)], a0r = await bkRow(a0.id), tb0 = (await q<{ version: number; s: Rec }>(`SELECT version, "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [OTHER_T.bookingId]))[0];
+    await anonymise(pe);
+    const r = await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyId: pe });
+    ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
+    eq([await hasTyped(e0.id), await hasTyped(e1.id), await vOf(e0.id), await vOf(e1.id)], [false, false, (v0[0] ?? 0) + 1, (v0[1] ?? 0) + 1], "E0 E1 หลังลบ");
+    const a0n = await bkRow(a0.id), tb1 = (await q<{ version: number; s: Rec }>(`SELECT version, "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [OTHER_T.bookingId]))[0];
+    eq([a0n?.version, a0n?.s, tb1?.version, tb1?.s], [a0r?.version, a0r?.s, tb0?.version, tb0?.s], "การจองของ Party อื่น / ร้านอื่น");
+    erDone = true;
+  });
+  await st("ER-2", "หลัง ER-1: จอร้าน (รายการ · รายละเอียด · ใบรายชื่อ · CSV) ของ E1 ไม่มีชื่อ/เบอร์/อีเมลที่พิมพ์ · verifyBookSelf ด้วยเบอร์ที่พิมพ์ (E0 · E1) ⇒ VERIFY_FAILED รูปเดียวกับเบอร์ผิด", async () => {
+    needSelf(); const [e0, e1] = needBk("E0", "E1"); ok(erDone, "ER-1 ไม่ผ่าน");
+    const { blob } = await staffBlobs(scr(), [e1]);
+    const leak = [NE, EE, ...fullPhones([who("PE1"), who("PE2")])].filter((x) => blob.includes(x));
+    ok(leak.length === 0, `จอร้านยังมีข้อมูลผู้จอง ${leak.length} ค่า`);
+    const rs = [await verify(e0, who("PE1")), await verify(e1, who("PE2")), await verify(e1, "0899999990")];
+    for (const [i, x] of rs.entries()) ERR(x, "VERIFY_FAILED", `กรณีที่ ${i + 1}`);
+    eq(rs.map((x) => Object.keys(x).sort()), rs.map(() => Object.keys(rs[2] ?? {}).sort()), "คีย์ผล");
+  });
+  await st("ER-3", "ส่งเหตุการณ์เดิมซ้ำ 2 ครั้ง (ตัวรับ idempotent) ⇒ ไม่มีอะไรเปลี่ยนเพิ่ม (version · snapshot ของ E0 E1 เท่าเดิม)", async () => {
+    const [e0, e1] = needBk("E0", "E1"); ok(erDone, "ER-1 ไม่ผ่าน");
+    const pe = (await partyOf(e0.id))?.id;
+    const b0 = [await bkRow(e0.id), await bkRow(e1.id)];
+    for (let i = 0; i < 2; i++) ok((await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyId: pe })).ok === true, "ตัวรับ");
+    const b1 = [await bkRow(e0.id), await bkRow(e1.id)];
+    eq(b1.map((x) => [x?.version, x?.s]), b0.map((x) => [x?.version, x?.s]), "หลังส่งซ้ำ");
+  });
+  await st("ER-4", "member.erased {customerId, partyId=M} (Party ถูกล้าง) ผ่านตัวรับจริง ⇒ M0 ไม่มีคีย์ booker · version +1 · ยืนยันด้วยเบอร์ที่พิมพ์ ⇒ VERIFY_FAILED", async () => {
+    needSelf(); const [m0] = needBk("M0");
+    const pm = (await partyOf(m0.id))?.id;
+    typedRed((await bkRow(m0.id))?.s.booker, "M0 ก่อนลบ");
+    const v0 = await vOf(m0.id);
+    await anonymise(pm);
+    const r = await fire("member.erased", { customerId: rid("cu"), partyId: pm });
+    ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
+    eq([await hasTyped(m0.id), await vOf(m0.id)], [false, v0 + 1], "M0 หลังลบ");
+    ERR(await verify(m0, who("PM")), "VERIFY_FAILED", "M0 + เบอร์ที่พิมพ์");
+  });
+  await st("ER-5", "CRM ตัดการผูกแต่ไม่ล้าง Party (มีผู้ถืออื่น · eraseContact ทาง unlinkParty): crm.contact.erased {partyId=U} ⇒ U0 ไม่มีคีย์ booker และเบอร์ที่พิมพ์ (= เบอร์ของ Party U) ยืนยันไม่ได้ — ⚠️ ผู้ร่างคาดว่าแดงแม้ทำตาม E1+E2 (ตัดคีย์แล้วกลายเป็น 'ไม่มีคีย์' ⇒ ถอยไป Party) · ผู้คุมตัดสิน", async () => {
+    needSelf(); const [u0] = needBk("U0");
+    const pu = (await partyOf(u0.id))?.id;
+    typedRed((await bkRow(u0.id))?.s.booker, "U0 ก่อนลบ");
+    const r = await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyId: pu });
+    ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
+    eq(await hasTyped(u0.id), false, "U0 ไม่มีคีย์ booker");
+    ERR(await verify(u0, who("PU")), "VERIFY_FAILED", "U0 + เบอร์ที่พิมพ์ (= เบอร์ของ Party ที่ยังอยู่)");
+  });
+  groupLine("ER");
+
+  console.log("\n── E2: มีคีย์ booker ⇒ ไม่ถอยไปเบอร์ของรายชื่อกลาง ──");
+  await st("E2-1", "สาธารณะพิมพ์ +66123456 / +00661234567 (เลขสำคัญ < 8) + ชื่อ+อีเมลของ X ⇒ ผ่านฟอร์ม · ชี้ Party X · ไม่มีใครยืนยันได้: เบอร์ของ X (P1) · เบอร์ที่พิมพ์เอง · เบอร์สุ่ม ⇒ VERIFY_FAILED รูปเดียว", async () => {
+    needSelf(); const [a, b, a0] = needBk("E2a", "E2b", "A0");
+    for (const [bk, ph] of [[a, "+66123456"], [b, "+00661234567"]] as const) {
+      eq([(await partyOf(bk.id))?.id === (await partyOf(a0.id))?.id, asRec(await typedOf(bk.id))?.phone], [true, ph], `${bk.tag} Party X · เบอร์ที่เก็บ`);
+      const rs = [await verify(bk, who("P1")), await verify(bk, ph), await verify(bk, "0899999989")];
+      for (const [i, x] of rs.entries()) ERR(x, "VERIFY_FAILED", `${bk.tag} กรณีที่ ${i + 1}`);
+      eq(rs.map((x) => Object.keys(x).sort()), rs.map(() => Object.keys(rs[2] ?? {}).sort()), `${bk.tag} คีย์ผล`);
+    }
+  });
+  await st("E2-2", "ร้านพิมพ์ 08123456 (ยาว 8 แต่เลขสำคัญ 7) + ชื่อ+อีเมลของ X ⇒ เบอร์ของ X ยืนยันไม่ได้ · จอร้านไม่แสดงเบอร์ปิดบัง (เกณฑ์เลขสำคัญเดียวกัน)", async () => {
+    needSelf(); const [s2] = needBk("E2s");
+    ERR(await verify(s2, who("P1")), "VERIFY_FAILED", "E2s + P1");
+    eq((await detailOf(s2)).phoneMasked ?? null, null, "phoneMasked");
+  });
+  await st("E2-3", "เลขสำคัญ 8 หลักพอดี (+6612345678 · ผู้คุมเขียน '+661234567-style' — รูปนั้นมีเลขสำคัญ 7) ⇒ ยืนยันด้วยตัวเองได้ · เบอร์ของ X ไม่ได้", async () => {
+    needSelf(); const [c] = needBk("E2c");
+    GRANT(await verify(c, "+6612345678"), "E2c + ตัวเอง");
+    ERR(await verify(c, who("P1")), "VERIFY_FAILED", "E2c + P1");
+  });
+  await st("E2-4", "จอร้าน (รายละเอียด): มีคีย์ booker แต่เบอร์ใช้ไม่ได้/ไม่มี (E2a · E2b · SMAIL · SSHORT) ⇒ phoneMasked null (ไม่ใช้เบอร์ของ Party) · ไม่มีคีย์ (L1 · SPID) ⇒ เบอร์ปิดบังของ Party", async () => {
+    const [a, b, sm, ss, l1, sp] = needBk("E2a", "E2b", "SMAIL", "SSHORT", "L1", "SPID");
+    eq(await Promise.all([a, b, sm, ss].map(async (x) => (await detailOf(x)).phoneMasked ?? null)), [null, null, null, null], "มีคีย์ · ใช้ไม่ได้");
+    eq(await Promise.all([l1, sp].map(async (x) => (await detailOf(x)).phoneMasked ?? null)), [maskOf(who("P1")), maskOf(who("P1"))], "ไม่มีคีย์");
+  });
+  groupLine("E2");
+
+  console.log("\n── E3/E5: ตัดคีย์ที่ขอบโมดูล · ไม่มีชนิดส่งออกที่พกอีเมล ──");
+  await st("E3-1", "หน้า my/[token] รับข้อมูลจากแพลตฟอร์มเท่านั้น (ไม่ import @/lib/modules) ⇒ ผลทั้งก้อนของ openBookReservation (RV-1) = ข้อมูลที่หน้าได้ · ไม่มี JSON ดิบของ snapshot ในหน้า", () => {
+    const src = stripComments(read("src/app/book/[shop]/my/[token]/page.tsx"));
+    ok(src, "ไม่มีหน้า");
+    ok(!/from\s+["']@\/lib\/modules/.test(src) && !/policySnapshot/.test(src), "หน้าอ่านโมดูล/snapshot ตรง");
+  });
+  await st("E5-1", "ชนิดที่ส่งออก TypedBooker (booking-view-core) ไม่มีช่อง email · ไม่มีชนิด/VM ส่งออกใดใน src/lib/modules/trips ที่มีช่องอีเมลผู้จองที่พิมพ์ (typedEmail/bookerEmail)", () => {
+    const v = stripComments(read(VIEWCORE));
+    const m = /export\s+type\s+TypedBooker\s*=\s*\{([^}]*)\}/.exec(v);
+    ok(m, "ไม่มี export type TypedBooker");
+    ok(!/\bemail\b/.test(m?.[1] ?? ""), `TypedBooker มีช่อง email: {${(m?.[1] ?? "").trim()}}`);
+    const all = git(["ls-files", "src/lib/modules/trips"]).split("\n").filter(Boolean).map((f) => stripComments(read(f))).join("\n");
+    ok(!/\b(typedEmail|bookerEmail)\s*[:?]/.test(all), "มีช่อง typedEmail/bookerEmail");
+  });
+  groupLine("E3");
+
+  console.log("\n── AU: แฮชไม่รวมข้อมูลบุคคล (มติ E4) ──");
+  const shaStripped = async (id: string) => String((await q<{ s: string }>(`SELECT encode(sha256(convert_to(("policySnapshot" - 'booker')::text, 'UTF8')), 'hex') AS s FROM "TripBooking" WHERE id = $1`, [id]))[0]?.s ?? "");
+  const shaFull = async (id: string) => String((await q<{ s: string }>(`SELECT encode(sha256(convert_to("policySnapshot"::text, 'UTF8')), 'hex') AS s FROM "TripBooking" WHERE id = $1`, [id]))[0]?.s ?? "");
+  const reqRefund = async (b: Bk): Promise<string> => {
+    const r = await tcall("requestTripRefund", staffCtx(), { bookingId: b.id, expectedVersion: await vOf(b.id), reasonKind: "CUSTOMER", choice: "MONEY", reason: "ลูกค้าขอยกเลิก (W1.2b E4)", idempotencyKey: `w12brq_${hex(6)}` });
+    const id = String(asRec(r.value)?.requestId ?? asRec(r.value)?.id ?? "");
+    ok(r.ok === true && id, `requestTripRefund ${b.tag}: ${fmt(r)}`);
+    return id;
+  };
+  const approve = async (requestId: string) => {
+    const st0 = (await q<{ status: string }>(`SELECT status FROM "TripRefundRequest" WHERE id = $1`, [requestId]))[0]?.status;
+    if (st0 === "APPROVED") return;
+    const d = await tcall("decideTripRefund", staffCtx(), { requestId, decision: "APPROVE", idempotencyKey: `w12bdc_${hex(6)}` });
+    ok(d.ok === true, `decideTripRefund: ${fmt(d)}`);
+  };
+  const execute = (requestId: string) => tcall("executeTripRefund", staffCtx(), { requestId, idempotencyKey: `w12bex_${hex(6)}` });
+  await st("AU-1", "audit trips.booking.change ของการเลื่อน (SAU มีคีย์ booker): before.snapshotSha256 = sha256(JSON ของ snapshot ก่อนเลื่อนที่ตัด booker) ≠ sha ของ snapshot เต็ม", async () => {
+    const [b] = needBk("SAU");
+    const r0 = await bkRow(b.id);
+    typedRed(r0?.s.booker, "SAU ก่อนเลื่อน");
+    const { booker: _x, ...rest } = r0?.s ?? {}; void _x;
+    const exp = sha256hex(JSON.stringify(rest)), full = sha256hex(JSON.stringify(r0?.s));
+    const r = await changeTo(b, DEP.r11);
+    ok(r.ok === true, `เลื่อน: ${fmt(r)}`);
+    const a = (await q<{ before: Rec }>(`SELECT "before" FROM "AuditLog" WHERE "tenantId" = $1 AND "targetId" = $2 AND action = 'trips.booking.change' ORDER BY "createdAt" DESC LIMIT 1`, [tA, b.id]))[0];
+    ok(exp !== full, "ตัวควบคุม: แฮชสองแบบต้องต่างกัน");
+    eq(asRec(a?.before)?.snapshotSha256, exp, "snapshotSha256");
+  });
+  await st("AU-2", "คำขอคืนเงิน (RFB1 มีคีย์ booker): computed.facts.snapshotSha = sha ของ (policySnapshot − booker)::text ≠ sha ของ snapshot เต็ม · การจองไม่มีคีย์ (RFL) = sha เต็ม (ค่าเดิมของคำขอที่เปิดก่อนใบนี้)", async () => {
+    const [b1, bl] = needBk("RFB1", "RFL");
+    const id1 = await reqRefund(b1), idl = await reqRefund(bl);
+    REFREQ.rfb1 = id1; REFREQ.rfl = idl;
+    const fx = async (id: string) => asRec(asRec(asRec((await q<{ c: Rec }>(`SELECT computed AS c FROM "TripRefundRequest" WHERE id = $1`, [id]))[0]?.c)?.facts))?.snapshotSha;
+    const [s1, f1, sl, fl] = [await shaStripped(b1.id), await shaFull(b1.id), await shaStripped(bl.id), await shaFull(bl.id)];
+    ok(s1 !== f1 && sl === fl, "ตัวควบคุมของแฮช");
+    eq([await fx(id1), await fx(idl)], [s1, fl], "facts.snapshotSha");
+  });
+  await st("AU-3", "คำขอที่อนุมัติแล้ว (RFB2 มีคีย์) → สำเนาที่พิมพ์ถูกลบ (ตัด booker แบบตัวรับ E1) → executeTripRefund ⇒ DONE (ไม่ใช่ QUOTE_REFRESHED เพราะข้อมูลบุคคล)", async () => {
+    const [b2] = needBk("RFB2");
+    const id = await reqRefund(b2);
+    await approve(id);
+    await pool.query(`UPDATE "TripBooking" SET "policySnapshot" = "policySnapshot" - 'booker' WHERE id = $1`, [b2.id]);
+    const x = await execute(id);
+    ok(x.ok === true && asRec(x.value)?.status === "DONE", `execute: ${fmt(x)}`);
+  });
+  await st("AU-4", "คำขอที่เปิดอยู่ของการจองไม่มีคีย์ (RFL · แบบคำขอที่เปิดก่อนใบนี้) → อนุมัติ → execute ⇒ DONE (ใบนี้ไม่ทำให้ QUOTE_REFRESHED)", async () => {
+    needBk("RFL"); ok(REFREQ.rfl, "AU-2 ไม่ได้สร้างคำขอ");
+    await approve(REFREQ.rfl);
+    const x = await execute(REFREQ.rfl);
+    ok(x.ok === true && asRec(x.value)?.status === "DONE", `execute: ${fmt(x)}`);
+  });
+  groupLine("AU");
+
   // ═══════════════ S. ขอบเขตไฟล์/กติกาโค้ด ═══════════════
   console.log("\n── S: ขอบเขตไฟล์และกติกาโค้ด ──");
   const tip = git(["rev-parse", "--verify", "-q", "session/trips"]).trim() || git(["rev-parse", "--verify", "-q", "origin/session/trips"]).trim();
@@ -778,6 +1127,9 @@ try {
       const add = Number(ns[0] || 0), del = Number(ns[1] || 0);
       ok(del <= maxDel && add <= maxAdd, `${f}: +${add} −${del} (จำกัด −${maxDel} +${maxAdd})`);
     }
+    const tot = git(["diff", "--numstat", limBase, "--", ...LIMITED.map(([f]) => f)]).trim().split("\n").filter(Boolean).map((l) => l.split(/\s+/).map(Number));
+    const ta = tot.reduce((x, r) => x + (r[0] || 0), 0), td = tot.reduce((x, r) => x + (r[1] || 0), 0);
+    ok(ta <= TOTAL_BUDGET.add && td <= TOTAL_BUDGET.del, `รวมทั้งใบ +${ta} −${td} (จำกัด +${TOTAL_BUDGET.add} −${TOTAL_BUDGET.del} · E6)`);
   });
   await st("S-2", "ล็อกผู้จอง T0.4d คงเดิมใน finalizeCoreInTx: p:<เบอร์ ≥ 8 หลัก> ก่อน e:<อีเมลตัวเล็ก> ก่อน safeFindOrCreate ด้วยอาร์กิวเมนต์เดิม { name, phone, email } ของ P.booker", () => {
     const s = stripComments(read(BOOKING));

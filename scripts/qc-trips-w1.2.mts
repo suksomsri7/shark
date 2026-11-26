@@ -1285,8 +1285,9 @@ try {
     const b = await confirm(h2, { form: { phone: intl } });
     ok(a.ok === true && b.ok === true, `ยืนยัน: ${fmt(a)} · ${fmt(b)}`);
     const ba = await bookingOfToken(String(a.token)), bb = await bookingOfToken(String(b.token));
-    const party = (await q<{ phone: string | null }>(`SELECT phone FROM "Party" WHERE id = $1`, [ba?.bookerPartyId]))[0];
-    eq([party?.phone, ba?.bookerPartyId === bb?.bookerPartyId], [`+66${p.slice(1)}`, true], "E.164 · ผู้จองคนเดียวกัน");
+    // ORACLE-EDIT C-12 (ผู้คุม 26 พ.ย. · W1.2b-1 มติ C-1/C-2): เบอร์ E.164 ที่แพลตฟอร์มส่งถูกเก็บกับการจอง (policySnapshot.booker.phone) — Party ของชื่อ+อีเมลเดิมคงเบอร์เดิมโดยตั้งใจ (ไม่เขียนทับ Party)
+    const typedPhone = async (id: string | undefined) => { const s = (await q<{ s: Rec }>(`SELECT "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [id]))[0]?.s; return asRec(asRec(s)?.booker)?.phone; };
+    eq([await typedPhone(ba?.id), await typedPhone(bb?.id), ba?.bookerPartyId === bb?.bookerPartyId], [`+66${p.slice(1)}`, `+66${p.slice(1)}`, true], "E.164 ที่เก็บกับการจอง · ผู้จองคนเดียวกัน");
   });
   await st("C-13", "R11 อีเมล: trim + ตัวเล็ก ≤ 200 รูปพื้นฐาน (Party.email ตัวเล็ก) · ว่าง = ไม่มีอีเมล · 201 ตัว / ไม่มี @ / ไม่มีโดเมนจุด / มีช่องว่างกลาง ⇒ INVALID(email) · ไม่มีการจอง", async () => {
     needDb();
@@ -2260,7 +2261,8 @@ for (const c of cks) { const g = c.id.replace(/-\d+$/, ""); const [p0, t0] = (gr
 console.log(`\n===== QC TRIPS W1.2a · ทัวร์ 4 ขั้นฝั่งลูกค้า: เลือก → ถือที่ → ยืนยัน → จ่าย/วอเชอร์ =====\nผ่าน ${passed}/${cks.length} · ไม่ผ่าน ${failed.length} · ข้าม ${skipped.length}`);
 console.log(`ต่อกลุ่ม: ${Object.entries(groupsOut).map(([g, v]) => `${g} ${v}`).join(" · ")}`);
 // ORACLE-EDIT สรุป (มติ W3): C-12 คงไว้ไม่แก้ = แดงที่รู้จัก (ชื่อ+อีเมลตรง Party เดิม ⇒ เบอร์ใหม่ที่พิมพ์ถูกทิ้ง · หนี้ W1.2b) — แยกจากแดงอื่น ไม่เปลี่ยนเนื้อข้อ/รหัสออก
-const KNOWN_RED = ["C-12"];
+// ORACLE-EDIT สรุป (ผู้คุม 26 พ.ย. · W1.2b-1): C-12 ปิดแล้ว (เบอร์ที่พิมพ์เก็บกับการจอง) ⇒ ไม่มีแดงที่รู้จัก
+const KNOWN_RED: string[] = [];
 const knownRed = failed.filter((c) => KNOWN_RED.includes(c.id)).map((c) => c.id), otherRed = failed.filter((c) => !KNOWN_RED.includes(c.id)).map((c) => c.id);
 console.log(`แดงที่รู้จัก (มติ W3): ${knownRed.join(" ") || "ไม่มี"} · แดงอื่น: ${otherRed.join(" ") || "ไม่มี"}`);
 console.log(`JSON_SUMMARY ${JSON.stringify({ suite: LABEL, total: cks.length, passed, failed: failed.map((c) => c.id), knownRed, otherRed, skipped: skipped.map((c) => c.id), groups: groupsOut })}`);
