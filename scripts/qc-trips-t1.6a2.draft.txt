@@ -1,0 +1,18 @@
+// ⚠️ ร่างข้อสอบ T1.6a2 (ผู้ร่าง · 26 พ.ย. 2569) — ไม่ใช่ข้อสอบที่รันได้ (.txt ตั้งใจ) · ย้ายรอบแบบลูกผสม (N6) + consent
+// ผู้เขียนข้อสอบรวมกลุ่มนี้เข้า scripts/qc-trips-t1.6.mts ตอนเปิด a2 (ใช้ฟิกซ์เจอร์ของ a1: รอบปลายทาง dT o1 ราคาเฉพาะรอบ 4,000 · dO ตัวเลือก o2 · dK ผังดาดฟ้าต่าง · dU เกิน X16 90 วัน)
+// ฟิกซ์เจอร์ a2 เพิ่ม: b1/b9 ใช้ทาง MOVE แทน REFUND ⇒ กระทบยอดต่อรอบ = คืน 1,613,000 + ย้าย 1,195,000 = 2,808,000 · dT sold +3
+// ข้อ a1 ที่ต้องกลับเมื่อ a2 เข้า: CD (a1) "resolve MOVE ⇒ MOVE_NOT_AVAILABLE_YET" · หน้า "ไม่มีปุ่มย้าย"
+// ═══════════════ MV ย้ายรอบแบบลูกผสม ═══════════════
+MV-1  [บริการ] b1 → dT (ราคา 4,000) consent PHONE ⇒ ยอด 820,000 คงที่ · รายการ/VAT/เก็บแทน/ladder คงเดิม · snapshot.travel.localDate = 2027-04-21 · departure.id = dT · TripBooking.travelDate + ทุก TripBookingItem.departureId = dT
+MV-2  [บริการ] งวดสร้างเวลาใหม่จาก snapshot ใหม่ (ยอดเท่าเดิม · จำนวนงวดเท่าเดิม) · ไม่เร็วกว่า NOW + X11 · งวด OVERDUE ของ b2 (ถ้าย้าย b2 ในข้อแยก) ⇒ OPEN
+MV-3  [งาน] ทันทีหลังย้าย b2 → dT: runPaymentDue ณ NOW และ NOW + 1 ชม. ⇒ ไม่ AUTO_RELEASE ไม่ OVERDUE (B1) · ตัวควบคุม: งวดของการจองรอบปกติที่เลยกำหนดยังถูกจัดการ
+MV-4  [บริการ] ตารางยกเลิกหลังย้าย นับจากวันใหม่: quote เหตุลูกค้าของ b1 ณ 2027-04-20 = ขั้นของ 1 วันก่อน 2027-04-21 (ไม่ใช่ "หลังวันเดินทาง")
+MV-5  [บริการ] b9 ย้าย ⇒ TripPromoRedemption ยัง ACTIVE (ไม่ปล่อย · ไม่ dropPromo) · ยอด 375,000
+MV-6  [บริการ] ปฏิเสธไม่เขียน: ไป dO (optionId ต่าง) · dK (ผังดาดฟ้าต่าง) · สินค้าอื่น · dU (เกิน X16) · dX/dC (ยกเลิก) · dS (เริ่มแล้ว) · ที่ไม่พอ · ไม่มี consent · consent.note < 3 · options ไม่มี MOVE_DATE
+MV-7  [บริการ] เงินไม่ขยับ: ไม่มี TripMoneyEvent · paid เท่าเดิม · ที่นั่ง dC −2 dT +2 · แถวผล MOVED + consent · audit trips.booking.cancel_choice (channel เท่านั้น · C13) · cancel_choice_made MOVE
+MV-8  [บริการ] ย้ายซ้ำ (แถวผลไม่ใช่ PENDING) ⇒ CHOICE_ALREADY_MADE · changeTripBooking ออกจาก dC ทางปกติ ⇒ ปฏิเสธ · เข้าสู่ dC ⇒ ปฏิเสธ
+
+MV-9  [action+หน้า] resolveCancelledBookingAction MOVE ผ่าน FormData จากลิ้นชักที่เรนเดอร์จริง (targetDepartureId consentChannel consentNote) · ไม่มี consent ⇒ VALIDATION ไม่เขียน
+MV-10 [บริการ] C10: การจองที่ย้ายแล้ว changeTripBooking ครั้งถัดไป = การเปลี่ยนปกติ (ตารางยกเลิก/ค่าเปลี่ยนวันตามปกติ · ไม่มีสิทธิ์ย้ายฟรี) · ถ้า dT ถูกร้านยกเลิกอีก ⇒ แถวผลใหม่ (dT, b1)
+MV-11 [ฐาน] กระทบยอด a2: ต่อการจอง paid = คืน + ค่าที่ย้าย · ต่อรอบ 2,808,000 = 1,613,000 + 1,195,000 · sold dC → 0 · dT = 3
+MV-12 [โค้ด] a2 ไม่มี migration ใหม่ (prisma ตรงกับหลัง a1) · ลำดับล็อกย้าย: advisory การจอง → สินค้า → สองรอบเรียง id → การจอง → งวด → แถวผล
