@@ -180,7 +180,7 @@ const LIMITED: [string, number, number | null][] = [[PURE, 10, 340], [COSTS, 60,
   [`${COMP}/CostParts.tsx`, 4, 12], [`${COMP}/ProductsScreenParts.tsx`, 0, 6], ["src/messages/th/trips.json", 2, null], ["src/messages/en/trips.json", 2, null], ["scripts/trips-ui-inventory.json", 0, null], ["scripts/parity-trips.sh", 0, 4]];
 const LIMITED_SET = new Set(LIMITED.map(([f]) => f));
 /** ไฟล์ที่ผู้ร่างแก้ในใบนี้ (ไม่นับเป็นการแตะของ builder): ข้อสอบตัวนี้ + ฉาก t1.7a2 */
-const DRAFTER_FILES = ["scripts/qc-trips-t1.7a2.mts", "scripts/visual-trips.mts", "scripts/qc-trips-t1.7.mts" /* ORACLE-EDIT (ผู้คุม 26 พ.ย. · C15): ข้อสอบ a1 ที่ผู้เขียนข้อสอบแก้ S-3/S-13/S-20 ตามใบ a2 */];
+const DRAFTER_FILES = ["scripts/qc-trips-t1.7a2.mts", "scripts/visual-trips.mts", "scripts/qc-trips-t1.7.mts" /* ORACLE-EDIT (ผู้คุม 26 พ.ย. · C15): ข้อสอบ a1 ที่ผู้เขียนข้อสอบแก้ S-3/S-13/S-20 ตามใบ a2 */, "scripts/qc-trips-t1.4.mts" /* ORACLE-EDIT (ผู้คุม 26 พ.ย.): t1.4 S-13 รับลิงก์รายงานของ a2 */];
 // seed
 const DIVE_TENANT = FX.SHOP_DIVE.tenant.id;
 const U0 = FX.SHOP_DIVE.units.trips.id;
@@ -829,6 +829,20 @@ try {
     if (!/(setTimeout|requestAnimationFrame)\(\s*\(\)\s*=>\s*\{?[^;{}]*URL\.revokeObjectURL\(/.test(ex)) bad.push(`revokeObjectURL ไม่หน่วง: ${ex.slice(Math.max(0, ex.indexOf("revokeObjectURL") - 100), ex.indexOf("revokeObjectURL") + 30)}`);
     if (/resolveSettings\(/.test(rp) || /["']trips\.tax\.vatRegistered["']/.test(rp)) bad.push("reports.ts อ่านสถานะ VAT ของหน่วยเอง");
     if ((cs.match(/resolveSettings\(/g) ?? []).length !== 1) bad.push(`costs.ts เรียก resolveSettings ${(cs.match(/resolveSettings\(/g) ?? []).length} ที่`);
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  // ═══ ORACLE-EDIT (ผู้คุม 26 พ.ย. · รอบ 3 ของข้อสอบ: ตรวจคำกล่าวอ้างของ builder r2) ═══
+  await st("S-21", "J3 ล้มตอนเขียน audit (บังคับให้เกิดจริงไม่ได้ ⇒ ตรวจโค้ด): ใน exportTripReportCsv การเขียน audit อยู่ใน try ที่ catch คืนผลผิดโดยไม่มีไฟล์ (ไม่มี out/csv ในผล) · ผลสำเร็จคืนหลัง try/catch เท่านั้น · โควตานับก่อนสร้างไฟล์ (checkRateLimitDb มาก่อน build และหลังตรวจสินค้า) · ReportExport ดาวน์โหลด (Blob) เฉพาะผลสำเร็จ", () => {
+    needOwn(); const rp = stripComments(read(REPORTS)), ex = stripComments(read(`${COMP}/ReportExport.tsx`)); const bad: string[] = [];
+    const at = rp.indexOf("export async function exportTripReportCsv"); const body = at < 0 ? "" : rp.slice(at, rp.indexOf("\n}\n", at));
+    const au = body.indexOf("auditLog.create("); const tr = body.lastIndexOf("try {", au); const ca = body.indexOf("catch", au); const caBody = ca < 0 ? "" : body.slice(ca, body.indexOf("\n  }", ca));
+    if (au < 0 || tr < 0 || ca < 0) bad.push("audit ไม่อยู่ใน try/catch");
+    if (!/return\s+fail\(/.test(caBody) || /\bout\b|csv/.test(caBody)) bad.push(`catch ของ audit ไม่ได้คืนผลผิดแบบไม่มีไฟล์: ${caBody.slice(0, 120)}`);
+    const okRet = body.search(/return\s*\{\s*ok:\s*true,\s*value:\s*out\s*\}/); if (okRet < 0 || okRet < ca) bad.push("ผลสำเร็จคืนก่อนเขียน audit");
+    const rl = body.indexOf("checkRateLimitDb("), bd = body.indexOf("await build("), nf = body.search(/fail\(\s*["']NOT_FOUND["']\s*,\s*["']product["']\s*\)/);
+    if (!(nf >= 0 && rl > nf && bd > rl)) bad.push(`ลำดับ: ไม่พบสินค้า ${nf} · โควตา ${rl} · สร้าง ${bd}`);
+    const notOk = ex.search(/if\s*\(\s*!r\.ok\s*\)/), blob = ex.indexOf("new Blob("); const retInNotOk = ex.slice(notOk, blob).includes("return");
+    if (notOk < 0 || blob < notOk || !retInNotOk) bad.push("ReportExport อาจดาวน์โหลดเมื่อผลผิด");
     ok(bad.length === 0, bad.join(" · "));
   });
   groupLine("S");
@@ -1487,6 +1501,29 @@ try {
     if (unused.length) bad.push(`คีย์ไม่มีผู้ใช้ ${unused.length}: ${unused.slice(0, 8).join(", ")}`);
     ok(bad.length === 0, bad.join(" · "));
   });
+  // ═══ ORACLE-EDIT (ผู้คุม 26 พ.ย. · รอบ 3 ของข้อสอบ) ═══
+  await st("RS-20", "J5 คีย์แบบประกอบต้องไม่หลอกตัวสแกน: report.csv.* ทั้งสองภาษา = REPORT_CSV_COLUMNS ∪ REPORT_CSV_COST_COLUMNS ของ facade พอดี (23 · ไม่มีเกิน/ขาด) · คีย์ภายใต้คำนำแบบประกอบอื่น (tab group lead chgroup channel preset) ต้องอยู่ในชุดค่าที่โค้ดใช้ได้จริง หรือถูกอ้างตรงตัว", () => {
+    const cols = [...(constOf("REPORT_CSV_COLUMNS") as string[]), ...(constOf("REPORT_CSV_COST_COLUMNS") as string[])].sort(); const bad: string[] = [];
+    for (const [L, d] of [["th", fth], ["en", fen]] as const) { const ks = Object.keys(d).filter((k) => k.startsWith("report.csv.")).map((k) => k.slice(11)).sort(); if (!isDeepStrictEqual(ks, cols)) bad.push(`${L} csv: เกิน ${ks.filter((k) => !cols.includes(k)).join(",")} ขาด ${cols.filter((k) => !ks.includes(k)).join(",")}`); }
+    const src = [...walk("src/components/trips"), ...walk("src/lib/modules/trips"), ...walk(APP)].map((f) => stripComments(read(f))).join("\n"); const lits = new Set([...src.matchAll(/["'`](report\.[\w.]+)["'`]/g)].map((m) => m[1]));
+    const DOM: Record<string, string[]> = { "report.tab.": TABS, "report.group.": GROUPS, "report.lead.": LEAD_KEYS, "report.chgroup.": ["DIRECT", "AGENT", "OTHER"], "report.channel.": ALL_CHANNELS, "report.preset.": ["thisMonth", "lastMonth", "last30", "next30"] };
+    for (const [L, d] of [["th", fth], ["en", fen]] as const) for (const k of Object.keys(d)) for (const [pre, dom] of Object.entries(DOM)) if (k.startsWith(pre) && !lits.has(k) && !dom.includes(k.slice(pre.length))) bad.push(`${L} ${k}`);
+    ok(bad.length === 0, bad.slice(0, 8).join(" · "));
+  });
+  await st("RS-21", "J1 กล่อง ReportTooLarge (เรนเดอร์จริง th/en): role=alert ข้อความ errors.REPORT_TOO_LARGE · ลิงก์ \"7 วันที่ผ่านมา\" (report.preset.last7) ไป /app/u/<slug>/trips/reports?from&to ตามที่หน้าส่ง · ลิงก์กลับ /app/u/<slug>/trips/departures · ไม่มีตัวเลขอื่นนอกวันที่ · props มีแค่ unitSlug/from/to (ไม่รับข้อมูลรายงาน) · อังกฤษไม่มีอักษรไทย", async () => {
+    const TL = await tryImport("@/components/trips/ReportTooLarge"); ok(typeof TL.mod?.default === "function", `ไม่มี ReportTooLarge (${TL.err.slice(0, 80)})`); const bad: string[] = [];
+    const src = stripComments(read(`${COMP}/ReportTooLarge.tsx`)); const props = /function\s+ReportTooLarge\s*\(\s*\{([^}]*)\}/.exec(src)?.[1] ?? ""; if (props.split(",").map((x) => x.trim()).filter(Boolean).sort().join(",") !== "from,to,unitSlug") bad.push(`props: ${props}`);
+    if (/@\/lib\/modules|prisma/.test(src)) bad.push("import บริการ/ฐาน");
+    for (const L of ["th", "en"] as const) {
+      const h = render(TL.mod?.default, { unitSlug: "u-slug", from: "2026-11-20", to: "2026-11-26" }, L); const tx = unent(h); const d = L === "th" ? fth : fen;
+      if (!/role="alert"/.test(h) || !tx.includes(String(d["errors.REPORT_TOO_LARGE"] ?? "\u0000")) || !tx.includes(String(d["report.preset.last7"] ?? "\u0000"))) bad.push(`${L} ข้อความ: ${tx.slice(0, 120)}`);
+      const hrefs = [...h.matchAll(/<a\b[^>]*\shref="([^"]*)"/g)].map((m) => decode(m[1] ?? "")); const qq = asRec(pure("reportQueryOf", queryOfHref(hrefs.find((x) => /\/trips\/reports/.test(x)) ?? ""))) ?? {};
+      if (!hrefs.every((x) => x.startsWith("/app/u/u-slug/trips/")) || qq.from !== "2026-11-20" || qq.to !== "2026-11-26" || !hrefs.includes("/app/u/u-slug/trips/departures")) bad.push(`${L} ลิงก์: ${hrefs.join(" ")}`);
+      if (/\d/.test(tx.replace(/\d{4}-\d{2}-\d{2}/g, "").replace(/\b7\b|366/g, ""))) bad.push(`${L} มีตัวเลขอื่น: ${tx.slice(0, 100)}`);
+      if (L === "en" && THAI.test(tx)) bad.push("en มีอักษรไทย");
+    }
+    ok(bad.length === 0, bad.join(" · "));
+  });
   groupLine("RS");
 
   // ═══════════════ PF. ร้านใหญ่ ═══════════════
@@ -1538,13 +1575,13 @@ try {
     eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripBooking" WHERE "unitId" = $1 AND (("agentAccountId" IS NOT NULL AND "paidSatang" > 0) OR (status = 'PAID' AND "paidSatang" <> 410000))`, [uP]))[0]?.n, 0, "การจ่าย");
     console.log(`     ℹ️ snapshot ต่อการจอง ${raw?.snap} ไบต์ · ${raw?.bk} การจอง`);
   });
-  await st("PF-2", "366 วัน (OWNER · ฐานวันเดินทาง): ยอดรวม = แถวดิบ (ยอดขาย · เก็บแทน · VAT · รับแล้ว · ค้างรับ · ต้นทุน · ความจุ · ขาย · อัตราเต็ม 7500) · 2,196 รอบ · pageCount 44 · หน้า 44 = 46 แถว · หน้า 45 = 0 แถว · เวลา > 20 วิ = แดง · > 5 วิ = เตือน (D3)", async () => {
+  await st("PF-2", "366 วัน (OWNER · ฐานวันเดินทาง): ยอดรวม = แถวดิบ (ยอดขาย · เก็บแทน · VAT · รับแล้ว · ค้างรับ · ต้นทุน · ความจุ · ขาย · อัตราเต็ม 7500) · 2,196 รอบ · pageCount 44 · หน้า 44 = 46 แถว · หน้า 45 ⇒ หน้าสุดท้าย 46 แถว (J4) · เวลา > 20 วิ = แดง · > 5 วิ = เตือน (D3)", async () => {
     await buildPerf(); ok(raw, "ต้องรัน PF-1 ก่อน"); const t0 = Date.now(); const vm = await repVM("oa", Y366, uP); const ms = Date.now() - t0;
     console.log(`     ${ms > 5000 ? "⚠️" : "⏱"} 366 วัน ${ms} ms${ms > 5000 ? " (เกิน 5 วิ — คำเตือน)" : ""}`);
     ok(ms <= 20_000, `โหลด 366 วัน ${ms} ms เกิน 20 วิ`);
     eq(pick(T(vm), ["departures", "bookings", "salesSatang", "passThroughSatang", "vatSatang", "collectedSatang", "outstandingSatang", "costSatang", "capacity", "sold", "loadFactorBp"]),
       [raw?.deps, raw?.bk, raw?.sales, raw?.pt, raw?.vat, raw?.collected, raw?.outstanding, raw?.cost, raw?.cap, raw?.sold, 7500], "ยอดรวม");
-    eq([asRec(vm.departures)?.pageCount, depRows(vm).length, depRows(await repVM("oa", { ...Y366, page: 44 }, uP)).length, depRows(await repVM("oa", { ...Y366, page: 45 }, uP)).length], [44, 50, 46, 0], "หน้า");
+    eq([asRec(vm.departures)?.pageCount, depRows(vm).length, depRows(await repVM("oa", { ...Y366, page: 44 }, uP)).length, depRows(await repVM("oa", { ...Y366, page: 45 }, uP)).length], [44, 50, 46, 46], "หน้า"); // ORACLE-EDIT PF-2 (ผู้คุม 26 พ.ย. · มติ J4): page เกินจำนวนหน้า ⇒ หน้าสุดท้าย (เดิมตรึง 0 แถว)
   });
   await st("PF-3", "จำนวนคำสั่ง SQL ต่อการโหลด (นับจาก event query ของ Prisma): ≤ 12 ทุกแท็บ + ฐานวันจอง · 31 วัน = 366 วัน (ไม่ขึ้นกับจำนวนรอบ/การจอง) · ค่าตั้ง VAT อ่านครั้งเดียวต่อการโหลด (คำสั่งที่แตะ SettingValue = ของ resolveSettings 1 ครั้ง · D3) · ผู้ไม่เห็นต้นทุนไม่อ่าน TripCost · ไม่มีคำสั่งที่ดึง policySnapshot ทั้งก้อน", async () => {
     await buildPerf(); const bad: string[] = []; const ns: string[] = [];

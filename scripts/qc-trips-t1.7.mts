@@ -156,7 +156,7 @@ const LIMITED: [string, number, number | null][] = [["src/lib/staff/service.ts",
   ["src/messages/th/trips.json", 4, null], ["src/messages/en/trips.json", 4, null] /* ORACLE-EDIT (26 พ.ย.): a1 −2 + a2 −2 */, ["scripts/trips-ui-inventory.json", 4, null], ["scripts/visual-trips.mts", 30, null], ["scripts/parity-trips.sh", 4, null]];
 const LIMITED_SET = new Set(LIMITED.map(([f]) => f));
 /** ORACLE-EDIT รอบ 2 (ผู้คุม): ข้อสอบเดิมที่ผู้คุมแก้ในใบนี้ (b77b3b0a6) — ไม่นับเป็นการแตะของ builder (BASE ต้องคงก่อน commit ของ builder) */
-const ORACLE_EDITS = ["scripts/qc-trips-t1.1.mts", "scripts/qc-trips-t1.2.mts"];
+const ORACLE_EDITS = ["scripts/qc-trips-t1.1.mts", "scripts/qc-trips-t1.2.mts", "scripts/qc-trips-t1.4.mts" /* ORACLE-EDIT (ผู้คุม 26 พ.ย.): t1.4 S-13 รับลิงก์รายงานของ a2 */];
 // seed / ภาพ 11
 const DIVE_TENANT = FX.SHOP_DIVE.tenant.id;
 const U0 = FX.SHOP_DIVE.units.trips.id;

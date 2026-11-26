@@ -482,7 +482,15 @@ try {
       ...atBase("scripts").filter((f) => /^scripts\/(qc-trips-[\w.]+\.mts|probe-trips-[\w.-]+\.mts)$/.test(f) && f !== "scripts/qc-trips-t1.4.mts" && f !== "scripts/qc-trips-t1.2.mts" /* ORACLE-EDIT S-13: ผู้คุมแก้ t1.2 PV-4/PV-8/PV-9 ในใบนี้ (มติ M2) */), "scripts/fitness.mts", "scripts/with-gate-lock.sh", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts", "scripts/iso.sh", "scripts/qc-trips.sh"];
     const sameAsSession = (f: string) => git(["diff", "--name-only", "session/trips", "--", lit(f)]).trim() === "" && git(["ls-files", "--others", "--exclude-standard", "--", lit(f)]).trim() === "";
     const changed = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", ...forbidden.map(lit)]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...forbidden.filter((p) => !p.includes(".")).map(lit)]).split("\n")].filter(Boolean))];
-    const touched = changed.filter((f) => !sameAsSession(f));
+    // ORACLE-EDIT S-13 (ผู้คุม 26 พ.ย. · ใบ T1.7a2 §1.2): ปฏิทินรับเฉพาะลิงก์รายงานของ a2 — เทียบ session/trips: เพิ่มอย่างเดียว ≤ 10 บรรทัด · ทุกบรรทัดที่เพิ่มอยู่ในบล็อกลิงก์ trips-dep-reports (ไม่มีอย่างอื่นในไฟล์)
+    const depsLinkOnly = (f: string) => {
+      if (f !== `${COMP}/DeparturesScreen.tsx`) return false;
+      const [a0, d0] = git(["diff", "--numstat", "session/trips", "--", lit(f)]).trim().split("\t").map(Number);
+      const added = git(["diff", "-U0", "session/trips", "--", lit(f)]).split("\n").filter((l) => l.startsWith("+") && !l.startsWith("+++")).map((l) => l.slice(1).trim());
+      const ALLOWED = [/^\{cal\.flags\.canReport \? \($/, /^<Link data-testid="trips-dep-reports" href=\{`\/app\/u\/\$\{unitSlug\}\/trips\/reports`\} className=\{BTN\}>$/, /^\{t\("departures\.actions\.reports"\)\}$/, /^<\/Link>$/, /^\) : null\}$/];
+      return d0 === 0 && a0 > 0 && a0 <= 10 && added.length === a0 && added.every((l) => ALLOWED.some((re) => re.test(l)));
+    };
+    const touched = changed.filter((f) => !sameAsSession(f) && !depsLinkOnly(f));
     ok(touched.length === 0, `แตะไฟล์ต้องห้าม: ${touched.slice(0, 6).join(", ")}`);
     const over: string[] = [];
     for (const [f, maxDel, maxAdd] of LIMITED) {
