@@ -1,0 +1,301 @@
+// probe-trips-t1.7-hunt-lib.mts — shared helpers of the T1.7a1 live bug-hunter probes (untracked · hunter · not an oracle)
+// Temp shops: tenant slug / unit slug / user email prefix `trips-t17h-` · sessions userAgent "qc-trips-t17h" · everything removed in cleanup()
+// HTTP/browser target: the controller's QC server (read-only use) at 127.0.0.1:3242 · puppeteer-core from /root/dive3d + /usr/bin/chromium-browser (as visual-trips.mts)
+import { randomBytes } from "node:crypto";
+import { mkdirSync, rmSync } from "node:fs";
+import http from "node:http";
+import pg from "pg";
+import { loadTripsQcEnv } from "./trips-qc-env.mjs";
+
+export type Rec = Record<string, unknown>;
+export type AnyFn = (...a: unknown[]) => unknown;
+export const HOST = "127.0.0.1";
+export const PORT = 3242;
+export const BASE = `http://${HOST}:${PORT}`;
+export const SLUG = "trips-t17h-";
+export const UA = "qc-trips-t17h";
+export const OUT = "scratchpad/t1.7-hunt";
+export const STAMP = `${Date.now().toString(36)}${randomBytes(2).toString("hex")}`;
+export const hex = (n = 6) => randomBytes(n).toString("hex");
+export const rid = (p: string) => `t17h_${p}_${Date.now().toString(36)}${randomBytes(3).toString("hex")}`;
+export const HOUR = 3_600_000;
+export const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+export const BKK = (ymd: string, hm: string) => new Date(`${ymd}T${hm}:00+07:00`);
+export const fmt = (v: unknown) => { try { return (JSON.stringify(v) ?? String(v)).slice(0, 400); } catch { return String(v); } };
+
+export function boot(label: string) {
+  loadTripsQcEnv(label);
+  if (process.env.CI) { console.error("no CI"); process.exit(4); }
+  pg.defaults.parseInputDatesAsUTC = true;
+  mkdirSync(OUT, { recursive: true });
+}
+let _pool: pg.Pool | null = null;
+export const pool = () => (_pool ??= new pg.Pool({ connectionString: process.env.DATABASE_URL, max: 8 }));
+export const q = async <T extends pg.QueryResultRow = Rec>(sql: string, params: unknown[] = []) => (await pool().query<T>(sql, params)).rows;
+
+type ColRow = { column_name: string; data_type: string; udt_name: string; is_nullable: string; column_default: string | null };
+const colCache = new Map<string, ColRow[]>();
+const cols = async (table: string) => {
+  if (!colCache.has(table)) colCache.set(table, await q<ColRow>(`SELECT column_name, data_type, udt_name, is_nullable, column_default FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = $1 ORDER BY ordinal_position`, [table]));
+  return colCache.get(table) ?? [];
+};
+const checkLits = async (table: string, col: string): Promise<string[]> => {
+  const rows = await q<{ def: string }>(`SELECT pg_get_constraintdef(c.oid) AS def FROM pg_constraint c JOIN pg_class t ON t.oid = c.conrelid JOIN pg_namespace n ON n.oid = t.relnamespace WHERE c.contype = 'c' AND n.nspname = current_schema() AND t.relname = $1`, [table]);
+  for (const r of rows) if (r.def.includes(`"${col}"`) || new RegExp(`\\b${col}\\b`).test(r.def)) { const l = [...r.def.matchAll(/'((?:[^']|'')*)'::/g)].map((m) => m[1] ?? ""); if (l.length) return l; }
+  return [];
+};
+export async function insertRow(table: string, vals: Rec): Promise<string> {
+  const v: Rec = { ...vals };
+  const all = await cols(table);
+  if (!all.length) throw new Error(`no table ${table}`);
+  const names = new Set(all.map((c) => c.column_name));
+  for (const k of Object.keys(v)) if (!names.has(k)) delete v[k];
+  for (const c of all) {
+    if (c.column_name in v || c.is_nullable === "YES" || c.column_default !== null) continue;
+    const t = c.data_type;
+    if (c.column_name === "id") { v.id = rid("id"); continue; }
+    if (c.column_name === "updatedAt" || c.column_name === "createdAt") { v[c.column_name] = new Date(); continue; }
+    if (t === "text" || t.startsWith("character")) { const l = await checkLits(table, c.column_name); v[c.column_name] = l[0] ?? `qc${hex(4)}`; continue; }
+    if (t === "USER-DEFINED") { v[c.column_name] = (await q<{ l: string }>(`SELECT e.enumlabel AS l FROM pg_enum e JOIN pg_type ty ON ty.oid = e.enumtypid WHERE ty.typname = $1 ORDER BY e.enumsortorder LIMIT 1`, [c.udt_name]))[0]?.l ?? null; continue; }
+    v[c.column_name] = ["integer", "bigint", "numeric", "double precision", "smallint"].includes(t) ? 0 : t === "boolean" ? false : t === "jsonb" || t === "json" ? "{}"
+      : t.startsWith("timestamp") ? "2027-01-01 00:00:00" : t === "date" ? "2027-03-01" : t === "ARRAY" ? [] : null;
+  }
+  const keys = Object.keys(v);
+  await pool().query(`INSERT INTO "${table}" (${keys.map((k) => `"${k}"`).join(", ")}) VALUES (${keys.map((_, i) => `$${i + 1}`).join(", ")})`, keys.map((k) => v[k]));
+  return String(v.id ?? "");
+}
+
+// ═══════ cleanup ═══════
+export const tenantIds: string[] = [];
+async function tablesWithTenant(): Promise<string[]> {
+  const rows = await q<{ t: string }>(`SELECT c.table_name AS t FROM information_schema.columns c JOIN information_schema.tables t ON t.table_name = c.table_name AND t.table_schema = c.table_schema WHERE c.table_schema = current_schema() AND c.column_name = 'tenantId' AND t.table_type = 'BASE TABLE'`);
+  return rows.map((r) => r.t).filter((t) => t !== "Tenant");
+}
+export async function cleanup(): Promise<Rec> {
+  const tids = [...new Set([...tenantIds, ...(await q<{ id: string }>(`SELECT id FROM "Tenant" WHERE slug LIKE $1`, [`${SLUG}%`])).map((r) => r.id)])];
+  if (tids.length) {
+    let pending = await tablesWithTenant();
+    for (let pass = 0; pass < 14 && pending.length; pass++) {
+      const next: string[] = [];
+      for (const t of pending) { try { await pool().query(`DELETE FROM "${t}" WHERE "tenantId" = ANY($1::text[])`, [tids]); } catch { next.push(t); } }
+      pending = next;
+    }
+    if (pending.length) console.log(`  ⚠️ cleanup: ลบไม่หมด ${pending.join(", ")}`);
+    try { await pool().query(`DELETE FROM "Tenant" WHERE id = ANY($1::text[])`, [tids]); } catch (e) { console.log(`  ⚠️ cleanup tenant: ${String(e).slice(0, 200)}`); }
+  }
+  const us = (await q<{ id: string }>(`SELECT id FROM "User" WHERE email LIKE $1`, [`${SLUG}%`])).map((r) => r.id);
+  await q(`DELETE FROM "Session" WHERE "userAgent" = $1 OR "userId" = ANY($2::text[])`, [UA, us]);
+  if (us.length) {
+    try { await q(`DELETE FROM "Membership" WHERE "userId" = ANY($1::text[])`, [us]); } catch (e) { console.log(`  ⚠️ membership: ${String(e).slice(0, 200)}`); }
+    try { await q(`DELETE FROM "User" WHERE id = ANY($1::text[])`, [us]); } catch (e) { console.log(`  ⚠️ user: ${String(e).slice(0, 200)}`); }
+  }
+  const left = (await q<Rec>(`SELECT (SELECT count(*) FROM "Tenant" WHERE slug LIKE $1)::int AS tenants, (SELECT count(*) FROM "BusinessUnit" WHERE slug LIKE $1)::int AS units, (SELECT count(*) FROM "User" WHERE email LIKE $1)::int AS users,
+    (SELECT count(*) FROM "Session" WHERE "userAgent" = $2)::int AS sessions, (SELECT count(*) FROM "TripCost" WHERE "tenantId" = ANY($3::text[]))::int AS costs, (SELECT count(*) FROM "AuditLog" WHERE "tenantId" = ANY($3::text[]))::int AS audit,
+    (SELECT count(*) FROM "TripBooking" WHERE "tenantId" = ANY($3::text[]))::int AS bookings, (SELECT count(*) FROM "Membership" WHERE "tenantId" = ANY($3::text[]))::int AS memberships`, [`${SLUG}%`, UA, tids]))[0] ?? {};
+  return left;
+}
+
+// ═══════ fixture ═══════
+export const ADULT = 350_000, CHILD = 245_000, PARK_A = 60_000, PARK_C = 30_000;
+const halfUp = (num: bigint, den: bigint): number => { const Z = BigInt(0), TWO = BigInt(2); const neg = (num < Z) !== (den < Z); const a = num < Z ? -num : num; const b = den < Z ? -den : den; const q2 = (TWO * a + b) / (TWO * b); return Number(neg ? -q2 : q2); };
+export const vatIncl = (x: number) => halfUp(BigInt(x) * BigInt(700), BigInt(10_700));
+export type User = { userId: string; tenantId: string; membershipId: string; email: string };
+export type Prod = { id: string; opt: string; unit: string; tenant: string; adult: string; child: string; infant: string };
+export type FX = {
+  tA: string; tB: string; uA: string; uN: string; uA2: string; uB: string; slugA: string; slugN: string; slugA2: string; slugB: string;
+  U: Record<string, User>; P: Record<string, Prod>; D: Record<string, string>; BK: Record<string, string>;
+};
+let seq = 0, codeSeq = 0;
+export async function setup(o: { users?: [string, "A" | "B", string, ("A" | "N" | "A2" | "B" | "*")[], string[]][] } = {}): Promise<FX> {
+  const tA = rid("tA"), tB = rid("tB");
+  for (const [id, tag] of [[tA, "a"], [tB, "b"]] as const) { await insertRow("Tenant", { id, name: `ร้านล่า T17 ${tag} ${STAMP}`, slug: `${SLUG}${STAMP}-${tag}`, updatedAt: new Date() }); tenantIds.push(id); }
+  const uA = rid("uA"), uN = rid("uN"), uA2 = rid("uA2"), uB = rid("uB");
+  const slug = (tag: string) => `${SLUG}${tag}-${STAMP}`;
+  for (const [id, t, tag, name] of [[uA, tA, "a", "หน่วยทัวร์ VAT"], [uN, tA, "novat", "หน่วยไม่จด VAT"], [uA2, tA, "a2", "หน่วยที่สอง"], [uB, tB, "b", "หน่วยร้าน B"]] as const)
+    await insertRow("BusinessUnit", { id, tenantId: t, type: "TRIPS", name, slug: slug(tag), settings: JSON.stringify({ timezone: "Asia/Bangkok" }), updatedAt: new Date() });
+  const unitOf = { A: uA, N: uN, A2: uA2, B: uB, "*": "*" } as const;
+  const U: Record<string, User> = {};
+  const mkUser = async (tag: string, tenantId: string, role: string, unitAccess: string[], perms: string[]) => {
+    const id = rid(`u${tag}`), mb = rid(`mb${tag}`), email = `${SLUG}${tag.toLowerCase()}-${STAMP}@shark.local`;
+    await insertRow("User", { id, email, name: `ผู้ล่า ${tag}`, updatedAt: new Date() });
+    await insertRow("Membership", { id: mb, userId: id, tenantId, role, unitAccess: JSON.stringify(unitAccess), permissions: JSON.stringify(Object.fromEntries(perms.map((p) => [p, true]))), acceptedAt: new Date(), updatedAt: new Date() });
+    U[tag] = { userId: id, tenantId, membershipId: mb, email };
+  };
+  await mkUser("oa", tA, "OWNER", ["*"], []); await mkUser("ob", tB, "OWNER", ["*"], []);
+  for (const [tag, t, role, units, perms] of o.users ?? []) await mkUser(tag, t === "A" ? tA : tB, role, units.map((u) => unitOf[u]), perms);
+  const P: Record<string, Prod> = {};
+  const mkProd = async (key: string, tenantId: string, unitId: string, title: string) => {
+    const id = rid(`p${key}`), opt = rid(`o${key}`);
+    await insertRow("TripProduct", { id, tenantId, unitId, slug: `t17h-${key}-${STAMP}`.toLowerCase().replace(/[^a-z0-9-]/g, ""), productType: "TOUR", sourceKind: "OWN", status: "ACTIVE",
+      title: JSON.stringify({ th: title, en: `Hunt ${key}` }), body: "{}", currency: "THB", deepDive: false, crossBorder: false, updatedAt: new Date() });
+    await insertRow("TripOption", { id: opt, tenantId, unitId, productId: id, name: JSON.stringify({ th: "ร่วมกลุ่ม", en: "Join-in" }), durationMin: 480, sortOrder: 1, active: true, updatedAt: new Date() });
+    const pt = (code: string, th: string, counts: boolean, order: number) => insertRow("TripPaxType", { id: rid(`pt${code}`), tenantId, unitId, productId: id, code, label: JSON.stringify({ th, en: code }), countsCapacity: counts, active: true, sortOrder: order, updatedAt: new Date() });
+    const adult = await pt("ADULT", "ผู้ใหญ่", true, 0), child = await pt("CHILD", "เด็ก", true, 1), infant = await pt("INFANT", "ทารก", false, 2);
+    await insertRow("TripPrice", { id: rid("pr"), tenantId, unitId, productId: id, optionId: null, paxTypeId: adult, cabinTypeId: null, seasonId: null, departureId: null, currency: "THB", amountMinor: ADULT, weekdayMask: null, priority: 0, updatedAt: new Date() });
+    P[key] = { id, opt, unit: unitId, tenant: tenantId, adult, child, infant };
+  };
+  await mkProd("PR", tA, uA, "ราชาล่าบั๊ก"); await mkProd("PN", tA, uN, "ทัวร์ไม่จด VAT"); await mkProd("PA2", tA, uA2, "ทัวร์หน่วยสอง"); await mkProd("PB", tB, uB, "ทัวร์ร้าน B");
+  // VAT ของหน่วย (ผ่านบริการค่าตั้งจริง · แบบข้อสอบ)
+  const setS = ((await import("@/lib/core/settings")) as Rec).setSettings as AnyFn;
+  const owner = { role: "OWNER", unitAccess: ["*"], permissions: {}, userId: U.oa.userId };
+  const reg = (unit: string, registered: boolean) => ({ key: "trips.tax.vatRegistered", scope: "UNIT", scopeId: unit, value: { registered, thresholdSatang: 180_000_000, warnAtPct: 90 } });
+  const r = (await setS(owner, { tenantId: tA }, [reg(uA, true), reg(uN, false)], { ackLegalWarn: true })) as Rec;
+  if (r?.ok !== true) throw new Error(`setSettings: ${fmt(r)}`);
+  return { tA, tB, uA, uN, uA2, uB, slugA: slug("a"), slugN: slug("novat"), slugA2: slug("a2"), slugB: slug("b"), U, P, D: {}, BK: {} };
+}
+export async function mkDep(fx: FX, key: string, prod: string, date: string, o: { cap?: number; sold?: number; status?: string } = {}) {
+  const p = fx.P[prod]; const startsAt = new Date(BKK(date, "08:00").getTime() + (seq++ % 600) * 60_000); const id = rid(`d${key}`);
+  await insertRow("TripDeparture", { id, tenantId: p.tenant, unitId: p.unit, productId: p.id, optionId: p.opt, scheduleId: null, localDate: date, startsAt, endsAt: new Date(startsAt.getTime() + 8.5 * HOUR),
+    status: o.status ?? "GUARANTEED", capacity: o.cap ?? 24, sold: o.sold ?? 0, held: 0, reserved: 0, minPax: null, cutoffAt: startsAt, version: 0, updatedAt: new Date() });
+  fx.D[key] = id; return id;
+}
+export type BkIn = { dep: string; prod: string; status: string; channel: string; adults: number; children?: number; paid?: number; refunded?: number; commission?: number; commissionVat?: number; created: string; agent?: boolean; collectMode?: string };
+export async function mkBk(fx: FX, key: string, b: BkIn) {
+  const p = fx.P[b.prod]; const ch = b.children ?? 0; const vatReg = p.unit !== fx.uN;
+  const sales = b.adults * ADULT + ch * CHILD, pt = b.adults * PARK_A + ch * PARK_C;
+  const vat = vatReg ? vatIncl(sales) : 0, gross = sales + pt, payable = gross;
+  const C = b.commission ?? 0, Cv = b.commissionVat ?? 0; const id = rid(`b${key}`);
+  const tax = { vatRegistered: vatReg, pricesIncludeVat: true, invoiceOnEachPayment: true, cancelFeeVat: false, vatRateBp: 700 };
+  const snap = { v: 1, productKind: "TRIP", currency: "THB", tax, totals: { grossSatang: gross, discountSatang: 0, agentDiscountSatang: 0, passThroughSatang: pt, vatSatang: vat, payableSatang: payable },
+    commission: C > 0 ? { commissionSatang: C, commissionVatSatang: Cv, wht: { whtSatang: 0 }, remitToShopSatang: payable - C - Cv } : null };
+  const travelDate = (await q<{ d: string }>(`SELECT "localDate"::text AS d FROM "TripDeparture" WHERE id = $1`, [b.dep]))[0]?.d;
+  await insertRow("TripBooking", { id, tenantId: p.tenant, unitId: p.unit, code: `T17H-${STAMP}-${++codeSeq}`, publicTokenHash: `t17h${hex(12)}`, status: b.status, productId: p.id, departureId: b.dep, travelDate,
+    channel: b.channel, agentAccountId: b.agent ? `t17h-agent-${STAMP}` : null, collectMode: b.collectMode ?? "SHOP", payMethod: "PAY_LATER", contactRoute: b.agent ? "VIA_AGENT" : "DIRECT", currency: "THB",
+    fxRateMicros: null, grossSatang: gross, discountSatang: 0, agentDiscountSatang: 0, passThroughSatang: pt, vatSatang: vat, commissionSatang: C, commissionVatSatang: Cv,
+    whtSatang: 0, netToShopSatang: payable - C - Cv, paidSatang: b.paid ?? 0, refundedSatang: b.refunded ?? 0, accountingState: "NONE", policySnapshot: JSON.stringify(snap), version: 0, marketingEligible: false,
+    createdAt: new Date(b.created), updatedAt: new Date(b.created) });
+  const item = async (kind: string, qty: number, amount: number, o: { pax?: string; ptf?: boolean } = {}) => {
+    if (qty <= 0) return;
+    await insertRow("TripBookingItem", { id: rid("it"), tenantId: p.tenant, unitId: p.unit, bookingId: id, departureId: b.dep, kind, paxTypeId: o.pax ?? null, qty, unitPriceMinor: Math.round(amount / qty), amountMinor: amount, amountSatang: amount,
+      vatSatang: 0, commissionable: !o.ptf, discountable: !o.ptf, passThrough: !!o.ptf, taxKind: o.ptf ? "NONE" : "VAT7", priceSource: "RETAIL", active: true, updatedAt: new Date() });
+  };
+  await item("SEAT", b.adults, b.adults * ADULT, { pax: p.adult }); await item("SEAT", ch, ch * CHILD, { pax: p.child }); await item("EXTRA", b.adults + ch, pt, { ptf: true });
+  fx.BK[key] = id; return id;
+}
+export async function mkCost(fx: FX, dep: string, prod: string, kind: string, amount: number, note: string | null = null) {
+  const p = fx.P[prod]; return insertRow("TripCost", { id: rid("c"), tenantId: p.tenant, unitId: p.unit, departureId: dep, kind, amountSatang: amount, note, createdAt: new Date(Date.parse("2026-11-01T00:00:00Z") + (seq++) * 1000), updatedAt: new Date("2026-11-01T00:00:00Z") });
+}
+export const costRowsDb = (dep: string) => q<{ id: string; kind: string; amountSatang: number; note: string | null; createdAt: Date; updatedAt: Date }>(`SELECT id, kind, "amountSatang", note, "createdAt", "updatedAt" FROM "TripCost" WHERE "departureId" = $1 ORDER BY "createdAt", id`, [dep]);
+export const auditsOf = (dep: string) => q<{ before: Rec; after: Rec; actorId: string; createdAt: Date }>(`SELECT before, after, "actorId", "createdAt" FROM "AuditLog" WHERE action = 'trips.cost.saved' AND "targetId" = $1 ORDER BY "createdAt", id`, [dep]);
+
+// ═══════ trips facade ═══════
+let TR: Rec | null = null;
+export async function trips(): Promise<Rec> { return (TR ??= (await import("@/lib/modules/trips")) as Rec); }
+export async function call(name: string, ...a: unknown[]): Promise<Rec> {
+  const f = (await trips())[name] as AnyFn;
+  if (typeof f !== "function") throw new Error(`no ${name}`);
+  try { return ((await f(...a)) as Rec) ?? { ok: "NONE" }; } catch (e) { return { ok: "THROW", e: String(e).slice(0, 300) }; }
+}
+export const ctxOf = (fx: FX, tag: string) => ({ tenantId: fx.U[tag].tenantId, actorUserId: fx.U[tag].userId });
+export async function formatBaht(n: number): Promise<string> { const m = (await import("@/components/trips/trips-shared")) as Rec; return (m.formatBaht as (x: number) => string)(n); }
+
+// ═══════ sessions + browser ═══════
+let secure: boolean | null = null;
+export async function cookieName(): Promise<string> {
+  if (secure === null) secure = ((await import("@/lib/env")) as Rec).secureCookies !== false;
+  return secure ? "__Host-shark_session" : "shark_session";
+}
+const tokens: Record<string, string> = {};
+export async function sessionToken(fx: FX, tag: string): Promise<string> {
+  if (tokens[tag]) return tokens[tag];
+  const { sha256 } = (await import("@/lib/core/hash")) as { sha256: (s: string) => string };
+  const token = `t17h${randomBytes(24).toString("hex")}`;
+  const ttl = new Date(Date.now() + 2 * HOUR);
+  await insertRow("Session", { id: rid("ss"), userId: fx.U[tag].userId, tokenHash: sha256(token), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl, createdAt: new Date() });
+  tokens[tag] = token; return token;
+}
+export async function cookieHeader(fx: FX, tag: string, tenantOverride?: string): Promise<string> {
+  return `${await cookieName()}=${await sessionToken(fx, tag)}; shark_tenant=${tenantOverride ?? fx.U[tag].tenantId}`;
+}
+export type Cookie = { name: string; value: string; url?: string; domain?: string; path: string; secure?: boolean };
+export async function browserCookies(fx: FX, tag: string): Promise<Cookie[]> {
+  const n = await cookieName(); const t = await sessionToken(fx, tag);
+  return n.startsWith("__Host-") ? [{ name: n, value: t, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: fx.U[tag].tenantId, url: BASE, path: "/", secure: true }]
+    : [{ name: n, value: t, domain: HOST, path: "/" }, { name: "shark_tenant", value: fx.U[tag].tenantId, domain: HOST, path: "/" }];
+}
+// minimal puppeteer types
+export type El = { type(t: string, o?: object): Promise<void>; click(o?: object): Promise<void>; select(...v: string[]): Promise<string[]>; evaluate<R>(f: (e: Element) => R): Promise<R>; focus(): Promise<void> };
+export type Page = {
+  setViewport(v: object): Promise<void>; setCookie(...c: Cookie[]): Promise<void>; on(ev: string, f: (x: never) => void): void;
+  goto(url: string, o: object): Promise<{ status(): number; text(): Promise<string> } | null>; reload(o: object): Promise<{ status(): number } | null>;
+  evaluate<R, A = undefined>(f: (a: A) => R, a?: A): Promise<R>; waitForSelector(sel: string, o?: object): Promise<El | null>; $(sel: string): Promise<El | null>; $$(sel: string): Promise<El[]>;
+  waitForFunction(f: string | ((...a: never[]) => unknown), o?: object, ...a: unknown[]): Promise<unknown>; screenshot(o: object): Promise<unknown>; close(): Promise<void>; setRequestInterception(v: boolean): Promise<void>;
+  keyboard: { press(k: string): Promise<void>; down(k: string): Promise<void>; up(k: string): Promise<void> }; url(): string; content(): Promise<string>;
+};
+type Ctx = { newPage(): Promise<Page>; close(): Promise<void> };
+export type Browser = { newPage(): Promise<Page>; close(): Promise<void>; createBrowserContext(): Promise<Ctx> };
+const profile = `/tmp/chr-t17h-${process.pid}`;
+export async function launch(): Promise<Browser> {
+  const pptr = (await import("/root/dive3d/node_modules/puppeteer-core/lib/esm/puppeteer/puppeteer-core.js" as string)) as { default: { launch(o: object): Promise<Browser> } };
+  return pptr.default.launch({ executablePath: "/usr/bin/chromium-browser", args: ["--no-sandbox", "--disable-dev-shm-usage", "--disable-gpu", `--user-data-dir=${profile}`] });
+}
+export function dropProfile() {
+  for (const d of [profile, `/tmp/snap-private-tmp/snap.chromium${profile}`]) { try { rmSync(d, { recursive: true, force: true }); } catch { /* none */ } }
+}
+export async function pageAs(b: Browser, fx: FX, tag: string, w = 1440, h = 900): Promise<{ page: Page; ctx: Ctx; errors: string[] }> {
+  const ctx = await b.createBrowserContext(); const page = await ctx.newPage();
+  await page.setViewport({ width: w, height: h, deviceScaleFactor: 1, isMobile: w < 600, hasTouch: w < 600 });
+  await page.setCookie(...(await browserCookies(fx, tag)));
+  const errors: string[] = [];
+  page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 160)));
+  return { page, ctx, errors };
+}
+export const visibleText = (page: Page, sel = "body") => page.evaluate((s: string) => (document.querySelector(s) as HTMLElement | null)?.innerText ?? "", sel);
+/** fill like a paste (native setter + input event) */
+export const pasteInto = (page: Page, sel: string, value: string) => page.evaluate((x: { sel: string; value: string }) => {
+  const el = document.querySelector(x.sel);
+  if (!(el instanceof HTMLInputElement)) return false;
+  Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(el, x.value);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+  return true;
+}, { sel, value });
+
+// ═══════ raw HTTP ═══════
+const agent = new http.Agent({ keepAlive: true, maxSockets: 50 });
+export type Resp = { status: number; headers: http.IncomingHttpHeaders; body: string; ms: number; err?: string };
+export function req(path: string, o: { method?: string; headers?: Record<string, string>; body?: string | Buffer } = {}): Promise<Resp> {
+  return new Promise((resolve) => {
+    const t0 = performance.now();
+    const headers: Record<string, string> = { accept: "text/html", "user-agent": "Mozilla/5.0 t17h", ...(o.headers ?? {}) };
+    if (o.body !== undefined) headers["content-length"] = String(Buffer.byteLength(o.body));
+    const r = http.request({ host: HOST, port: PORT, path, method: o.method ?? "GET", headers, agent }, (res) => {
+      const chunks: Buffer[] = [];
+      res.on("data", (c: Buffer) => chunks.push(c));
+      res.on("end", () => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: Buffer.concat(chunks).toString("utf8"), ms: performance.now() - t0 }));
+      res.on("error", (e) => resolve({ status: res.statusCode ?? 0, headers: res.headers, body: "", ms: performance.now() - t0, err: String(e) }));
+    });
+    r.on("error", (e) => resolve({ status: 0, headers: {}, body: "", ms: performance.now() - t0, err: String(e) }));
+    r.setTimeout(120_000, () => r.destroy(new Error("timeout")));
+    if (o.body !== undefined) r.write(o.body);
+    r.end();
+  });
+}
+export const SAVE_ACTION_ID = "6048beb4dddf0fd96903cb05595eccb8dbba92e6f0"; // .next/server/server-reference-manifest.json (saveDepartureCostsAction) — confirmed in-browser by hunt-3
+/** POST the server action like the client does (React encodeReply of plain JSON args) */
+export async function postAction(fx: FX, tag: string, pagePath: string, args: unknown[] | string, o: { actionId?: string; tenant?: string } = {}): Promise<Resp> {
+  return req(pagePath, { method: "POST", headers: { accept: "text/x-component", "next-action": o.actionId ?? SAVE_ACTION_ID, "content-type": "text/plain;charset=UTF-8", cookie: await cookieHeader(fx, tag, o.tenant) }, body: typeof args === "string" ? args : JSON.stringify(args) });
+}
+/** the action's return value from an RSC response (row "1:" or the first JSON object with "ok") */
+export function actionResult(body: string): Rec | null {
+  for (const line of body.split("\n")) {
+    const m = /^[0-9a-f]+:(\{.*\})$/.exec(line);
+    if (!m) continue;
+    try { const v = JSON.parse(m[1]) as Rec; if ("ok" in v) return v; } catch { /* next */ }
+  }
+  return null;
+}
+export const serveLogSize = async () => { const { statSync } = await import("node:fs"); try { return statSync("/root/trips-runs/build-l2/serve.log").size; } catch { return 0; } };
+export async function serveLogSince(off: number): Promise<string> {
+  const { openSync, readSync, closeSync, statSync } = await import("node:fs");
+  try { const sz = statSync("/root/trips-runs/build-l2/serve.log").size; if (sz <= off) return ""; const fd = openSync("/root/trips-runs/build-l2/serve.log", "r"); const buf = Buffer.alloc(Math.min(sz - off, 200_000)); readSync(fd, buf, 0, buf.length, off); closeSync(fd); return buf.toString("utf8").replace(/\u0000+/g, ""); } catch { return ""; }
+}
+
+// ═══════ result log ═══════
+export const results: { id: string; res: "HELD" | "FOUND" | "INFO" | "ERR"; why: string }[] = [];
+export function rec(id: string, res: "HELD" | "FOUND" | "INFO" | "ERR", why: string) {
+  results.push({ id, res, why });
+  console.log(`${res === "HELD" ? "✅" : res === "FOUND" ? "🐞" : res === "ERR" ? "⚠️" : "ℹ️"} ${id} ${res} — ${why}`);
+}
+export async function step(id: string, fn: () => Promise<void>) {
+  try { await fn(); } catch (e) { rec(id, "ERR", `probe error: ${e instanceof Error ? (e.stack ?? e.message).slice(0, 400) : String(e)}`); }
+}

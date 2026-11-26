@@ -57,6 +57,8 @@ export const SENSITIVE_KEYS: ReadonlySet<string> = new Set([
   "crm.quota.manage", // เป้าขาย/ค่าคอม
   "crm.report.all", // รายงานทุกคน (ข้อมูลยอดขายของคนอื่น)
   "booking.job.runany", // สั่งงานแทนคนอื่น
+  "trips.cost.view", // TRIPS T1.7a1 U1 ▸ ต้นทุนรอบ/คอมฯ/กำไร — ต้องติ๊กเอง ระดับสำเร็จรูปไม่แจก ◂
+  "trips.cost.edit", // TRIPS T1.7a1 U1 ▸ บันทึกต้นทุนรอบ — ต้องติ๊กเอง ◂
 ]);
 export function isSensitiveKey(key: string): boolean {
   const k = String(key ?? "").toLowerCase();

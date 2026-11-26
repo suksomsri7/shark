@@ -48,7 +48,7 @@ type Action =
   | { reveal: string }
   | { pause: number };
 // TRIPS W1.1 ▸ public = หน้าสาธารณะ: ไม่ใส่คุกกี้ session (บริบทเบราว์เซอร์ใหม่) + ตั้งหัว x-forwarded-for (หน้าต้องรู้ IP) · expectStatus = รหัสสถานะที่ต้องได้ (ปริยาย: ต่ำกว่า 400) ◂
-type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01" | "07"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print" };
+type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01" | "07"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print"; as?: string }; // TRIPS T1.7a1 ▸ as = key ของผู้ใช้ seed (SHOP_DIVE.users[].key · ปริยายเจ้าของร้าน) — บริบทเบราว์เซอร์แยก ◂
 const PUBLIC_CLIENT_IP = "198.51.100.77";
 const BOOK_RACHA = "racha-yai-day-trip";
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
@@ -168,6 +168,15 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
       path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}&dep=${i.racha1114}`,
       actions: [{ waitFor: 'a[data-testid="trips-dep-manifest"]' }],
     },
+  ],
+  // TRIPS T1.7a1 ▸ เงินระดับรอบ (ภาพ 11 แผงรอบ :56–:57 · จอต้นทุนไม่มีภาพ — ธรรมเนียมจอ T1.3a/T1.4a) — 1440 + 390 · อ่านอย่างเดียว (ไม่กดบันทึก ⇒ ไม่เขียนฐาน)
+  //   seed ไม่มีแถวต้นทุน ⇒ "ยังไม่บันทึกต้นทุน" · ตัวเลขภาพ 11 / มุมมองอ่านอย่างเดียว (cost.view) / ร้านไม่จด VAT ผู้คุมดูจากร้านชั่วคราวของ probe (seed ไม่มีผู้ใช้/หน่วยแบบนั้น) ◂
+  "t1.7": [
+    { name: "panel-money", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}&dep=${i.racha1114}`, actions: [{ waitFor: '[data-testid="trips-dep-money"]' }] },
+    { name: "departure-costs", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs`, actions: [{ waitFor: '[data-testid="trips-cost-editor"]' }] },
+    // ORACLE-EDIT (ผู้คุม 26 พ.ย.): ไกด์ของ seed (STAFF · unitAccess = หน่วย BOOKING "andaman-dive" เท่านั้น) เข้าหน่วยทัวร์ไม่ได้ ⇒ แอปตอบ 404 ถูกต้อง (หน่วยอื่น ⇒ NOT_FOUND)
+    //   seed ไม่มีผู้ใช้ที่เข้าหน่วยทัวร์ได้แต่ไม่มีคีย์ต้นทุน (มีแค่เจ้าของ + ไกด์ · ห้ามเพิ่มผู้ใช้ seed) ⇒ ฉากนี้คาด 404 ตามจริง · หน้าไม่มีสิทธิ์ (trips-forbidden) ดูจากร้านชั่วคราวของ probe ผู้คุม
+    { name: "departure-costs-not-found", mockup: "11", as: "dive-guide-mint", expectStatus: 404, path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs` },
   ],
   // TRIPS W1.2 ▸ ทัวร์ 4 ขั้นฝั่งลูกค้า (ภาพ 01 ข/ค/ง มือถือไทย · 19 จอใหญ่อังกฤษ) — ทุกฉาก public 1440 + 390 · วัน/เดือนปักด้วย --book-month/--book-date (ปริยาย 31 ธ.ค. ของ seed)
   //   "w1.2" อ่านอย่างเดียว (ไม่เขียนฐาน) · "w1.2-flow" กดผ่านฟอร์มจริง ⇒ เขียนฐานเลน (ถือ 3 ที่บนรอบ 31 ธ.ค. + การจอง HOLD + Party ผู้จองทดสอบ ค้างจนตัวกวาดวิ่ง) — รันหลังข้อสอบ/ก่อน reseed
@@ -439,9 +448,11 @@ const MINE = { sessionIds: [] as string[] };
 type Cookie = { name: string; value: string; url?: string; domain?: string; path: string; secure?: boolean };
 
 const owner = SHOP_DIVE.users[0];
-async function mintSession(): Promise<Cookie[]> {
-  const row = await prisma.user.findUnique({ where: { email: owner.email }, select: { id: true } });
-  if (!row) throw new Fatal(`ไม่พบผู้ใช้เจ้าของร้าน (${owner.email}) — รัน scripts/seed-trips-qc.mts ก่อน`);
+async function mintSession(asKey?: string): Promise<Cookie[]> {
+  const who = asKey ? SHOP_DIVE.users.find((u) => u.key === asKey) : owner;
+  if (!who) throw new Fatal(`ไม่มีผู้ใช้ seed key ${asKey}`);
+  const row = await prisma.user.findUnique({ where: { email: who.email }, select: { id: true } });
+  if (!row) throw new Fatal(`ไม่พบผู้ใช้ (${who.email}) — รัน scripts/seed-trips-qc.mts ก่อน`);
   const token = "trp" + Math.random().toString(36).slice(2) + Date.now().toString(36) + Math.random().toString(36).slice(2);
   const ttl = new Date(Date.now() + 60 * 60 * 1000);
   const s = await prisma.session.create({ data: { userId: row.id, tokenHash: sha256(token), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl }, select: { id: true } });
@@ -558,12 +569,12 @@ try {
       if (spec.name === "book-expired" && !W12_EXPIRED_TOKEN) W12_EXPIRED_TOKEN = await w12ExpireLatestWebBooking(); // TRIPS W1.2 รอบ 2 ▸ ◂
       W13_DEV = dev.device; // TRIPS W1.3 ▸ ◂
       // หน้าสาธารณะ: บริบทใหม่ (ไม่มีคุกกี้ของฉากอื่น) + หัว IP ของผู้ใช้ (ไม่พึ่งว่า server เติมให้)
-      const ctx = spec.public && browser.createBrowserContext ? await browser.createBrowserContext() : null;
+      const ctx = (spec.public || spec.as) && browser.createBrowserContext ? await browser.createBrowserContext() : null;
       const page = await (ctx ?? browser).newPage();
       await page.setViewport({ width: dev.width, height: dev.height, deviceScaleFactor: 1, isMobile: dev.mobile, hasTouch: dev.mobile });
       // TRIPS W1.2 r1 (มติ W2 · ผู้คุมทำตอนรับงาน) ▸ ฉากสาธารณะใช้ IP ผู้ใช้ต่างกันต่อฉาก×อุปกรณ์ — ไม่ชนถังถือต่อรอบต่อเครื่อง (3/ชม.) / ถังถือต่อเครื่อง ◂
       if (spec.public) await page.setExtraHTTPHeaders({ "x-forwarded-for": `${PUBLIC_CLIENT_IP.split(".").slice(0, 3).join(".")}.${(Number(PUBLIC_CLIENT_IP.split(".")[3]) + ++publicSeq) % 250}` });
-      else await page.setCookie(...cookies);
+      else await page.setCookie(...(spec.as ? await mintSession(spec.as) : cookies));
       const errors: string[] = [];
       page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 120)));
       if (spec.media) await page.emulateMediaType(spec.media);

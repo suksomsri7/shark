@@ -1,0 +1,146 @@
+// probe-trips-t1.7-hunt-3.mts — T1.7a1 live hunt: target 8 (abuse of the save server action over HTTP) + the seed "forbidden" scene user (dive-guide-mint) status
+import { writeFileSync } from "node:fs";
+import { randomBytes } from "node:crypto";
+import {
+  BASE, OUT, SAVE_ACTION_ID, UA, actionResult, auditsOf, boot, call, cleanup, cookieName, costRowsDb, ctxOf, dropProfile, fmt, insertRow, launch, mkCost, mkDep, pageAs, postAction, q, rec, req, results, rid, serveLogSince, serveLogSize, setup, sleep, step,
+  type Browser, type FX, type Rec,
+} from "./probe-trips-t1.7-hunt-lib.mjs";
+
+boot("probe-t17h-3");
+let fx: FX | null = null;
+let browser: Browser | null = null;
+const fivexx: string[] = [];
+try {
+  fx = await setup({ users: [["wild", "A", "STAFF", ["A"], ["trips.*"]]] });
+  const F = fx;
+  const dC = await mkDep(F, "C", "PR", "2027-01-15", { cap: 24, sold: 0 });
+  await mkCost(F, dC, "PR", "BOAT", 100_000, "เดิม");
+  const dL = await mkDep(F, "L", "PR", "2027-01-16", { cap: 24, sold: 0 });
+  const lCost = await mkCost(F, dL, "PR", "FUEL", 55_500, "ของรอบอื่น");
+  const dA2 = await mkDep(F, "A2", "PA2", "2027-01-15", { cap: 24, sold: 0 });
+  await mkCost(F, dA2, "PA2", "BOAT", 999_900);
+  const dB = await mkDep(F, "B", "PB", "2027-01-15", { cap: 24, sold: 0 });
+  await mkCost(F, dB, "PB", "BOAT", 888_800);
+  const path = (slug: string, dep: string) => `/app/u/${slug}/trips/departures/${dep}/costs`;
+  const P = path(F.slugA, dC);
+  const snap = async () => fmt(await Promise.all([dC, dL, dA2, dB].map(async (d) => (await costRowsDb(d)).map((r) => [r.id, r.kind, r.amountSatang, r.note, r.updatedAt])).concat([q(`SELECT count(*)::int AS n FROM "AuditLog" WHERE "tenantId" = ANY($1::text[])`, [[F.tA, F.tB]])])));
+  const tokenOf = async (dep: string) => String((((await call("loadDepartureCostsVM", ctxOf(F, "oa"), { unitId: F.uA, departureId: dep })).vm as Rec)?.costs as Rec)?.token ?? "");
+
+  // ── confirm the action id + request shape from the real editor ──
+  browser = await launch();
+  {
+    const o = await pageAs(browser, F, "oa");
+    let seen: { id: string; body: string; ct: string } | null = null;
+    o.page.on("request", (r: never) => { const rq = r as { method(): string; headers(): Record<string, string>; postData(): string | undefined }; if (rq.method() === "POST" && rq.headers()["next-action"]) seen = { id: rq.headers()["next-action"], body: (rq.postData() ?? "").slice(0, 300), ct: rq.headers()["content-type"] }; });
+    await o.page.goto(`${BASE}${P}`, { waitUntil: "networkidle2" });
+    await o.page.waitForSelector('[data-testid="trips-cost-save"]');
+    await (await o.page.$('[data-testid="trips-cost-save"]'))?.click();
+    await sleep(3000);
+    const s = seen as { id: string; body: string; ct: string } | null;
+    rec("T8-action-id", s?.id === SAVE_ACTION_ID ? "INFO" : "ERR", `เบราว์เซอร์ส่ง ${fmt(s)}`);
+    await o.ctx.close();
+  }
+  await browser.close(); browser = null;
+
+  const logOff = await serveLogSize();
+  type Case = { name: string; tag?: string; path?: string; args: unknown[] | string; expect: (r: Rec | null, status: number) => boolean; tenant?: string; noCookie?: boolean };
+  const tok = await tokenOf(dC);
+  const okRows = [{ kind: "BOAT", amountText: "1,000.00", note: "เดิม" }];
+  const cases: Case[] = [
+    { name: "control-valid", args: [F.slugA, { departureId: dC, expectedToken: tok, rows: [{ kind: "BOAT", amountText: "1,000.00", note: "เดิม" }, { kind: "FUEL", amountText: "1", note: "" }] }], expect: (r) => r?.ok === true && (r.value as Rec)?.applied === true },
+  ];
+  // the control writes; every abuse case below must leave the snapshot unchanged (taken after the control)
+  const results8: { name: string; status: number; ms: number; result: string; dbSame: boolean }[] = [];
+  const runCase = async (c: Case) => {
+    const before = await snap();
+    const r = c.noCookie
+      ? await (await import("./probe-trips-t1.7-hunt-lib.mjs")).req(c.path ?? P, { method: "POST", headers: { accept: "text/x-component", "next-action": SAVE_ACTION_ID, "content-type": "text/plain;charset=UTF-8" }, body: typeof c.args === "string" ? c.args : JSON.stringify(c.args) })
+      : await postAction(F, c.tag ?? "oa", c.path ?? P, c.args, { tenant: c.tenant });
+    const res = actionResult(r.body);
+    if (r.status >= 500) fivexx.push(`${c.name}: HTTP ${r.status}`);
+    const after = await snap();
+    const same = before === after;
+    results8.push({ name: c.name, status: r.status, ms: Math.round(r.ms), result: fmt(res ?? r.body.slice(0, 160)), dbSame: same });
+    return { r, res, same };
+  };
+  for (const c of cases) { const { r, res } = await runCase(c); rec(`T8-${c.name}`, c.expect(res, r.status) ? "HELD" : "ERR", `HTTP ${r.status} · ${fmt(res ?? r.body.slice(0, 200))}`); }
+  const tok2 = await tokenOf(dC);
+  const big = "ก".repeat(1_000_000);
+  const abuse: Case[] = [
+    { name: "dep-of-other-unit", args: [F.slugA, { departureId: dA2, expectedToken: "x", rows: [] }], expect: (r) => r?.ok === false && r.code === "NOT_FOUND" },
+    { name: "dep-of-other-tenant", args: [F.slugA, { departureId: dB, expectedToken: "x", rows: [] }], expect: (r) => r?.ok === false && r.code === "NOT_FOUND" },
+    { name: "forged-slug-other-unit", path: path(F.slugA2, dC), args: [F.slugA2, { departureId: dC, expectedToken: tok2, rows: [] }], expect: (r) => r?.ok === false && r.code === "NOT_FOUND" },
+    { name: "forged-slug-other-tenant", args: [F.slugB, { departureId: dB, expectedToken: "x", rows: [] }], expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "slug-missing", args: ["no-such-unit-zz", { departureId: dC, expectedToken: tok2, rows: [] }], expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "slug-object", args: [{ toString: 1 }, { departureId: dC, expectedToken: tok2, rows: [] }], expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "rows-ids-of-other-dep", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [{ id: lCost, kind: "FUEL", amountText: "1", note: "" }] }], expect: (r) => r?.ok === false && r.code === "NOT_FOUND" },
+    { name: "rows-ids-of-other-dep-stale-token", args: [F.slugA, { departureId: dC, expectedToken: "stale", rows: [{ id: lCost, kind: "FUEL", amountText: "555", note: "ของรอบอื่น" }] }], expect: (r) => r?.ok === false },
+    { name: "10000-rows", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: Array.from({ length: 10_000 }, () => ({ kind: "FUEL", amountText: "1" })) }], expect: (r) => r?.ok === false && r.code === "COST_ROWS_LIMIT" },
+    { name: "31-rows", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: Array.from({ length: 31 }, () => ({ kind: "FUEL", amountText: "1" })) }], expect: (r) => r?.ok === false && r.code === "COST_ROWS_LIMIT" },
+    { name: "1MB-note", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [{ kind: "FUEL", amountText: "1", note: big }] }], expect: (r) => r?.ok === false },
+    { name: "13MB-body", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [{ kind: "FUEL", amountText: "1", note: "x".repeat(13_500_000) }] }], expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "amountSatang-instead", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [{ kind: "FUEL", amountSatang: 100 }] }], expect: (r) => r?.ok === false && r.code === "INVALID_INPUT" },
+    { name: "kind-outside", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [{ kind: "COMMISSION", amountText: "1" }] }], expect: (r) => r?.ok === false && r.code === "INVALID_INPUT" },
+    { name: "note-LF", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [{ kind: "FUEL", amountText: "1", note: "=1+1\n@x" }] }], expect: (r) => r?.ok === false },
+    { name: "rows-string", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: "[]" }], expect: (r) => r?.ok === false && r.code === "INVALID_INPUT" },
+    { name: "departureId-object", args: [F.slugA, { departureId: { id: dC }, expectedToken: tok2, rows: [] }], expect: (r) => r?.ok === false && r.code === "INVALID_INPUT" },
+    { name: "departureId-129", args: [F.slugA, { departureId: "d".repeat(129), expectedToken: tok2, rows: [] }], expect: (r) => r?.ok === false },
+    { name: "departureId-NUL", args: [F.slugA, { departureId: `${dC}\u0000`, expectedToken: tok2, rows: [] }], expect: (r) => r?.ok === false },
+    { name: "token-10k", args: [F.slugA, { departureId: dC, expectedToken: "t".repeat(10_000), rows: [] }], expect: (r) => r?.ok === false },
+    { name: "token-number", args: [F.slugA, { departureId: dC, expectedToken: 123, rows: [] }], expect: (r) => r?.ok === false },
+    { name: "input-null", args: [F.slugA, null], expect: (r) => r?.ok === false },
+    { name: "no-args", args: [], expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "body-not-json", args: "this is {not json", expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "staff-trips-star", tag: "wild", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [{ kind: "FUEL", amountText: "1" }] }], expect: (r) => r?.ok === false && r.code === "FORBIDDEN" },
+    { name: "staff-trips-star-badformat", tag: "wild", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [{ kind: "FUEL", amountText: "1,2a" }] }], expect: (r) => r?.ok === false && r.code === "FORBIDDEN" },
+    { name: "other-tenant-owner", tag: "ob", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [] }], expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "other-owner-forged-tenant-cookie", tag: "ob", tenant: F.tA, args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [] }], expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "no-cookie", noCookie: true, args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: [] }], expect: (r, s) => s < 500 && r?.ok !== true },
+    { name: "sum-over-int4", args: [F.slugA, { departureId: dC, expectedToken: tok2, rows: Array.from({ length: 22 }, () => ({ kind: "BOAT", amountText: "10,000,000.00" })) }], expect: (r) => r?.ok === false && r.code === "COST_AMOUNT_INVALID" },
+  ];
+  for (const c of abuse) {
+    const { r, res, same } = await runCase(c);
+    const exp = c.expect(res, r.status);
+    rec(`T8-${c.name}`, exp && same && r.status < 500 ? "HELD" : "FOUND", `HTTP ${r.status} (${Math.round(r.ms)}ms) · ${fmt(res ?? r.body.replace(/\s+/g, " ").slice(0, 200))} · ฐานไม่เปลี่ยน ${same}`);
+  }
+  // re-fire the ones that FOUND once
+  for (const f of results.filter((x) => x.res === "FOUND" && x.id.startsWith("T8-"))) {
+    const c = abuse.find((a) => `T8-${a.name}` === f.id); if (!c) continue;
+    const { r, res, same } = await runCase(c);
+    rec(`${f.id}-refire`, c.expect(res, r.status) && same && r.status < 500 ? "HELD" : "FOUND", `ยิงซ้ำ: HTTP ${r.status} · ${fmt(res ?? r.body.replace(/\s+/g, " ").slice(0, 200))} · ฐานไม่เปลี่ยน ${same}`);
+  }
+  await sleep(1500);
+  const log = await serveLogSince(logOff);
+  writeFileSync(`${OUT}/hunt-3-servelog.txt`, log);
+  rec("T8-5xx", fivexx.length ? "FOUND" : "HELD", `5xx: ${fmt(fivexx)} · serve.log เพิ่ม ${log.length} ไบต์: ${log.replace(/\s+/g, " ").slice(0, 600)}`);
+  writeFileSync(`${OUT}/hunt-3-cases.json`, JSON.stringify(results8, null, 2));
+
+  // ── seed scene user (dive-guide-mint) on the seed departure: what does she get? (read-only · own session row) ──
+  await step("T4-seed-mint", async () => {
+    const { sha256 } = (await import("@/lib/core/hash")) as { sha256: (s: string) => string };
+    const u = (await q<{ id: string }>(`SELECT id FROM "User" WHERE email = 'trips-qc-dive-guide-mint@shark.local'`))[0];
+    const mb = (await q<{ unitAccess: unknown; permissions: unknown; role: string }>(`SELECT "unitAccess", permissions, role FROM "Membership" WHERE "userId" = $1 AND "tenantId" = 'tripsqc-tenant-dive'`, [u?.id ?? ""]))[0];
+    const dep = (await q<{ id: string }>(`SELECT d.id FROM "TripDeparture" d JOIN "TripProduct" p ON p.id = d."productId" WHERE d."tenantId" = 'tripsqc-tenant-dive' AND d."unitId" = 'tripsqc-unit-dive-trips' AND p.slug = 'racha-yai-day-trip' AND d."localDate" = '2026-11-14'::date ORDER BY d."startsAt" LIMIT 1`))[0];
+    if (!u || !dep) { rec("T4-seed-mint", "ERR", "ไม่พบผู้ใช้/รอบของ seed"); return; }
+    const token = `t17h${randomBytes(24).toString("hex")}`; const ttl = new Date(Date.now() + 3_600_000);
+    await insertRow("Session", { id: rid("ss"), userId: u.id, tokenHash: sha256(token), userAgent: UA, idleExpiresAt: ttl, expiresAt: ttl, createdAt: new Date() });
+    const ck = `${await cookieName()}=${token}; shark_tenant=tripsqc-tenant-dive`;
+    const r1 = await req(`/app/u/andaman-dive-trips/trips/departures/${dep.id}/costs`, { headers: { cookie: ck } });
+    const r2 = await req(`/app/u/andaman-dive-trips/trips/departures/t17h_nope/costs`, { headers: { cookie: ck } });
+    const r3 = await req(`/app/u/andaman-dive-trips/trips/departures?view=week&start=2026-11-09&dep=${dep.id}`, { headers: { cookie: ck } });
+    const r4 = await req(`/app/u/andaman-dive/trips/departures/${dep.id}/costs`, { headers: { cookie: ck } });
+    rec("T4-seed-mint", "INFO", `mint: membership ${fmt(mb)} · จอต้นทุนรอบจริง HTTP ${r1.status} forbidden-page ${r1.body.includes("trips-forbidden")} · รอบไม่มีจริง HTTP ${r2.status} · ปฏิทิน HTTP ${r3.status} · ผ่านหน่วย BOOKING ที่เธอเข้าได้ HTTP ${r4.status} forbidden-page ${r4.body.includes("trips-forbidden")}`);
+  });
+} catch (e) {
+  rec("FATAL", "ERR", e instanceof Error ? (e.stack ?? e.message).slice(0, 600) : String(e));
+} finally {
+  try { await browser?.close(); } catch { /* gone */ }
+  dropProfile();
+  const left = await cleanup().catch((e) => ({ err: String(e) }));
+  console.log(`LEFTOVER ${fmt(left)}`);
+  writeFileSync(`${OUT}/hunt-3-results.json`, JSON.stringify(results, null, 2));
+  await (await import("./probe-trips-t1.7-hunt-lib.mjs")).pool().end().catch(() => undefined);
+  void auditsOf;
+}
+console.log(`SUMMARY ${fmt({ held: results.filter((r) => r.res === "HELD").length, found: results.filter((r) => r.res === "FOUND").length, err: results.filter((r) => r.res === "ERR").length })}`);
+process.exit(0);

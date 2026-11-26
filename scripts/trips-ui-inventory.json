@@ -5276,6 +5276,864 @@
       "oracle": "qc-trips-t1.4#BT-9",
       "system": "TRIPS",
       "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money",
+        "state": "appears",
+        "note": "การ์ดเงินของรอบในแผงรอบ (ภาพ 11 :56–:57) — ดูรอบ + ดูการจอง/รายงาน/ต้นทุน"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-detail",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-detail",
+        "state": "appears",
+        "note": "บรรทัดรอง: เก็บแทน · ต้นทุนรอบ · คอมมิชชัน · กำไรขั้นต้น (ช่องต้นทุนเฉพาะผู้เห็นต้นทุน)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-vat",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-vat",
+        "state": "conditional",
+        "note": "VAT ในราคาขาย (ไม่แสดงเมื่อร้านไม่จด VAT)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-estimate",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-estimate",
+        "state": "appears",
+        "note": "ป้ายเส้นประ ประมาณการ — ยังไม่ปิดทริป"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-mgmt",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-mgmt",
+        "state": "appears",
+        "note": "บรรทัดตัวเลขบริหาร ไม่ใช่รายงานบัญชี"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-agent",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-agent",
+        "state": "conditional",
+        "note": "เอเจนซี่เก็บเงิน n การจอง"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-pending-refund",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-pending-refund",
+        "state": "conditional",
+        "note": "รอคืนเงิน n การจอง + ยอดที่รับไว้"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-noshow",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-noshow",
+        "state": "conditional",
+        "note": "ลูกค้าไม่มาและยังไม่จ่ายครบ n"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-money-warn-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-money-warn",
+        "state": "conditional",
+        "note": "คำเตือนของตัวเลขเงิน (ตามรหัส)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-8",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.booking.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-costs",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-dep-costs",
+        "state": "conditional",
+        "note": "ไปจอต้นทุนและกำไร (สิทธิ์ต้นทุนแคบ)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost",
+        "state": "appears",
+        "note": "จอต้นทุนและกำไรของรอบ"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-13",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-back",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-back",
+        "state": "appears",
+        "note": "กลับไปปฏิทินรอบ (สัปดาห์ของรอบ + เปิดแผง)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#S-11",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-title",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-title",
+        "state": "appears",
+        "note": "ชื่อจอ + สินค้า"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#S-11",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-state",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-state",
+        "state": "appears",
+        "note": "สถานะรอบ ยังไม่เดินทาง/เดินทางแล้ว/รอบยกเลิก"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-13",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-estimate",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-estimate",
+        "state": "appears",
+        "note": "ป้ายประมาณการ"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-13",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-mgmt",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-mgmt",
+        "state": "appears",
+        "note": "บรรทัดตัวเลขบริหาร"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#S-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-accounting-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-accounting-note",
+        "state": "appears",
+        "note": "ระบบยังไม่ลงบัญชีให้"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#S-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-kpis",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-kpis",
+        "state": "appears",
+        "note": "การ์ด 6 ใบ (2 คอลัมน์ที่ 390)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-kpi-sales",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-kpi-sales",
+        "state": "appears",
+        "note": "ยอดขาย"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-kpi-revenue",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-kpi-revenue",
+        "state": "appears",
+        "note": "รายได้ก่อน VAT / รายได้ (ร้านไม่จด VAT)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-kpi-commission",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-kpi-commission",
+        "state": "appears",
+        "note": "ต้นทุนคอมมิชชัน"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-kpi-cost",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-kpi-cost",
+        "state": "appears",
+        "note": "ต้นทุนรอบ + ต่อที่นั่ง"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-13",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-kpi-profit",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-kpi-profit",
+        "state": "appears",
+        "note": "กำไรขั้นต้น (ติดลบ = สีอันตราย + ไอคอน + เครื่องหมายลบ)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-kpi-load",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-kpi-load",
+        "state": "appears",
+        "note": "ขาย/ความจุ · อัตราเต็ม"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-charter",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-charter",
+        "state": "conditional",
+        "note": "ป้ายรอบเหมาลำ (ตัวบ่งชี้ชั่วคราว)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-breakdown",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-breakdown",
+        "state": "appears",
+        "note": "ที่มาของกำไร + แยกให้เห็น"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#RC-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-vat-line",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-vat-line",
+        "state": "conditional",
+        "note": "บรรทัด VAT (ไม่แสดงเมื่อร้านไม่จด VAT)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-editor",
+      "kind": "form",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-editor",
+        "state": "conditional",
+        "note": "ตัวแก้ต้นทุนทั้งชุด (เฉพาะผู้บันทึกได้)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-rows",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-rows",
+        "state": "conditional",
+        "note": "รายการต้นทุนอ่านอย่างเดียว"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-readonly",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-readonly",
+        "state": "conditional",
+        "note": "ข้อความดูได้อย่างเดียว"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-9",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-row-*",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-row",
+        "state": "conditional",
+        "note": "แถวต้นทุน: ชนิด · ยอด (ข้อความบาท) · หมายเหตุ"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#P-15",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-remove-*",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-remove",
+        "state": "conditional",
+        "note": "ลบแถวต้นทุน"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-add",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-add",
+        "state": "conditional",
+        "note": "เพิ่มแถว (ครบ 30 ⇒ ปิด)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#P-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-save",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-save",
+        "state": "conditional",
+        "note": "บันทึกทั้งชุด + token (ปิดระหว่างรอ)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-conflict",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-conflict",
+        "state": "conditional",
+        "note": "ชนกับผู้อื่น + ปุ่มโหลดใหม่"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-error",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-error",
+        "state": "conditional",
+        "note": "ข้อผิดพลาดการบันทึก (role=alert)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#P-15",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.edit"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-vat-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-vat-note",
+        "state": "appears",
+        "note": "ข้อความวิธีใส่ยอดตามสถานะ VAT ของร้าน"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#S-8",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-channels",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-channels",
+        "state": "appears",
+        "note": "ยอดตามช่องทาง"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#CT-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures/[departureId]/costs",
+      "testid": "trips-cost-warn-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [
+        "editor",
+        "viewer"
+      ],
+      "expect": {
+        "type": "ui",
+        "target": "trips-cost-warn",
+        "state": "conditional",
+        "note": "คำเตือนของตัวเลขเงิน (ตามรหัส)"
+      },
+      "wo": "T1.7a1",
+      "oracle": "qc-trips-t1.7#PN-8",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.cost.view"
     }
   ]
 }
