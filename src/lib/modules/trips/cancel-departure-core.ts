@@ -33,18 +33,6 @@ export function cancelOptionsOf(t22: { options?: readonly unknown[] | null } | n
 export function cancelOutcomeOf(row: { choice: string }, now: Date, decideBy: Date | null): { choice: string; overdue: boolean } {
   return { choice: row.choice, overdue: row.choice === "PENDING" && decideBy !== null && now.getTime() > decideBy.getTime() };
 }
-export type CancelReceipt = { kind: "RECEIVED" | "REFUNDED" | string; amountSatang: number; passThroughSatang: number; vatSatang: number };
-/** ยอดคืนเต็มจากใบรับจริง = Σ RECEIVED − Σ REFUNDED แยกเก็บแทน/VAT ตามใบ (ชื่อเดียวกับ RefundQuote) */
-export function fullRefundSplitOf(receipts: readonly CancelReceipt[]): { refundSatang: number; refundNonPtSatang: number; refundPassThroughSatang: number; refundVatSatang: number } {
-  let amount = 0;
-  let pt = 0;
-  let vat = 0;
-  for (const r of receipts) {
-    const sign = r.kind === "RECEIVED" ? 1 : r.kind === "REFUNDED" ? -1 : 0;
-    amount += sign * r.amountSatang;
-    pt += sign * r.passThroughSatang;
-    vat += sign * r.vatSatang;
-  }
-  return { refundSatang: amount, refundNonPtSatang: amount - pt, refundPassThroughSatang: pt, refundVatSatang: vat };
-}
+/** คืนเต็มจากใบรับจริง — ตัวคิดอยู่ใน money-core (ไฟล์บริสุทธิ์ของเงิน · import ได้แค่ money-math/snapshot/booking-core) ส่งออกต่อที่นี่ตามสัญญา §5.4 */
+export { fullRefundSplitOf, type CancelReceipt, type FullRefundSplit } from "./money-core";
 // ── /T1.6a1 cancel-departure-core ──

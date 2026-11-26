@@ -76,7 +76,7 @@ import { findSelfReplay } from "./public-booking"; // TRIPS W1.3 ▸ ตัว�
 import { recomputeFromSnapshot, type TripsBookingSnapshot } from "./snapshot";
 import { canTransitionBooking, initialBookingStatus, isBookingStatus, type BookingStatus, type InitialHoldMode } from "./state";
 // TRIPS T0.7 ▸ เงินฝั่ง trips: งวดในธุรกรรมยืนยัน · ยกเลิก/แก้การจองที่ขายแล้ว (ใบสั่ง T0.7 §9) ◂
-import { currentDues, duesShapeUnchanged, ensureTripDuesInTx, openRefundOf, readMoneyBooking, replaceTripDuesInTx, retimeTripDuesInTx } from "./money";
+import { currentDues, departureCancelKindOf, duesShapeUnchanged, ensureTripDuesInTx, openRefundOf, readMoneyBooking, replaceTripDuesInTx, retimeTripDuesInTx } from "./money";
 import { requestTripRefundForCancel, tripRefundQuote } from "./refund";
 
 // ── T0.6 booking ──
@@ -1504,6 +1504,8 @@ async function cancelImpl(ctx: unknown, input: unknown, opts?: CancelOpts): Prom
   const sc = sellCtxOf(c, ctx);
   // TRIPS T0.7 ▸ การจองที่ขายแล้ว: QUOTE = ใบเสนอคืนเงินจาก snapshot (รวมหลักฐานเก็บแทน · ไม่เขียน) · EXECUTE = ยื่นคำขอคืนเงิน G.3 (คีย์ cancel:<bookingId>:…) ◂
   if (REFUNDABLE_SOLD.has(b.status)) {
+    // TRIPS T1.6a1 B3 ▸ การจองที่ขายแล้วบนรอบที่ร้านยกเลิก: ใบเสนอ/คำขอทางทั่วไปปิด (QUOTE ของลูกค้าด้วย) · EXECUTE ตรวจซ้ำใต้ล็อกใน requestCore ◂
+    if (await departureCancelKindOf(unitDb(g), g, b.departureId)) return sellFail("STATE_CONFLICT", { reason: "DEPARTURE_CANCELLED_USE_RESOLVE" });
     if (v.mode === "QUOTE") {
       const mb = await readMoneyBooking(unitDb(g), g, b.id);
       if (!mb) return NF();
@@ -1782,6 +1784,8 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
     if (nv === undefined) throw new BookingAbort("STATE_CONFLICT");
     // TRIPS T0.7 ▸ 2b′ คำขอคืนเงินเปิด (อ่านใต้ล็อกแถวการจองของ UPDATE) → 2d งวด: CONFIRMED แทนงวดใหม่ (seq ต่อ) · จ่ายแล้ว = ย้าย dueAt เท่านั้น ◂
     if (await openRefundOf(tx, g, b.id)) throw new BookingAbort("STATE_CONFLICT", { reason: "REFUND_IN_PROGRESS" });
+    // TRIPS T1.6a1 §6 ▸ ออกจาก/เข้าสู่รอบที่ร้านยกเลิก ⇒ ปฏิเสธ (ทางเดียวคือ resolveCancelledBooking) · อ่านใต้ล็อกแถวการจอง ◂
+    if ((await departureCancelKindOf(tx, g, from)) || (await departureCancelKindOf(tx, g, to))) throw new BookingAbort("STATE_CONFLICT", { reason: "DEPARTURE_CANCELLED_USE_RESOLVE" });
     if (paidChange) await retimeTripDuesInTx(tx, g, b.id, snap, c.clock.now);
     else await replaceTripDuesInTx(tx, g, b.id, snap, c.clock.now);
     await tx.$queryRaw`UPDATE "TripBookingItem" SET "active" = false, "updatedAt" = now() WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "active" RETURNING "id"`;

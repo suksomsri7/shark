@@ -46,3 +46,45 @@ CREATE INDEX "TripDepartureCancelOutcome_bookingId_idx" ON "TripDepartureCancelO
 - `createdAt` ของแถวผลไม่มี default ⇒ ทุก INSERT ต้องใส่ `createdAt`/`at` จาก `now` ที่ฉีด
 - ลำดับรันของข้อสอบหลัง migration: CD → GD → RF → NM → RC → AC → PG → PM (GD ต้องมาก่อนงวดของ dC ถูกปิด)
 - ยังไม่ได้อ่าน refund.ts / money.ts / booking.ts / capacity*.ts / jobs.ts / departure-desk.ts / departure-screens.ts / booking-screens.ts / trips-self*.ts สำหรับรั้ว §6 — ไม่มีข้อแย้งต่อสัญญา §5.4 จากส่วนที่อ่าน
+
+---
+## ส่วนที่ 2 — ผู้สร้างคนที่สอง (26 พ.ย. · ต่อจากชิ้นแรก)
+**สถานะ: a1 สร้างครบ (บริการ · รั้ว §6 · action · จอ · ข้อความ) · ยังไม่ commit/push/build**
+
+### ไฟล์ (เทียบ BASE 5953d5061 · งบ §1)
+ใหม่: `cancel-departure.ts` 580 (ใบ ≈520 · เกินเพราะรวมตัวอ่านของจอ departureCancelSummaryOf/bookingCancelChoiceOf ~110 บรรทัด ที่ใบเรียก loadCancelChoicesVM) · `cancel-departure-actions.ts` 54 · `src/components/trips/DepartureCancel.tsx` 153 · `cancel-departure-core.ts` 38 (ชิ้นแรก 50 → ย้ายตัวคิด fullRefundSplitOf ไป money-core แล้ว re-export)
+เดิม (+/−): refund.ts +51/−4 (งบ +70/−4) · money-core.ts +25/−0 (+35) · money.ts +10/−0 (+25) · booking.ts +5/−1 (+25/−2) · capacity-service.ts +9/−0 (รวม capacity* +16) · jobs.ts +2/−1 (+8/−1) · departure-desk.ts +5/−0 (+14/−2) · departures.ts 0 (ไม่ต้อง export — lockDeparture/releaseUsesTx มาจาก resources.ts อยู่แล้ว) · departure-screens.ts +8/−1 (+45/−2) · booking-screens.ts +11/−0 (+30) · trips-self.ts +2/−1 (+20/−2) · 4 คอมโพเนนต์ +19/−1 (+70/−6) · outbox-consumers +2 · labels +2 · index.ts +4 · th/en +31 · trips.prisma +26 (ชิ้นแรก) · scope.ts +1 (ชิ้นแรก)
+
+### การตัดสินใจ / ข้อเบี่ยง (ตามลำดับความสำคัญ)
+1. **ป้าย N4** อยู่ใน computed ของคำขอเอง (ใบเสนอ fullRefundQuoteFromReceipts คืน `path:"DEPARTURE_CANCEL", fullRefund:true, refundBp:10000` แล้ว `...quote` ของ fileRefundRequestInTx/requoteApproved พาไป) · ตัวอ่านป้าย `fullRefundOf(computed)` ใน refund.ts
+2. **อนุมัติให้เอง** ผ่านกิ่ง X12 เดิมของ fileRefundRequestInTx โดยผู้เรียกส่ง `autoApproveUpTo = INT4` (ไม่อ่านค่าตั้ง X12) — เพื่อให้ refund.ts อยู่ในงบลบ −4 · **ข้อเบี่ยง:** audit อนุมัติใช้ผู้กระทำ SYSTEM `trips.refund.autoApprove` เดิม (ไม่ใช่ `trips.departureCancel.autoApprove` ตาม §4.1) — แยกได้จาก after.auto + คำขอมีป้าย · ถ้าผู้คุมต้องการชื่องานใหม่ ต้องลบ/แก้ 1 บรรทัด (งบลบ refund.ts เต็มแล้ว)
+3. requoteApproved บนคำขอมีป้าย: คิดใหม่ด้วยสูตรเต็ม แล้ว CAS APPROVED → **APPROVED** (gen+1) + อีเวนต์ requoted + approved + audit requote + approve (SYSTEM) ในธุรกรรมเดียว · ผลยังเป็น STATE_CONFLICT QUOTE_REFRESHED (ยอดใหม่) ให้ผู้กดบันทึกโอนอีกครั้ง (RF-4 ยอมรับ)
+4. decideTripRefund บนคำขอมีป้าย: delta ≠ 0 หรือมี deductions ⇒ VALIDATION DEPARTURE_CANCEL_FULL_REFUND (ก่อนตรวจอื่น) · ปฏิเสธคำขอ (REJECT) ⇒ แถวผลกลับ PENDING · withdrawTripRefund ⇒ แถวผลกลับ PENDING (refundRequestId = NULL · ประวัติอยู่ใน audit)
+5. **รั้ว requestCore** อ่าน cancelKind ใต้ล็อกแถวการจอง (อ่านไม่ล็อก · N14) ก่อนด่านอื่นใน tx · cancelTripBooking (QUOTE/EXECUTE ของการจองที่ขายแล้ว) ตรวจก่อนด้วย (ครอบ quoteBookSelfCancel) · trips-self mapService: เหตุ DEPARTURE_CANCELLED_USE_RESOLVE ⇒ `NOT_ALLOWED` + `reason` (หน้าลูกค้าแสดงสถานะ = b)
+6. **ยกเลิกรอบไม่ขยับ version ของการจองที่ยืนยันแล้ว** (ถ้าขยับ คำขอลูกค้าที่อ่านรุ่นไว้ก่อนจะได้ STATE_CONFLICT เปล่าแทน DEPARTURE_CANCELLED_USE_RESOLVE — CD-11) · ผลคือ resolve รับ expectedVersion ติดลบได้ (ผิดรุ่นใด ๆ ⇒ STATE_CONFLICT ไม่ใช่ VALIDATION · NM-1)
+7. **version ของรอบ**: การปล่อยถือที่ใน tx ขยับ version ทุกครั้ง (statusAfter ของ capacity.ts) — UPDATE สุดท้ายตั้ง `version = ที่ผู้ยกเลิกเห็น + 1` (ถือแถวรอบตลอด ค่าระหว่างทางไม่มีใครเห็น) ⇒ CD-2 "version +1" และ CAS ของจอทำงานตามเดิม
+8. รายการรอ WAITING ปิดก่อนปล่อยถือที่ (ไม่งั้น releaseCoreTx เสนอที่ว่างให้รายการรอ ⇒ ถือที่ WAITLIST_OFFER ACTIVE ค้างบนรอบยกเลิก) แล้วกวาด WAITING/OFFERED อีกครั้งหลังปล่อย
+9. N13: payTx (money.ts) เมื่อรอบมี cancelKind ⇒ ถอนคำขอเปิดก่อนบรรทัด openRefundOf เดิม (ไม่แตะบรรทัดเดิม · งบลบ money.ts = 0) แล้วยื่นใหม่หลัง CAS การจอง ผ่าน `withdrawForPaymentInTx` ของ cancel-departure.ts (import แบบ dynamic ในฟังก์ชัน — กันวง import money ↔ cancel-departure) · ไม่มีคำขอเปิด ⇒ รับเงินอย่างเดียว (นับเข้ายอดคืนตอนร้านกดคืน)
+10. ทางไม่มีเงิน `settleNoMoneyInTx`: ลำดับล็อกเดียวกับบันทึกโอนคืน (1a คืนที่นั่ง → 2b การจอง → แถวผล FOR UPDATE) · การจอง CANCELLED ผ่าน transitionBookingInTx · audit `trips.booking.cancel_choice` ใช้ auditTx (actor USER)
+11. **ตัวกรองรายการการจอง** ผ่านช่อง `dep` เดิมของ URL (`dep=cancel:pending|cancel:overdue` + `when=all`) — หน้า `bookings/page.tsx` และ `BOOKING_LIST_CHIPS` (booking-view-core) อยู่นอกขอบเขต แก้ไม่ได้ · ตัวโหลดแปลงค่าแล้วล้าง dep/หน้าต่างวัน · "ป้ายแถว" ในตารางยังไม่ทำ (BookingsTable อยู่นอกงบ)
+12. **กล่องตัดสินต่ำกว่าขั้นต่ำ (DecideDialog) ไม่แก้**: ปุ่ม CANCEL ของกล่องนี้ปิดอยู่แล้วเมื่อรอบมีคน (cancelBlocked) ⇒ จอไม่ส่งฟิลด์ใหม่ · ผู้ใช้ยกเลิกรอบต่ำกว่าขั้นต่ำที่มีคนผ่านปุ่มใหม่ (เลือกเหตุ "คนไม่ครบขั้นต่ำ") · บริการ/ action decideBelowMin รับฟิลด์ใหม่ครบ (CD-12 AC-4)
+13. ข้อความอังกฤษใช้ "THB {x}" (อักษร ฿ อยู่ในช่วงอักษรไทย U+0E3F ⇒ S-8/PG "อังกฤษไม่มีอักษรไทย")
+14. คำเตือนโอนค้าง: เวลาอนุมัติ = `computed.requotedAt ?? computed.quotedAt` ของคำขอมีป้าย (อนุมัติพร้อมยื่น/คิดใหม่เสมอ · นาฬิกาที่ฉีด) — ไม่ใช้ AuditLog.createdAt (นาฬิกาฐาน) · 3 วันเป็นค่าคงที่ตามมติ N5 (ซ้ำในคอมโพเนนต์ 1 จุดเพื่อแสดงข้อความ)
+15. ผู้ไม่มีเงินใน action FORBIDDEN: action คืน `{ ok:false, code:"FORBIDDEN" }` ก่อนอ่านข้อมูลใด · บริการตรวจสิทธิ์ซ้ำเอง (N3) · action ใช้ `auth.active` เป็น MembershipCtx ตรง ๆ
+
+### ผลข้อสอบ (รันสุดท้าย)
+- `qc-trips-t1.6` **66/68** (PC 9/9 · S 8/8 · P 5/5 · CD 13/13 · GD 4/5 · RF 9/9 · NM 5/5 · RC 3/3 · AC 4/4 · PG 4/4 · PM 2/3)
+  - **GD-1 — ข้อสอบผิด (ตัวควบคุม):** การจอง qa ถูกจองก่อนข้อสอบตั้ง `trips.pay.overdueAction = AUTO_RELEASE` ⇒ snapshot ของ qa จด NOTIFY_SHOP · markTripDueOverdue อ่าน T17 จาก snapshot (money.ts `snapshotValue(... "trips.pay.overdueAction")`) ⇒ qa ได้ OVERDUE แต่ไม่มีคำขอ AUTO_RELEASE ไม่ว่าโค้ดใบนี้ทำอะไร · ส่วนที่เป็นของใบ (งวด b2 b3 b11 ไม่เปลี่ยน · ไม่มี outbox/คำขอใหม่) ผ่าน · แก้ได้โดยตั้งค่าก่อนจอง qa
+  - **PM-3 — ข้อสอบขัดกับ §7 และ rbac เดิม:** `checkNoEscalation` (staff/service.ts:206) ให้ MANAGER แจกคีย์ใดก็ได้ เพราะ rbac ให้ MANAGER ผ่านทุกคีย์ (rbac.ts ~:127) — PM-1 ก็ต้องการให้ MANAGER ยกเลิกรอบได้ (= มี refund.approve โดยปริยาย) · §7 ช่อง "แจก" เขียนว่า "คีย์ปกติ" · ทำให้เขียวต้องแก้ `src/lib/staff/**` (ห้าม) ⇒ ไม่แตะ · เสนอผู้คุม: ตัดข้อ หรือออกมติให้ trips.refund.approve เป็นคีย์เฉพาะเจ้าของ (ใบอื่น)
+- ข้างเคียง (รันครั้งเดียว):
+  - `qc-trips-t0.7` 148/150 — **S-3** (money-core import ได้แค่ zod/money-math/snapshot/booking-core) แดงในรันนั้นเพราะ money-core import ./cancel-departure-core → **แก้แล้วหลังรัน** (ย้าย fullRefundSplitOf เข้า money-core · cancel-departure-core re-export) — ยังไม่ได้รัน t0.7 ซ้ำ (คำสั่งรันครั้งเดียว) · **S-15** ขอบเขต (migration · trips.prisma · capacity-service.ts) = ORACLE-EDIT ที่คาด (C9 ขอบเขต)
+  - `qc-trips-t1.2` 96/98 — **DA-5** CANCEL รอบที่มีถือที่ ⇒ ได้ FORBIDDEN (ทางใหม่ N3 ตรวจ refund.approve) แทน HAS_BOOKINGS = ORACLE-EDIT ที่คาด (C9 HAS_BOOKINGS ของตัวตัดสิน) · **S-13** ขอบเขต capacity-service/jobs = ORACLE-EDIT ขอบเขต (ไฟล์อยู่ในงบ §1)
+  - `qc-trips-w1.3` 118/120 — **S-5** "changeImpl ต้องไม่เปลี่ยนจาก BASE" (รั้ว §6 ใน changeImpl ตามใบ) · **S-10** ขอบเขตไฟล์ = ORACLE-EDIT ขอบเขต (C9)
+  - ไม่มีข้อแดงประเภท "โค้ดขัดมติ" ใน t0.7 (รั้ว requote/decide/withdraw และ "คำขอเปิด ⇒ รับเงินไม่ได้" ยังเขียวบนรอบปกติ)
+- typecheck (ครั้งเดียว): 1 error `cancel-departure.ts:363` (`tr.value` หลัง `abort()` ที่ TS ไม่ narrow) → แก้เป็น `return abort(...)` หลังรัน · **ยังไม่ได้ typecheck ซ้ำ** (คำสั่ง: ครั้งเดียว) — การแก้เป็นบรรทัดเดียว ชนิดถูกแน่นอน แต่ผู้คุมควรรันซ้ำ
+- fitness (ครั้งเดียว · หลังแก้ money-core แต่ก่อนแก้บรรทัด abort): **54/54** · CRITICAL 0 MAJOR 0 MINOR 0
+- รัน qc-trips-t1.6 ครั้งสุดท้ายบนสถานะปัจจุบัน (หลังทุกการแก้): 66/68 เหมือนเดิม (GD-1 · PM-3) · ร้าน/ผู้ใช้ชั่วคราวค้าง 0
+
+### ยังไม่ได้ทำ/ตรวจ
+- ภาพ (1440/390 th/en) · กดจริง 2 แท็บ · migration ลงฐาน QC TRIPS อีก 2 ฐาน · `prisma migrate diff` · ป้ายแถวในตาราง · DecideDialog (ข้อ 12) · scripts/trips-ui-inventory.json (ไม่ได้เพิ่ม testid ใหม่)
+- การยกเลิกพร้อมถือที่โควตาเอเจนซี่ (qtyAllot > 0) — releaseCoreTx ปฏิเสธ AGENCY_NOT_ENABLED ⇒ ยกเลิกรอบล้มทั้งก้อน (วันนี้สร้างไม่ได้จน A1.4)

@@ -598,4 +598,8 @@ export type { TripReportVM, ReportTotals, ReportPeriodVM, ReportLoadVM, ReportLe
 // TRIPS T1.6a1 ▸ ร้านยกเลิกรอบที่มีคนจอง (ใบสั่ง ledger/trips-briefs/T1.6.md · a1) — ตัวช่วยบริสุทธิ์ (บริการ/action ยังไม่สร้าง · ดู ledger/wo-notes/trips-T1.6a1.md) ◂
 export { CANCEL_KINDS, CANCEL_OUTCOMES, CONSENT_CHANNELS, decideByOf, cancelOptionsOf, cancelOutcomeOf, fullRefundSplitOf } from "./cancel-departure-core";
 export type { CancelKind, CancelOutcome, ConsentChannel, CancelReceipt } from "./cancel-departure-core";
+export { cancelDepartureWithBookings, resolveCancelledBooking } from "./cancel-departure";
+export type { CancelDepartureValue, CancelFail, ResolveValue } from "./cancel-departure";
+export { fullRefundQuoteFromReceipts } from "./money-core";
+export type { FullRefundQuote } from "./money-core";
 // ── /T1.6a1 cancel-departure ──

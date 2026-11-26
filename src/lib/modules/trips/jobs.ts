@@ -266,7 +266,8 @@ const GRACE_SQL = Prisma.sql`(CASE WHEN (b."policySnapshot"->'policy'->'trips'->
   THEN (b."policySnapshot"->'policy'->'trips'->'values'->>'trips.pay.overdueGraceHours')::int ELSE 0 END)`;
 /** การจองที่ยังค้างจ่ายและไม่มีคำขอคืนเงินเปิด (ดัชนี TripRefundRequest_bookingId_idx ในเงื่อนไข NOT EXISTS) */
 const LIVE_BOOKING_SQL = Prisma.sql`b."status" IN ('CONFIRMED', 'PART_PAID')
-  AND NOT EXISTS (SELECT 1 FROM "TripRefundRequest" r WHERE r."bookingId" = b."id" AND r."tenantId" = b."tenantId" AND r."status" IN ('REQUESTED', 'QUOTED', 'APPROVED', 'EXECUTING', 'FAILED'))`;
+  AND NOT EXISTS (SELECT 1 FROM "TripRefundRequest" r WHERE r."bookingId" = b."id" AND r."tenantId" = b."tenantId" AND r."status" IN ('REQUESTED', 'QUOTED', 'APPROVED', 'EXECUTING', 'FAILED'))
+  AND NOT EXISTS (SELECT 1 FROM "TripDeparture" x WHERE x."id" = b."departureId" AND x."tenantId" = b."tenantId" AND x."cancelKind" IS NOT NULL)`; // T1.6a1 §6 ▸ รอบที่ร้านยกเลิก: ไม่เตือน/ไม่ OVERDUE/ไม่ AUTO_RELEASE ◂
 type DueCursor = { at: string; id: string } | null;
 /** เพดานการลองยื่น AUTO_RELEASE ซ้ำต่อรอบงาน (มติ r2 W5 · ค่าทางเทคนิค ไม่ใช่ตัวเลขธุรกิจ) */
 const AUTO_RELEASE_RETRY_CAP = 50;

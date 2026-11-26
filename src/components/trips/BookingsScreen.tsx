@@ -13,6 +13,7 @@ import { NotYetButton, bkHref, useBkText, type BkQuery, type BkView } from "./Bo
 import BookingsTable from "./BookingsTable";
 import BookingDocs from "./BookingDocs";
 import BookingDrawer from "./BookingDrawer";
+import { cancelListHref } from "./DepartureCancel"; // TRIPS T1.6a1 ◂
 import { CashDialog } from "./BookingDialogs";
 
 const WHENS = ["upcoming", "today", "tomorrow", "next7", "past30", "all"] as const;
@@ -222,6 +223,13 @@ export default function BookingsScreen({
             <Link data-testid="trips-bk-chip-attention" href={bkHref(base, q, { chip: "attention", b: null })} scroll={false} aria-current={q.chip === "attention" ? "true" : undefined} className={`${CHIP_ALERT} ${q.chip === "attention" ? "outline outline-2 outline-offset-2 outline-[color:var(--color-ink)]" : ""}`}>
               <span aria-hidden="true">⚠</span>
               {t("bookings.chip.attention", { n: chips.attention })}
+            </Link>
+            {/* TRIPS T1.6a1 ▸ การจองของรอบที่ร้านยกเลิก: รอทางเลือก / เลยกำหนดเลือก ◂ */}
+            <Link data-testid="trips-bk-filter-cancel-pending" href={cancelListHref(unitSlug, "pending")} scroll={false} aria-current={q.dep === "cancel:pending" ? "true" : undefined} className={chipCls("cancel:pending")}>
+              {t("depCancel.filterPending")}
+            </Link>
+            <Link data-testid="trips-bk-filter-cancel-overdue" href={cancelListHref(unitSlug, "overdue")} scroll={false} aria-current={q.dep === "cancel:overdue" ? "true" : undefined} className={chipCls("cancel:overdue")}>
+              {t("depCancel.filterOverdue")}
             </Link>
           </nav>
 

@@ -18,6 +18,7 @@ import { DEPARTURE_SELL_CHANNELS, addDaysYmd, hhmm, normalizeTimezone, utcToLoca
 import { publicLeftOf } from "./capacity-core";
 import { departureMoneyForPanel, type DepartureMoneyVM } from "./costs"; // TRIPS T1.7a1 ▸ การ์ดเงินของแผงรอบ ◂
 import { tripScheduleExceptionsSchema, tripScheduleRuleSchema } from "./json-schemas";
+import { departureCancelSummaryOf, type DepartureCancelVM } from "./cancel-departure"; // TRIPS T1.6a1 ◂
 import { TRIPS_PRODUCT_VIEW_ANY, tripsFail, tripsUnitGate, type TripsFail, type TripsScreenCtx, type TripsUnitGate } from "./pickup";
 import {
   calendarMonthDays,
@@ -625,7 +626,9 @@ export type DeparturePanelVM = Omit<DeparturePanelBase, "money" | "actions" | "w
   /** ด่าน: ดูรอบ ∧ (ดูการจอง ∨ ดูรายงาน ∨ เห็นต้นทุน) · ช่องต้นทุน/คอมฯ/กำไร = null เมื่อไม่เห็นต้นทุน · ตัวคิดล้ม ⇒ null + คำเตือน MONEY_UNAVAILABLE (Q7) */
   money: DepartureMoneyVM | null;
   /** costs ตั้งเสมอก่อนคืน VM (Object.assign · งบบรรทัดของไฟล์นี้) */
-  actions: PanelActions & { costs?: boolean };
+  actions: PanelActions & { costs?: boolean; cancelWithBookings?: boolean };
+  /** TRIPS T1.6a1 ▸ กล่องยืนยันยกเลิกรอบที่มีคน + การ์ดสถานะหลังร้านยกเลิก (null = รอบว่างที่ยังไม่ยกเลิก) ◂ */
+  cancel: DepartureCancelVM | null;
   warnings: (DeparturePanelBase["warnings"][number] | { code: "MONEY_UNAVAILABLE" })[];
 };
 const SEAT_ORDER = ["ADULT", "CHILD", "INFANT"];
@@ -772,6 +775,9 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
   // TRIPS T1.7a1 ▸ เงินของรอบ (ไม่เขียนสูตรซ้ำ — costs.ts) ◂
   const { money, costs: costsAction, failed: moneyFailed } = await departureMoneyForPanel(g, { id: d.id, status: d.status, endsAt: new Date(d.endsAt), capacity: d.capacity, sold: d.sold }, prod.sourceKind, now);
   Object.assign(actions, { costs: costsAction });
+  // TRIPS T1.6a1 ▸ ยกเลิกรอบที่มีคน: departure.status ∧ refund.approve (บริการตรวจซ้ำ · N3) ◂
+  const cancelVm = people > 0 || d.status === "CANCELLED" ? await departureCancelSummaryOf(g.db as unknown as Parameters<typeof departureCancelSummaryOf>[0], g, d.id, now) : null;
+  Object.assign(actions, { cancelWithBookings: !started && d.status !== "CANCELLED" && people > 0 && flags.canStatus && g.can("trips.refund.approve") });
 
   // ── คำเตือน: ความจุเกินที่นั่งรวมของเรือที่มอบให้ (หนี้ T0.3 §12 ข้อ 10 · ไม่บล็อก) ──
   const boats = resources.filter((r) => r.kind === "BOAT" && typeof r.seats === "number");
@@ -802,6 +808,7 @@ export async function loadDeparturePanelVM(ctx: TripsScreenCtx, input: unknown, 
       money,
       actions,
       cancelBlocked: people > 0,
+      cancel: cancelVm,
       // ผลหลังถอน = สถานะช่องของรอบเดียวกันเมื่อเป็น OPEN (ลำดับตัดสินเดียวกัน: เต็มชนะต่ำกว่าขั้นต่ำ)
       unguaranteeToBelowMin: d.status === "GUARANTEED" && departureCellState({ ...d, status: "OPEN" }, { now, today, lowAtOrBelow: null }) === "BELOW_MIN",
       channels: [...DEPARTURE_SELL_CHANNELS],

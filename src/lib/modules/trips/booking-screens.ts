@@ -19,6 +19,7 @@ import { isCalendarYmd } from "./departure-view-core";
 import { TRIP_REFUND_OPEN_STATUSES, TRIP_TENDERS } from "./money-core";
 import { tripMoneySummary } from "./money";
 import { listTripRefunds } from "./refund";
+import { CANCEL_OVERDUE_DEP, CANCEL_PENDING_DEP, bookingCancelChoiceOf, type BookingCancelChoiceVM } from "./cancel-departure"; // TRIPS T1.6a1 ◂
 import { tripsFail, tripsUnitGate, type TripsFail, type TripsScreenCtx, type TripsUnitGate } from "./pickup";
 import {
   BOOKING_ATTENTION_KINDS,
@@ -174,6 +175,7 @@ type BaseFilter = {
   dep: string | null;
   code: string | null;
   text: { agentRef: string; partyIds: string[] } | null;
+  cancel?: { overdueAt: string | null }; // TRIPS T1.6a1 ▸ รอทางเลือกของรอบที่ร้านยกเลิก (overdueAt = เลยเส้นตาย ณ เวลานี้ · N1) ◂
 };
 /** เงื่อนไขของชุดฐาน B (ร้าน + หน่วย + หน้าต่างวัน + สินค้า + ช่องทาง + รอบ + ค้น) */
 function baseWhere(g: TripsUnitGate, f: BaseFilter, p: Params): string {
@@ -187,6 +189,10 @@ function baseWhere(g: TripsUnitGate, f: BaseFilter, p: Params): string {
   if (f.dep) w.push(`b."departureId" = ${p.add(f.dep)}`);
   if (f.code) w.push(`b."code" = ${p.add(f.code)}`);
   if (f.text) w.push(`(b."agentRef" = ${p.add(f.text.agentRef)} OR b."bookerPartyId" = ANY(${p.add(f.text.partyIds)}::text[]))`);
+  if (f.cancel) {
+    const due = f.cancel.overdueAt ? ` AND x."cancelDecideBy" < ${p.add(f.cancel.overdueAt)}::timestamp` : "";
+    w.push(`EXISTS (SELECT 1 FROM "TripDepartureCancelOutcome" o JOIN "TripDeparture" x ON x."id" = o."departureId" AND x."tenantId" = o."tenantId" WHERE o."bookingId" = b."id" AND o."departureId" = b."departureId" AND o."tenantId" = b."tenantId" AND o."choice" = 'PENDING'${due})`);
+  }
   return w.join(" AND ");
 }
 /** เงื่อนไขของคิวรีชุด "ของการจองชุดนี้" (ร้าน + หน่วย + bookingId ∈ ids) — alias เป็นค่าคงที่ของไฟล์ */
@@ -286,6 +292,8 @@ export type BookingDetailVM = {
   travellers: { seats: number; names: string[]; formsAvailable: false };
   refunds: { requestId: string; status: string; amountSatang: number; createdLocal: string }[];
   actions: { pay: boolean; qr: boolean; approve: boolean; reject: boolean; cancel: boolean; change: false; refund: false };
+  /** TRIPS T1.6a1 ▸ ทางออกบนรอบที่ร้านยกเลิก (null = รอบปกติ) ◂ */
+  cancelChoice: BookingCancelChoiceVM | null;
 };
 export type BookingDocsVM = {
   unit: BookingUnitVM;
@@ -482,6 +490,8 @@ export async function loadBookingListVM(ctx: TripsScreenCtx, input: unknown, opt
     code,
     text: queryMode === "text" && p.q ? { agentRef: p.q, partyIds: matches.map((m) => m.id) } : null,
   };
+  // TRIPS T1.6a1 ▸ ตัวกรอง "รอทางเลือก" / "เลยเส้นตาย" (ทุกวันเดินทาง) ◂
+  if (p.dep === CANCEL_PENDING_DEP || p.dep === CANCEL_OVERDUE_DEP) Object.assign(filter, { dep: null, from: null, to: null, cancel: { overdueAt: p.dep === CANCEL_OVERDUE_DEP ? now.toISOString() : null } });
 
   // ── ชิป + จำนวน + ยอดรวม: คิวรีรวมบนชุดฐาน (ไม่นับจากแถวที่ถูกตัด) ──
   const ap = newParams();
@@ -630,6 +640,7 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
       travellers: { seats, names: passengers.map((x) => x.fullName).filter((n) => n.trim() !== ""), formsAvailable: false },
       refunds: refundList.ok ? refundList.value.items.map((r) => ({ requestId: r.id, status: r.status, amountSatang: r.amountSatang, createdLocal: localYmd(unit.tz, r.createdAt) })) : [],
       actions: { pay, qr: pay, approve, reject: approve, cancel: g.can(CANCEL) && UNPAID_CANCEL_STATUSES.includes(b.status), change: false, refund: false },
+      cancelChoice: await bookingCancelChoiceOf(g.db as unknown as Parameters<typeof bookingCancelChoiceOf>[0], g, b, now, { refund: g.can("trips.refund.request"), close: g.can(CANCEL) }),
     },
   };
 }

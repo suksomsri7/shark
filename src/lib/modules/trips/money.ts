@@ -142,6 +142,11 @@ export async function openRefundOf(db: Tx, g: { tenantId: string; unitId: string
     SELECT "id" FROM "TripRefundRequest" WHERE "bookingId" = ${bookingId} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = ANY(${OPEN_REFUND}::text[]) LIMIT 1`;
   return rows[0]?.id ?? null;
 }
+/** T1.6a1 ▸ เหตุที่ร้านยกเลิกรอบ (null = รอบปกติ) — อ่านไม่ล็อก หลังผู้เรียกล็อกแถวการจองแล้ว (ใบสั่ง T1.6 §6 · N14) ◂ */
+export async function departureCancelKindOf(db: Tx, g: { tenantId: string; unitId: string }, departureId: string): Promise<string | null> {
+  const rows = await db.$queryRaw<{ k: string | null }[]>`SELECT "cancelKind" AS "k" FROM "TripDeparture" WHERE "id" = ${departureId} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
+  return rows[0]?.k ?? null;
+}
 
 // ═══════════════════════ audit · outbox ═══════════════════════
 export type MoneyAuditVal = Record<string, string | number | boolean | null>;
@@ -468,6 +473,8 @@ async function payTx(tx: Tx, c: Ctx, g: Gate, v: PayInput, base: string, keyHash
   if (b.status !== pre.status) throw new BookingAbort("STATE_CONFLICT");
   const sg = payableStatusGate(b) ?? moneyBookingGate(b);
   if (sg) abortOf(sg);
+  // T1.6a1 N13 ▸ รอบที่ร้านยกเลิก: รับเงินได้ · คำขอคืนเต็มที่เปิดอยู่ถูกถอนก่อน แล้วยื่นใหม่ (ยอดใหม่) หลังบันทึกเงินในธุรกรรมเดียวกัน ◂
+  const refile = (await departureCancelKindOf(tx, g, b.departureId)) ? await (await import("./cancel-departure")).withdrawForPaymentInTx(tx, c, g, b) : null;
   if (await openRefundOf(tx, g, b.id)) throw new BookingAbort("STATE_CONFLICT", { reason: "REFUND_IN_PROGRESS" });
   const payable = payableOfSnapshot(b.policySnapshot);
   const vatCtx = receiptVatCtxOf(b.policySnapshot);
@@ -514,6 +521,7 @@ async function payTx(tx: Tx, c: Ctx, g: Gate, v: PayInput, base: string, keyHash
     RETURNING "version", "paidSatang"`;
   const nb = cas[0];
   if (!nb) throw new BookingAbort("STATE_CONFLICT");
+  if (refile) await refile(); // T1.6a1 N13
   // 2h
   const evts: MoneyEvt[] = events.map((e) => ({ type: "trips.payment.received", key: e.id, payload: { dueId: e.dueId, bookingId: b.id, amountSatang: e.amountSatang, dueAt: new Date(e.dueAt).toISOString() } }));
   if (to !== b.status) {
@@ -633,6 +641,7 @@ export async function tripPaymentIntent(ctx: unknown, input: unknown): Promise<S
       b = rows[0] ? await readMoneyBooking(db, g, rows[0].id) : null;
     } else b = await readMoneyBooking(db, g, v.bookingId);
     if (!b) return NF();
+    if (await departureCancelKindOf(db, g, b.departureId)) return sellFail("STATE_CONFLICT", { reason: "DEPARTURE_CANCELLED" }); // T1.6a1 §4.5 ▸ ไม่ขอเงินเพิ่ม ◂
     const gate = moneyBookingGate(b) ?? payableStatusGate(b);
     if (gate) return gate;
     // มติ r1 V6: HOLD ต้องมี hold ACTIVE ที่ยังไม่หมดเวลา ณ ctx.now ทุกตัว (กติกาเดียวกับ CAS ของ convertHoldForBookingInTx ในเส้นรับเงิน) — ไม่ออก QR ให้เงินที่จะถูกปฏิเสธ
@@ -840,6 +849,7 @@ export async function markTripDueOverdue(g: Gate, due: { id: string; bookingId: 
     const base = { bookingStatus: b.status, bookingVersion: b.version, autoReleased: false };
     if (!d || (b.status !== "CONFIRMED" && b.status !== "PART_PAID")) return { overdue: false, dueStatus: d?.status ?? null, overdueAction: null, ...base };
     if (await openRefundOf(tx, g, b.id)) return { overdue: false, dueStatus: d.status, overdueAction: null, ...base };
+    if (await departureCancelKindOf(tx, g, b.departureId)) return { overdue: false, dueStatus: d.status, overdueAction: null, ...base }; // T1.6a1 §6 รั้วในตัว
     let action: unknown;
     try {
       action = snapshotValue(b.policySnapshot, "trips", "trips.pay.overdueAction");

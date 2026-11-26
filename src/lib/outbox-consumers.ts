@@ -1550,6 +1550,8 @@ const baseConsumers: Record<string, OutboxHandler> = {
   "trips.departure.status_changed": withAutomation(async () => {}),
   "trips.departure.below_min": withAutomation(async () => {}),
   "trips.departure.cancelled": withAutomation(async () => {}),
+  "trips.booking.cancel_choice_offered": withAutomation(async () => {}), // TRIPS T1.6a1 ▸ ร้านยกเลิกรอบ: เสนอทางเลือกต่อการจอง (ข้อความจริง = T1.8) ◂
+  "trips.booking.cancel_choice_made": withAutomation(async () => {}), // TRIPS T1.6a1 ▸ บันทึกทางเลือกแล้ว (คืนเต็ม/ปิดไม่มีเงิน) ◂
   // ◂ TRIPS T0.3
   // ── T0.5 pricing ── TRIPS T0.5 ▸ ราคา/โค้ดส่วนลด — ยิงจาก trips/prices.ts · trips/promo.ts ในธุรกรรมเดียวกับงานหลัก ·
   //   payload = id/จำนวน/สตางค์ล้วน (ไม่มีตัวโค้ด/ผู้ติดต่อ) · งานหลัก no-op + กฎอัตโนมัติ/เว็บฮุค ◂

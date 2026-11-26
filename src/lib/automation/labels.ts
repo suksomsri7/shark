@@ -407,6 +407,8 @@ export const AUTOMATION_EVENTS: AutomationEventDef[] = [
   { value: "trips.departure.status_changed", label: "เมื่อสถานะรอบเปลี่ยน" },
   { value: "trips.departure.below_min", label: "เมื่อรอบต่ำกว่าขั้นต่ำ ณ เวลาตัดสิน" },
   { value: "trips.departure.cancelled", label: "เมื่อยกเลิกรอบ" },
+  { value: "trips.booking.cancel_choice_offered", label: "เมื่อร้านยกเลิกรอบแล้วเสนอทางเลือกให้การจอง" },
+  { value: "trips.booking.cancel_choice_made", label: "เมื่อบันทึกทางเลือกของการจองในรอบที่ร้านยกเลิก" },
   // ◂ TRIPS T0.3
   // ── T0.5 pricing ── TRIPS T0.5 ▸ ตัวยิง trips/prices.ts · trips/promo.ts · payload id/จำนวน/สตางค์ล้วน · เว็บฮุคได้จาก spread (ห้ามประกาศซ้ำที่ webhooks) ◂
   { value: "trips.price.changed", label: "เมื่อแก้ราคา/ฤดูกาล/กฎราคาทัวร์" },

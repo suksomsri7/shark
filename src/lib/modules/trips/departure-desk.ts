@@ -7,6 +7,7 @@
 // ─────────────────────────────────────────────────────────────
 import { z } from "zod";
 import { cancelDeparture, setDepartureStatus } from "./departures";
+import { cancelDepartureWithBookings } from "./cancel-departure"; // TRIPS T1.6a1 ▸ CANCEL บนรอบที่มีคน (N3) ◂
 import { hhmm, utcToLocal } from "./departures-core";
 import { gateUnit, isFail, unitDb, type TripCtx, type TripOpts } from "./resources";
 import { departureCellState, encodeMergeReason, isMergeTarget, looksLikeReasonCode, parseReason } from "./departure-view-core";
@@ -35,6 +36,7 @@ const INPUT = z
     decision: z.enum(["RUN", "CANCEL", "MERGE"]),
     reason: REASON.optional(),
     targetDepartureId: ID.optional(),
+    confirmBookings: z.number().int().min(0).optional(), expectedVersion: z.number().int().min(0).optional(), idempotencyKey: z.string().optional(), // TRIPS T1.6a1 ▸ บังคับเฉพาะรอบที่มีคน (มติรอบ 2) ◂
   })
   .refine((v) => v.decision !== "CANCEL" || v.reason !== undefined, { message: "ยกเลิกต้องมีเหตุผล" })
   .refine((v) => (v.decision === "MERGE") === (v.targetDepartureId !== undefined), { message: "รวมรอบต้องเลือกเป้า (และส่งเป้าได้เฉพาะรวมรอบ)" });
@@ -67,6 +69,9 @@ export async function decideBelowMin(ctx: TripCtx, input: unknown, opts?: TripOp
     return r.ok ? { ok: true, decision: "RUN", status: r.status } : r;
   }
   if (v.decision === "CANCEL") {
+    // TRIPS T1.6a1 ▸ รอบที่มีคน ⇒ ยกเลิกทางใหม่ kind MIN_NOT_MET (สิทธิ์ departure.status ∧ refund.approve ตรวจในบริการ) · รอบว่างคงทางเดิม ◂
+    const w = row.sold + row.held + row.reserved > 0 ? await cancelDepartureWithBookings(ctx, { unitId: g.unitId, departureId: row.id, kind: "MIN_NOT_MET", reason: v.reason ?? "", confirmBookings: v.confirmBookings, expectedVersion: v.expectedVersion, idempotencyKey: v.idempotencyKey }, opts) : null;
+    if (w) return w.ok ? { ok: true, decision: "CANCEL", status: "CANCELLED" } : w;
     const r = await cancelDeparture(ctx, { unitId: g.unitId, departureId: row.id, reason: v.reason ?? "" }, opts);
     return r.ok ? { ok: true, decision: "CANCEL", status: r.status } : r;
   }

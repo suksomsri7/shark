@@ -51,7 +51,7 @@ export type SelfField = "phone" | "nonce" | "seen";
 export type SelfFail = {
   ok: false;
   code: SelfErrorCode;
-  reason?: "LIMIT" | "LOCKED" | "LIMITER_DOWN" | "NO_CLIENT";
+  reason?: "LIMIT" | "LOCKED" | "LIMITER_DOWN" | "NO_CLIENT" | "DEPARTURE_CANCELLED_USE_RESOLVE"; // TRIPS T1.6a1 ▸ รอบที่ร้านยกเลิก (หน้าแสดงสถานะ = T1.6b) ◂
   retryAfterSec?: number;
   fields?: SelfField[];
   block?: SelfBlock;
@@ -421,6 +421,7 @@ export async function quoteBookSelfCancel(input: { shop: unknown; token: unknown
 type ServiceFail = { ok: false; code: string; details?: Record<string, unknown> };
 /** รหัสบริการ → รหัสหน้า (§3.2 · ที่ถือหมด/ถูกกวาดระหว่างทาง ⇒ STATE_CHANGED · มติ L9) */
 function mapService(r: ServiceFail): SelfFail {
+  if (r.details?.reason === "DEPARTURE_CANCELLED_USE_RESOLVE") return fail("NOT_ALLOWED", { reason: "DEPARTURE_CANCELLED_USE_RESOLVE" }); // TRIPS T1.6a1 §6 ▸ ลูกค้ายกเลิกเองไม่ได้ ◂
   switch (r.code) {
     case "STATE_CONFLICT":
     case "HOLD_EXPIRED":

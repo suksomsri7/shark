@@ -491,6 +491,11 @@ export async function releaseHold(ctx: unknown, input: unknown): Promise<SellRes
 }
 
 // ═══════════════════════ คืน · ย้าย (งานของร้าน) ═══════════════════════
+/** TRIPS T1.6a1 §6 ▸ คืน/ย้ายด้วยมือบนรอบที่ร้านยกเลิก ⇒ ปฏิเสธ (ทาง T1.6 ใช้ returnSoldInTx/moveCoreTx ในธุรกรรมของตัวเอง ไม่ผ่านบริการนี้) ◂ */
+async function shopCancelledFail(g: Gate, ids: readonly string[]) {
+  const rows = await unitClient(g).$queryRaw<{ id: string }[]>`SELECT "id" FROM "TripDeparture" WHERE "id" = ANY(${[...ids]}::text[]) AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "cancelKind" IS NOT NULL LIMIT 1`;
+  return rows.length ? sellFail("STATE_CONFLICT", { reason: "DEPARTURE_CANCELLED_USE_RESOLVE" }) : null;
+}
 export async function returnSold(ctx: unknown, input: unknown): Promise<SellResult<CountersValue>> {
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
@@ -502,6 +507,8 @@ export async function returnSold(ctx: unknown, input: unknown): Promise<SellResu
   if (!g) return sellFail("NOT_FOUND");
   const deps = await depRefs(g, [p.data.departureId]);
   if (!deps.length) return sellFail("NOT_FOUND");
+  const sc = await shopCancelledFail(g, [p.data.departureId]);
+  if (sc) return sc;
   const policies = await optionalPolicies(g, deps, pc.c.clock.now);
   return runTxC(g, pc.c, (tx) => returnCoreTx(tx, g, pc.c, p.data, policies));
 }
@@ -516,6 +523,8 @@ export async function moveSold(ctx: unknown, input: unknown): Promise<SellResult
   if (!g) return sellFail("NOT_FOUND");
   const deps = await depRefs(g, [p.data.fromDepartureId, p.data.toDepartureId]);
   if (deps.length !== 2) return sellFail("NOT_FOUND");
+  const sc = await shopCancelledFail(g, [p.data.fromDepartureId, p.data.toDepartureId]);
+  if (sc) return sc;
   let policies: CapacityPolicies;
   try {
     policies = await policiesFor(g, deps, pc.c.clock.now);

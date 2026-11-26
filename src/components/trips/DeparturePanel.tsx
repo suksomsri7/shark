@@ -13,8 +13,9 @@ import { BTN, BTN_PRIMARY, ErrorLine, useRunner } from "./ProductsScreenParts";
 import { BTN_DANGER, CANCEL_STRIPES, UsedBar, calHref, useDepDates, useReasonText, useTitle, type CalQuery } from "./DepartureParts";
 import { CancelDialog, CapacityDialog, DecideDialog, PriceDialog, ResourceDialog, StopSellDialog, UnguaranteeDialog } from "./DepartureDialogs";
 import { CostMoneyCard } from "./CostParts";
+import { DepartureCancelDialog, DepartureCancelStatus } from "./DepartureCancel"; // TRIPS T1.6a1 ◂
 
-type Open = "decide" | "cancel" | "capacity" | "resources" | "price" | "stopsell" | "unguarantee" | null;
+type Open = "decide" | "cancel" | "cancelBookings" | "capacity" | "resources" | "price" | "stopsell" | "unguarantee" | null;
 /**
  * ป้ายสถานะ — รูปทรงตรงกับช่องและคำอธิบายสัญลักษณ์ 1:1: เส้นประแดง = ต่ำกว่าขั้นต่ำ · กรอบหนา = เต็ม · ลายขีด = ยกเลิก · พื้นเทา = ผ่านแล้ว
  * สถานะอื่น (เปิดขาย · เหลือน้อย · ยืนยันออก · ปิดรับ) = กรอบบางปกติ แยกด้วยคำ (ไม่ใช้รูปทรงของคำอธิบายสัญลักษณ์)
@@ -240,6 +241,11 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
             {t("departures.actions.price")}
           </button>
         ) : null}
+        {a.cancelWithBookings ? (
+          <button type="button" data-testid="trips-dep-cancel-bookings" className={`${BTN_DANGER} w-full`} onClick={() => setOpen("cancelBookings")}>
+            {t("depCancel.button")}
+          </button>
+        ) : null}
         {a.cancel ? (
           <button type="button" data-testid="trips-dep-cancel" className={`${BTN_DANGER} w-full`} onClick={() => setOpen("cancel")}>
             {t("departures.actions.cancel")}
@@ -247,7 +253,9 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
         ) : null}
       </div>
       <ErrorLine text={error} />
+      <DepartureCancelStatus unitSlug={unitSlug} vm={vm} />
 
+      {open === "cancelBookings" ? <DepartureCancelDialog unitSlug={unitSlug} vm={vm} onClose={() => setOpen(null)} /> : null}
       {open === "decide" ? <DecideDialog unitSlug={unitSlug} vm={vm} onClose={() => setOpen(null)} /> : null}
       {open === "cancel" ? <CancelDialog unitSlug={unitSlug} vm={vm} onClose={() => setOpen(null)} /> : null}
       {open === "capacity" ? <CapacityDialog unitSlug={unitSlug} vm={vm} onClose={() => setOpen(null)} /> : null}

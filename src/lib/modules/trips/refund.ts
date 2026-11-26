@@ -24,6 +24,7 @@ import { gateOf, loadCapacityPolicies, unitClient } from "./capacity-service";
 import {
   auditMoney,
   bookingEventPayload,
+  departureCancelKindOf,
   emitMoney,
   lockMoneyBookingInTx,
   lockMoneyKey,
@@ -43,6 +44,7 @@ import {
   TRIP_REFUND_ENTITY,
   TRIP_REFUND_STATUSES,
   canTransitionRefundOps,
+  fullRefundQuoteFromReceipts,
   planRefundSlices,
   receiptVatCtxOf,
   refundQuoteFromSnapshot,
@@ -54,6 +56,7 @@ import {
 import { releasePromoInTx } from "./promo";
 import { snapshotValue } from "./snapshot";
 import { canTransitionBooking } from "./state";
+import type { CancelReceipt } from "./cancel-departure-core"; // TRIPS T1.6a1 ◂
 
 // ── T0.7 refund ──
 const INT4 = 2_147_483_647;
@@ -77,6 +80,9 @@ const K_AUTO_APPROVE = "trips.cancel.autoApproveUpTo"; // X12 (ค่าปั�
 const K_MANUAL_APPROVAL = "trips.cancel.manualEditApprovalSatang"; // X13
 const APPROVAL_CONSUMED = "trips.approval.consumed";
 const AUTO_APPROVER: SellActor = { kind: "SYSTEM", job: "trips.refund.autoApprove" };
+// TRIPS T1.6a1 ▸ คำขอของรอบที่ร้านยกเลิก (ป้าย computed.path DEPARTURE_CANCEL + fullRefund · N4) · ผู้ถอนของทางนี้ ◂
+const fullRefundOf = (v: unknown): boolean => isRec(v) && v.path === "DEPARTURE_CANCEL" && v.fullRefund === true;
+const DEPARTURE_CANCEL_ACTOR: SellActor = { kind: "SYSTEM", job: "trips.departureCancel" };
 
 // ═══════════════════════ ขั้นต่ำตามประกาศคืนเงิน 2563 (ทะเบียนกฎหมาย · มติ §22 ข้อ 4 · มติ r1 V5) ═══════════════════════
 /** ขั้นต่ำ (bp) ณ จำนวนวันก่อนเดินทาง = tourRefundFloorPctAt ของ `core/settings/legal/th-tour-2569.ts` (ตารางเดียวกับ W01) · หลังวันเดินทาง ⇒ null · ระดับสูงสุด WARN */
@@ -215,7 +221,10 @@ const genOf = (c: { gen?: unknown } | null) => (c && typeof c.gen === "number" &
 
 // ═══════════════════════ ใบเสนอจาก snapshot (ใช้ร่วมกับ tripSellable.cancel QUOTE) ═══════════════════════
 /** ใบเสนอคืนเงินของการจองที่ขายแล้ว ณ ctx.now (ไม่เขียน · อ่านนอก tx หรือใน tx ของผู้เรียก) */
-export async function tripRefundQuote(db: Tx, g: { tenantId: string; unitId: string }, b: MoneyBooking, at: string, reasonKind: RefundReasonKind, deductionsSatang: number): Promise<SellResult<RefundQuote>> {
+export async function tripRefundQuote(db: Tx, g: { tenantId: string; unitId: string }, b: MoneyBooking, at: string, reasonKind: RefundReasonKind, deductionsSatang: number, fullRefund = false): Promise<SellResult<RefundQuote>> {
+  // TRIPS T1.6a1 N4 ▸ ป้าย DEPARTURE_CANCEL ⇒ คืน 100 % จากใบรับจริง (ไม่ใช้ตาราง/T21 · ไม่หัก) ◂
+  if (fullRefund) return { ok: true, value: fullRefundQuoteFromReceipts(await db.$queryRaw<CancelReceipt[]>`
+    SELECT "kind", "amountSatang", "passThroughSatang", "vatSatang" FROM "TripMoneyEvent" WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "kind" IN ('RECEIVED', 'REFUNDED')`) };
   const paidOut = await passThroughPaidOut(db, g, b);
   const q = refundQuoteFromSnapshot(b.policySnapshot, {
     at,
@@ -280,13 +289,14 @@ type FileArgs = {
   key: string;
   requestHash: string;
   autoApproveUpTo: number;
+  fullRefund?: boolean; // TRIPS T1.6a1 ▸ ผู้เรียก (cancel-departure.ts) ส่ง autoApproveUpTo = INT4 ⇒ อนุมัติให้เองไม่ผ่าน X12 ◂
 };
 /**
  * แกนยื่นคำขอในธุรกรรมของผู้เรียก — ผู้เรียกถือแถวการจองแล้ว (2b) และตรวจสถานะ/คำขอเปิด/รุ่นแล้ว:
  * ใบเสนอจาก snapshot ณ ctx.now → INSERT QUOTED (2b′ · computed + ข้อเท็จจริงเงิน) → audit → [X12 อนุมัติอัตโนมัติ] → outbox
  */
 async function fileRefundRequestInTx(tx: Tx, c: Ctx, g: Gate, lb: MoneyBooking, a: FileArgs): Promise<RefundRequestValue> {
-  const q = await tripRefundQuote(tx, g, lb, c.clock.iso, a.reasonKind, a.deductionsSatang);
+  const q = await tripRefundQuote(tx, g, lb, c.clock.iso, a.reasonKind, a.deductionsSatang, a.fullRefund === true);
   if (!q.ok) throw new BookingAbort(q.code, q.details);
   const quote = q.value;
   if (quote.refundSatang < 0 || quote.refundSatang > INT4) throw new BookingAbort("VALIDATION", { reason: "OVER_REFUND" });
@@ -348,6 +358,7 @@ export async function autoReleaseOverdueInTx(tx: Tx, ctx: unknown, b: MoneyBooki
   const g: Gate = { tenantId: c.tenantId, unitId: c.unitId, tz: "" };
   if (!REFUNDABLE.has(b.status) || moneyBookingGate(b)) return false;
   if (await openRefundOf(tx, g, b.id)) return false;
+  if (await departureCancelKindOf(tx, g, b.departureId)) return false; // TRIPS T1.6a1 §6 ▸ รั้วในตัว (งานกรองแล้ว) ◂
   const key = `refund:${b.id}:${moneyNsKey(c, `due_${dueId}`)}`;
   if (await requestByKey(tx, g.tenantId, key)) return false;
   const requestHash = holdRequestHash({ op: "trips.refund.refund.v1", bookingId: b.id, reasonKind: "CUSTOMER", choice: "MONEY", reason: OVERDUE_REASON, deductions: [] });
@@ -395,6 +406,9 @@ async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel",
     // 2b
     const lb = await lockMoneyBookingInTx(tx, g, b.id);
     if (!lb) throw new BookingAbort("NOT_FOUND");
+    // TRIPS T1.6a1 B3 ▸ รอบที่ร้านยกเลิก (cancelKind อ่านไม่ล็อกหลังล็อกการจอง · N14) ⇒ ทางทั่วไปปิด ไม่ว่าเหตุใด ◂
+    const cancelKind = await departureCancelKindOf(tx, g, lb.departureId);
+    if (cancelKind) throw new BookingAbort("STATE_CONFLICT", { reason: "DEPARTURE_CANCELLED_USE_RESOLVE" });
     // TRIPS W1.3 ▸ ใต้ล็อกแถว: รั้ว (token · PENDING · เอเจนซี่ · รุ่นที่หน้าเห็น · K2 L1 L9) · คำขอล่าสุดของลูกค้าถูกปฏิเสธ ⇒ ยื่นใหม่ผ่านหน้าไม่ได้ (K8 L3) ◂
     const pf = pub ? await publicSelfRowFail(tx, g, lb.id, pub, true) : null;
     if (pf) throw new BookingAbort(pf.code, pf.details);
@@ -522,6 +536,7 @@ export async function decideTripRefund(ctx: unknown, input: unknown): Promise<Se
     }
     const comp = computedOf(r.computed);
     if (!comp) return sellFail("VALIDATION", { reason: "SNAPSHOT_INVALID" });
+    if (fullRefundOf(comp) && ((v.manualDeltaSatang ?? 0) !== 0 || (Array.isArray(r.deductions) && r.deductions.length > 0))) return sellFail("VALIDATION", { reason: "DEPARTURE_CANCEL_FULL_REFUND" }); // TRIPS T1.6a1 B2
     const delta = v.decision === "APPROVE" ? (v.manualDeltaSatang ?? 0) : 0;
     const warnings: string[] = [];
     let final = comp.refundSatang;
@@ -566,6 +581,7 @@ export async function decideTripRefund(ctx: unknown, input: unknown): Promise<Se
         throw new BookingAbort("STATE_CONFLICT");
       }
       if (to === "APPROVED") await emitMoney(tx, g, [refundEvt("trips.refund.approved", r, final, genOf(comp))]);
+      else await outcomePendingInTx(tx, g, r.id); // TRIPS T1.6a1 ▸ ปฏิเสธคำขอทางนี้ ⇒ แถวผลกลับ PENDING ◂
       await auditMoney(tx, audActor(c, g), to === "APPROVED" ? "trips.refund.approve" : "trips.refund.reject", { type: "TripRefundRequest", id: r.id }, {
         status: to,
         bookingId: r.bookingId,
@@ -626,6 +642,7 @@ export async function withdrawTripRefund(ctx: unknown, input: unknown, opts?: Re
         if (a) return { replay: a };
         throw new BookingAbort("STATE_CONFLICT");
       }
+      await outcomePendingInTx(tx, g, r.id); // TRIPS T1.6a1 ▸ แถวผลกลับ PENDING ◂
       await auditMoney(tx, audActor(c, g), "trips.refund.withdraw", { type: "TripRefundRequest", id: r.id }, { status: "WITHDRAWN", bookingId: r.bookingId, amountSatang: r.amountSatang, idemKeyHash: keyHash, bodyHash }, { status: r.status });
       return "DONE";
     });
@@ -860,17 +877,19 @@ async function requoteApproved(c: Ctx, g: Gate, requestId: string): Promise<Sell
       return sellFail("STATE_CONFLICT", { reason: "QUOTE_ALREADY_CURRENT", requestId: r.id, status: r.status, amountSatang: r.amountSatang });
     }
     const requested = (Array.isArray(r.deductions) ? r.deductions.filter(isRec) : []).reduce((sum, d) => sum + (typeof d.amountSatang === "number" ? d.amountSatang : 0), 0);
-    const q = await tripRefundQuote(tx, g, b, comp.quotedAt, r.reasonKind as RefundReasonKind, requested);
+    const full = fullRefundOf(comp); // TRIPS T1.6a1 B2 ▸ ป้าย ⇒ คิดใหม่ด้วยสูตรเต็ม แล้วอนุมัติซ้ำให้เอง (ไม่ค้าง QUOTED) ◂
+    const q = await tripRefundQuote(tx, g, b, comp.quotedAt, r.reasonKind as RefundReasonKind, requested, full);
     if (!q.ok) throw new BookingAbort(q.code, q.details);
     const gen = genOf(comp) + 1;
     const fresh: Computed = { ...q.value, bookingVersion: b.version, quotedAt: comp.quotedAt, requotedAt: c.clock.iso, gen, reason: comp.reason, facts };
     const cas = await tx.$queryRaw<{ id: string }[]>`
-      UPDATE "TripRefundRequest" SET "status" = 'QUOTED', "amountSatang" = ${q.value.refundSatang}, "manualDeltaSatang" = 0, "approvalId" = NULL, "decidedById" = NULL,
+      UPDATE "TripRefundRequest" SET "status" = ${full ? "APPROVED" : "QUOTED"}, "amountSatang" = ${q.value.refundSatang}, "manualDeltaSatang" = 0, "approvalId" = NULL, "decidedById" = NULL,
         "computed" = ${JSON.stringify(fresh)}::jsonb, "updatedAt" = now()
       WHERE "id" = ${r.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = 'APPROVED'
       RETURNING "id"`;
     if (cas.length !== 1) throw new BookingAbort("STATE_CONFLICT");
     await emitMoney(tx, g, [refundEvt("trips.refund.requoted", r, q.value.refundSatang, gen)]);
+    if (full) await emitMoney(tx, g, [refundEvt("trips.refund.approved", r, q.value.refundSatang, gen)]);
     const changed = [
       ...(comp.facts ? [] : ["noFacts"]),
       ...(comp.facts && comp.facts.passThroughPaidOut !== facts.passThroughPaidOut ? ["passThroughPaidOut"] : []),
@@ -887,6 +906,11 @@ async function requoteApproved(c: Ctx, g: Gate, requestId: string): Promise<Sell
       { status: "QUOTED", bookingId: b.id, amountSatang: q.value.refundSatang, bookingVersion: b.version, gen, quotedAt: comp.quotedAt, changedFacts: changed },
       { status: "APPROVED", amountSatang: r.amountSatang, manualDeltaSatang: r.manualDeltaSatang, approvalId: r.approvalId, decidedById: r.decidedById, gen: genOf(comp) },
     );
+    if (full) {
+      await auditMoney(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: AUTO_APPROVER }, "trips.refund.approve", { type: "TripRefundRequest", id: r.id }, {
+        status: "APPROVED", bookingId: b.id, amountSatang: q.value.refundSatang, manualDeltaSatang: 0, auto: true, gen, idemKeyHash: sha256hex(`auto:${r.id}:g${gen}`),
+      }, { status: "QUOTED", amountSatang: q.value.refundSatang });
+    }
     return sellFail("STATE_CONFLICT", { reason: "QUOTE_REFRESHED", requestId: r.id, amountSatang: q.value.refundSatang });
   });
   return out.ok ? out.value : out;
@@ -931,3 +955,26 @@ export async function listTripRefunds(ctx: unknown, input: unknown): Promise<Sel
   });
 }
 // ── /T0.7 refund ──
+
+// ── T1.6a1 refund ──
+export { fileRefundRequestInTx, type FileArgs as RefundFileArgs };
+/** คำขอทางรอบที่ร้านยกเลิกถูกถอน/ปฏิเสธ ⇒ แถวผลกลับ PENDING (ประวัติ refundRequestId อยู่ใน audit · ใบสั่ง T1.6 §2) */
+async function outcomePendingInTx(tx: Tx, g: { tenantId: string; unitId: string }, requestId: string): Promise<void> {
+  await tx.$queryRaw`UPDATE "TripDepartureCancelOutcome" SET "choice" = 'PENDING', "refundRequestId" = NULL, "updatedAt" = now()
+    WHERE "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "refundRequestId" = ${requestId} AND "choice" = 'REFUND' RETURNING "id"`;
+}
+/**
+ * ถอนคำขอเปิด (QUOTED/APPROVED) ในธุรกรรมของผู้เรียก (ผู้เรียกถือแถวการจองแล้ว) — ยกเลิกรอบ (N10) · เงินเข้าหลังยกเลิก (N13)
+ * ผู้กระทำ SYSTEM `trips.departureCancel` · แถวผลกลับ PENDING · ไม่ได้แถว ⇒ STATE_CONFLICT (ผู้เรียก rollback)
+ */
+export async function withdrawRefundInTx(tx: Tx, g: { tenantId: string; unitId: string }, r: { id: string; status: string }, reason: string): Promise<void> {
+  const cas = await tx.$queryRaw<{ bookingId: string; amountSatang: number }[]>`
+    UPDATE "TripRefundRequest" SET "status" = 'WITHDRAWN', "computed" = "computed" || ${JSON.stringify({ withdrawReason: reason })}::jsonb, "updatedAt" = now()
+    WHERE "id" = ${r.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} AND "status" = ${r.status} AND "status" IN ('QUOTED', 'APPROVED')
+    RETURNING "bookingId", "amountSatang"`;
+  const x = cas[0];
+  if (!x) throw new BookingAbort("STATE_CONFLICT");
+  await outcomePendingInTx(tx, g, r.id);
+  await auditMoney(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: DEPARTURE_CANCEL_ACTOR }, "trips.refund.withdraw", { type: "TripRefundRequest", id: r.id }, { status: "WITHDRAWN", bookingId: x.bookingId, amountSatang: Number(x.amountSatang) }, { status: r.status });
+}
+// ── /T1.6a1 refund ──

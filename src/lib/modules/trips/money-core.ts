@@ -391,3 +391,28 @@ export const unavailablePostingPort: TripsPostingPort = Object.freeze({
   postRefund: async (): Promise<PostingOutcome> => ({ ok: false, retryable: false, reason: "ACCOUNT_FACADE_MISSING" }),
 });
 // ── /T0.7 money ──
+
+// ── T1.6a1 คืนเงินเต็ม ──
+export type CancelReceipt = { kind: "RECEIVED" | "REFUNDED" | string; amountSatang: number; passThroughSatang: number; vatSatang: number };
+export type FullRefundSplit = { refundSatang: number; refundNonPtSatang: number; refundPassThroughSatang: number; refundVatSatang: number };
+/** ยอดคืนเต็มจากใบรับจริง = Σ RECEIVED − Σ REFUNDED แยกเก็บแทน/VAT ตามใบ (ชื่อเดียวกับ RefundQuote · ใบสั่ง T1.6 §5.4 · ส่งออกต่อทาง cancel-departure-core) */
+export function fullRefundSplitOf(receipts: readonly CancelReceipt[]): FullRefundSplit {
+  const sum = (k: "amountSatang" | "passThroughSatang" | "vatSatang") => receipts.reduce((t, r) => t + (r.kind === "RECEIVED" ? 1 : r.kind === "REFUNDED" ? -1 : 0) * r[k], 0);
+  const amount = sum("amountSatang");
+  const pt = sum("passThroughSatang");
+  return { refundSatang: amount, refundNonPtSatang: amount - pt, refundPassThroughSatang: pt, refundVatSatang: sum("vatSatang") };
+}
+export type FullRefundQuote = RefundQuote & { path: "DEPARTURE_CANCEL"; fullRefund: true };
+/**
+ * ใบเสนอคืน 100 % ของเงินที่รับ (รอบที่ร้านยกเลิก · N4): ยอด/เก็บแทน/VAT ตามใบรับจริง · ไม่ใช้ตารางยกเลิก/ค่าร้านยกเลิกของ snapshot ·
+ * ไม่หัก · เก็บแทนคืนแม้มีหลักฐานจ่ายออก · แบ่งตามใบรับ ⇒ planRefundSlices ไม่ OVER_REFUND · refundBp 10000 = หน่วยของ bp (100 %)
+ */
+export function fullRefundQuoteFromReceipts(receipts: readonly CancelReceipt[]): FullRefundQuote {
+  const s = fullRefundSplitOf(receipts);
+  const lines: CancelLine[] = [
+    { itemRef: "receipts:nonPassThrough", paidSatang: s.refundNonPtSatang, refundSatang: s.refundNonPtSatang, keptSatang: 0, rule: "BP" },
+    { itemRef: "receipts:passThrough", paidSatang: s.refundPassThroughSatang, refundSatang: s.refundPassThroughSatang, keptSatang: 0, rule: "FULL" },
+  ];
+  return { ...s, daysBefore: 0, step: null, refundBp: 10_000, paidSatang: s.refundSatang, keptSatang: 0, keptVatSatang: 0, deductionsSatang: 0, lines, warnings: [], path: "DEPARTURE_CANCEL", fullRefund: true };
+}
+// ── /T1.6a1 คืนเงินเต็ม ──

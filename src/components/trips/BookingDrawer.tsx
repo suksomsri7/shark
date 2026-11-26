@@ -12,6 +12,7 @@ import { BTN_DANGER } from "./DepartureParts";
 import { BookingBadge, KV, NotYetButton, bkHref, useBkText, type BkQuery, type PayTender } from "./BookingParts";
 import { ApproveDialog, CancelBookingDialog, PayDialog } from "./BookingDialogs";
 import { formatBaht } from "./trips-shared";
+import { BookingCancelChoice } from "./DepartureCancel"; // TRIPS T1.6a1 ◂
 
 type Open = { kind: "pay"; tender: PayTender } | { kind: "cancel" } | { kind: "decide"; decision: "APPROVE" | "REJECT" } | null;
 const FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
@@ -116,6 +117,7 @@ export default function BookingDrawer({ unitSlug, vm, base, q, channels }: { uni
               {row.timeText ? ` · ${row.timeText}` : ""} · {X.channel(row, channels)}
             </p>
             {cancelled ? <p className="text-sm font-medium text-[color:var(--color-danger)] [overflow-wrap:anywhere]">{cancelled}</p> : null}
+            {vm.cancelChoice ? <BookingCancelChoice unitSlug={unitSlug} bookingId={row.bookingId} tz={vm.unit.tz} cc={vm.cancelChoice} /> : null}
           </Section>
 
           <Section data-testid="trips-bk-items" title={t("bookings.detail.items")}>
