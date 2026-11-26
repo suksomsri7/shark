@@ -22,6 +22,7 @@ import {
   REPORT_PENDING_STATUSES,
   TRIP_COST_KINDS,
   TRIP_COST_ROWS_MAX,
+  bookingMoneyInOfRow,
   bookingMoneyOf,
   channelGroupOf,
   charterLikeOf,
@@ -33,6 +34,7 @@ import {
   profitOf,
   sumMoney,
   type BookingMoney,
+  type BookingMoneyRow,
   type CostRowIn,
   type DepartureReportState,
   type MoneyTotals,
@@ -52,7 +54,6 @@ const nowOf = (opts?: Opts) => (opts?.now instanceof Date && !Number.isNaN(opts.
 const i18nTh = (v: unknown): string => (isRec(v) && typeof v.th === "string" ? v.th : "");
 const i18nEn = (v: unknown): string | null => (isRec(v) && typeof v.en === "string" && v.en.trim() ? v.en : null);
 const DAY_MS = 86_400_000;
-const INT4_MAX = 2_147_483_647;
 const TX_OPTS = { maxWait: 20_000, timeout: 30_000 } as const;
 const VAT_KEY = "trips.tax.vatRegistered";
 /** action ของ audit (ใบสั่ง §6) */
@@ -128,11 +129,11 @@ function costTokenOf(rows: readonly CostDb[]): string {
 const rowVM = (r: CostDb): CostRowVM => ({ id: r.id, kind: r.kind, amountSatang: r.amountSatang, note: r.note, updatedAtIso: r.updatedAt.toISOString() });
 const totalOf = (rows: readonly { amountSatang: number }[]): number => rows.reduce((s, r) => s + r.amountSatang, 0);
 const sortCosts = (rows: CostDb[]): CostDb[] => rows.sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
-async function tzOf(g: TripsUnitGate): Promise<string> {
+export async function tzOf(g: TripsUnitGate): Promise<string> {
   const u = await tenantDb({ tenantId: g.tenantId }).businessUnit.findFirst({ where: { id: g.unitId, tenantId: g.tenantId }, select: { settings: true } });
   return normalizeTimezone(isRec(u?.settings) ? u.settings.timezone : null);
 }
-function timeTextOf(tz: string, startsAt: Date, endsAt: Date): string {
+export function timeTextOf(tz: string, startsAt: Date, endsAt: Date): string {
   const s = utcToLocal(tz, startsAt);
   const e = utcToLocal(tz, endsAt);
   const days = Math.trunc((Date.parse(`${e.ymd}T00:00:00.000Z`) - Date.parse(`${s.ymd}T00:00:00.000Z`)) / DAY_MS);
@@ -147,65 +148,67 @@ const sellRank = (c: string): number => {
 
 // ═══════════════ อ่านเงินของรอบ (ตัวคิดเดียว: สรุปเงิน · แผงรอบ · จอต้นทุน) ═══════════════
 type DepRow = { id: string; productId: string; optionId: string | null; localDate: Date; startsAt: Date; endsAt: Date; status: string; capacity: number; sold: number };
-type BookingRow = {
-  id: string;
-  status: string;
-  collectMode: string;
-  agentAccountId: string | null;
-  channel: string;
-  currency: string;
-  grossSatang: number;
-  discountSatang: number;
-  agentDiscountSatang: number;
-  passThroughSatang: number;
-  vatSatang: number;
-  commissionSatang: number;
-  commissionVatSatang: number;
-  paidSatang: number;
-  refundedSatang: number;
-  payableJson: unknown;
-  vatRegJson: unknown;
-  inclVatJson: unknown;
-  seats: number;
-  retAmount: number;
-  retVat: number;
-  retPt: number;
-  retN: number;
-  openRefund: boolean;
-};
+/** แถวของตัวอ่านการจองร่วม (a1 + รายงาน a2 · §4.4) — เงินตาม BookingMoneyRow + รอบ (วันเดินทาง · สถานะ) + วันจอง */
+export type BookingReadRow = BookingMoneyRow & { id: string; departureId: string; productId: string; localDate: Date; depStatus: string; createdAt: Date };
+type BookingRow = BookingReadRow;
 type Computed = { money: DepartureMoneyVM; perBooking: { b: BookingRow; m: BookingMoney; commissionVatCounted: boolean }[]; costs: CostDb[] };
 const READ_STATUSES = [...REPORT_LIVE_STATUSES, ...REPORT_PENDING_STATUSES, "CANCELLED"];
-const LIVE_SET: readonly string[] = REPORT_LIVE_STATUSES;
 const PENDING_SET: readonly string[] = REPORT_PENDING_STATUSES;
 
-async function computeMoney(g: TripsUnitGate, dep: Pick<DepRow, "id" | "status" | "endsAt" | "capacity" | "sold">, sourceKind: string, costView: boolean, now: Date): Promise<Computed> {
+/**
+ * ตัวอ่านการจองร่วม (D3 · §4.4): ตามรอบ { departureIds } หรือตามวันจอง { createdGte, createdLt } (+ สินค้า · ช่องทาง) · สถานะ LIVE + HOLD/PENDING + CANCELLED
+ * เลือกเฉพาะ JSON path ของ snapshot ที่ตัวแปลงแถวใช้ (ไม่ดึงทั้งก้อน) · limit = เพดาน + 1 (ผู้เรียกตัดสินเกินเพดาน)
+ */
+export async function readMoneyBookings(
+  g: TripsUnitGate,
+  w: ({ departureIds: readonly string[] } | { createdGte: Date; createdLt: Date }) & { productId?: string | null; channel?: string | null; limit?: number },
+): Promise<BookingReadRow[]> {
   const open = [...TRIP_REFUND_OPEN_STATUSES];
-  const [bookings, costRows, vatSet] = await Promise.all([
-    g.db.$queryRaw<BookingRow[]>`
+  const scope = "departureIds" in w ? Prisma.sql`b."departureId" = ANY(${[...w.departureIds]}::text[])` : Prisma.sql`b."createdAt" >= ${w.createdGte} AND b."createdAt" < ${w.createdLt}`;
+  const product = w.productId ? Prisma.sql` AND b."productId" = ${w.productId}` : Prisma.empty;
+  const channel = w.channel ? Prisma.sql` AND b."channel" = ${w.channel}` : Prisma.empty;
+  const limit = w.limit === undefined ? Prisma.empty : Prisma.sql` LIMIT ${w.limit}`;
+  return g.db.$queryRaw<BookingReadRow[]>`
       SELECT b."id", b."status", b."collectMode", b."agentAccountId", b."channel", b."currency",
         b."grossSatang", b."discountSatang", b."agentDiscountSatang", b."passThroughSatang", b."vatSatang", b."commissionSatang", b."commissionVatSatang",
         b."paidSatang", b."refundedSatang",
         b."policySnapshot"->'totals'->'payableSatang' AS "payableJson", b."policySnapshot"->'tax'->'vatRegistered' AS "vatRegJson",
         b."policySnapshot"->'tax'->'pricesIncludeVat' AS "inclVatJson",
+        b."departureId", b."productId", b."createdAt", d."localDate", d."status" AS "depStatus",
         COALESCE((SELECT sum(i."qty") FROM "TripBookingItem" i LEFT JOIN "TripPaxType" pt ON pt."id" = i."paxTypeId"
           WHERE i."bookingId" = b."id" AND i."tenantId" = ${g.tenantId} AND i."active" AND (i."kind" = 'BERTH' OR (i."kind" = 'SEAT' AND COALESCE(pt."countsCapacity", true)))), 0)::int AS "seats",
         COALESCE(r."amount", 0)::float8 AS "retAmount", COALESCE(r."vat", 0)::float8 AS "retVat", COALESCE(r."pt", 0)::float8 AS "retPt", COALESCE(r."n", 0)::int AS "retN",
         EXISTS (SELECT 1 FROM "TripRefundRequest" q WHERE q."bookingId" = b."id" AND q."tenantId" = ${g.tenantId} AND q."status" = ANY(${open}::text[])) AS "openRefund"
       FROM "TripBooking" b
+      JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = ${g.tenantId} AND d."unitId" = ${g.unitId}
       LEFT JOIN LATERAL (
         SELECT sum(e."amountSatang") AS "amount", sum(e."vatSatang") AS "vat", sum(e."passThroughSatang") AS "pt", count(*) AS "n"
         FROM "TripMoneyEvent" e WHERE e."bookingId" = b."id" AND e."tenantId" = ${g.tenantId} AND e."kind" = 'RETAINED'
       ) r ON true
-      WHERE b."tenantId" = ${g.tenantId} AND b."unitId" = ${g.unitId} AND b."departureId" = ${dep.id} AND b."status" = ANY(${READ_STATUSES}::text[])
-      ORDER BY b."createdAt", b."id"`,
+      WHERE b."tenantId" = ${g.tenantId} AND b."unitId" = ${g.unitId} AND ${scope}${product}${channel} AND b."status" = ANY(${READ_STATUSES}::text[])
+      ORDER BY b."createdAt", b."id"${limit}`;
+}
+/** ตัวอ่านค่าตั้ง VAT ของหน่วยที่เดียว (J4) — ผู้เรียกอ่านครั้งเดียวต่อการโหลด · vatRegisteredOf = true/false/null */
+export const unitVatSettingsOf = (g: TripsUnitGate, now: Date) => resolveSettings({ tenantId: g.tenantId }, [VAT_KEY], { unitId: g.unitId }, now);
+export const vatRegisteredOf = (vatSet: Record<string, { value?: unknown } | undefined>): boolean | null => {
+  const reg = vatSet[VAT_KEY]?.value;
+  return isRec(reg) && typeof reg.registered === "boolean" ? reg.registered : null;
+};
+async function computeMoney(g: TripsUnitGate, dep: Pick<DepRow, "id" | "status" | "endsAt" | "capacity" | "sold">, sourceKind: string, costView: boolean, now: Date): Promise<Computed> {
+  const [bookings, costRows, vatSet] = await Promise.all([
+    readMoneyBookings(g, { departureIds: [dep.id] }),
     // Q16: ผู้ไม่เห็นต้นทุนไม่อ่านแถวต้นทุนเลย (การรู้ว่ามีต้นทุนแล้วก็เป็นข้อมูลต้นทุน)
     costView
       ? g.db.tripCost.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, departureId: dep.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: TRIP_COST_ROWS_MAX, select: COST_SELECT })
       : Promise.resolve([] as CostDb[]),
-    resolveSettings({ tenantId: g.tenantId }, [VAT_KEY], { unitId: g.unitId }, now),
+    unitVatSettingsOf(g, now),
   ]);
   const reg = vatSet[VAT_KEY]?.value;
   const registered = isRec(reg) ? reg.registered : null;
+  return moneyOfDeparture(dep, sourceKind, costView, now, bookings, costRows, typeof registered === "boolean" ? registered : null);
+}
+/** ตัวคิดเงินของรอบ (ไม่มี I/O) — ตัวเดียวของ สรุปเงิน · แผงรอบ · จอต้นทุน · รายงานตามช่วง (a2) */
+export function moneyOfDeparture(dep: Pick<DepRow, "id" | "status" | "endsAt" | "capacity" | "sold">, sourceKind: string, costView: boolean, now: Date, bookings: readonly BookingRow[], costRows: readonly CostDb[], registered: boolean | null): Computed {
   const vatMode: DepartureMoneyVM["vatMode"] = registered === true ? "REGISTERED" : registered === false ? "NOT_REGISTERED" : "UNKNOWN";
   const depCancelled = dep.status === "CANCELLED";
 
@@ -216,30 +219,9 @@ async function computeMoney(g: TripsUnitGate, dep: Pick<DepRow, "id" | "status" 
   const perBooking: Computed["perBooking"] = [];
   for (const b of bookings) {
     if (PENDING_SET.includes(b.status)) pendingBookings += 1;
-    // Q7: ยอดใน snapshot ใช้ได้เมื่อเป็นจำนวนเต็มปลอดภัย 0..int4 เท่านั้น · Q8: fallback ของราคาไม่รวม VAT บวก VAT
-    const hasPayable = typeof b.payableJson === "number" && Number.isSafeInteger(b.payableJson) && b.payableJson >= 0 && b.payableJson <= INT4_MAX;
-    const payable = hasPayable ? Number(b.payableJson) : b.grossSatang - b.discountSatang - b.agentDiscountSatang + (b.inclVatJson === false ? b.vatSatang : 0);
-    // Q10: snapshot ไม่บอก ⇒ สถานะของหน่วย (ไม่ถือว่าจด VAT เอง)
-    const bookingVatReg = typeof b.vatRegJson === "boolean" ? b.vatRegJson : registered === true;
-    const m = bookingMoneyOf({
-      status: b.status,
-      collectMode: b.collectMode,
-      agentAccountId: b.agentAccountId,
-      channel: b.channel,
-      seats: b.seats,
-      payableSatang: payable,
-      passThroughSatang: b.passThroughSatang,
-      vatSatang: b.vatSatang,
-      commissionSatang: b.commissionSatang,
-      commissionVatSatang: b.commissionVatSatang,
-      vatRegistered: bookingVatReg,
-      paidSatang: b.paidSatang,
-      refundedSatang: b.refundedSatang,
-      // Q12: รอบยกเลิก — รอคืนเงินเฉพาะที่มีเงินรับไว้ · ที่ค้างโดยไม่มีเงิน ⇒ ไม่นับ
-      pendingRefund: b.openRefund || (depCancelled && LIVE_SET.includes(b.status) && b.paidSatang - b.refundedSatang > 0),
-      departureCancelled: depCancelled,
-      retained: b.retN > 0 ? [{ amountSatang: b.retAmount, vatSatang: b.retVat, passThroughSatang: b.retPt }] : [],
-    });
+    // ตัวแปลงแถวตัวเดียว (report-core · D4): payable Q7/Q8 · สถานะ VAT Q10 · รอคืนเงิน Q12
+    const { input, hasPayable, vatRegistered: bookingVatReg } = bookingMoneyInOfRow(b, { unitVatRegistered: registered, departureCancelled: depCancelled });
+    const m = bookingMoneyOf(input);
     perBooking.push({ b, m, commissionVatCounted: m.counted === "LIVE" && !bookingVatReg && b.commissionVatSatang > 0 });
     if (m.counted === "EXCLUDED") continue;
     if (!hasPayable && m.counted === "LIVE") fallback += 1; // Q9

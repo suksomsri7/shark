@@ -110,8 +110,8 @@ export default function CostScreen({ vm }: { vm: DepartureCostsVM }) {
         <Kpi data-testid="trips-cost-kpi-sales" label={t("costs.kpi.sales")} value={formatBaht(m.salesSatang)} />
         <Kpi data-testid="trips-cost-kpi-revenue" label={noVat ? t("costs.kpi.revenueNoVat") : t("costs.kpi.revenue")} value={formatBaht(m.revenueExVatSatang)} />
         <Kpi data-testid="trips-cost-kpi-commission" label={t("costs.kpi.commission")} value={money(m.commissionCostSatang)} />
-        <Kpi data-testid="trips-cost-kpi-cost" label={t("costs.kpi.cost")} value={money(m.costSatang)}>
-          {vm.costs.perSeatSatang !== null ? <span>{t("costs.kpi.perSeat", { amount: formatBaht(vm.costs.perSeatSatang) })}</span> : null}
+        <Kpi data-testid="trips-cost-kpi-cost" label={t("costs.kpi.cost")} value={noCosts ? "—" : money(m.costSatang)}>
+          {vm.costs.perSeatSatang !== null && !noCosts ? <span>{t("costs.kpi.perSeat", { amount: formatBaht(vm.costs.perSeatSatang) })}</span> : null}
         </Kpi>
         <Kpi data-testid="trips-cost-kpi-profit" label={t("costs.kpi.profit")} value={money(m.grossProfitSatang)} danger={loss}>
           {noCosts ? <span>{t("costs.kpi.noCosts")}</span> : loss ? <span className="text-[color:var(--color-danger)]">{t("costs.kpi.loss")}</span> : m.marginBp !== null ? <span>{pctText(m.marginBp)}</span> : null}
@@ -144,7 +144,7 @@ export default function CostScreen({ vm }: { vm: DepartureCostsVM }) {
             {noVat ? null : <Line testid="trips-cost-vat-line" sign="−" label={t("costs.breakdown.vat")} value={formatBaht(m.vatSatang)} />}
             <Line strong label={noVat ? t("costs.breakdown.revenueNoVat") : t("costs.breakdown.revenue")} value={formatBaht(m.revenueExVatSatang)} />
             <Line sign="−" label={commissionWithVat ? t("costs.breakdown.commissionWithVat") : t("costs.breakdown.commission")} value={money(m.commissionCostSatang)} />
-            <Line sign="−" label={t("costs.breakdown.cost")} value={money(m.costSatang)} />
+            <Line sign="−" label={t("costs.breakdown.cost")} value={noCosts ? "—" : money(m.costSatang)} />
             <Line strong sign="=" danger={loss} label={noVat ? t("costs.breakdown.profitNoVat") : t("costs.breakdown.profit")} value={money(m.grossProfitSatang)} />
             {noCosts ? <p className="text-sm text-[color:var(--color-muted)]">{t("costs.breakdown.noCosts")}</p> : null}
           </div>

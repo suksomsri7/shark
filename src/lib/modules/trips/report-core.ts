@@ -6,6 +6,8 @@
 // ─────────────────────────────────────────────────────────────
 import { mulDivHalfUp } from "./money-math";
 import { amountProblemOf, outstandingOf, parseAmountSatang } from "./booking-view-core";
+import { addDaysYmd, localToUtc, utcToLocal, weekdayOfYmd } from "./departures-core";
+import { csvCell } from "./manifest-core";
 
 // ── T1.7a1 report-core ──
 // ═══════════════ ค่าคงที่ ═══════════════
@@ -300,3 +302,220 @@ export function costContentKey(rows: readonly { kind: string; amountSatang: numb
   return JSON.stringify(rows.map((r) => JSON.stringify([r.kind, r.amountSatang, r.note ?? null])).sort());
 }
 // ── /T1.7a1 report-core ──
+
+// ── T1.7a2 report-core ──
+// ═══════════════ ตัวแปลงแถวการจอง → BookingMoneyIn (ย้ายจาก costs.ts · D4 · ที่เดียวของ payable/VAT/รอคืนเงินของ snapshot) ═══════════════
+/** แถวจากตัวอ่านการจองร่วม (costs.ts) — JSON path ของ snapshot เท่านั้น (ไม่ดึงทั้งก้อน · D3) */
+export type BookingMoneyRow = {
+  status: string;
+  collectMode: string;
+  agentAccountId: string | null;
+  channel: string;
+  currency: string;
+  grossSatang: number;
+  discountSatang: number;
+  agentDiscountSatang: number;
+  passThroughSatang: number;
+  vatSatang: number;
+  commissionSatang: number;
+  commissionVatSatang: number;
+  paidSatang: number;
+  refundedSatang: number;
+  payableJson: unknown;
+  vatRegJson: unknown;
+  inclVatJson: unknown;
+  seats: number;
+  retAmount: number;
+  retVat: number;
+  retPt: number;
+  retN: number;
+  openRefund: boolean;
+};
+/**
+ * Q7: payable ของ snapshot ใช้ได้เมื่อเป็นจำนวนเต็มปลอดภัย 0..int4 · ไม่งั้น gross − ส่วนลด (+ VAT เมื่อราคาไม่รวม VAT · Q8)
+ * Q10: snapshot ไม่บอกสถานะ VAT ⇒ สถานะของหน่วย (ไม่ถือว่าจด VAT เอง) · Q12: รอบยกเลิก — รอคืนเงินเฉพาะที่มีเงินรับไว้
+ */
+export function bookingMoneyInOfRow(b: BookingMoneyRow, u: { unitVatRegistered: boolean | null; departureCancelled: boolean }): { input: BookingMoneyIn; hasPayable: boolean; vatRegistered: boolean } {
+  const hasPayable = typeof b.payableJson === "number" && Number.isSafeInteger(b.payableJson) && b.payableJson >= 0 && b.payableJson <= INT4_MAX;
+  const payable = hasPayable ? Number(b.payableJson) : b.grossSatang - b.discountSatang - b.agentDiscountSatang + (b.inclVatJson === false ? b.vatSatang : 0);
+  const vatRegistered = typeof b.vatRegJson === "boolean" ? b.vatRegJson : u.unitVatRegistered === true;
+  const input: BookingMoneyIn = {
+    status: b.status,
+    collectMode: b.collectMode,
+    agentAccountId: b.agentAccountId,
+    channel: b.channel,
+    seats: b.seats,
+    payableSatang: payable,
+    passThroughSatang: b.passThroughSatang,
+    vatSatang: b.vatSatang,
+    commissionSatang: b.commissionSatang,
+    commissionVatSatang: b.commissionVatSatang,
+    vatRegistered,
+    paidSatang: b.paidSatang,
+    refundedSatang: b.refundedSatang,
+    pendingRefund: b.openRefund || (u.departureCancelled && LIVE_SET.includes(b.status) && b.paidSatang - b.refundedSatang > 0),
+    departureCancelled: u.departureCancelled,
+    retained: b.retN > 0 ? [{ amountSatang: b.retAmount, vatSatang: b.retVat, passThroughSatang: b.retPt }] : [],
+  };
+  return { input, hasPayable, vatRegistered };
+}
+
+// ═══════════════ ค่าคงที่ของรายงานตามช่วง (§3.1) ═══════════════
+export const REPORT_TABS = ["sales", "load", "lead", "channel"] as const;
+export type ReportTab = (typeof REPORT_TABS)[number];
+export const REPORT_GROUPS = ["day", "week", "month"] as const;
+export type ReportGroup = (typeof REPORT_GROUPS)[number];
+export const REPORT_BASES = ["travel", "booked"] as const;
+export type ReportBasis = (typeof REPORT_BASES)[number];
+/** ชื่อใน URL (product → productId) */
+export const REPORT_QUERY_PARAMS = ["from", "to", "basis", "product", "channel", "tab", "group", "page"] as const;
+export const REPORT_RANGE_MAX_DAYS = 366;
+export const REPORT_DAY_GROUP_MAX_DAYS = 62;
+export const REPORT_PAGE_SIZE = 50;
+export const REPORT_PAGE_MAX = 200;
+export const REPORT_PRODUCTS_MAX = 200;
+/** D3: เกินเพดาน ⇒ REPORT_TOO_LARGE (ไม่ตัดเงียบ) */
+export const REPORT_DEPARTURE_CAP = 4_000;
+export const REPORT_BOOKING_CAP = 40_000;
+export const TRIPS_REPORT_CSV_CAP = 2_000;
+/** ต่อคนต่อหน่วย (D5) */
+export const REPORT_EXPORT_RATE = { limit: 20, windowMs: 3_600_000 } as const;
+export const LEAD_BUCKETS = [
+  { key: "D0", min: 0, max: 0 },
+  { key: "D1_2", min: 1, max: 2 },
+  { key: "D3_7", min: 3, max: 7 },
+  { key: "D8_14", min: 8, max: 14 },
+  { key: "D15_30", min: 15, max: 30 },
+  { key: "D31_60", min: 31, max: 60 },
+  { key: "D61P", min: 61, max: null },
+] as const;
+export type LeadBucketKey = (typeof LEAD_BUCKETS)[number]["key"];
+/** 19 คอลัมน์คงที่ทุกไฟล์ (มี vat เสมอ · D2) */
+export const REPORT_CSV_COLUMNS = [
+  "date", "time", "product", "option", "state", "capacity", "sold", "loadFactorPct", "bookings", "cancelledBookings", "pendingRefundBookings",
+  "sales", "passThrough", "vat", "revenueExVat", "collected", "outstanding", "held", "agentCollectBookings",
+] as const;
+/** ต่อท้ายเมื่อเห็นต้นทุนเท่านั้น */
+export const REPORT_CSV_COST_COLUMNS = ["commission", "cost", "grossProfit", "marginPct"] as const;
+
+// ═══════════════ ตัวกรองจาก URL · ช่วงวัน ═══════════════
+export type ReportQuery = { from?: string; to?: string; basis?: string; productId?: string; channel?: string; tab?: string; group?: string; page?: number };
+/** อ่านเฉพาะ REPORT_QUERY_PARAMS · อาร์เรย์ใช้ตัวแรก · ว่าง ⇒ ไม่ใส่ · page /^\d{1,4}$/ ⇒ จำนวนเต็ม · ค่าอื่นส่งต่อตามจริง (ตัวโหลดตรวจ) */
+export function reportQueryOf(sp: Record<string, string | string[] | undefined>): ReportQuery {
+  const out: ReportQuery = {};
+  for (const k of REPORT_QUERY_PARAMS) {
+    const raw = sp[k];
+    const v = Array.isArray(raw) ? raw[0] : raw;
+    if (typeof v !== "string" || v.length === 0) continue;
+    if (k === "page") {
+      if (/^\d{1,4}$/.test(v)) out.page = Number(v);
+    } else if (k === "product") out.productId = v;
+    else out[k] = v;
+  }
+  return out;
+}
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+const isRealYmd = (s: unknown): s is string => typeof s === "string" && YMD_RE.test(s) && addDaysYmd(s, 0) === s;
+const daysBetween = (from: string, to: string): number => Math.round((Date.parse(`${to}T00:00:00.000Z`) - Date.parse(`${from}T00:00:00.000Z`)) / 86_400_000);
+const monthStart = (ymd: string): string => `${ymd.slice(0, 7)}-01`;
+const monthEnd = (ymd: string): string => {
+  const [y, m] = ymd.split("-").map(Number);
+  return addDaysYmd(m === 12 ? `${y + 1}-01-01` : `${y}-${String(m + 1).padStart(2, "0")}-01`, -1);
+};
+/** ว่าง ⇒ เดือนของวันนี้ · from อย่างเดียว ⇒ ถึงสิ้นเดือน · to อย่างเดียว ⇒ จากต้นเดือน · รูปผิด/วันไม่มีจริง/กลับด้าน ⇒ INVALID_INPUT · รวมปลาย > 366 ⇒ RANGE_TOO_LARGE */
+export function reportRangeOf(i: { from?: string | null; to?: string | null }, today: string): { ok: true; from: string; to: string; days: number } | { ok: false; code: "INVALID_INPUT" | "RANGE_TOO_LARGE" } {
+  const f = i.from === undefined || i.from === null || i.from === "" ? null : i.from;
+  const t = i.to === undefined || i.to === null || i.to === "" ? null : i.to;
+  // K3: ปี 2000–2100 เท่านั้น (ตรวจก่อนบวกวัน — ปลายปี 9999 บวกวันแล้วล้นจนโยน error)
+  const yearOk = (x: string) => Number(x.slice(0, 4)) >= 2000 && Number(x.slice(0, 4)) <= 2100;
+  if ((f !== null && (!isRealYmd(f) || !yearOk(f))) || (t !== null && (!isRealYmd(t) || !yearOk(t)))) return { ok: false, code: "INVALID_INPUT" };
+  const from = f ?? (t !== null ? monthStart(t) : monthStart(today));
+  const to = t ?? (f !== null ? monthEnd(f) : monthEnd(today));
+  if (from > to) return { ok: false, code: "INVALID_INPUT" };
+  const days = daysBetween(from, to) + 1;
+  if (days > REPORT_RANGE_MAX_DAYS) return { ok: false, code: "RANGE_TOO_LARGE" };
+  return { ok: true, from, to, days };
+}
+export function reportGroupOf(days: number): ReportGroup {
+  return days <= 31 ? "day" : days <= 92 ? "week" : "month";
+}
+/** N10: ขอบ UTC ของช่วงวันตามเวลาร้าน คิดในโค้ด (ห้าม AT TIME ZONE ใน WHERE) · [gte, lt) */
+export function reportUtcBoundsOf(from: string, to: string, tz: string): { gte: Date; lt: Date } {
+  return { gte: localToUtc(tz, from, 0), lt: localToUtc(tz, addDaysYmd(to, 1), 0) };
+}
+export function reportPresetsOf(today: string): { key: "thisMonth" | "lastMonth" | "last30" | "next30"; from: string; to: string }[] {
+  const lastEnd = addDaysYmd(monthStart(today), -1);
+  return [
+    { key: "thisMonth", from: monthStart(today), to: monthEnd(today) },
+    { key: "lastMonth", from: monthStart(lastEnd), to: lastEnd },
+    { key: "last30", from: addDaysYmd(today, -29), to: today },
+    { key: "next30", from: today, to: addDaysYmd(today, 29) },
+  ];
+}
+/** day = วันนั้น · week = วันจันทร์ ISO · month = YYYY-MM */
+export function periodKeyOf(ymd: string, group: ReportGroup): string {
+  if (group === "day") return ymd;
+  if (group === "month") return ymd.slice(0, 7);
+  return addDaysYmd(ymd, -((weekdayOfYmd(ymd) + 6) % 7));
+}
+/** ช่วงย่อยต่อเนื่องครบ ตัดหัวท้ายให้อยู่ใน [from, to] */
+export function periodsOf(from: string, to: string, group: ReportGroup): { key: string; from: string; to: string }[] {
+  const out: { key: string; from: string; to: string }[] = [];
+  let cur = from;
+  while (cur <= to) {
+    const end = group === "day" ? cur : group === "week" ? addDaysYmd(periodKeyOf(cur, "week"), 6) : monthEnd(cur);
+    const pe = end < to ? end : to;
+    out.push({ key: periodKeyOf(cur, group), from: cur, to: pe });
+    cur = addDaysYmd(pe, 1);
+  }
+  return out;
+}
+/** วันปฏิทินจากวันจอง (เขตเวลาหน่วย) ถึงวันเดินทาง — ติดลบได้ */
+export function leadDaysOf(createdAt: Date, travelDate: string, tz: string): number {
+  return daysBetween(utcToLocal(tz, createdAt).ymd, travelDate);
+}
+export function leadBucketOf(days: number): LeadBucketKey | null {
+  if (days < 0) return null;
+  for (const b of LEAD_BUCKETS) if (days >= b.min && (b.max === null || days <= b.max)) return b.key;
+  return null;
+}
+/** ค่ากลางล่าง xs[floor((n − 1) / 2)] หลังเรียง (ไม่แก้อินพุต) · ว่าง ⇒ null */
+export function medianOf(xs: readonly number[]): number | null {
+  if (!xs.length) return null;
+  const s = [...xs].sort((a, b) => a - b);
+  return s[Math.floor((s.length - 1) / 2)] ?? null;
+}
+
+// ═══════════════ CSV ข้อมูลล้วน (D2) ═══════════════
+const plain2 = (n: number): string => {
+  const v = Math.trunc(n);
+  const abs = Math.abs(v);
+  return `${v < 0 ? "-" : ""}${Math.floor(abs / 100)}.${String(abs % 100).padStart(2, "0")}`;
+};
+/** สตางค์ ⇒ "-1200.00" (ไม่มีตัวคั่น ไม่มี ') */
+export function bahtPlain(satang: number): string {
+  return plain2(satang);
+}
+/** bp ⇒ "62.50" · null ⇒ "" */
+export function pctPlain(bp: number | null): string {
+  return bp === null || !Number.isFinite(bp) ? "" : plain2(bp);
+}
+export type ReportCell = string | number | { satang: number } | { bp: number | null } | null;
+const cellOf = (c: ReportCell): string => {
+  if (c === null) return "";
+  if (typeof c === "string") return csvCell(c);
+  if (typeof c === "number") return Number.isSafeInteger(c) ? String(c) : "";
+  return "satang" in c ? bahtPlain(c.satang) : pctPlain(c.bp);
+};
+/** BOM + หัว + แถวข้อมูลเท่านั้น (ไม่มีบรรทัดข้อความ) · CRLF · สตริงผ่าน csvCell (กันสูตร) · แถวปรับให้เท่าหัว */
+export function reportCsv(header: readonly string[], rows: readonly (readonly ReportCell[])[]): string {
+  const w = header.length;
+  const line = (cells: readonly ReportCell[]) => Array.from({ length: w }, (_, i) => cellOf(cells[i] ?? null)).join(",");
+  return `﻿${[line(header), ...rows.map(line)].map((l) => `${l}\r\n`).join("")}`;
+}
+/** trips-report-<from>-<to>[-partial].csv · วันไม่จริง ⇒ trips-report[-partial].csv (ASCII · C19) */
+export function reportFileName(from: string, to: string, partial?: boolean): string {
+  const tail = partial ? "-partial" : "";
+  return isRealYmd(from) && isRealYmd(to) ? `trips-report-${from}-${to}${tail}.csv` : `trips-report${tail}.csv`;
+}
+// ── /T1.7a2 report-core ──

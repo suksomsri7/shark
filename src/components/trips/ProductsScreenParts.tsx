@@ -150,6 +150,9 @@ type ActionResult = { ok: boolean; message?: string; messageTh?: string; code?: 
 /** รหัสข้อผิดพลาดของบริการที่มีข้อความในทั้งสองภาษา (messages trips.errors.<code>) */
 const ERROR_CODES = new Set([
   "INVALID_INPUT",
+  "RANGE_TOO_LARGE",
+  "REPORT_TOO_LARGE",
+  "RATE_LIMITED",
   "VALIDATION",
   "NOT_FOUND",
   "FORBIDDEN",
