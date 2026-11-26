@@ -115,7 +115,7 @@ const VISUAL = "scripts/visual-trips.mts";
 const LIMITED: [string, number, number][] = [[PCORE, 10, 95], [PSVC, 14, 95], [BCORE, 10, 85], [BSVC, 14, 85], [PUBMOD, 10, 70], [FACADE, 8, 28], [PAGE_PROD, 5, 10], [PAGE_RES, 1, 4],
   [COMP_FULL, 0, 110], [COMP_PROD, 2, 10], [COMP_RES, 8, 55], [MSG_TH, 2, 28], [MSG_EN, 2, 28], [VISUAL, 0, 40]];
 const FORBIDDEN_PATHS = ["prisma", "src", "next.config.ts", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts", "scripts/fitness.mts", "scripts/with-gate-lock.sh", "scripts/trips-main-merge.mts",
-  "scripts/qc-trips-*.mts", ":(exclude)scripts/qc-trips-w1.4.mts", ...LIMITED.map(([f]) => `:(exclude)${f}`)];
+  "scripts/qc-trips-*.mts", ":(exclude)scripts/qc-trips-w1.4.mts", ":(exclude)scripts/qc-trips-w1.1.mts" /* ORACLE-EDIT ผู้คุม: w1.1 SD-9 ถูกแก้ตามมติ D10 (ช่อง full) */, ...LIMITED.map(([f]) => `:(exclude)${f}`)];
 const NEW_KEYS = ["full.title", "full.short", "full.want", "full.nearby", "full.left", "full.choose", "full.sameDay", "full.none", "full.noneNoContact",
   "res.expiredTitle", "res.expiredWhen", "res.expiredMoney", "res.expiredNowOpen", "res.expiredNowFull", "res.expiredNowClosed", "res.reholdSubmit", "res.reholdNote", "res.reholdPartial", "res.expiredPaidTitle", "res.expiredPaidHow"];
 const TESTIDS = ["book-full", "book-full-want", "book-full-nearby", "book-full-nearby-item", "book-full-sameday", "book-full-sameday-item", "book-full-none",
