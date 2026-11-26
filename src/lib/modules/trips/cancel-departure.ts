@@ -18,7 +18,7 @@ import { seatsOfSnapshot, type SnapshotShape } from "./booking-core";
 import { CANCEL_KINDS, cancelOptionsOf, decideByOf } from "./cancel-departure-core";
 import { parseCtx, releaseHoldForBookingInTx, releaseHoldInTx, returnSoldInTx, type Ctx, type Gate as CGate, type Tx } from "./capacity";
 import { normalizeTimezone } from "./departures-core";
-import { bookingEventPayload, emitMoney, lockMoneyBookingInTx, moneyNsKey, moneyRowId, moneySellCtx, openRefundOf, readMoneyBooking, type MoneyBooking, type MoneyEvt } from "./money";
+import { auditMoney, bookingEventPayload, emitMoney, receivedAfterCancelOf, lockMoneyBookingInTx, moneyNsKey, moneyRowId, moneySellCtx, openRefundOf, readMoneyBooking, type MoneyBooking, type MoneyEvt } from "./money";
 import { releasePromoInTx } from "./promo";
 import { fileRefundRequestInTx, withdrawRefundInTx } from "./refund";
 import { auditTx, lockDeparture, releaseUsesTx, type Gate, type TripCtx, type TripOpts } from "./resources";
@@ -365,8 +365,10 @@ async function settleNoMoneyInTx(
 }
 
 /** ยื่นคำขอคืนเต็ม (ป้าย DEPARTURE_CANCEL) ในธุรกรรมของผู้เรียก — ผู้เรียกถือแถวการจองแล้ว · อนุมัติให้เอง (ไม่ผ่าน X12 · N5) · แถวผล ⇒ REFUND */
-async function fileFullRefundInTx(tx: Tx, c: Ctx, lb: MoneyBooking, o: { kind: string; reason: string; key: string; outcomeId: string }): Promise<{ requestId: string; amountSatang: number }> {
+async function fileFullRefundInTx(tx: Tx, c: Ctx, lb: MoneyBooking, o: { kind: string; reason: string; key: string; outcomeId: string }): Promise<{ requestId: string; amountSatang: number; status: string }> {
   const g: CGate = { tenantId: c.tenantId, unitId: c.unitId, tz: "" };
+  // F1 (ข): มีใบรับบันทึกหลังแถวผล (เงินเข้าหลังร้านยกเลิก) ⇒ ไม่อนุมัติให้เอง — QUOTED (ยังติดป้าย · ปรับยอดไม่ได้) รอผู้ถือ trips.refund.approve
+  const late = await receivedAfterCancelOf(tx, g, lb.id, lb.departureId);
   const requestHash = sha256hex(JSON.stringify(["trips.depcancel.refund.v1", lb.id, o.kind, o.reason]));
   const f = await fileRefundRequestInTx(tx, c, g, lb, {
     reasonKind: o.kind as "EXTERNAL" | "MIN_NOT_MET" | "SHOP_FAULT",
@@ -375,14 +377,16 @@ async function fileFullRefundInTx(tx: Tx, c: Ctx, lb: MoneyBooking, o: { kind: s
     deductionsSatang: 0,
     key: o.key,
     requestHash,
-    autoApproveUpTo: INT4,
+    autoApproveUpTo: late ? 0 : INT4,
     fullRefund: true,
   });
-  if (f.status !== "APPROVED") abort("STATE_CONFLICT", "NOT_APPROVED");
+  if (f.status !== (late ? "QUOTED" : "APPROVED")) abort("STATE_CONFLICT", "INTEGRITY");
+  // F5: เวลาอนุมัติแรก (นาฬิกาของคำขอ) — คำเตือนโอนค้างนับจากเวลานี้ · requote/ยื่นใหม่ไม่รีเซ็ต
+  if (f.status === "APPROVED") await tx.$queryRaw`UPDATE "TripRefundRequest" SET "computed" = "computed" || ${JSON.stringify({ approvedAt: c.clock.iso })}::jsonb WHERE "id" = ${f.requestId} AND "tenantId" = ${g.tenantId} RETURNING "id"`;
   await tx.$queryRaw`
     UPDATE "TripDepartureCancelOutcome" SET "choice" = 'REFUND', "refundRequestId" = ${f.requestId}, "by" = 'STAFF', "at" = ${c.clock.iso}::timestamp, "updatedAt" = ${c.clock.iso}::timestamp
     WHERE "id" = ${o.outcomeId} AND "tenantId" = ${g.tenantId} AND "choice" = 'PENDING' RETURNING "id"`;
-  return { requestId: f.requestId, amountSatang: f.amountSatang };
+  return { requestId: f.requestId, amountSatang: f.amountSatang, status: f.status };
 }
 
 /**
@@ -406,10 +410,15 @@ export async function resolveCancelledBooking(ctx: TripCtx, input: unknown, opts
   if (!b) return fail("NOT_FOUND");
   const keyHash = sha256hex(`depresolve:${g.unitId}:${b.id}:${v.idempotencyKey}`);
   const bodyHash = sha256hex(JSON.stringify(["trips.depresolve.v1", b.id, v.expectedVersion, v.choice, v.reason ?? null]));
-  const replay = (a: Record<string, unknown>): { ok: true; value: ResolveValue } | CancelFail =>
-    a.bodyHash === bodyHash
-      ? { ok: true, value: { bookingId: b.id, choice: v.choice as "REFUND" | "NO_MONEY", refundRequestId: typeof a.refundRequestId === "string" ? a.refundRequestId : null, amountSatang: Number(a.amountSatang ?? 0), replayed: true } }
-      : fail("IDEMPOTENCY_CONFLICT");
+  // F4: คีย์เดิม ⇒ ผลตามสถานะปัจจุบันของแถวผล (คำขอถูกถอน/ปฏิเสธแล้ว ⇒ STATE_CONFLICT CHOICE_CHANGED · ไม่ replay ความสำเร็จเก่า)
+  const replay = async (a: Record<string, unknown>): Promise<{ ok: true; value: ResolveValue } | CancelFail> => {
+    if (a.bodyHash !== bodyHash) return fail("IDEMPOTENCY_CONFLICT");
+    const cur = (await db.$queryRaw<{ choice: string; reqId: string | null; amount: number | null }[]>`
+      SELECT o."choice", o."refundRequestId" AS "reqId", r."amountSatang" AS "amount" FROM "TripDepartureCancelOutcome" o LEFT JOIN "TripRefundRequest" r ON r."id" = o."refundRequestId" AND r."tenantId" = o."tenantId"
+      WHERE o."departureId" = ${b.departureId} AND o."bookingId" = ${b.id} AND o."tenantId" = ${g.tenantId} AND o."unitId" = ${g.unitId}`)[0];
+    if (!cur || cur.choice !== v.choice) return fail("STATE_CONFLICT", "CHOICE_CHANGED");
+    return { ok: true, value: { bookingId: b.id, choice: v.choice as "REFUND" | "NO_MONEY", refundRequestId: cur.reqId, amountSatang: Number(cur.amount ?? 0), replayed: true } };
+  };
   const prior = await idemAuditOf(db, g.tenantId, "trips.booking.cancel_choice", b.id, keyHash);
   if (prior) return replay(prior);
   const dep = (await db.$queryRaw<{ cancelKind: string | null; cancelReason: string | null }[]>`
@@ -423,6 +432,7 @@ export async function resolveCancelledBooking(ctx: TripCtx, input: unknown, opts
   if (isAgency(b) && !v.reason) return fail("VALIDATION", "REASON_REQUIRED", { fields: ["reason"] });
   const money = b.paidSatang - b.refundedSatang;
   if (v.choice === "REFUND" && money <= 0) return fail("VALIDATION", "NO_MONEY_USE_CLOSE");
+  if (v.choice === "REFUND" && b.currency !== "THB") return fail("CURRENCY_NOT_ALLOWED", "CURRENCY_NOT_THB"); // F6 ▸ บันทึกโอนคืนได้เฉพาะ THB (moneyBookingGate) ◂
   if (v.choice === "NO_MONEY" && money !== 0) return fail("VALIDATION", "HAS_MONEY_USE_REFUND");
   if (b.version !== v.expectedVersion) return fail("STATE_CONFLICT");
   const reason = v.reason ?? dep.cancelReason ?? DEFAULT_REFUND_REASON;
@@ -433,6 +443,7 @@ export async function resolveCancelledBooking(ctx: TripCtx, input: unknown, opts
     if (!lb) return abort("NOT_FOUND");
     if (lb.version !== v.expectedVersion || !SOLD.has(lb.status) || lb.departureId !== b.departureId) return abort("STATE_CONFLICT");
     if (isAgency(lb)) return abort("FORBIDDEN", "AGENCY_NOT_ENABLED");
+    if (lb.currency !== "THB") return abort("CURRENCY_NOT_ALLOWED", "CURRENCY_NOT_THB");
     if (lb.paidSatang - lb.refundedSatang <= 0) return abort("VALIDATION", "NO_MONEY_USE_CLOSE");
     const o2 = await lockOutcomeTx(tx, cg, lb.departureId, lb.id);
     if (!o2) return abort("STATE_CONFLICT", "NOT_CANCELLED_BY_SHOP");
@@ -441,7 +452,7 @@ export async function resolveCancelledBooking(ctx: TripCtx, input: unknown, opts
     const f = await fileFullRefundInTx(tx, c, lb, { kind: dep.cancelKind as string, reason, key: `depcancel:${lb.id}:${moneyNsKey(c, v.idempotencyKey)}`, outcomeId: o2.id });
     const seq = await choiceSeqOf(tx, cg, lb.id);
     await emitMoney(tx, cg, [madeEvt(lb.id, lb.departureId, "REFUND", seq, "STAFF", f.requestId)]);
-    await auditTx(tx, g, "trips.booking.cancel_choice", "TripBooking", lb.id, { choice: "REFUND", by: "STAFF", departureId: lb.departureId, refundRequestId: f.requestId, amountSatang: f.amountSatang, idemKeyHash: keyHash, bodyHash });
+    await auditTx(tx, g, "trips.booking.cancel_choice", "TripBooking", lb.id, { choice: "REFUND", by: "STAFF", departureId: lb.departureId, refundRequestId: f.requestId, amountSatang: f.amountSatang, requestStatus: f.status, idemKeyHash: keyHash, bodyHash });
     return { bookingId: lb.id, choice: "REFUND", refundRequestId: f.requestId, amountSatang: f.amountSatang, replayed: false };
   });
   if (!r.ok) {
@@ -472,7 +483,12 @@ export async function withdrawForPaymentInTx(tx: Tx, c: Ctx, g: CGate, b: MoneyB
     const out = await lockOutcomeTx(tx, g, lb.departureId, lb.id);
     if (!dep?.cancelKind || !out || out.choice !== "PENDING") return;
     const f = await fileFullRefundInTx(tx, c, lb, { kind: dep.cancelKind, reason: dep.cancelReason ?? DEFAULT_REFUND_REASON, key: `depcancel:${lb.id}:refile:${open.id}`, outcomeId: out.id });
-    await emitMoney(tx, g, [madeEvt(lb.id, lb.departureId, "REFUND", await choiceSeqOf(tx, g, lb.id), "STAFF", f.requestId)]);
+    // F2: ลำดับใหม่ (audit ของทางเลือกนับลำดับ) + audit ของการยื่นใหม่ ⇒ อีเวนต์ไม่ชนกุญแจเดิม (ไม่ถูก skipDuplicates กลืน)
+    const seq = await choiceSeqOf(tx, g, lb.id);
+    await emitMoney(tx, g, [madeEvt(lb.id, lb.departureId, "REFUND", seq, "STAFF", f.requestId)]);
+    await auditMoney(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor }, "trips.booking.cancel_choice", { type: "TripBooking", id: lb.id }, {
+      choice: "REFUND", by: "STAFF", departureId: lb.departureId, refundRequestId: f.requestId, amountSatang: f.amountSatang, requestStatus: f.status, refiledFrom: open.id, seq,
+    });
   };
 }
 // ═══════════════════════ §9 ข้อมูลจอ (อ่านอย่างเดียว) ═══════════════════════
@@ -551,7 +567,7 @@ export async function bookingCancelChoiceOf(
 ): Promise<BookingCancelChoiceVM | null> {
   const rows = await db.$queryRaw<{ choice: string; decideBy: Date | null; reqId: string | null; reqStatus: string | null; amount: number | null; approvedAt: string | null }[]>`
     SELECT o."choice", d."cancelDecideBy" AS "decideBy", r."id" AS "reqId", r."status" AS "reqStatus", r."amountSatang" AS "amount",
-      COALESCE(r."computed"->>'requotedAt', r."computed"->>'quotedAt') AS "approvedAt"
+      (SELECT min(x."computed"->>'approvedAt') FROM "TripRefundRequest" x WHERE x."bookingId" = o."bookingId" AND x."tenantId" = o."tenantId" AND x."computed"->>'path' = 'DEPARTURE_CANCEL') AS "approvedAt"
     FROM "TripDepartureCancelOutcome" o JOIN "TripDeparture" d ON d."id" = o."departureId" AND d."tenantId" = o."tenantId"
     LEFT JOIN "TripRefundRequest" r ON r."id" = o."refundRequestId" AND r."tenantId" = o."tenantId"
     WHERE o."bookingId" = ${b.id} AND o."departureId" = ${b.departureId} AND o."tenantId" = ${g.tenantId} AND o."unitId" = ${g.unitId} AND d."cancelKind" IS NOT NULL LIMIT 1`;

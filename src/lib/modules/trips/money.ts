@@ -30,6 +30,7 @@ import {
   moneyDocumentOf,
   receiptVatCtxOf,
   receiptVatSatang,
+  tenderGroupOf,
   type DueDraft,
   type DueState,
 } from "./money-core";
@@ -146,6 +147,12 @@ export async function openRefundOf(db: Tx, g: { tenantId: string; unitId: string
 export async function departureCancelKindOf(db: Tx, g: { tenantId: string; unitId: string }, departureId: string): Promise<string | null> {
   const rows = await db.$queryRaw<{ k: string | null }[]>`SELECT "cancelKind" AS "k" FROM "TripDeparture" WHERE "id" = ${departureId} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
   return rows[0]?.k ?? null;
+}
+/** T1.6a1 F1 ▸ มีใบรับเงินที่บันทึกหลังแถวผลของรอบที่ร้านยกเลิก (createdAt ของใบรับ > createdAt ของแถวผล · ทั้งคู่ = นาฬิกาของคำขอ) ⇒ คำขอคืนเต็มต้องรอผู้อนุมัติ ◂ */
+export async function receivedAfterCancelOf(db: Tx, g: { tenantId: string; unitId: string }, bookingId: string, departureId: string): Promise<boolean> {
+  const rows = await db.$queryRaw<{ x: number }[]>`SELECT 1 AS "x" FROM "TripMoneyEvent" e JOIN "TripDepartureCancelOutcome" o ON o."bookingId" = e."bookingId" AND o."tenantId" = e."tenantId" AND o."departureId" = ${departureId}
+    WHERE e."bookingId" = ${bookingId} AND e."tenantId" = ${g.tenantId} AND e."unitId" = ${g.unitId} AND e."kind" = 'RECEIVED' AND e."createdAt" > o."createdAt" LIMIT 1`;
+  return rows.length > 0;
 }
 
 // ═══════════════════════ audit · outbox ═══════════════════════
@@ -474,7 +481,9 @@ async function payTx(tx: Tx, c: Ctx, g: Gate, v: PayInput, base: string, keyHash
   const sg = payableStatusGate(b) ?? moneyBookingGate(b);
   if (sg) abortOf(sg);
   // T1.6a1 N13 ▸ รอบที่ร้านยกเลิก: รับเงินได้ · คำขอคืนเต็มที่เปิดอยู่ถูกถอนก่อน แล้วยื่นใหม่ (ยอดใหม่) หลังบันทึกเงินในธุรกรรมเดียวกัน ◂
-  const refile = (await departureCancelKindOf(tx, g, b.departureId)) ? await (await import("./cancel-departure")).withdrawForPaymentInTx(tx, c, g, b) : null;
+  const shopCancelled = (await departureCancelKindOf(tx, g, b.departureId)) !== null;
+  if (shopCancelled && !v.slipId && !(tenderGroupOf(v.tender) === "BANK" && v.reference?.trim())) throw new BookingAbort("STATE_CONFLICT", { reason: "DEPARTURE_CANCELLED_SLIP_ONLY" }); // F1 (ก) สลิป/หลักฐานโอนเท่านั้น
+  const refile = shopCancelled ? await (await import("./cancel-departure")).withdrawForPaymentInTx(tx, c, g, b) : null;
   if (await openRefundOf(tx, g, b.id)) throw new BookingAbort("STATE_CONFLICT", { reason: "REFUND_IN_PROGRESS" });
   const payable = payableOfSnapshot(b.policySnapshot);
   const vatCtx = receiptVatCtxOf(b.policySnapshot);
