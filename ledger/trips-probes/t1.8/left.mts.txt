@@ -1,0 +1,6 @@
+import pg from "pg";
+import { loadTripsQcEnv } from "../../scripts/trips-qc-env.mjs";
+loadTripsQcEnv("probe-t1.8-left");
+const c = new pg.Client({ connectionString: process.env.DATABASE_URL }); await c.connect();
+const r = await c.query(`SELECT (SELECT count(*) FROM "Tenant" WHERE slug LIKE 'trips-t18-%')::int AS t, (SELECT count(*) FROM "User" WHERE email LIKE 'trips-t18-%')::int AS u`);
+console.log(JSON.stringify(r.rows[0])); await c.end();
