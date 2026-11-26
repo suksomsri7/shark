@@ -3,14 +3,18 @@ import { requireUnit } from "@/lib/core/context";
 import { loadTripReportVM, reportQueryOf, tripsPageGate } from "@/lib/modules/trips";
 import TripsForbidden from "@/components/trips/TripsForbidden";
 import ReportScreen from "@/components/trips/ReportScreen";
+import ReportTooLarge from "@/components/trips/ReportTooLarge";
 
 /** ช่องของตัวกรองที่ผิด ⇒ ชื่อใน input ที่ต้องทิ้ง (§5.7 · range = ทิ้ง from + to) */
 const DROP: Record<string, readonly string[]> = { range: ["from", "to"], basis: ["basis"], product: ["productId"], channel: ["channel"], tab: ["tab"], group: ["group"], page: ["page"] };
+/** J1: เกินเพดาน ⇒ ทิ้งช่วง สินค้า ฐาน และช่องทางในครั้งเดียว (โหลดหนักต่อคำขอ ≤ 3) */
+const DROP_TOO_LARGE = ["from", "to", "productId", "basis", "channel"] as const;
+const minusDays = (ymd: string, n: number) => new Date(Date.parse(`${ymd}T00:00:00.000Z`) - n * 86_400_000).toISOString().slice(0, 10);
 
 // TRIPS T1.7a2 ▸ รายงานทัวร์ตามช่วงเวลา ฝั่งร้าน (ใบสั่ง T1.7a2 §5) — หน้าบาง: ด่าน → ตัวกรองจาก URL → ตัวโหลด → คอมโพเนนต์ (ส่งเฉพาะ vm + error)
 //   ทางเข้า = ลิงก์บนหัวปฏิทินรอบ (ไม่มีแท็บใหม่ · C2) · ตัวกรองเป็นฟอร์ม GET (ใช้ได้โดยไม่มี JavaScript) · ตัวโหลดใช้นาฬิกาจริง (หน้าไม่ส่งเวลา)
-//   ตัวกรองผิด (D5 · D6): ทิ้งเฉพาะช่องที่ผิดแล้วโหลดใหม่ (ไม่เกิน 8 ครั้ง) ⇒ ค่าที่ถูกคงไว้ + กล่องข้อผิดพลาดของรหัสแรก · ไม่ notFound จากตัวกรอง
-//   RANGE_TOO_LARGE ⇒ ทิ้งช่วง · REPORT_TOO_LARGE ⇒ ทิ้งช่วง + สินค้า · notFound เฉพาะหน่วย/ร้านที่ไม่ใช่ของผู้ใช้
+//   ตัวกรองผิด (D5 · D6): ทิ้งเฉพาะช่องที่ผิดแล้วโหลดใหม่ (ไม่เกิน 8 ครั้ง · ช่องผิดตกก่อนอ่านรอบ) ⇒ ค่าที่ถูกคงไว้ + กล่องข้อผิดพลาดของรหัสแรก · ไม่ notFound จากตัวกรอง
+//   RANGE_TOO_LARGE ⇒ ทิ้งช่วง · REPORT_TOO_LARGE ⇒ ทิ้งช่วง + สินค้า + ฐาน + ช่องทาง · ยังเกิน ⇒ กล่องแจ้ง + ลิงก์ 7 วันที่ผ่านมา (J1) · notFound เฉพาะหน่วย/ร้านที่ไม่ใช่ของผู้ใช้
 export default async function TripsReportsPage({ params, searchParams }: { params: Promise<{ unitSlug: string }>; searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { unitSlug } = await params;
   const sp = await searchParams;
@@ -27,8 +31,11 @@ export default async function TripsReportsPage({ params, searchParams }: { param
     const r = await loadTripReportVM(ctx, { unitId: unit.id, ...q });
     if (r.ok) return <ReportScreen vm={r.vm} error={error} />;
     if (r.code === "FORBIDDEN") return <TripsForbidden />;
-    const drop = r.code === "REPORT_TOO_LARGE" ? ["from", "to", "productId"] : (r.code === "INVALID_INPUT" || r.code === "RANGE_TOO_LARGE" || r.code === "NOT_FOUND") && r.field ? (DROP[r.field] ?? []) : [];
-    if (!drop.some((k) => k in q)) break;
+    const drop: readonly string[] = r.code === "REPORT_TOO_LARGE" ? DROP_TOO_LARGE : (r.code === "INVALID_INPUT" || r.code === "RANGE_TOO_LARGE" || r.code === "NOT_FOUND") && r.field ? (DROP[r.field] ?? []) : [];
+    if (!drop.some((k) => k in q)) {
+      if (r.code === "REPORT_TOO_LARGE" && r.today) return <ReportTooLarge unitSlug={unit.slug} from={minusDays(r.today, 6)} to={r.today} />;
+      break;
+    }
     error ??= r.code;
     for (const k of drop) delete q[k];
   }

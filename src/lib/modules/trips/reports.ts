@@ -11,10 +11,9 @@ import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { checkRateLimitDb } from "@/lib/core/rate-limit-db";
 import { SELL_CHANNELS } from "@/lib/core/sellable";
-import { resolveSettings } from "@/lib/core/settings";
 import enMessages from "@/messages/en/trips.json";
 import thMessages from "@/messages/th/trips.json";
-import { moneyOfDeparture, readMoneyBookings, timeTextOf, tzOf, type BookingReadRow, type DepartureMoneyVM } from "./costs";
+import { moneyOfDeparture, readMoneyBookings, timeTextOf, tzOf, unitVatSettingsOf, vatRegisteredOf, type BookingReadRow, type DepartureMoneyVM } from "./costs";
 import { utcToLocal } from "./departures-core";
 import { mulDivHalfUp } from "./money-math";
 import { tripsFail, tripsUnitGate, type TripsFail, type TripsScreenCtx, type TripsUnitGate } from "./pickup";
@@ -66,7 +65,7 @@ import {
 // ── T1.7a2 reports ──
 type Opts = { now?: Date; caps?: { departures?: number; bookings?: number } };
 type Field = "range" | "basis" | "product" | "channel" | "tab" | "group" | "page";
-type Fail = TripsFail & { field?: Field; minutes?: number };
+type Fail = TripsFail & { field?: Field; minutes?: number; today?: string };
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isFail = (x: unknown): x is TripsFail => isRec(x) && x.ok === false;
 const CTL_RE = /[\u0000-\u001f\u007f]/;
@@ -81,7 +80,6 @@ function pushTo<K, V>(m: Map<K, V[]>, k: K, v: V): void {
   if (xs) xs.push(v);
   else m.set(k, [v]);
 }
-const VAT_KEY = "trips.tax.vatRegistered";
 const A_EXPORTED = "trips.report.exported";
 const NEEDS = ["trips.departure.view", "trips.report.view"] as const;
 /** 12 ช่องทางตามกลุ่ม (ตัวเลือกของตัวกรอง) */
@@ -99,6 +97,12 @@ const MSG: Record<string, string> = {
 };
 const fail = (code: string, field?: Field): Fail => ({ ...tripsFail(code, MSG[code]), ...(field ? { field } : {}) });
 type Dict = Record<string, string>;
+/** ข้อความจากไฟล์ภาษาตามเส้นทาง "a.b.c" (ไม่พบ ⇒ null) */
+function textOf(root: unknown, path: string): string | null {
+  let cur: unknown = root;
+  for (const k of path.split(".")) cur = isRec(cur) ? cur[k] : undefined;
+  return typeof cur === "string" ? cur : null;
+}
 const TEXT = { th: thMessages, en: enMessages } as const;
 
 // ═══════════════ ชนิด VM (§6.1) ═══════════════
@@ -262,27 +266,30 @@ async function enter(ctx: TripsScreenCtx, unitId: string): Promise<Enter | Fail>
   return { g, costView: costAccessOf(g.member, g.unitId).view };
 }
 /** เขตเวลา · ค่าตั้ง VAT (ครั้งเดียวต่อการโหลด) · สินค้าของหน่วย — อ่านพร้อมกัน */
-async function basicsOf(g: TripsUnitGate, now: Date): Promise<{ tz: string; registered: boolean | null; products: ProductInfo[] }> {
+type Basics = { tz: string; registered: boolean | null; products: ProductInfo[] };
+async function basicsOf(g: TripsUnitGate, now: Date): Promise<Basics> {
   const [tz, vatSet, rows] = await Promise.all([
     tzOf(g),
-    resolveSettings({ tenantId: g.tenantId }, [VAT_KEY], { unitId: g.unitId }, now),
+    unitVatSettingsOf(g, now),
     g.db.tripProduct.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId }, select: { id: true, title: true, sourceKind: true } }),
   ]);
-  const reg = vatSet[VAT_KEY]?.value;
-  const registered = isRec(reg) && typeof reg.registered === "boolean" ? reg.registered : null;
+  const registered = vatRegisteredOf(vatSet);
   const products = rows
     .map((p) => ({ id: p.id, titleTh: i18nTh(p.title), titleEn: i18nEn(p.title), sourceKind: p.sourceKind }))
     .sort((a, b) => a.titleTh.localeCompare(b.titleTh, "th") || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { tz, registered, products };
 }
 
-async function build(e: Enter, f: Filters, opts: Opts | undefined): Promise<Built | Fail> {
+/** pre = ของที่ผู้เรียกอ่านไว้แล้ว (ทางส่งออก: เขตเวลาอ่านครั้งเดียว · J3) */
+async function build(e: Enter, f: Filters, opts: Opts | undefined, pre?: Basics): Promise<Built | Fail> {
   const { g, costView } = e;
   const now = nowOf(opts);
   const capDep = capOf(opts?.caps?.departures, REPORT_DEPARTURE_CAP);
   const capBk = capOf(opts?.caps?.bookings, REPORT_BOOKING_CAP);
-  const { tz, registered, products } = await basicsOf(g, now);
+  const { tz, registered, products } = pre ?? (await basicsOf(g, now));
   const today = utcToLocal(tz, now).ymd;
+  /** J1: หน้าใช้วันนี้ของหน่วยทำลิงก์ช่วงสั้นเมื่อเกินเพดาน */
+  const tooLarge = (): Fail => ({ ...fail("REPORT_TOO_LARGE"), today });
   const r = reportRangeOf({ from: f.from, to: f.to }, today);
   if (!r.ok) return fail(r.code, "range");
   if (f.group === "day" && r.days > REPORT_DAY_GROUP_MAX_DAYS) return fail("INVALID_INPUT", "group");
@@ -294,7 +301,7 @@ async function build(e: Enter, f: Filters, opts: Opts | undefined): Promise<Buil
   if (f.basis === "booked") {
     const { gte, lt } = reportUtcBoundsOf(r.from, r.to, tz);
     const rows = await readMoneyBookings(g, { createdGte: gte, createdLt: lt, productId: f.productId, channel: f.channel, limit: capBk + 1 });
-    if (rows.length > capBk) return fail("REPORT_TOO_LARGE");
+    if (rows.length > capBk) return tooLarge();
     const groups = new Map<string, BookingReadRow[]>();
     for (const b of rows) pushTo(groups, b.departureId, b);
     const calcs: DepCalc[] = [...groups.values()].map((bs) => {
@@ -315,7 +322,7 @@ async function build(e: Enter, f: Filters, opts: Opts | undefined): Promise<Buil
     WHERE d."tenantId" = ${g.tenantId} AND d."unitId" = ${g.unitId} AND d."localDate" >= ${r.from}::date AND d."localDate" <= ${r.to}::date${prod}
     ORDER BY d."localDate", d."startsAt", d."id"
     LIMIT ${capDep + 1}`;
-  if (deps.length > capDep) return fail("REPORT_TOO_LARGE");
+  if (deps.length > capDep) return tooLarge();
   const ids = deps.map((d) => d.id);
   const [rows, costs] = await Promise.all([
     ids.length ? readMoneyBookings(g, { departureIds: ids, channel: f.channel, limit: capBk + 1 }) : Promise.resolve([] as BookingReadRow[]),
@@ -328,7 +335,7 @@ async function build(e: Enter, f: Filters, opts: Opts | undefined): Promise<Buil
         })
       : Promise.resolve([] as CostRead[]),
   ]);
-  if (rows.length > capBk) return fail("REPORT_TOO_LARGE");
+  if (rows.length > capBk) return tooLarge();
   const bkOf = new Map<string, BookingReadRow[]>();
   for (const b of rows) pushTo(bkOf, b.departureId, b);
   const costOf = new Map<string, CostRead[]>();
@@ -557,15 +564,18 @@ export async function loadTripReportVM(ctx: TripsScreenCtx, input: unknown, opts
   const totals = totalsOf(b);
   const rows = b.full ? b.calcs.map((c) => rowVM(c, b.tz)) : null;
   const pageCount = rows ? Math.max(1, Math.ceil(rows.length / REPORT_PAGE_SIZE)) : 1;
+  // J4: page เกินจำนวนหน้า ⇒ หน้าสุดท้าย
+  const page = Math.min(f.page, pageCount);
   return {
     ok: true,
     vm: {
       unit: { id: e.g.unitId, slug: e.g.unitSlug, tz: b.tz, today: b.today, nowIso: b.now.toISOString() },
-      filter: { from: b.range.from, to: b.range.to, days: b.range.days, basis: f.basis, productId: f.productId, channel: f.channel, tab: f.tab, group: b.group, page: f.page },
+      filter: { from: b.range.from, to: b.range.to, days: b.range.days, basis: f.basis, productId: f.productId, channel: f.channel, tab: f.tab, group: b.group, page },
       presets: reportPresetsOf(b.today).filter((x) => !(f.basis === "booked" && x.key === "next30")),
       flags: { costView: b.costView, exportAvailable: b.full, commissionWithVat: b.costView ? b.calcs.some((c) => c.perBooking.some((x) => x.commissionVatCounted)) : null },
       notes: { basis: f.basis === "booked", channel: f.channel !== null },
-      products: b.products.slice(0, REPORT_PRODUCTS_MAX).map((x) => ({ id: x.id, titleTh: x.titleTh, titleEn: x.titleEn })),
+      // J4: สินค้าที่เลือกอยู่นอก 200 รายการแรกต่อท้ายตัวเลือก (ส่งฟอร์มซ้ำแล้วไม่หลุด)
+      products: [...b.products.slice(0, REPORT_PRODUCTS_MAX), ...b.products.slice(REPORT_PRODUCTS_MAX).filter((x) => x.id === f.productId)].map((x) => ({ id: x.id, titleTh: x.titleTh, titleEn: x.titleEn })),
       productsTotal: b.products.length,
       productsTruncated: b.products.length > REPORT_PRODUCTS_MAX,
       channelOptions: CHANNELS,
@@ -574,7 +584,7 @@ export async function loadTripReportVM(ctx: TripsScreenCtx, input: unknown, opts
       load: f.tab === "load" ? loadVM(b) : null,
       lead: f.tab === "lead" ? leadVM(b) : null,
       channelsTab: f.tab === "channel" ? channelsVM(b, totals.salesSatang) : null,
-      departures: rows ? { rows: rows.slice((f.page - 1) * REPORT_PAGE_SIZE, f.page * REPORT_PAGE_SIZE), page: f.page, pageCount, total: rows.length, pageSize: REPORT_PAGE_SIZE } : null,
+      departures: rows ? { rows: rows.slice((page - 1) * REPORT_PAGE_SIZE, page * REPORT_PAGE_SIZE), page, pageCount, total: rows.length, pageSize: REPORT_PAGE_SIZE } : null,
       warnings: warningsOf(b),
     },
   };
@@ -591,19 +601,21 @@ export async function exportTripReportCsv(ctx: TripsScreenCtx, input: unknown, o
   const { g, costView } = e;
   const now = nowOf(opts);
   const locale = p.data.locale ?? "th";
-  // ช่วงก่อนเพดานความถี่ (ช่วงผิดไม่กินโควตา)
-  const tz = await tzOf(g);
-  const r = reportRangeOf({ from: f.from, to: f.to }, utcToLocal(tz, now).ymd);
+  // J3: ช่วง + สินค้าก่อนเพดานความถี่ (ผิด/ไม่พบไม่กินโควตา) · เขตเวลา/ค่าตั้ง/สินค้าอ่านครั้งเดียวแล้วส่งต่อให้ตัวสร้าง
+  const pre = await basicsOf(g, now);
+  const r = reportRangeOf({ from: f.from, to: f.to }, utcToLocal(pre.tz, now).ymd);
   if (!r.ok) return fail(r.code, "range");
+  if (f.productId !== null && !pre.products.some((x) => x.id === f.productId)) return fail("NOT_FOUND", "product");
+  // REPORT_TOO_LARGE / ล้มระหว่างสร้างไฟล์ยังนับโควตา (กันยิงงานหนักซ้ำ)
   const rl = await checkRateLimitDb(`trips:report:export:${g.tenantId}:${g.unitId}:${g.actorUserId}`, REPORT_EXPORT_RATE, now.getTime());
   if (!rl.ok) {
     const minutes = Math.max(1, Math.ceil((rl.retryAfterSec ?? 60) / 60));
     return { ...tripsFail("RATE_LIMITED", `ส่งออกบ่อยเกินไป — ลองใหม่ในอีก ${minutes} นาที`), minutes };
   }
-  const b = await build(e, { ...f, basis: "travel", channel: null, tab: "sales", group: null, page: 1 }, opts);
+  const b = await build(e, { ...f, basis: "travel", channel: null, tab: "sales", group: null, page: 1 }, opts, pre);
   if (isFail(b)) return b;
   const T = TEXT[locale];
-  const head: Dict = T.report.csv;
+  const head = (c: string): string => textOf(T, `report.csv.${c}`) ?? c;
   const states: Dict = T.costs.state;
   const cols: string[] = [...REPORT_CSV_COLUMNS, ...(costView ? REPORT_CSV_COST_COLUMNS : [])];
   const kept = b.calcs.slice(0, TRIPS_REPORT_CSV_CAP);
@@ -636,7 +648,7 @@ export async function exportTripReportCsv(ctx: TripsScreenCtx, input: unknown, o
   });
   const total = b.calcs.length;
   const truncated = total > kept.length;
-  const out: ReportCsvOut = { filename: reportFileName(b.range.from, b.range.to, truncated), csv: reportCsv(cols.map((c) => head[c] ?? c), lines), rows: kept.length, total, truncated, withCost: costView };
+  const out: ReportCsvOut = { filename: reportFileName(b.range.from, b.range.to, truncated), csv: reportCsv(cols.map(head), lines), rows: kept.length, total, truncated, withCost: costView };
   try {
     await g.db.auditLog.create({
       data: {

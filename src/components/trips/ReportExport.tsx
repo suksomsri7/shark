@@ -10,7 +10,8 @@ import { exportTripReportCsvAction } from "@/lib/modules/trips/report-actions";
 import { BTN } from "./ProductsScreenParts";
 import { MGMT_LINE } from "./CostParts";
 
-const KNOWN = new Set(["FORBIDDEN", "NOT_FOUND", "INVALID_INPUT", "BUSY", "RANGE_TOO_LARGE", "REPORT_TOO_LARGE"]);
+/** J3: BUSY (ล้มตอนเขียนบันทึกการส่งออก) ไม่อยู่ในชุดนี้ ⇒ แสดง report.export.error */
+const KNOWN = new Set(["FORBIDDEN", "NOT_FOUND", "INVALID_INPUT", "RANGE_TOO_LARGE", "REPORT_TOO_LARGE"]);
 
 export default function ReportExport({ vm }: { vm: TripReportVM }) {
   const t = useTranslations("trips");
@@ -38,7 +39,8 @@ export default function ReportExport({ vm }: { vm: TripReportVM }) {
       document.body.appendChild(a);
       a.click();
       a.remove();
-      URL.revokeObjectURL(url);
+      // J3: Safari/Firefox ต้องให้ดาวน์โหลดเริ่มก่อนคืน URL
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
       if (r.value.truncated) setPartial({ shown: r.value.rows, total: r.value.total });
     } catch {
       setError(t("report.export.error"));

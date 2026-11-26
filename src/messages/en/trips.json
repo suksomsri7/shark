@@ -1389,7 +1389,8 @@
       "thisMonth": "This month",
       "lastMonth": "Last month",
       "last30": "Last 30 days",
-      "next30": "Next 30 days"
+      "next30": "Next 30 days",
+      "last7": "Last 7 days"
     },
     "kpi": {
       "sales": "Sales",
@@ -1400,12 +1401,11 @@
       "cost": "Departure costs",
       "profit": "Gross profit",
       "loss": "Gross loss {amount}",
-      "noCosts": "Departure costs not deducted yet",
       "load": "Load factor",
       "loadValue": "{sold}/{capacity} · {pct}",
       "margin": "Gross margin {pct}"
     },
-    "noCosts": "Costs not deducted yet for {n, plural, one {# departure} other {# departures}} (travelled {ended} · not travelled yet {upcoming})",
+    "noCosts": "Costs not deducted yet for {n, plural, one {# departure} other {# departures}} ({ended} travelled · {upcoming} not yet travelled)",
     "note": {
       "basis": "By booking date: no capacity, load factor, costs or profit (costs belong to departures, not booking dates)",
       "channel": "Channel filter: capacity, load factor, costs and profit cannot be split by channel"
@@ -1413,20 +1413,15 @@
     "charter": "Charter: {n, plural, one {# departure} other {# departures}} — the load factor does not reflect per-seat selling",
     "periods": {
       "title": "Sales by period",
-      "period": "Period",
       "departures": "Departures",
       "bookings": "Bookings",
-      "seats": "Seats",
       "sales": "Sales",
-      "revenue": "Revenue before VAT",
-      "revenueNoVat": "Revenue",
       "commission": "Commission",
       "cost": "Departure costs",
       "profit": "Gross profit"
     },
     "loadTab": {
       "title": "Load factor by product",
-      "product": "Product",
       "departures": "Departures",
       "soldCapacity": "Sold/capacity",
       "pct": "Load factor",
@@ -1435,14 +1430,14 @@
     },
     "lead": {
       "title": "Booking lead time (booking date to travel date)",
-      "D0": "Booked on the travel day",
+      "D0": "Booked on the day of travel",
       "D1_2": "1–2 days",
       "D3_7": "3–7 days",
       "D8_14": "8–14 days",
       "D15_30": "15–30 days",
       "D31_60": "31–60 days",
       "D61P": "61 days or more",
-      "median": "Median lead time {n} days",
+      "median": "Median lead time {n, plural, one {# day} other {# days}}",
       "medianNone": "Median lead time —",
       "bookings": "Bookings",
       "seats": "Seats",
@@ -1465,11 +1460,11 @@
       "commission": "Commission"
     },
     "channel": {
-      "WEB": "Website",
+      "WEB": "Online booking page",
       "LIFF": "LINE",
       "EMBED": "Booking widget",
       "COUNTER": "Front desk",
-      "POS": "Point of sale",
+      "POS": "Cash register (POS)",
       "AGENT_PORTAL": "Agent portal",
       "AGENT_LINK": "Agent link",
       "AGENT_API": "Agent system",
@@ -1483,9 +1478,6 @@
       "open": "Open departure"
     },
     "dep": {
-      "date": "Date",
-      "product": "Product",
-      "state": "Status",
       "load": "Sold/capacity",
       "sales": "Sales",
       "collected": "Received",
@@ -1521,7 +1513,6 @@
       "passThrough": "Collected on behalf of customers (THB)",
       "vat": "VAT in selling prices (approx.)",
       "revenueExVat": "Revenue before VAT",
-      "revenueNoVat": "Revenue",
       "collected": "Received (THB)",
       "outstanding": "Outstanding (THB)",
       "held": "Held for refund (THB)",

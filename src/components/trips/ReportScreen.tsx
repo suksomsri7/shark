@@ -473,10 +473,11 @@ export default function ReportScreen({ vm, error }: { vm: TripReportVM; error: s
                   {cv ? (
                     <span className={CELL}>
                       {t("report.dep.profit")} <b className={r.grossProfitSatang !== null && r.grossProfitSatang < 0 ? "tabular-nums text-[color:var(--color-danger)]" : NUM}>{profitText(r.grossProfitSatang)}</b>
-                      {r.noCosts === true ? ` (${t("report.dep.noCosts")})` : ""}
                     </span>
                   ) : null}
                 </span>
+                {/* J4: ข้อความยาวอยู่นอกเซลล์ห้ามตัดบรรทัด — ที่ 390 ขึ้นบรรทัดใหม่ได้ */}
+                {cv && r.noCosts === true ? <span className="w-full text-sm text-[color:var(--color-muted)] [overflow-wrap:anywhere]">({t("report.dep.noCosts")})</span> : null}
               </li>
             ))}
           </ul>

@@ -188,6 +188,12 @@ export async function readMoneyBookings(
       WHERE b."tenantId" = ${g.tenantId} AND b."unitId" = ${g.unitId} AND ${scope}${product}${channel} AND b."status" = ANY(${READ_STATUSES}::text[])
       ORDER BY b."createdAt", b."id"${limit}`;
 }
+/** ตัวอ่านค่าตั้ง VAT ของหน่วยที่เดียว (J4) — ผู้เรียกอ่านครั้งเดียวต่อการโหลด · vatRegisteredOf = true/false/null */
+export const unitVatSettingsOf = (g: TripsUnitGate, now: Date) => resolveSettings({ tenantId: g.tenantId }, [VAT_KEY], { unitId: g.unitId }, now);
+export const vatRegisteredOf = (vatSet: Record<string, { value?: unknown } | undefined>): boolean | null => {
+  const reg = vatSet[VAT_KEY]?.value;
+  return isRec(reg) && typeof reg.registered === "boolean" ? reg.registered : null;
+};
 async function computeMoney(g: TripsUnitGate, dep: Pick<DepRow, "id" | "status" | "endsAt" | "capacity" | "sold">, sourceKind: string, costView: boolean, now: Date): Promise<Computed> {
   const [bookings, costRows, vatSet] = await Promise.all([
     readMoneyBookings(g, { departureIds: [dep.id] }),
@@ -195,7 +201,7 @@ async function computeMoney(g: TripsUnitGate, dep: Pick<DepRow, "id" | "status" 
     costView
       ? g.db.tripCost.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, departureId: dep.id }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: TRIP_COST_ROWS_MAX, select: COST_SELECT })
       : Promise.resolve([] as CostDb[]),
-    resolveSettings({ tenantId: g.tenantId }, [VAT_KEY], { unitId: g.unitId }, now),
+    unitVatSettingsOf(g, now),
   ]);
   const reg = vatSet[VAT_KEY]?.value;
   const registered = isRec(reg) ? reg.registered : null;

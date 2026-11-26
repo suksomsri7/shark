@@ -97,7 +97,7 @@ export default function DeparturesScreen({
           <SegLink data-testid="trips-cal-filter-tour" href={filterHref("tour")} on={cal.filter === "tour"} label={t("departures.filter.tour")} />
           <SegLink data-testid="trips-cal-filter-dive" href={filterHref("dive")} on={cal.filter === "dive"} label={t("departures.filter.dive")} />
         </nav>
-        {"canReport" in cal.flags && cal.flags.canReport === true ? (
+        {cal.flags.canReport ? (
           <Link data-testid="trips-dep-reports" href={`/app/u/${unitSlug}/trips/reports`} className={BTN}>
             {t("departures.actions.reports")}
           </Link>

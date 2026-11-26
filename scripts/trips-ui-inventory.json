@@ -5,1156 +5,6 @@
   "$fields": "ดู scripts/pos-ui-inventory.json $fields · page = path โฟลเดอร์ /app/u/[unitSlug]/trips/… · ชื่อที่สร้างจากตัวแปรลงเป็นแพตเทิร์นลงท้าย *",
   "rows": [
     {
-      "page": "/app/u/[unitSlug]/trips/departures",
-      "testid": "trips-dep-reports",
-      "kind": "link",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-10",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp",
-        "state": "appears",
-        "note": "จอรายงานทัวร์ตามช่วงเวลา"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-title",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-title",
-        "state": "appears",
-        "note": "หัวจอรายงาน"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-back",
-      "kind": "link",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/departures"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-mgmt",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-mgmt",
-        "state": "appears",
-        "note": "ตัวเลขบริหาร ไม่ใช่รายงานบัญชี (ทุกแท็บ)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-2",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-accounting-note",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-accounting-note",
-        "state": "appears",
-        "note": "ระบบยังไม่ลงบัญชีให้ (ทุกแท็บ)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-2",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-estimate",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-estimate",
-        "state": "appears",
-        "note": "ป้ายประมาณการ — ยังไม่ปิดทริป (ทุกแท็บ)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-2",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-filters",
-      "kind": "form",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-6",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-from",
-      "kind": "input",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-from",
-        "state": "changes",
-        "note": "วันเริ่มของช่วง (ฟอร์ม GET)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-6",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-to",
-      "kind": "input",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-to",
-        "state": "changes",
-        "note": "วันสุดท้ายของช่วง (ฟอร์ม GET)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-6",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-basis-travel",
-      "kind": "toggle",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-basis-travel",
-        "state": "changes",
-        "note": "ดูตามวันเดินทาง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-6",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-basis-booked",
-      "kind": "toggle",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-basis-booked",
-        "state": "changes",
-        "note": "ดูตามวันจอง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-6",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-product",
-      "kind": "select",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-product",
-        "state": "changes",
-        "note": "เลือกสินค้า (ตัวแรก = ทุกสินค้า)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-6",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-product-truncated",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-product-truncated",
-        "state": "appears",
-        "note": "สินค้าเกิน 200 รายการ — บอกจำนวนที่แสดง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#PF-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-channel",
-      "kind": "select",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-channel",
-        "state": "changes",
-        "note": "เลือกช่องทาง (ตัวแรก = ทุกช่องทาง)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-6",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-apply",
-      "kind": "button",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-11",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-tab-sales",
-      "kind": "tab",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&tab=sales"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-tab-load",
-      "kind": "tab",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&tab=load"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-tab-lead",
-      "kind": "tab",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&tab=lead"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-tab-channel",
-      "kind": "tab",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&tab=channel"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-basis-note",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-basis-note",
-        "state": "appears",
-        "note": "ดูตามวันจอง: ไม่มีความจุ อัตราเต็ม ต้นทุน และกำไร"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-5",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-channel-note",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-channel-note",
-        "state": "appears",
-        "note": "กรองช่องทาง: แยกความจุ/ต้นทุน/กำไรตามช่องทางไม่ได้"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-6",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-charter-note",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-charter-note",
-        "state": "appears",
-        "note": "รอบเหมาลำ — อัตราเต็มไม่สะท้อนการขายรายที่นั่ง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-error",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-error",
-        "state": "appears",
-        "note": "ตัวกรองผิด — ใช้ค่าปริยายแทนช่องนั้น (role=alert)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-13",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-kpis",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-kpis",
-        "state": "appears",
-        "note": "KPI 6 ช่อง (ผู้ไม่เห็นต้นทุนเห็น 3 ช่อง)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-kpi-sales",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-kpi-sales",
-        "state": "appears",
-        "note": "ยอดขายรวมของช่วง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-kpi-revenue",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-kpi-revenue",
-        "state": "appears",
-        "note": "รายได้ก่อน VAT / รายได้"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-kpi-commission",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-kpi-commission",
-        "state": "appears",
-        "note": "ต้นทุนคอมมิชชัน (ผู้เห็นต้นทุนเท่านั้น)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-4",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-kpi-cost",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-kpi-cost",
-        "state": "appears",
-        "note": "ต้นทุนรอบรวม · ไม่มีแถวต้นทุน = — (ผู้เห็นต้นทุนเท่านั้น)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-kpi-profit",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-kpi-profit",
-        "state": "appears",
-        "note": "กำไรขั้นต้นของช่วง (ผู้เห็นต้นทุนเท่านั้น)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-kpi-profit-note",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-kpi-profit-note",
-        "state": "appears",
-        "note": "ยังไม่หักต้นทุนของ n รอบ — ภายใน KPI กำไร"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-kpi-load",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-kpi-load",
-        "state": "appears",
-        "note": "ขาย/ความจุ · อัตราเต็ม"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-vat-line",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-vat-line",
-        "state": "appears",
-        "note": "VAT ในราคาขาย (ประมาณ) — เมื่อ Σ VAT > 0"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-3",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-periods",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-periods",
-        "state": "appears",
-        "note": "แท็บยอดขายตามช่วง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-2",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-load",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-load",
-        "state": "appears",
-        "note": "แท็บอัตราเต็มตามสินค้า"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-2",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-lead",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-lead",
-        "state": "appears",
-        "note": "แท็บระยะจองล่วงหน้า"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-2",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-lead-median",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-lead-median",
-        "state": "appears",
-        "note": "ค่ากลางระยะจอง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-14",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-lead-excluded",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-lead-excluded",
-        "state": "appears",
-        "note": "ไม่นับการจองยกเลิก/รอคืนเงิน/นำเข้า"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-14",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-lead-negative",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-lead-negative",
-        "state": "appears",
-        "note": "จองหลังวันเดินทาง — ไม่อยู่ในช่องใด"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-14",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-channels",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-channels",
-        "state": "appears",
-        "note": "แท็บช่องทาง (ไม่มีแถวรวม %)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-15",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-empty",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-empty",
-        "state": "appears",
-        "note": "ไม่มีรอบหรือการจองในช่วงนี้"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-deps",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-deps",
-        "state": "appears",
-        "note": "ตารางรอบแบ่งหน้า (ฐานวันเดินทาง · ทุกช่องทาง)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-page",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-page",
-        "state": "appears",
-        "note": "หน้า n จาก m"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#PF-5",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-page-prev",
-      "kind": "link",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&page=[n]"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#PF-5",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-page-next",
-      "kind": "link",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&page=[n]"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#PF-5",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-export",
-      "kind": "button",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "download",
-        "target": "trips-report-[from]-[to].csv"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-2",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-export-mgmt",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-export-mgmt",
-        "state": "appears",
-        "note": "ตัวเลขบริหาร ไม่ใช่รายงานบัญชี — ข้างปุ่มส่งออก"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-11",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-export-partial",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-export-partial",
-        "state": "appears",
-        "note": "ไฟล์ถูกตัดที่ 2,000 รอบ — บอกจำนวน"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-export-nojs",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-export-nojs",
-        "state": "appears",
-        "note": "ส่งออกไฟล์ต้องเปิด JavaScript (noscript)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-11",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-export-note",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-export-note",
-        "state": "appears",
-        "note": "ส่งออกได้เมื่อดูตามวันเดินทางและทุกช่องทาง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-5",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-export-error",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-export-error",
-        "state": "appears",
-        "note": "ส่งออกไม่สำเร็จ / บ่อยเกินไป (role=alert)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-preset-*",
-      "kind": "link",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-group-*",
-      "kind": "link",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&group=[group]"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#AC-7",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-warn-*",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-warn",
-        "state": "appears",
-        "note": "คำเตือนรวมของช่วง (ตามรหัส)"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RP-16",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-period-*",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-period",
-        "state": "appears",
-        "note": "แถวช่วงย่อย"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-16",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-period-note-*",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-period-note",
-        "state": "appears",
-        "note": "ยังไม่หักต้นทุนของ n รอบ — ในแถวช่วงที่มีกำไร"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-16",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-load-*",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-load",
-        "state": "appears",
-        "note": "แถวอัตราเต็มต่อสินค้า"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-2",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-lead-*",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-lead",
-        "state": "appears",
-        "note": "ช่องระยะจอง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-14",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-chgroup-*",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-chgroup",
-        "state": "appears",
-        "note": "กลุ่มช่องทาง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-15",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-ch-*",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-ch",
-        "state": "appears",
-        "note": "แถวช่องทาง + ส่วนแบ่ง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-15",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-dep-*",
-      "kind": "notice",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "ui",
-        "target": "trips-rp-dep",
-        "state": "appears",
-        "note": "แถวรอบในตาราง"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
-      "page": "/app/u/[unitSlug]/trips/reports",
-      "testid": "trips-rp-dep-link-*",
-      "kind": "link",
-      "roles": [
-        "owner"
-      ],
-      "hiddenFor": [],
-      "expect": {
-        "type": "navigate",
-        "target": "/app/u/[unitSlug]/trips/departures?view=week&start=[date]&dep=[departureId]"
-      },
-      "wo": "T1.7a2",
-      "oracle": "qc-trips-t1.7a2#RS-1",
-      "system": "TRIPS",
-      "needs": "trips.departure.view+trips.report.view"
-    },
-    {
       "page": "/app/u/[unitSlug]/trips",
       "testid": "trips-nav",
       "kind": "menu",
@@ -6426,6 +5276,1156 @@
       "oracle": "qc-trips-t1.4#BT-9",
       "system": "TRIPS",
       "needs": "trips.departure.view+trips.passenger.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/departures",
+      "testid": "trips-dep-reports",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-10",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp",
+        "state": "appears",
+        "note": "จอรายงานทัวร์ตามช่วงเวลา"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-title",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-title",
+        "state": "appears",
+        "note": "หัวจอรายงาน"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-back",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/departures"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-mgmt",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-mgmt",
+        "state": "appears",
+        "note": "ตัวเลขบริหาร ไม่ใช่รายงานบัญชี (ทุกแท็บ)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-accounting-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-accounting-note",
+        "state": "appears",
+        "note": "ระบบยังไม่ลงบัญชีให้ (ทุกแท็บ)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-estimate",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-estimate",
+        "state": "appears",
+        "note": "ป้ายประมาณการ — ยังไม่ปิดทริป (ทุกแท็บ)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-filters",
+      "kind": "form",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-from",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-from",
+        "state": "changes",
+        "note": "วันเริ่มของช่วง (ฟอร์ม GET)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-to",
+      "kind": "input",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-to",
+        "state": "changes",
+        "note": "วันสุดท้ายของช่วง (ฟอร์ม GET)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-basis-travel",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-basis-travel",
+        "state": "changes",
+        "note": "ดูตามวันเดินทาง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-basis-booked",
+      "kind": "toggle",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-basis-booked",
+        "state": "changes",
+        "note": "ดูตามวันจอง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-product",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-product",
+        "state": "changes",
+        "note": "เลือกสินค้า (ตัวแรก = ทุกสินค้า)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-product-truncated",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-product-truncated",
+        "state": "appears",
+        "note": "สินค้าเกิน 200 รายการ — บอกจำนวนที่แสดง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#PF-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-channel",
+      "kind": "select",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-channel",
+        "state": "changes",
+        "note": "เลือกช่องทาง (ตัวแรก = ทุกช่องทาง)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-apply",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-11",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-tab-sales",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&tab=sales"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-tab-load",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&tab=load"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-tab-lead",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&tab=lead"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-tab-channel",
+      "kind": "tab",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&tab=channel"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-basis-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-basis-note",
+        "state": "appears",
+        "note": "ดูตามวันจอง: ไม่มีความจุ อัตราเต็ม ต้นทุน และกำไร"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-channel-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-channel-note",
+        "state": "appears",
+        "note": "กรองช่องทาง: แยกความจุ/ต้นทุน/กำไรตามช่องทางไม่ได้"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-6",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-charter-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-charter-note",
+        "state": "appears",
+        "note": "รอบเหมาลำ — อัตราเต็มไม่สะท้อนการขายรายที่นั่ง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-error",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-error",
+        "state": "appears",
+        "note": "ตัวกรองผิด — ใช้ค่าปริยายแทนช่องนั้น (role=alert)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-13",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-kpis",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-kpis",
+        "state": "appears",
+        "note": "KPI 6 ช่อง (ผู้ไม่เห็นต้นทุนเห็น 3 ช่อง)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-kpi-sales",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-kpi-sales",
+        "state": "appears",
+        "note": "ยอดขายรวมของช่วง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-kpi-revenue",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-kpi-revenue",
+        "state": "appears",
+        "note": "รายได้ก่อน VAT / รายได้"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-kpi-commission",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-kpi-commission",
+        "state": "appears",
+        "note": "ต้นทุนคอมมิชชัน (ผู้เห็นต้นทุนเท่านั้น)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-4",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-kpi-cost",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-kpi-cost",
+        "state": "appears",
+        "note": "ต้นทุนรอบรวม · ไม่มีแถวต้นทุน = — (ผู้เห็นต้นทุนเท่านั้น)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-kpi-profit",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-kpi-profit",
+        "state": "appears",
+        "note": "กำไรขั้นต้นของช่วง (ผู้เห็นต้นทุนเท่านั้น)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-kpi-profit-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-kpi-profit-note",
+        "state": "appears",
+        "note": "ยังไม่หักต้นทุนของ n รอบ — ภายใน KPI กำไร"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-kpi-load",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-kpi-load",
+        "state": "appears",
+        "note": "ขาย/ความจุ · อัตราเต็ม"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-vat-line",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-vat-line",
+        "state": "appears",
+        "note": "VAT ในราคาขาย (ประมาณ) — เมื่อ Σ VAT > 0"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-3",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-periods",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-periods",
+        "state": "appears",
+        "note": "แท็บยอดขายตามช่วง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-load",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-load",
+        "state": "appears",
+        "note": "แท็บอัตราเต็มตามสินค้า"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-lead",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-lead",
+        "state": "appears",
+        "note": "แท็บระยะจองล่วงหน้า"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-lead-median",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-lead-median",
+        "state": "appears",
+        "note": "ค่ากลางระยะจอง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-lead-excluded",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-lead-excluded",
+        "state": "appears",
+        "note": "ไม่นับการจองยกเลิก/รอคืนเงิน/นำเข้า"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-lead-negative",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-lead-negative",
+        "state": "appears",
+        "note": "จองหลังวันเดินทาง — ไม่อยู่ในช่องใด"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-channels",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-channels",
+        "state": "appears",
+        "note": "แท็บช่องทาง (ไม่มีแถวรวม %)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-15",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-empty",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-empty",
+        "state": "appears",
+        "note": "ไม่มีรอบหรือการจองในช่วงนี้"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-deps",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-deps",
+        "state": "appears",
+        "note": "ตารางรอบแบ่งหน้า (ฐานวันเดินทาง · ทุกช่องทาง)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-page",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-page",
+        "state": "appears",
+        "note": "หน้า n จาก m"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#PF-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-page-prev",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&page=[n]"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#PF-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-page-next",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&page=[n]"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#PF-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-export",
+      "kind": "button",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "download",
+        "target": "trips-report-[from]-[to].csv"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-export-mgmt",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-export-mgmt",
+        "state": "appears",
+        "note": "ตัวเลขบริหาร ไม่ใช่รายงานบัญชี — ข้างปุ่มส่งออก"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-11",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-export-partial",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-export-partial",
+        "state": "appears",
+        "note": "ไฟล์ถูกตัดที่ 2,000 รอบ — บอกจำนวน"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-export-nojs",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-export-nojs",
+        "state": "appears",
+        "note": "ส่งออกไฟล์ต้องเปิด JavaScript (noscript)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-11",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-export-note",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-export-note",
+        "state": "appears",
+        "note": "ส่งออกได้เมื่อดูตามวันเดินทางและทุกช่องทาง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-5",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-export-error",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-export-error",
+        "state": "appears",
+        "note": "ส่งออกไม่สำเร็จ / บ่อยเกินไป (role=alert)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-preset-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-group-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/reports?from=[date]&to=[date]&group=[group]"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#AC-7",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-warn-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-warn",
+        "state": "appears",
+        "note": "คำเตือนรวมของช่วง (ตามรหัส)"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RP-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-period-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-period",
+        "state": "appears",
+        "note": "แถวช่วงย่อย"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-period-note-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-period-note",
+        "state": "appears",
+        "note": "ยังไม่หักต้นทุนของ n รอบ — ในแถวช่วงที่มีกำไร"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-16",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view+trips.cost.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-load-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-load",
+        "state": "appears",
+        "note": "แถวอัตราเต็มต่อสินค้า"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-2",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-lead-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-lead",
+        "state": "appears",
+        "note": "ช่องระยะจอง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-14",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-chgroup-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-chgroup",
+        "state": "appears",
+        "note": "กลุ่มช่องทาง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-15",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-ch-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-ch",
+        "state": "appears",
+        "note": "แถวช่องทาง + ส่วนแบ่ง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-15",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-dep-*",
+      "kind": "notice",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "ui",
+        "target": "trips-rp-dep",
+        "state": "appears",
+        "note": "แถวรอบในตาราง"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
+    },
+    {
+      "page": "/app/u/[unitSlug]/trips/reports",
+      "testid": "trips-rp-dep-link-*",
+      "kind": "link",
+      "roles": [
+        "owner"
+      ],
+      "hiddenFor": [],
+      "expect": {
+        "type": "navigate",
+        "target": "/app/u/[unitSlug]/trips/departures?view=week&start=[date]&dep=[departureId]"
+      },
+      "wo": "T1.7a2",
+      "oracle": "qc-trips-t1.7a2#RS-1",
+      "system": "TRIPS",
+      "needs": "trips.departure.view+trips.report.view"
     },
     {
       "page": "/app/u/[unitSlug]/trips/departures",
