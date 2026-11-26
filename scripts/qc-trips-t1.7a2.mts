@@ -1,6 +1,6 @@
 // QC — TRIPS T1.7a2 · รายงานทัวร์ตามช่วงเวลา: 4 แท็บ (ยอดขาย · อัตราเต็ม · ระยะจองล่วงหน้า · ช่องทาง) · ตารางรอบแบ่งหน้า · CSV · ความเร็ว
 // oracle ของผู้เขียนข้อสอบ — builder ห้ามแก้ไฟล์นี้ (แย้ง = wo-notes · ORACLE-EDIT เฉพาะผู้คุม)
-// ใบสั่ง: ledger/trips-briefs/T1.7a2.md (มติทั้งหมดของ T1.7.md ใช้ต่อ · §13 = ข้อที่ความหมายเปลี่ยนเมื่อขึ้นระดับช่วง)
+// ใบสั่ง: ledger/trips-briefs/T1.7a2.md ร่างรอบ 2 (มติทั้งหมดของ T1.7.md ใช้ต่อ · มติผู้คุม C13–C17 + D1–D6 รวมในเนื้อ · §13 = ข้อที่ความหมายเปลี่ยนเมื่อขึ้นระดับช่วง)
 //
 // กลุ่มข้อ:
 //   PC ตัวควบคุม (เขียวก่อนมีงาน: คิดมือ §4.5 · ดัชนี · ตัวช่วยเดิม · ฟิกซ์เจอร์คิดซ้ำจากแถวดิบ · ตัวคิด a1 ต่อรอบตรงตาราง · ตัวเรนเดอร์/ตัวเรียก action/ตัวนับคิวรีทำงานกับของเดิม)
@@ -118,9 +118,9 @@ const OWN_NEW = [REPORTS, ACTIONS, REPORT_PAGE];
 const COMP = "src/components/trips";
 const DEPSCREEN = `${COMP}/DeparturesScreen.tsx`;
 const PERMS = "src/lib/core/permissions.ts";
-const FACADE_FNS = ["loadTripReportVM", "exportTripReportCsv", "reportQueryOf", "reportRangeOf", "reportGroupOf", "reportUtcBoundsOf", "reportPresetsOf", "periodKeyOf", "periodsOf", "leadDaysOf", "leadBucketOf",
+const FACADE_FNS = ["loadTripReportVM", "exportTripReportCsv", "bookingMoneyInOfRow", "reportQueryOf", "reportRangeOf", "reportGroupOf", "reportUtcBoundsOf", "reportPresetsOf", "periodKeyOf", "periodsOf", "leadDaysOf", "leadBucketOf",
   "medianOf", "bahtPlain", "pctPlain", "reportCsv", "reportFileName"];
-const FACADE_CONSTS = ["REPORT_TABS", "REPORT_GROUPS", "REPORT_BASES", "REPORT_QUERY_PARAMS", "REPORT_RANGE_MAX_DAYS", "REPORT_DAY_GROUP_MAX_DAYS", "REPORT_PAGE_SIZE", "REPORT_PAGE_MAX", "REPORT_DEPARTURE_CAP",
+const FACADE_CONSTS = ["REPORT_TABS", "REPORT_GROUPS", "REPORT_BASES", "REPORT_QUERY_PARAMS", "REPORT_RANGE_MAX_DAYS", "REPORT_DAY_GROUP_MAX_DAYS", "REPORT_PAGE_SIZE", "REPORT_PAGE_MAX", "REPORT_PRODUCTS_MAX", "REPORT_DEPARTURE_CAP",
   "REPORT_BOOKING_CAP", "TRIPS_REPORT_CSV_CAP", "REPORT_EXPORT_RATE", "LEAD_BUCKETS", "REPORT_CSV_COLUMNS", "REPORT_CSV_COST_COLUMNS"];
 const TABS = ["sales", "load", "lead", "channel"];
 const GROUPS = ["day", "week", "month"];
@@ -140,22 +140,24 @@ const PINNED: Record<string, string> = {
   "report.accounting": "ระบบยังไม่ลงบัญชีให้ — เอกสารภาษีให้ใช้ที่ร้านออกในระบบบัญชี",
   "report.estimate": "ประมาณการ — ยังไม่ปิดทริป",
   "report.vat": "VAT ในราคาขาย (ประมาณ) — ไม่ใช่ยอดยื่น ภ.พ.30",
-  "report.kpi.revenue": "รายได้ก่อน VAT", "report.kpi.revenueNoVat": "รายได้",
+  "report.kpi.revenue": "รายได้ก่อน VAT", "report.kpi.revenueNoVat": "รายได้", "report.kpi.commissionWithVat": "(รวม VAT ของคอมมิชชัน)",
+  "report.noCosts": "ยังไม่หักต้นทุนของ {n} รอบ (เดินทางแล้ว {ended} · ยังไม่เดินทาง {upcoming})",
   "report.note.basis": "ดูตามวันจอง: ไม่มีความจุ อัตราเต็ม ต้นทุน และกำไร (ต้นทุนผูกกับรอบ ไม่ใช่วันจอง)",
   "report.note.channel": "กรองช่องทาง: ความจุ อัตราเต็ม ต้นทุน และกำไรแยกตามช่องทางไม่ได้",
-  "report.noCosts": "ยังไม่บันทึกต้นทุน {n} รอบ — กำไรอาจสูงกว่าจริง",
   "report.charter": "รอบเหมาลำ {n} รอบ — อัตราเต็มไม่สะท้อนการขายรายที่นั่ง",
-  "report.lead.excluded": "ไม่นับการจองที่นำเข้า {n} การจอง",
+  "report.lead.notCounted": "ไม่นับการจองที่ยกเลิก รอคืนเงิน หรือนำเข้า (นำเข้า {n} การจอง)",
+  "report.lead.negative": "จองหลังวันเดินทาง {n} การจอง — ไม่อยู่ในช่องใด",
+  "report.products.truncated": "แสดงสินค้า {shown} จาก {total} รายการ (เรียงตามชื่อ)",
+  "report.error.filter": "ตัวกรองบางช่องใช้ไม่ได้ — ใช้ค่าปริยายแทนช่องนั้น",
   "report.export.noJs": "ส่งออกไฟล์ต้องเปิด JavaScript",
   "report.export.unavailable": "ส่งออกได้เมื่อดูตามวันเดินทางและทุกช่องทาง",
-  "report.csv.footer": "ตัวเลขบริหาร ไม่ใช่รายงานบัญชี · ประมาณการ — ยังไม่ปิดทริป",
-  "report.csv.truncated": "ไฟล์นี้มี {shown} จาก {total} รอบ — เลือกช่วงสั้นลงเพื่อดูส่วนที่เหลือ",
-  "report.csv.vat": "VAT ในราคาขาย (ประมาณ)", "report.csv.revenueExVat": "รายได้ก่อน VAT", "report.csv.revenueNoVat": "รายได้",
+  "report.export.partial": "ไฟล์มี {shown} จาก {total} รอบ — เลือกช่วงสั้นลงเพื่อดูส่วนที่เหลือ",
+  "report.csv.vat": "VAT ในราคาขาย (ประมาณ)", "report.csv.revenueExVat": "รายได้ก่อน VAT",
   "report.empty": "ไม่มีรอบหรือการจองในช่วงนี้",
   "departures.actions.reports": "รายงาน",
   "errors.RANGE_TOO_LARGE": "เลือกช่วงได้ไม่เกิน 366 วัน",
   "errors.REPORT_TOO_LARGE": "ช่วงนี้มีรอบหรือการจองมากเกินไป — เลือกช่วงสั้นลงหรือเลือกสินค้า",
-  "errors.RATE_LIMITED": "ส่งออกบ่อยเกินไป — ลองใหม่ภายหลัง",
+  "errors.RATE_LIMITED": "ส่งออกบ่อยเกินไป — ลองใหม่ในอีก {min} นาที",
 };
 const I18N_REQUIRED = [...Object.keys(PINNED), "report.title", "report.back", ...TABS.map((k) => `report.tab.${k}`), ...BASES.map((k) => `report.basis.${k}`), ...GROUPS.map((k) => `report.group.${k}`),
   ...["from", "to", "product", "channel", "allProducts", "allChannels", "apply"].map((k) => `report.filter.${k}`), ...["thisMonth", "lastMonth", "last30", "next30"].map((k) => `report.preset.${k}`),
@@ -167,14 +169,14 @@ const TH_WORDS = new Intl.Segmenter("th", { granularity: "word" });
 const forbiddenHit = (v: string): string | null => FORBIDDEN_WORDS.find((w) => v.includes(w)) ?? ([...TH_WORDS.segment(v)].find((s) => s.segment.includes("งบ"))?.segment ?? null);
 const RAW_CODES = new Set([...DEP_STATES, ...LEAD_KEYS, ...ALL_CHANNELS.filter((c) => c.length > 3), "DIRECT", "AGENT", "OTHER", "LIVE", "EXCLUDED", "PENDING_REFUND", ...WARN_CODES, "RANGE_TOO_LARGE", "REPORT_TOO_LARGE", "RATE_LIMITED"]);
 const TESTIDS_FIXED = ["trips-dep-reports", "trips-rp", "trips-rp-title", "trips-rp-back", "trips-rp-mgmt", "trips-rp-accounting-note", "trips-rp-estimate", "trips-rp-filters", "trips-rp-from", "trips-rp-to",
-  "trips-rp-basis-travel", "trips-rp-basis-booked", "trips-rp-product", "trips-rp-channel", "trips-rp-apply", "trips-rp-tab-sales", "trips-rp-tab-load", "trips-rp-tab-lead", "trips-rp-tab-channel", "trips-rp-basis-note",
-  "trips-rp-channel-note", "trips-rp-nocost-note", "trips-rp-charter-note", "trips-rp-error", "trips-rp-kpis", "trips-rp-kpi-sales", "trips-rp-kpi-revenue", "trips-rp-kpi-commission", "trips-rp-kpi-cost", "trips-rp-kpi-profit",
-  "trips-rp-kpi-load", "trips-rp-vat-line", "trips-rp-periods", "trips-rp-load", "trips-rp-lead", "trips-rp-lead-median", "trips-rp-lead-excluded", "trips-rp-channels", "trips-rp-empty", "trips-rp-deps", "trips-rp-page",
-  "trips-rp-page-prev", "trips-rp-page-next", "trips-rp-export", "trips-rp-export-nojs", "trips-rp-export-note", "trips-rp-export-error"];
-const TESTID_PATTERNS = ["trips-rp-preset-", "trips-rp-group-", "trips-rp-warn-", "trips-rp-period-", "trips-rp-load-", "trips-rp-lead-", "trips-rp-chgroup-", "trips-rp-ch-", "trips-rp-dep-", "trips-rp-dep-link-"];
-const VISUAL_SCENES = ["reports-sales", "reports-load", "reports-lead", "reports-channel", "reports-booked", "reports-sales-en", "departure-costs-en", "calendar-reports-link"];
+  "trips-rp-basis-travel", "trips-rp-basis-booked", "trips-rp-product", "trips-rp-product-truncated", "trips-rp-channel", "trips-rp-apply", "trips-rp-tab-sales", "trips-rp-tab-load", "trips-rp-tab-lead", "trips-rp-tab-channel", "trips-rp-basis-note",
+  "trips-rp-channel-note", "trips-rp-charter-note", "trips-rp-error", "trips-rp-kpis", "trips-rp-kpi-sales", "trips-rp-kpi-revenue", "trips-rp-kpi-commission", "trips-rp-kpi-cost", "trips-rp-kpi-profit",
+  "trips-rp-kpi-profit-note", "trips-rp-kpi-load", "trips-rp-vat-line", "trips-rp-periods", "trips-rp-load", "trips-rp-lead", "trips-rp-lead-median", "trips-rp-lead-excluded", "trips-rp-lead-negative", "trips-rp-channels", "trips-rp-empty", "trips-rp-deps", "trips-rp-page",
+  "trips-rp-page-prev", "trips-rp-page-next", "trips-rp-export", "trips-rp-export-mgmt", "trips-rp-export-partial", "trips-rp-export-nojs", "trips-rp-export-note", "trips-rp-export-error"];
+const TESTID_PATTERNS = ["trips-rp-preset-", "trips-rp-group-", "trips-rp-warn-", "trips-rp-period-", "trips-rp-period-note-", "trips-rp-load-", "trips-rp-lead-", "trips-rp-chgroup-", "trips-rp-ch-", "trips-rp-dep-", "trips-rp-dep-link-"];
+const VISUAL_SCENES = ["reports-sales", "reports-load", "reports-lead", "reports-channel", "reports-booked", "reports-sales-en", "departure-costs-en", "calendar-reports-link", "reports-filter-error"];
 /** ไฟล์เดิมที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด (null = ไม่จำกัด)] */
-const LIMITED: [string, number, number | null][] = [[PURE, 10, 300], [COSTS, 45, 70], [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 1, 4], [DEPSCREEN, 0, 10], [`${COMP}/CostScreen.tsx`, 10, 16],
+const LIMITED: [string, number, number | null][] = [[PURE, 10, 340], [COSTS, 60, 45], [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 1, 4], [DEPSCREEN, 0, 10], [`${COMP}/CostScreen.tsx`, 10, 16],
   [`${COMP}/CostParts.tsx`, 4, 12], [`${COMP}/ProductsScreenParts.tsx`, 0, 6], ["src/messages/th/trips.json", 2, null], ["src/messages/en/trips.json", 2, null], ["scripts/trips-ui-inventory.json", 0, null], ["scripts/parity-trips.sh", 0, 4]];
 const LIMITED_SET = new Set(LIMITED.map(([f]) => f));
 /** ไฟล์ที่ผู้ร่างแก้ในใบนี้ (ไม่นับเป็นการแตะของ builder): ข้อสอบตัวนี้ + ฉาก t1.7a2 */
@@ -352,7 +354,7 @@ try {
   type BkIn = { dep: string; prod: string; status: string; channel: string; adults: number; children?: number; infants?: number; paid?: number; refunded?: number; commission?: number; commissionVat?: number;
     created: string; agent?: boolean; collectMode?: string; currency?: string; retained?: { amountSatang: number; vatSatang: number; passThroughSatang: number }[]; snapshot?: "ok" | "corrupt"; refund?: string };
   let mkBkX: ((key: string, b: BkIn) => Promise<string>) | null = null;
-  let mkDepX: ((key: string, prod: string, date: string, o?: { cap?: number; sold?: number; status?: string }) => Promise<string>) | null = null;
+  let mkDepX: ((key: string, prod: string, date: string, o?: { cap?: number; sold?: number; held?: number; status?: string }) => Promise<string>) | null = null;
   let mkProdX: ((key: string, tenantId: string, unitId: string, o?: { title?: string; titleEn?: string; optTh?: string; optEn?: string; source?: string }) => Promise<void>) | null = null;
   try {
     for (const t of ["TripProduct", "TripOption", "TripPaxType", "TripDeparture", "TripBooking", "TripBookingItem", "TripMoneyEvent", "TripRefundRequest", "TripCost", "TripPrice", "AuditLog", "ChatRateBucket"]) await needTable(t);
@@ -377,7 +379,7 @@ try {
     await mkUser("wild", tA, "STAFF", [uA], ["trips.*"]);
     await mkUser("none", tA, "STAFF", [uA], []);
     await mkUser("a2", tA, "STAFF", [uA2], [DV, RV, "trips.cost.view"]);
-    await mkUser("rl", tA, "STAFF", [uA], [DV, RV]);
+    await mkUser("rl", tA, "STAFF", [uA, uN], [DV, RV]); // เพดานความถี่ต่อคนต่อหน่วย (D5)
     const mkProd = async (key: string, tenantId: string, unitId: string, o: { title?: string; titleEn?: string; optTh?: string; optEn?: string; source?: string } = {}) => {
       const id = rid(`p${key}`), opt = rid(`o${key}`);
       await insertRow("TripProduct", { id, tenantId, unitId, slug: `t17bqc-${key}-${STAMP}`.toLowerCase().replace(/[^a-z0-9-]/g, ""), productType: "TOUR", sourceKind: o.source ?? "OWN", status: "ACTIVE",
@@ -394,10 +396,10 @@ try {
     await mkProd("PS", tA, uA, { title: "ทริปผู้ให้บริการ", titleEn: "Supplier trip", source: "SUPPLIER" });
     await mkProd("PA2", tA, uA2, { title: "หน่วยสองทดสอบ", titleEn: "Unit two test" }); await mkProd("PN", tA, uN, { title: "ร้านไม่จดทดสอบ", titleEn: "No VAT test" });
     await mkProd("PT", tA, uT, { title: "โตเกียวทดสอบ", titleEn: "Tokyo test" }); await mkProd("PB", tB, uB, { title: "ร้านบีทดสอบ", titleEn: "Shop B test" });
-    const mkDep = async (key: string, prod: string, date: string, o: { cap?: number; sold?: number; status?: string } = {}) => {
+    const mkDep = async (key: string, prod: string, date: string, o: { cap?: number; sold?: number; held?: number; status?: string } = {}) => {
       const p = PRD[prod]; const startsAt = new Date(BKK(date, "08:00").getTime() + (seq++ % 600) * 60_000); const id = rid(`d${key}`);
       await insertRow("TripDeparture", { id, tenantId: p.tenant, unitId: p.unit, productId: p.id, optionId: p.opt, scheduleId: null, localDate: date, startsAt, endsAt: new Date(startsAt.getTime() + 8.5 * HOUR),
-        status: o.status ?? "GUARANTEED", capacity: o.cap ?? 24, sold: o.sold ?? 0, held: 0, reserved: 0, minPax: null, cutoffAt: startsAt, version: 0, updatedAt: new Date() });
+        status: o.status ?? "GUARANTEED", capacity: o.cap ?? 24, sold: o.sold ?? 0, held: o.held ?? 0, reserved: 0, minPax: null, cutoffAt: startsAt, version: 0, updatedAt: new Date() });
       DEP[key] = id; return id;
     };
     mkDepX = mkDep;
@@ -465,9 +467,14 @@ try {
     await mkBk("imp", { dep: dI, prod: "PR", status: "PAID", channel: "IMPORT", adults: 1, paid: 410_000, created: "2026-12-01T03:00:00Z" });
     await mkBk("w20", { dep: dI, prod: "PR", status: "CONFIRMED", channel: "WEB", adults: 2, created: "2027-04-14T03:00:00Z" });
     // ── dM: รอบ พ.ค. ที่จองในเดือน เม.ย. (ขอบวันจอง: 16:59:59Z นับ · 17:00:00Z ไม่นับ) ──
-    const dM = await mkDep("M", "PR", "2027-05-05", { cap: 10, sold: 2, status: "OPEN" });
+    const dM = await mkDep("M", "PR", "2027-05-05", { cap: 10, sold: 2, held: 2, status: "OPEN" }); // ถือ 2 ไม่นับเป็นขาย (D5)
     await mkBk("may1", { dep: dM, prod: "PR", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2027-04-30T16:59:59Z" });
     await mkBk("may2", { dep: dM, prod: "PR", status: "CONFIRMED", channel: "COUNTER", adults: 1, created: "2027-04-30T17:00:00Z" });
+    // ── พ.ค. (D5 อัตราเต็ม): dO เต็มพอดี (ความจุ 3 ขาย 3 = 100%) · dZ ความจุ 0 ไม่มีการจอง
+    //    ผลรันรอบ 2 (ผู้ร่าง): ขายเกินความจุสร้างไม่ได้ — CHECK "sold" + "held" + "reserved" <= "capacity" (prisma/migrations/20270201000100_trips/migration.sql:1048) ⇒ เกิน 100% ตรวจได้ที่ตัวช่วย loadFactorBp เท่านั้น ──
+    const dO = await mkDep("O", "PR", "2027-05-06", { cap: 3, sold: 3, status: "OPEN" });
+    await mkBk("o3", { dep: dO, prod: "PR", status: "CONFIRMED", channel: "COUNTER", adults: 3, created: "2027-05-02T03:00:00Z" });
+    await mkDep("Zc", "PR", "2027-05-07", { cap: 0, sold: 0, status: "OPEN" });
     // ── dS: มิ.ย. สินค้าผู้ให้บริการ + USD + OTA + แถว snapshot เสียโดยเจตนา (คำเตือนรวมของช่วง) ──
     const dS = await mkDep("S", "PS", "2027-06-16", { cap: 10, sold: 3, status: "OPEN" });
     await mkBk("usd", { dep: dS, prod: "PS", status: "CONFIRMED", channel: "COUNTER", adults: 1, currency: "USD", created: "2027-05-20T03:00:00Z" });
@@ -479,9 +486,10 @@ try {
     await mkBk("vDi", { dep: dV, prod: "PN", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2027-04-02T03:00:00Z" });
     await mkCost(dV, "PN", "BOAT", 200_000);
     // ── หน่วยโตเกียว ──
-    const dT = await mkDep("T", "PT", "2027-04-10", { cap: 10, sold: 2 });
+    const dT = await mkDep("T", "PT", "2027-04-10", { cap: 10, sold: 3 });
     await mkBk("tk1", { dep: dT, prod: "PT", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2027-04-09T16:30:00Z" });
     await mkBk("tk2", { dep: dT, prod: "PT", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2027-03-31T15:30:00Z" });
+    await mkBk("tk4", { dep: dT, prod: "PT", status: "PAID", channel: "COUNTER", adults: 1, paid: 410_000, created: "2027-04-11T03:00:00Z" }); // จองหลังวันเดินทาง 1 วัน (D5 · ระยะติดลบ)
     const dT2 = await mkDep("T2", "PT", "2027-05-10", { cap: 10, sold: 2, status: "OPEN" });
     await mkBk("tk3", { dep: dT2, prod: "PT", status: "PAID", channel: "WEB", adults: 2, paid: 820_000, created: "2027-04-30T15:00:00Z" });
     // ── หน่วยอื่น/ร้านอื่น (ต้นทุน 999,900) ──
@@ -605,6 +613,7 @@ try {
     return runAction(RACT.mod?.exportTripReportCsvAction, tag, `/app/u/${slug}/trips/reports`, [slug, input], locale);
   };
   /** นับคิวรีของการเรียกหนึ่งครั้ง (หลัง warm-up) */
+  let settingsBase = 0;
   const measure = async (f: () => Promise<unknown>): Promise<{ n: number; ms: number; r: unknown; sql: string[] }> => {
     await f(); sqlLog = []; counting = true; const t0 = Date.now();
     try { const r = await f(); return { n: realSql().length, ms: Date.now() - t0, r, sql: realSql() }; } finally { counting = false; }
@@ -618,7 +627,11 @@ try {
     eq([r.ok, r.code], [false, "FORBIDDEN"], `action ของ a1 (${String(r.e ?? "").slice(0, 120)})`);
     const a = await measure(() => summary("oa", DEP.R)), b = await measure(() => summary("oa", DEP.R));
     ok(a.n > 0 && a.n === b.n, `ตัวนับ: ${a.n} / ${b.n}`);
-    console.log(`     ℹ️ departureMoneySummary = ${a.n} คำสั่ง SQL`);
+    // D3: ฐานของข้อ "อ่านค่าตั้ง VAT ครั้งเดียวต่อการโหลด" = จำนวนคำสั่งที่แตะ "SettingValue" ของการเรียก resolveSettings 1 ครั้ง
+    const rs0 = SETI.mod?.resolveSettings; ok(typeof rs0 === "function", "ไม่มี resolveSettings");
+    const m0 = await measure(async () => (rs0 as AnyFn)({ tenantId: tA }, ["trips.tax.vatRegistered"], { unitId: uA }, NOW_R));
+    settingsBase = m0.sql.filter((x) => /"SettingValue"/.test(x)).length; ok(settingsBase >= 1, `resolveSettings ไม่แตะ SettingValue (${fmt(m0.sql.slice(0, 2))})`);
+    console.log(`     ℹ️ departureMoneySummary = ${a.n} คำสั่ง SQL · resolveSettings ครั้งเดียว = ${settingsBase} คำสั่งที่แตะ SettingValue`);
   });
   groupLine("PC");
 
@@ -652,6 +665,8 @@ try {
     ok(/body\.from/.test(s) && /body\.to\b/.test(s) && /body\.productId/.test(s) && /unitId:\s*unit\.id/.test(s), "action ไม่อ่าน/ไม่ส่งต่อ from · to · productId · unitId จาก slug");
     ok(/LOCALE_COOKIE/.test(s) && /isLocale\(/.test(s) && /cookies\(\)/.test(s), "ภาษาไม่ได้มาจากคุกกี้ LOCALE");
     ok(!/\bnow\s*[:=]/.test(s) && !/new Date\(/.test(s) && !/body\.(locale|basis|channel|unitId|now)\b/.test(s), "action รับเวลา/ภาษา/ฐาน/หน่วยจาก input");
+    // D3: action ส่งต่อบริการสองอาร์กิวเมนต์ (ไม่มี opts/caps)
+    ok(/exportTripReportCsv\(/.test(s) && !/\bcaps\b|\bopts\b|\{\s*now\b/.test(s), "action ส่ง opts/caps/now ให้บริการ (ต้องเรียกสองอาร์กิวเมนต์)");
   });
   await st("S-5", "reports.ts: ไม่มีนาฬิกาฐานข้อมูล · **ไม่มี AT TIME ZONE** (N10 · ขอบ UTC จาก reportUtcBoundsOf) · ไม่มี await ในลูป / .map(async · เขียนได้เฉพาะ AuditLog · ไม่ส่ง outbox · console เฉพาะ error · เพดาน LIMIT/take ผูก REPORT_DEPARTURE_CAP/REPORT_BOOKING_CAP · เพดานความถี่ checkRateLimitDb + REPORT_EXPORT_RATE", () => {
     needOwn(); const r = stripComments(read(REPORTS));
@@ -681,8 +696,8 @@ try {
     needOwn(); const s = stripComments(read(REPORT_PAGE));
     ok(/requireUnit\(/.test(s) && /tripsPageGate\(/.test(s) && /["']departures["']/.test(s) && /reportQueryOf\(/.test(s) && /loadTripReportVM\(/.test(s) && /unitId:\s*unit\.id/.test(s), "ด่าน/ตัวโหลด");
     ok(/<ReportScreen\b[^>]*\bvm=/.test(s) && /error=/.test(s) && /TripsForbidden/.test(s) && /notFound\(/.test(s), "ReportScreen/TripsForbidden/notFound");
-    ok(/RANGE_TOO_LARGE/.test(s) && /INVALID_INPUT/.test(s) && /REPORT_TOO_LARGE/.test(s), "ไม่จัดการรหัสผิดของตัวกรอง");
-    ok(!/@\/lib\/core\/db|@prisma\/client|\bprisma\./.test(s) && !/["']use client["']/.test(s) && !/\bnow\s*:/.test(s), "prisma/use client/now");
+    ok(/RANGE_TOO_LARGE/.test(s) && /\.field\b/.test(s) && /REPORT_TOO_LARGE/.test(s), "ไม่จัดการรหัสผิดของตัวกรอง (ทิ้งช่องตาม field · §5.7)");
+    ok(!/@\/lib\/core\/db|@prisma\/client|\bprisma\./.test(s) && !/["']use client["']/.test(s) && !/\bnow\s*:/.test(s) && !/caps/.test(s), "prisma/use client/now/caps");
   });
   await st("S-9", "คอมโพเนนต์ Report*: ไม่ import บริการ/ฐาน (นอกจาก report-actions + import type) · ใช้ formatBaht · ไม่คิดเลขเงิน · บรรทัด VAT ผ่าน vatShown ของ ./CostParts (ไม่เทียบ vatSatang เอง · Q11) · ReportScreen ไม่ใช้ useSearchParams/useRouter/usePathname (ลิงก์จาก VM) · ไม่มีคำ POS", () => {
     needOwn(); const bad: string[] = [];
@@ -699,7 +714,7 @@ try {
     ok(/formatBaht\(/.test(all) && /vatShown\(/.test(all) && /import[^;]*\bvatShown\b[^;]*from\s+["']\.\/CostParts["']/.test(all), "ไม่ใช้ formatBaht/vatShown ของ CostParts");
     ok(bad.length === 0, bad.slice(0, 5).join(" · "));
   });
-  await st("S-10", `ข้อความ report.*: ข้อความไทยที่ตรึง ${Object.keys(PINNED).length} คีย์ตรงตัวอักษร · คีย์ขั้นต่ำ ${I18N_REQUIRED.length} ครบสองภาษา · ชุดคีย์ report.* เท่ากัน · ไม่มีคำต้องห้าม/รหัสดิบ/รหัสใบงาน · อังกฤษไม่มีอักษรไทย · revenueNoVat ไม่มีคำ VAT · อังกฤษเอกพจน์/พหูพจน์ (noCosts · charter · lead.excluded)`, () => {
+  await st("S-10", `ข้อความ report.*: ข้อความไทยที่ตรึง ${Object.keys(PINNED).length} คีย์ตรงตัวอักษร · คีย์ขั้นต่ำ ${I18N_REQUIRED.length} ครบสองภาษา · ชุดคีย์ report.* เท่ากัน · ไม่มีคำต้องห้าม/รหัสดิบ/รหัสใบงาน · อังกฤษไม่มีอักษรไทย · revenueNoVat ไม่มีคำ VAT · อังกฤษเอกพจน์/พหูพจน์ (noCosts · charter · lead.notCounted · lead.negative)`, () => {
     const wrong = Object.entries(PINNED).filter(([k, v]) => fth[k] !== v); ok(wrong.length === 0, `ข้อความไม่ตรง ${wrong.length}: ${fmt(wrong.map(([k]) => [k, fth[k]]).slice(0, 3))}`);
     const miss = I18N_REQUIRED.filter((k) => !fth[k] || !fen[k]); ok(miss.length === 0, `ขาด ${miss.length}: ${miss.slice(0, 8).join(", ")}`);
     eq(mineK(fth).map(([k]) => k).sort(), mineK(fen).map(([k]) => k).sort(), "ชุดคีย์สองภาษา");
@@ -708,8 +723,8 @@ try {
     ok(!mineK(fen).some(([, v]) => THAI.test(v)) && !THAI.test(fen["departures.actions.reports"] ?? "ก"), "อังกฤษมีอักษรไทย");
     ok(!/VAT/i.test(fth["report.kpi.revenueNoVat"] ?? "VAT") && !/VAT/i.test(fen["report.kpi.revenueNoVat"] ?? "VAT") && !/VAT/i.test(fen["report.csv.revenueNoVat"] ?? "VAT"), "revenueNoVat มีคำ VAT");
     const tr = (RX?.ui.createTranslator as AnyFn)({ locale: "en", messages: { trips: en }, namespace: "trips" }) as AnyFn; const pl: string[] = [];
-    for (const [k, w] of [["report.noCosts", "departure"], ["report.charter", "departure"], ["report.lead.excluded", "booking"]] as const) {
-      const one = String(tr(k, { n: 1 })), two = String(tr(k, { n: 2 }));
+    for (const [k, w] of [["report.noCosts", "departure"], ["report.charter", "departure"], ["report.lead.notCounted", "booking"], ["report.lead.negative", "booking"]] as const) {
+      const one = String(tr(k, { n: 1, ended: 1, upcoming: 0 })), two = String(tr(k, { n: 2, ended: 1, upcoming: 1 }));
       if (!new RegExp(`\\b1 ${w}\\b(?!s)`).test(one) || !new RegExp(`\\b2 ${w}s\\b`).test(two)) pl.push(`${k}: "${one}" / "${two}"`);
     }
     ok(pl.length === 0, pl.join(" · "));
@@ -780,14 +795,27 @@ try {
     const around = sc.slice(Math.max(0, at - 400), at + 400);
     ok(/cal\.flags\.canReport/.test(around) && /\/trips\/reports/.test(around) && /departures\.actions\.reports/.test(around), "ลิงก์ไม่ผูกธง/ปลายทาง/ข้อความ");
   });
+  await st("S-18", "D3 ไม่ดึง snapshot ทั้งก้อน: ใน costs.ts และ reports.ts ทุกที่ที่อ้าง \"policySnapshot\" ตามด้วย -> (JSON path) · ไม่มี policySnapshot: true ใน select ของ prisma", () => {
+    needOwn(); const bad: string[] = [];
+    for (const f of [COSTS, REPORTS]) { const c = stripComments(read(f));
+      if ([...c.matchAll(/"policySnapshot"(?!\s*->)/g)].length) bad.push(`${f}: "policySnapshot" ทั้งก้อน`); if (/policySnapshot\s*:\s*true/.test(c)) bad.push(`${f}: select policySnapshot`); }
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("S-19", "D4 ตัวแปลงแถวที่เดียว: report-core ส่งออก bookingMoneyInOfRow · costs.ts และ reports.ts เรียกตัวนี้ · costs.ts ไม่เหลือตรรกะ payable/VAT ของ snapshot (Number.isSafeInteger(b.payableJson · inclVatJson === false · typeof b.vatRegJson)", () => {
+    needOwn(); const p0 = stripComments(read(PURE)), c = stripComments(read(COSTS)), r = stripComments(read(REPORTS));
+    ok(/export function bookingMoneyInOfRow\(/.test(p0), "report-core ไม่มี bookingMoneyInOfRow");
+    ok(/bookingMoneyInOfRow\(/.test(c), "costs.ts ไม่เรียก bookingMoneyInOfRow");
+    ok(!/isSafeInteger\(\s*b\.payableJson|inclVatJson\s*===\s*false|typeof\s+b\.vatRegJson/.test(c), "costs.ts ยังมีตรรกะแปลงแถวของตัวเอง");
+    ok(/bookingMoneyInOfRow|from\s+["']\.\/costs["']/.test(r), "reports.ts ไม่ใช้ตัวอ่าน/ตัวแปลงร่วม");
+  });
   groupLine("S");
 
   // ═══════════════ P. ตัวช่วยบริสุทธิ์ ═══════════════
   console.log("\n── P: ตัวช่วยบริสุทธิ์ (report-core) ──");
-  await st("P-1", "ค่าคงที่: แท็บ 4 · กลุ่ม 3 · ฐาน 2 · พารามิเตอร์ URL 8 · 366 / 62 วัน · หน้า 50 / 200 · รอบ 4,000 · การจอง 60,000 · CSV 2,000 · ส่งออก 20/ชม. · ช่องระยะจอง 7 · คอลัมน์ CSV 19 + ต้นทุน 4", () => {
+  await st("P-1", "ค่าคงที่: แท็บ 4 · กลุ่ม 3 · ฐาน 2 · พารามิเตอร์ URL 8 · 366 / 62 วัน · หน้า 50 / 200 · รอบ 4,000 · การจอง 40,000 (D3) · สินค้า 200 · CSV 2,000 · ส่งออก 20/ชม. · ช่องระยะจอง 7 · คอลัมน์ CSV 19 + ต้นทุน 4", () => {
     eq([constOf("REPORT_TABS"), constOf("REPORT_GROUPS"), constOf("REPORT_BASES"), constOf("REPORT_QUERY_PARAMS")], [TABS, GROUPS, BASES, QPARAMS], "ชุดค่า");
     eq([constOf("REPORT_RANGE_MAX_DAYS"), constOf("REPORT_DAY_GROUP_MAX_DAYS"), constOf("REPORT_PAGE_SIZE"), constOf("REPORT_PAGE_MAX"), constOf("REPORT_DEPARTURE_CAP"), constOf("REPORT_BOOKING_CAP"), constOf("TRIPS_REPORT_CSV_CAP")],
-      [366, 62, 50, 200, 4000, 60_000, 2000], "เพดาน");
+      [366, 62, 50, 200, 4000, 40_000, 2000], "เพดาน"); eq(constOf("REPORT_PRODUCTS_MAX"), 200, "สินค้า");
     eq(constOf("REPORT_EXPORT_RATE"), { limit: 20, windowMs: 3_600_000 }, "ความถี่");
     eq(asArr(constOf("LEAD_BUCKETS")).map((b) => [b.key, b.min, b.max]), [["D0", 0, 0], ["D1_2", 1, 2], ["D3_7", 3, 7], ["D8_14", 8, 14], ["D15_30", 15, 30], ["D31_60", 31, 60], ["D61P", 61, null]], "LEAD_BUCKETS");
     eq([constOf("REPORT_CSV_COLUMNS"), constOf("REPORT_CSV_COST_COLUMNS")], [CSV_COLS, CSV_COST_COLS], "คอลัมน์");
@@ -841,39 +869,53 @@ try {
     eq([-120_000, 5, -5, 0, 691_740_000_000].map((x) => pure("bahtPlain", x)), ["-1200.00", "0.05", "-0.05", "0.00", "6917400000.00"], "บาท");
     eq([6250, -1, 10_000, 0, null].map((x) => pure("pctPlain", x)), ["62.50", "-0.01", "100.00", "0.00", ""], "%");
   });
-  await st("P-13", "reportCsv ระดับไบต์: BOM + หัว + แถว + บรรทัดท้าย (ท้ายไฟล์) · CRLF · สตริงกันสูตร (= + - @ tab CR) · {satang}/{bp} ไม่ผ่านตัวกันสูตร · null ⇒ ว่าง · ปรับแถวให้เท่าหัว · ไม่มีบรรทัดท้าย ⇒ จบที่แถว", () => {
-    const s = String(pure("reportCsv", ["a", "b", "c", "d"], [["=1+1", { satang: -120_000 }, { bp: 6250 }, null], ["\t-x", { satang: 5 }, { bp: -1 }, 7], ["ก,\"ข\"", { satang: -5 }, { bp: 10_000 }, "@y"], ["a\rb", "+c"]], ["แจ้ง", "ตัด"]));
-    eq(s, "﻿a,b,c,d\r\n'=1+1,-1200.00,62.50,\r\n'-x,0.05,-0.01,7\r\n\"ก,\"\"ข\"\"\",-0.05,100.00,'@y\r\na b,'+c,,\r\nแจ้ง,,,\r\nตัด,,,\r\n", "ไฟล์");
-    eq(String(pure("reportCsv", ["h"], [], [])), "﻿h\r\n", "ว่าง");
+  await st("P-13", "reportCsv ข้อมูลล้วน (D2): BOM + หัว + แถวเท่านั้น (ไม่มีบรรทัดข้อความ) · CRLF · สตริงกันสูตร (= + - @ tab CR) · {satang}/{bp} ไม่ผ่านตัวกันสูตร · null ⇒ ว่าง · ปรับแถวให้เท่าหัว · ไม่มีแถว ⇒ หัวอย่างเดียว", () => {
+    const s0 = String(pure("reportCsv", ["a", "b", "c", "d"], [["=1+1", { satang: -120_000 }, { bp: 6250 }, null], ["\t-x", { satang: 5 }, { bp: -1 }, 7], ["ก,\"ข\"", { satang: -5 }, { bp: 10_000 }, "@y"], ["a\rb", "+c"]]));
+    eq(s0, "\uFEFFa,b,c,d\r\n'=1+1,-1200.00,62.50,\r\n'-x,0.05,-0.01,7\r\n\"ก,\"\"ข\"\"\",-0.05,100.00,'@y\r\na b,'+c,,\r\n", "ไฟล์");
+    eq(String(pure("reportCsv", ["h"], [])), "\uFEFFh\r\n", "ว่าง");
   });
-  await st("P-14", "reportFileName: trips-report-<from>-<to>.csv · วันไม่จริง/อักขระแปลก ⇒ trips-report.csv · ผลตรง /^[A-Za-z0-9.-]{1,60}$/", () => {
-    const xs = [pure("reportFileName", "2027-04-01", "2027-04-30"), pure("reportFileName", "2027-02-30", "2027-03-01"), pure("reportFileName", "../x", "y")];
-    eq(xs, ["trips-report-2027-04-01-2027-04-30.csv", "trips-report.csv", "trips-report.csv"], "ชื่อ"); ok(xs.every((x) => /^[A-Za-z0-9.-]{1,60}$/.test(String(x))), "รูปชื่อ");
+  await st("P-14", "reportFileName: trips-report-<from>-<to>.csv · ถูกตัด ⇒ …-partial.csv (D2) · วันไม่จริง ⇒ trips-report.csv / trips-report-partial.csv · ผลตรง /^[A-Za-z0-9.-]{1,60}$/", () => {
+    const xs = [pure("reportFileName", "2027-04-01", "2027-04-30"), pure("reportFileName", "2027-04-01", "2027-04-30", true), pure("reportFileName", "2027-02-30", "2027-03-01"), pure("reportFileName", "../x", "y", true)];
+    eq(xs, ["trips-report-2027-04-01-2027-04-30.csv", "trips-report-2027-04-01-2027-04-30-partial.csv", "trips-report.csv", "trips-report-partial.csv"], "ชื่อ"); ok(xs.every((x) => /^[A-Za-z0-9.-]{1,60}$/.test(String(x))), "รูปชื่อ");
+  });
+  await st("P-15", "bookingMoneyInOfRow (ตัวแปลงแถวที่ย้ายจาก costs.ts · D4): payable ใช้ได้ ⇒ ตามนั้น · −1 / \"1095000\" / 3e9 ⇒ fallback gross − ส่วนลด (Q7) · inclVatJson false ⇒ + VAT (Q8) · snapshot ไม่บอก VAT ⇒ ตามหน่วย (true ⇒ true · null ⇒ false · Q10) · รอบยกเลิก + จ่ายแล้ว ⇒ pendingRefund · ยังไม่จ่าย ⇒ ไม่ใช่ (Q12) · คำขอคืนเงินเปิด ⇒ pendingRefund · retN > 0 ⇒ retained 1 ก้อน", () => {
+    const row = { status: "CONFIRMED", collectMode: "SHOP", agentAccountId: null, channel: "WEB", currency: "THB", grossSatang: 410_000, discountSatang: 10_000, agentDiscountSatang: 0, passThroughSatang: 60_000, vatSatang: 22_897,
+      commissionSatang: 0, commissionVatSatang: 0, paidSatang: 0, refundedSatang: 0, payableJson: 405_000, vatRegJson: true, inclVatJson: true, seats: 1, retAmount: 0, retVat: 0, retPt: 0, retN: 0, openRefund: false };
+    const M = (o: Rec, u: Rec = {}) => { const r = asRec(pure("bookingMoneyInOfRow", { ...row, ...o }, { unitVatRegistered: true, departureCancelled: false, ...u })) ?? {}; const i = asRec(r.input) ?? {};
+      return [r.hasPayable, i.payableSatang, r.vatRegistered, i.vatRegistered, i.pendingRefund, i.departureCancelled ?? false, asArr(i.retained).length]; };
+    eq(M({}), [true, 405_000, true, true, false, false, 0], "ปกติ");
+    eq([M({ payableJson: -1 })[1], M({ payableJson: "1095000" })[1], M({ payableJson: 3e9 })[1], M({ payableJson: null, inclVatJson: false })[1]], [400_000, 400_000, 400_000, 422_897], "fallback");
+    eq([M({ vatRegJson: null })[2], M({ vatRegJson: null }, { unitVatRegistered: null })[2], M({ vatRegJson: false })[2]], [true, false, false], "VAT");
+    eq([M({ status: "PAID", paidSatang: 410_000 }, { departureCancelled: true }).slice(4, 6), M({}, { departureCancelled: true }).slice(4, 6), M({ openRefund: true })[4]], [[true, true], [false, true], true], "รอคืน");
+    eq(M({ status: "CANCELLED", retN: 2, retAmount: 350_000, retVat: 22_897, retPt: 0 })[6], 1, "retained");
   });
   groupLine("P");
 
   // ═══════════════ RP. บริการรายงาน ═══════════════
   console.log("\n── RP: รายงาน ──");
   const TOT_K = ["departures", "cancelledDepartures", "capacity", "sold", "loadFactorBp", "bookings", "cancelledBookings", "pendingRefundBookings", "seats", "salesSatang", "passThroughSatang", "vatSatang", "revenueExVatSatang",
-    "commissionCostSatang", "costSatang", "grossProfitSatang", "marginBp", "collectedSatang", "outstandingSatang", "heldSatang", "retainedSatang", "agentCollectBookings", "noShowUnpaid", "pendingBookings", "departuresWithoutCosts", "charterLikeDepartures", "estimate"];
-  const APR_TOT = [7, 1, 86, 33, 3837, 12, 2, 2, 35, 10_940_000, 1_740_000, 715_698, 10_224_302, 409_500, 2_770_000, 7_044_802, 6890, 3_795_000, 5_330_000, 1_230_000, 350_000, 3, 1, 2, 4, 1, true];
-  await st("RP-1", "ยอดรวม เม.ย. (OWNER · ฐานวันเดินทาง) = §4.5: 7 รอบ (ยกเลิก 1) · 86/33 = 3837 · 12 การจอง · ยอดขาย 10,940,000 · VAT 715,698 · คอมฯ 409,500 · ต้นทุน 2,770,000 · กำไร 7,044,802 (6890) · รับแล้ว 3,795,000 · ค้าง 5,330,000 · รอคืน 1,230,000 · เก็บไว้ 350,000 · ยังไม่ใส่ต้นทุน 4 · เหมาลำ 1 · estimate", async () => {
+    "commissionCostSatang", "costSatang", "costRows", "grossProfitSatang", "marginBp", "collectedSatang", "outstandingSatang", "heldSatang", "retainedSatang", "agentCollectBookings", "noShowUnpaid", "pendingBookings", "departuresWithoutCosts", "charterLikeDepartures", "estimate"];
+  const APR_TOT = [7, 1, 86, 33, 3837, 12, 2, 2, 35, 10_940_000, 1_740_000, 715_698, 10_224_302, 409_500, 2_770_000, 8, 7_044_802, 6890, 3_795_000, 5_330_000, 1_230_000, 350_000, 3, 1, 2, { ended: 2, upcoming: 2 }, 1, true];
+  const W0 = { ended: 0, upcoming: 0 };
+  await st("RP-1", "ยอดรวม เม.ย. (OWNER · ฐานวันเดินทาง) = §4.5: 7 รอบ (ยกเลิก 1) · 86/33 = 3837 · 12 การจอง · ยอดขาย 10,940,000 · VAT 715,698 · คอมฯ 409,500 · ต้นทุน 2,770,000 · กำไร 7,044,802 (6890) · รับแล้ว 3,795,000 · ค้าง 5,330,000 · รอคืน 1,230,000 · เก็บไว้ 350,000 · แถวต้นทุน 8 · ยังไม่หักต้นทุน { ended 2 (dQ dH) · upcoming 2 (dP dI) } (D1) · เหมาลำ 1 · estimate · flags.commissionWithVat false", async () => {
     needSetup(); const vm = await repVM("oa"); eq(pick(T(vm), TOT_K), APR_TOT, "totals");
     eq([asRec(vm.filter)?.basis, asRec(vm.filter)?.tab, asRec(vm.filter)?.group, asRec(vm.filter)?.days, asRec(vm.flags)?.costView, asRec(vm.flags)?.exportAvailable], ["travel", "sales", "day", 30, true, true], "filter/flags");
+    eq(asRec(vm.flags)?.commissionWithVat, false, "commissionWithVat (หน่วยจด VAT · U3)");
   });
-  await st("RP-2", "แท็บยอดขาย รายวัน: 30 ช่วงต่อเนื่อง · 10 เม.ย. ยอดขาย 5,040,000 ต้นทุน 2,150,000 กำไร 2,150,782 · 16 เม.ย. (dP) 1 รอบ ยอด 0 กำไร null · 2 เม.ย. 0 รอบ · Σ ช่วง = ยอดรวม (ยอดขาย · VAT · คอมฯ · ต้นทุน)", async () => {
+  await st("RP-2", "แท็บยอดขาย รายวัน: 30 ช่วงต่อเนื่อง · 10 เม.ย. ยอดขาย 5,040,000 ต้นทุน 2,150,000 กำไร 2,150,782 · 16 เม.ย. (dP) 1 รอบ ยอด 0 กำไร null ยังไม่หักต้นทุน {0,1} · 2 เม.ย. 0 รอบ · Σ ช่วง = ยอดรวม (ยอดขาย · VAT · คอมฯ · ต้นทุน)", async () => {
     needSetup(); const vm = await repVM("oa"); const ps = asArr(vm.periods); eq(ps.length, 30, "จำนวนช่วง");
     const at = (k: string) => ps.find((p) => p.key === k) ?? {};
-    eq(pick(at("2027-04-10"), ["departures", "bookings", "salesSatang", "costSatang", "grossProfitSatang"]), [1, 6, 5_040_000, 2_150_000, 2_150_782], "10 เม.ย.");
-    eq(pick(at("2027-04-16"), ["departures", "salesSatang", "costSatang", "grossProfitSatang"]), [1, 0, 0, null], "16 เม.ย.");
+    eq(pick(at("2027-04-10"), ["departures", "bookings", "salesSatang", "costSatang", "costRows", "grossProfitSatang", "departuresWithoutCosts"]), [1, 6, 5_040_000, 2_150_000, 5, 2_150_782, W0], "10 เม.ย.");
+    eq(pick(at("2027-04-16"), ["departures", "salesSatang", "costSatang", "costRows", "grossProfitSatang", "departuresWithoutCosts"]), [1, 0, 0, 0, null, { ended: 0, upcoming: 1 }], "16 เม.ย.");
     eq(pick(at("2027-04-02"), ["departures", "bookings", "salesSatang"]), [0, 0, 0], "2 เม.ย.");
     const S = (k: string) => ps.reduce((s, p) => s + Number(p[k] ?? 0), 0);
     eq([S("salesSatang"), S("vatSatang"), S("commissionCostSatang"), S("costSatang"), S("departures")], [10_940_000, 715_698, 409_500, 2_770_000, 7], "Σ ช่วง");
   });
-  await st("RP-3", "แท็บยอดขาย รายสัปดาห์ (group=week): 5 ช่วง · 5–11 เม.ย. 6,040,000 / ต้นทุน 2,650,000 / กำไร 2,585,362 · 12–18 เม.ย. 3,850,000 / 120,000 / 3,478,131 · 19–25 เม.ย. 1,050,000 กำไร null · หัวท้ายศูนย์", async () => {
+  await st("RP-3", "แท็บยอดขาย รายสัปดาห์ (group=week): 5 ช่วง · 5–11 เม.ย. 6,040,000 / ต้นทุน 2,650,000 / กำไร 2,585,362 · 12–18 เม.ย. 3,850,000 / 120,000 / 3,478,131 · 19–25 เม.ย. 1,050,000 กำไร null · หัวท้ายศูนย์ · ยังไม่หักต้นทุนต่อช่วง (D1): 12–18 เม.ย. {ended 2 (dQ dH) · upcoming 1 (dP)} (รอบยกเลิก dX ไม่นับ) · 19–25 {0,1} · อื่น {0,0}", async () => {
     needSetup(); const ps = asArr((await repVM("oa", { group: "week" })).periods);
-    eq(ps.map((p) => [p.key, p.from, p.to, p.salesSatang, p.costSatang, p.grossProfitSatang]), [["2027-03-29", "2027-04-01", "2027-04-04", 0, 0, null], ["2027-04-05", "2027-04-05", "2027-04-11", 6_040_000, 2_650_000, 2_585_362],
-      ["2027-04-12", "2027-04-12", "2027-04-18", 3_850_000, 120_000, 3_478_131], ["2027-04-19", "2027-04-19", "2027-04-25", 1_050_000, 0, null], ["2027-04-26", "2027-04-26", "2027-04-30", 0, 0, null]], "สัปดาห์");
+    eq(ps.map((p) => [p.key, p.from, p.to, p.salesSatang, p.costSatang, p.grossProfitSatang, p.departuresWithoutCosts]), [["2027-03-29", "2027-04-01", "2027-04-04", 0, 0, null, W0], ["2027-04-05", "2027-04-05", "2027-04-11", 6_040_000, 2_650_000, 2_585_362, W0],
+      ["2027-04-12", "2027-04-12", "2027-04-18", 3_850_000, 120_000, 3_478_131, { ended: 2, upcoming: 1 }], ["2027-04-19", "2027-04-19", "2027-04-25", 1_050_000, 0, null, { ended: 0, upcoming: 1 }], ["2027-04-26", "2027-04-26", "2027-04-30", 0, 0, null, W0]], "สัปดาห์");
+    eq(asArr((await repVM("rv", { group: "week" })).periods).map((p) => p.departuresWithoutCosts), [null, null, null, null, null], "ผู้ไม่เห็นต้นทุน (Q16)");
   });
   await st("RP-4", "กลุ่มช่วง: ปริยาย 30 วัน ⇒ day · 90 วัน (ม.ค.–มี.ค.) ⇒ week · ทั้งปี ⇒ month (12 ช่วง) · group=month ใน เม.ย. ⇒ 1 ช่วง · group=day 62 วันได้ · 63 วัน ⇒ INVALID_INPUT", async () => {
     needSetup();
@@ -881,27 +923,34 @@ try {
     eq(asArr((await repVM("oa", { from: "2027-04-01", to: "2027-06-01", group: "day" })).periods).length, 62, "62 วัน");
     codeR(await rep("oa", { from: "2027-04-01", to: "2027-06-02", group: "day" }), "INVALID_INPUT", "63 วันรายวัน");
   });
-  await st("RP-5", "แท็บอัตราเต็ม: ต่อสินค้าไม่นับรอบยกเลิก · ราชาทดสอบ 5 รอบ 76/33 = 4342 · เหมาลำ 1 · PX 1 รอบ 10/0 = 0 · เรียงมาก→น้อย · แท็บอื่น = null", async () => {
+  await st("RP-5", "แท็บอัตราเต็ม: ต่อสินค้าไม่นับรอบยกเลิก · ราชาทดสอบ 5 รอบ 76/33 = 4342 · เหมาลำ 1 · PX 1 รอบ 10/0 = 0 · เรียงมาก→น้อย · แท็บอื่น = null · พ.ค. (D5): ความจุปัจจุบัน · ที่ถือไม่นับ · dO ความจุ 3 ขาย 3 = 10000 · dZ ความจุ 0 ⇒ null · รวม 13/5 = 3846 · เกิน 100% ตรวจที่ตัวช่วย (3/2 ⇒ 15000 · ฐานข้อมูลห้ามขายเกินความจุ)", async () => {
     needSetup(); const vm = await repVM("oa", { tab: "load" }); const rows = asArr(asRec(vm.load)?.rows);
     eq(rows.map((r) => [r.productId, r.departures, r.capacity, r.sold, r.loadFactorBp, r.charterLikeDepartures]), [[PRD.PR.id, 5, 76, 33, 4342, 1], [PRD.PX.id, 1, 10, 0, 0, 0]], "แถว");
     eq([vm.periods, vm.lead, vm.channelsTab], [null, null, null], "แท็บอื่น");
+    const may = await repVM("oa", { from: "2027-05-01", to: "2027-05-31", tab: "load" }); const byId = (k: string) => depRows(may).find((r) => r.departureId === DEP[k]) ?? {};
+    eq([pick(T(may), ["capacity", "sold", "loadFactorBp"]), pick(byId("M"), ["capacity", "sold", "loadFactorBp"]), pick(byId("O"), ["capacity", "sold", "loadFactorBp"]), pick(byId("Zc"), ["capacity", "sold", "loadFactorBp"])],
+      [[13, 5, 3846], [10, 2, 2000], [3, 3, 10_000], [0, 0, null]], "พ.ค.");
+    eq(asArr(asRec(may.load)?.rows).map((r) => [r.departures, r.capacity, r.sold, r.loadFactorBp]), [[3, 13, 5, 3846]], "อัตราเต็มต่อสินค้า พ.ค.");
+    eq(pure("loadFactorBp", 3, 2), 15_000, "เกิน 100% (ตัวช่วย)");
   });
   await st("RP-6", "แท็บระยะจอง (LIVE · ไม่นับ IMPORT): D0 1 · D1_2 2 · D3_7 2 · D8_14 2 · D15_30 1 · D31_60 2 · D61P 1 · ค่ากลาง 9 วัน · counted 11 · excludedImport 1 · excludedNegative 0 · ที่นั่ง D31_60 = 13", async () => {
     needSetup(); const l = asRec((await repVM("oa", { tab: "lead" })).lead) ?? {};
     eq(asArr(l.buckets).map((b) => [b.key, b.bookings]), LEAD_KEYS.map((k, i) => [k, [1, 2, 2, 2, 1, 2, 1][i]]), "ช่อง");
     eq([l.medianDays, l.counted, l.excludedImport, l.excludedNegative, asArr(l.buckets).find((b) => b.key === "D31_60")?.seats], [9, 11, 1, 0, 13], "ค่ากลาง/นับ");
   });
-  await st("RP-7", "แท็บช่องทาง: 3 กลุ่มตามลำดับ · ขายตรง 8 การจอง 7,545,000 (6897) · เอเจนซี่ 3 · 3,045,000 (2783) คอมฯ 409,500 · อื่น 1 · 350,000 (320) · ช่องทาง WEB 4/ยกเลิก 1 · COUNTER 3/ยกเลิก 1 · LIFF · AGENT_PORTAL คอมฯ 199,500 · AGENT_LINK · IMPORT · Σ ยอดขาย = ยอดรวม", async () => {
+  await st("RP-7", "แท็บช่องทาง: 3 กลุ่มตามลำดับ · ขายตรง 8 การจอง 7,545,000 (6897) · เอเจนซี่ 3 · 3,045,000 (2783) คอมฯ 409,500 · อื่น 1 · 350,000 (320) · ช่องทาง WEB 4/ยกเลิก 1 · COUNTER 3/ยกเลิก 1 · LIFF · AGENT_PORTAL คอมฯ 199,500 · AGENT_LINK · IMPORT · Σ ยอดขาย = ยอดรวม · ส่วนแบ่งรายช่องทางปัดอิสระ 1874/864/4159/1504/1280/320 = 10001 (ไม่บังคับให้รวม 10000 · D5)", async () => {
     needSetup(); const gs = asArr(asRec((await repVM("oa", { tab: "channel" })).channelsTab)?.groups);
     eq(gs.map((g) => [g.group, g.bookings, g.salesSatang, g.shareBp, g.commissionCostSatang]), [["DIRECT", 8, 7_545_000, 6897, 0], ["AGENT", 3, 3_045_000, 2783, 409_500], ["OTHER", 1, 350_000, 320, 0]], "กลุ่ม");
     eq(gs.flatMap((g) => asArr(g.channels).map((c) => [c.channel, c.bookings, c.cancelledBookings, c.seats, c.salesSatang, c.commissionCostSatang])),
       [["WEB", 4, 1, 7, 2_050_000, 0], ["LIFF", 1, 0, 3, 945_000, 0], ["COUNTER", 3, 1, 12, 4_550_000, 0], ["AGENT_PORTAL", 2, 0, 5, 1_645_000, 199_500], ["AGENT_LINK", 1, 0, 4, 1_400_000, 210_000], ["IMPORT", 1, 0, 1, 350_000, 0]], "ช่องทาง");
+    const sh = gs.flatMap((g) => asArr(g.channels).map((c) => Number(c.shareBp))); eq([sh, sh.reduce((a, b) => a + b, 0)], [[1874, 864, 4159, 1504, 1280, 320], 10_001], "ส่วนแบ่งรายช่องทาง");
   });
-  await st("RP-8", "ฐานวันจอง เม.ย. (ขอบ UTC ตามเวลาร้าน): LIVE 8 · ยอดขาย 4,900,000 · VAT 320,559 · ก่อน VAT 4,579,441 · คอมฯ 315,000 · รับแล้ว 2,050,000 · ค้าง 1,230,000 · รอคืน 1 (410,000) · ถือ/รอ 2 · ความจุ/ขาย/อัตราเต็ม/ต้นทุน/กำไร/จำนวนรอบ null · ตารางรอบ null · notes.basis · ส่งออกไม่ได้", async () => {
+  await st("RP-8", "ฐานวันจอง เม.ย. (ขอบ UTC ตามเวลาร้าน): LIVE 8 · ยอดขาย 4,900,000 · VAT 320,559 · ก่อน VAT 4,579,441 · คอมฯ 315,000 · รับแล้ว 2,050,000 · ค้าง 1,230,000 · รอคืน 1 (410,000) · ถือ/รอ 2 · ความจุ/ขาย/อัตราเต็ม/ต้นทุน/กำไร/จำนวนรอบ null · ตารางรอบ null · notes.basis · ส่งออกไม่ได้ · ไม่มีช่วงสำเร็จรูป next30 (D5)", async () => {
     needSetup(); const vm = await repVM("oa", { basis: "booked" }); const t = T(vm);
+    eq(asArr(vm.presets).map((p) => p.key), ["thisMonth", "lastMonth", "last30"], "presets ฐานวันจอง");
     eq(pick(t, ["bookings", "salesSatang", "vatSatang", "revenueExVatSatang", "commissionCostSatang", "collectedSatang", "outstandingSatang", "pendingRefundBookings", "heldSatang", "pendingBookings", "cancelledBookings"]),
       [8, 4_900_000, 320_559, 4_579_441, 315_000, 2_050_000, 1_230_000, 1, 410_000, 2, 0], "ยอด");
-    eq(pick(t, ["capacity", "sold", "loadFactorBp", "costSatang", "grossProfitSatang", "marginBp", "departures", "departuresWithoutCosts"]), [null, null, null, null, null, null, null, null], "null");
+    eq(pick(t, ["capacity", "sold", "loadFactorBp", "costSatang", "costRows", "grossProfitSatang", "marginBp", "departures", "departuresWithoutCosts"]), [null, null, null, null, null, null, null, null, null], "null");
     eq([vm.departures, asRec(vm.notes)?.basis, asRec(vm.notes)?.channel, asRec(vm.flags)?.exportAvailable], [null, true, false, false], "ตาราง/ป้าย");
   });
   await st("RP-9", "กรองช่องทาง AGENT_PORTAL (ฐานวันเดินทาง): 2 การจอง · 1,645,000 · คอมฯ 199,500 · ความจุ/ต้นทุน/กำไร null · ตารางรอบ null · notes.channel (ไม่ใช่ notes.basis) · ส่งออกไม่ได้ · ช่องทางนอกชุด ⇒ INVALID_INPUT", async () => {
@@ -928,18 +977,23 @@ try {
     needSetup(); const r1 = depRows(await repVM("oa", {}, uA, { now: new Date("2027-04-10T00:00:00Z") })), r2 = depRows(await repVM("oa", {}, uA, { now: new Date("2027-05-01T00:00:00Z") }));
     eq([r1.map((r) => r.state), r2.map((r) => r.state)], [["UPCOMING", "UPCOMING", "CANCELLED", "UPCOMING", "UPCOMING", "UPCOMING", "UPCOMING"], ["ENDED", "ENDED", "CANCELLED", "ENDED", "ENDED", "ENDED", "ENDED"]], "สถานะ");
   });
-  await st("RP-13", "หน่วยโตเกียว: ฐานวันจอง เม.ย. = tk1 + tk2 = 700,000 (tk3 ไม่นับ — ขอบกรุงเทพจะได้ 1,050,000) · ระยะจองฐานวันเดินทาง tk1 = D0 · tk2 = D8_14 · คำเตือน VAT_STATUS_UNKNOWN", async () => {
-    needSetup(); eq(pick(T(await repVM("oa", { basis: "booked" }, uT)), ["bookings", "salesSatang"]), [2, 700_000], "ฐานวันจอง");
+  await st("RP-13", "หน่วยโตเกียว: ฐานวันจอง เม.ย. = tk1 + tk2 + tk4 = 1,050,000 (tk3 ไม่นับ — ขอบกรุงเทพจะได้ 1,400,000) · ระยะจองฐานวันเดินทาง tk1 = D0 · tk2 = D8_14 · tk4 จองหลังวันเดินทาง ⇒ excludedNegative 1 counted 2 · คำเตือน VAT_STATUS_UNKNOWN", async () => {
+    needSetup(); eq(pick(T(await repVM("oa", { basis: "booked" }, uT)), ["bookings", "salesSatang"]), [3, 1_050_000], "ฐานวันจอง");
     const vm = await repVM("oa", { tab: "lead" }, uT); const l = asRec(vm.lead) ?? {};
-    eq(asArr(l.buckets).filter((b) => Number(b.bookings) > 0).map((b) => [b.key, b.bookings]), [["D0", 1], ["D8_14", 1]], "ระยะจอง");
+    eq(asArr(l.buckets).filter((b) => Number(b.bookings) > 0).map((b) => [b.key, b.bookings]), [["D0", 1], ["D8_14", 1]], "ระยะจอง"); eq([l.counted, l.excludedNegative, l.excludedImport], [2, 1, 0], "ไม่เข้าช่อง");
     ok(asArr(vm.warnings).some((w) => w.code === "VAT_STATUS_UNKNOWN"), `คำเตือน: ${fmt(vm.warnings)}`);
   });
-  await st("RP-14", "อินพุตเสีย (ไม่ throw): 367 วัน ⇒ RANGE_TOO_LARGE · from > to / 30 ก.พ. / รูปผิด / tab basis group นอกชุด / page 0, 201, 1.5, \"2\" / คีย์เกิน / productId มี NUL หรือยาว 129 ⇒ INVALID_INPUT", async () => {
+  await st("RP-14", "อินพุตเสีย (ไม่ throw · ผลผิดของตัวกรองมี field · §5.7): 367 วัน ⇒ RANGE_TOO_LARGE · from > to / 30 ก.พ. / รูปผิด / tab basis group นอกชุด / page 0, 201, 1.5, \"2\" / คีย์เกิน / productId มี NUL หรือยาว 129 ⇒ INVALID_INPUT", async () => {
     needSetup(); codeR(await rep("oa", { from: "2027-01-01", to: "2028-01-02" }), "RANGE_TOO_LARGE", "367");
     const bad: string[] = [];
     for (const x of [{ from: "2027-04-30", to: "2027-04-01" }, { from: "2027-02-30" }, { to: "2027/04/30" }, { tab: "cost" }, { basis: "paid" }, { group: "year" }, { page: 0 }, { page: 201 }, { page: 1.5 }, { page: "2" }, { extra: 1 }, { productId: "a\u0000b" }, { productId: "x".repeat(129) }] as Rec[]) {
       const r = await rep("oa", x); if (r.ok !== false || r.code !== "INVALID_INPUT") bad.push(`${fmt(x)} ⇒ ${fmt(r).slice(0, 80)}`);
     }
+    // §5.7: ผลผิดของตัวกรองบอกช่องที่ผิด (หน้าใช้ทิ้งช่องนั้นแล้วคงช่องที่ถูก)
+    const F = async (x: Rec) => { const r = await rep("oa", x); return `${r.code}:${r.field}`; };
+    const fields = { range: await F({ from: "2027-02-30" }), big: await F({ from: "2027-01-01", to: "2028-01-02" }), basis: await F({ basis: "paid" }), tab: await F({ tab: "cost" }), group: await F({ group: "year" }),
+      page: await F({ page: 0 }), channel: await F({ channel: "FAX" }), product: await F({ productId: PRD.PA2.id }) };
+    eq(fields, { range: "INVALID_INPUT:range", big: "RANGE_TOO_LARGE:range", basis: "INVALID_INPUT:basis", tab: "INVALID_INPUT:tab", group: "INVALID_INPUT:group", page: "INVALID_INPUT:page", channel: "INVALID_INPUT:channel", product: "NOT_FOUND:product" }, "field");
     ok(bad.length === 0, bad.slice(0, 4).join(" · "));
   });
   await st("RP-15", "ตัวโหลดไม่เขียนฐาน: TripCost/AuditLog/TripBooking/TripDeparture ของร้าน a + ถังความถี่ คงเดิมหลังโหลดทุกแท็บ ทั้งสองฐาน", async () => {
@@ -957,9 +1011,9 @@ try {
   await st("RP-17", "หน่วยไม่จด VAT (MANAGER): ยอดขาย 1,050,000 · VAT 0 · ก่อน VAT 1,050,000 · ต้นทุนคอมฯ 107,000 · ต้นทุน 200,000 · กำไร 743,000", async () => {
     needSetup(); eq(pick(T(await repVM("mg", {}, uN)), ["salesSatang", "vatSatang", "revenueExVatSatang", "commissionCostSatang", "costSatang", "grossProfitSatang"]), [1_050_000, 0, 1_050_000, 107_000, 200_000, 743_000], "dV");
   });
-  await st("RP-18", "ช่วงว่าง (ส.ค. 2570): ยอดศูนย์ · departures 0 · ตารางว่าง · กำไร null (ไม่มีแถวต้นทุน) · departuresWithoutCosts 0 · ระยะจอง counted 0 ค่ากลาง null · อัตราเต็ม rows [] · loadFactor null", async () => {
+  await st("RP-18", "ช่วงว่าง (ส.ค. 2570): ยอดศูนย์ · departures 0 · ตารางว่าง · กำไร null (ไม่มีแถวต้นทุน · costRows 0) · departuresWithoutCosts {0,0} · ระยะจอง counted 0 ค่ากลาง null · อัตราเต็ม rows [] · loadFactor null", async () => {
     needSetup(); const E = { from: "2027-08-01", to: "2027-08-31" };
-    const vm = await repVM("oa", E); eq(pick(T(vm), ["departures", "salesSatang", "grossProfitSatang", "departuresWithoutCosts", "loadFactorBp"]), [0, 0, null, 0, null], "ยอด"); eq(depRows(vm).length, 0, "ตาราง");
+    const vm = await repVM("oa", E); eq(pick(T(vm), ["departures", "salesSatang", "costRows", "grossProfitSatang", "departuresWithoutCosts", "loadFactorBp"]), [0, 0, 0, null, W0, null], "ยอด"); eq(depRows(vm).length, 0, "ตาราง");
     const l = asRec((await repVM("oa", { ...E, tab: "lead" })).lead) ?? {}; eq([l.counted, l.medianDays], [0, null], "ระยะจอง");
     eq(asArr(asRec((await repVM("oa", { ...E, tab: "load" })).load)?.rows), [], "อัตราเต็ม");
   });
@@ -967,16 +1021,24 @@ try {
     needSetup(); const vm = VM(await call("loadTripReportVM", ctxOf("oa"), { unitId: uA }, optsR), "ปริยาย");
     eq([asRec(vm.filter)?.from, asRec(vm.filter)?.to, asRec(vm.unit)?.today], ["2027-04-01", "2027-04-30", "2027-04-15"], "ช่วง");
     eq(vm.presets, pure("reportPresetsOf", "2027-04-15"), "presets");
-    eq([asArr(vm.products).map((p) => p.id).sort(), [...((vm.channelOptions as string[] | undefined) ?? [])].sort()], [[PRD.PR.id, PRD.PX.id, PRD.PS.id].sort(), [...ALL_CHANNELS].sort()], "ตัวเลือก");
+    eq([asArr(vm.products).map((p) => p.id).sort(), [...((vm.channelOptions as string[] | undefined) ?? [])].sort(), vm.productsTotal, vm.productsTruncated], [[PRD.PR.id, PRD.PX.id, PRD.PS.id].sort(), [...ALL_CHANNELS].sort(), 3, false], "ตัวเลือก");
+  });
+  await st("RP-20", "เพดานผ่าน opts.caps (D3 · ข้อสอบเท่านั้น): เม.ย. อ่านการจอง 18 แถว — caps.bookings 17 ⇒ REPORT_TOO_LARGE · 18 ⇒ ยอดรวมเท่าไม่มีเพดาน · caps.departures 6 ⇒ REPORT_TOO_LARGE · 7 ⇒ ผ่าน · ฐานวันจอง 11 แถว: 10 ⇒ REPORT_TOO_LARGE · ส่งออก caps.bookings 17 ⇒ REPORT_TOO_LARGE ไม่เขียน audit (ไม่ตัดเงียบ)", async () => {
+    needSetup(); const full = JSON.stringify(T(await repVM("oa")));
+    const C = (caps: Rec, input: Rec = {}) => rep("oa", input, uA, { now: NOW_R, caps });
+    codeR(await C({ bookings: 17 }), "REPORT_TOO_LARGE", "17 การจอง"); eq(JSON.stringify(T(VM(await C({ bookings: 18 }), "18"))), full, "18 การจอง = ไม่มีเพดาน");
+    codeR(await C({ departures: 6 }), "REPORT_TOO_LARGE", "6 รอบ"); eq((await C({ departures: 7 })).ok, true, "7 รอบ");
+    codeR(await C({ bookings: 10 }, { basis: "booked" }), "REPORT_TOO_LARGE", "ฐานวันจอง 10"); eq((await C({ bookings: 11 }, { basis: "booked" })).ok, true, "ฐานวันจอง 11");
+    const n0 = await auditN("trips.report.exported"); codeR(await exp("oa", {}, uA, { now: NOW_R, caps: { bookings: 17 } }), "REPORT_TOO_LARGE", "ส่งออก"); eq(await auditN("trips.report.exported") - n0, 0, "audit");
   });
   groupLine("RP");
 
   // ═══════════════ RC. กระทบยอด ═══════════════
   console.log("\n── RC: กระทบยอด (ยอดรวม = Σ สรุประดับรอบของ a1) ──");
   const ADD = ["bookings", "cancelledBookings", "pendingRefundBookings", "seats", "salesSatang", "passThroughSatang", "vatSatang", "revenueExVatSatang", "commissionCostSatang", "collectedSatang", "outstandingSatang", "heldSatang",
-    "retainedSatang", "agentCollectBookings", "noShowUnpaid", "pendingBookings", "costSatang"];
+    "retainedSatang", "agentCollectBookings", "noShowUnpaid", "pendingBookings", "costSatang", "costRows"];
   const ROW_K = ["capacity", "sold", "loadFactorBp", "charterLike", "bookings", "cancelledBookings", "pendingRefundBookings", "salesSatang", "passThroughSatang", "vatSatang", "revenueExVatSatang", "collectedSatang", "outstandingSatang",
-    "heldSatang", "agentCollectBookings", "commissionCostSatang", "costSatang", "grossProfitSatang", "marginBp", "noCosts", "state"];
+    "heldSatang", "agentCollectBookings", "commissionCostSatang", "costSatang", "costRows", "grossProfitSatang", "marginBp", "noCosts", "state"];
   /** ทุกแถวของตารางรอบ (ทุกหน้า) */
   const allRows = async (tag: string, input: Rec, unit: string, opts: Rec) => { const first = await repVM(tag, input, unit, opts); const n = Number(asRec(first.departures)?.pageCount ?? 1); const rows = [...depRows(first)];
     for (let p = 2; p <= n; p++) rows.push(...depRows(await repVM(tag, { ...input, page: p }, unit, opts))); return { vm: first, rows }; };
@@ -984,7 +1046,7 @@ try {
     const { vm, rows } = await allRows(tag, input, unit, opts); const bad: string[] = []; const sums: Rec[] = [];
     for (const r of rows) { const s = await sumV(tag, String(r.departureId), unit, opts); sums.push(s); const want = pick(s, ROW_K); const got = pick(r, ROW_K); if (!isDeepStrictEqual(got, want)) bad.push(`แถว ${String(r.departureId).slice(-8)}: ${fmt(got)} ≠ สรุป ${fmt(want)}`); }
     const t = T(vm);
-    for (const k of ADD) { const s = sums.reduce((a, x) => (x[k] === null || x[k] === undefined ? a : a + Number(x[k])), 0); const exp0 = k === "costSatang" || k === "commissionCostSatang" ? (sums.some((x) => x[k] === null) ? null : s) : s; if (t[k] !== exp0) bad.push(`${k}: ${fmt(t[k])} ≠ Σ ${fmt(exp0)}`); }
+    for (const k of ADD) { const s = sums.reduce((a, x) => (x[k] === null || x[k] === undefined ? a : a + Number(x[k])), 0); const exp0 = k === "costSatang" || k === "commissionCostSatang" || k === "costRows" ? (sums.some((x) => x[k] === null) ? null : s) : s; if (t[k] !== exp0) bad.push(`${k}: ${fmt(t[k])} ≠ Σ ${fmt(exp0)}`); }
     const live = sums.filter((x) => x.state !== "CANCELLED");
     if (t.capacity !== live.reduce((a, x) => a + Number(x.capacity), 0) || t.sold !== live.reduce((a, x) => a + Number(x.sold), 0)) bad.push(`ความจุ/ขาย ${fmt(pick(t, ["capacity", "sold"]))}`);
     if (t.departures !== rows.length) bad.push(`departures ${t.departures} ≠ ${rows.length}`);
@@ -1029,14 +1091,15 @@ try {
     }
     eq(T(await repVM("rv")).salesSatang, 10_940_000, "ยอดขาย rv"); ok(bad.length === 0, bad.slice(0, 4).join(" · "));
   });
-  await st("LK-3", "Q16 ไม่มีสัญญาณ \"มีต้นทุนแล้ว\": VM ของ report.view ทุกแท็บเหมือนกันทุกไบต์ ก่อน/หลังเพิ่มแถวต้นทุนให้ dQ · ของ OWNER เปลี่ยน (ตัวควบคุม: ยังไม่ใส่ต้นทุน 4 → 3 · ต้นทุน +77,700)", async () => {
+  await st("LK-3", "Q16 + D6 ไม่มีสัญญาณ \"มีต้นทุนแล้ว\": VM ของ report.view ทุกแท็บ และไฟล์ CSV ของ report.view เหมือนกันทุกไบต์ ก่อน/หลังเพิ่มแถวต้นทุนให้ dQ · ของ OWNER เปลี่ยน (ตัวควบคุม: ยังไม่หักต้นทุน {2,2} → {1,2} · ต้นทุน +77,700 · ไฟล์ OWNER ต่าง)", async () => {
     needSetup(); const snap = async (t: string) => JSON.stringify(await Promise.all(TABS.map(async (tab) => { const v = await repVM(t, { tab }); return { ...v, unit: { ...(asRec(v.unit) ?? {}), nowIso: "" } }; })));
-    const rv0 = await snap("rv"), oa0 = T(await repVM("oa"));
+    const csvOf = async (t: string) => String(V(await exp(t), `export ${t}`).csv);
+    const rv0 = await snap("rv"), oa0 = T(await repVM("oa")), rc0 = await csvOf("rv"), oc0 = await csvOf("oa");
     const cid = await insertRow("TripCost", { id: rid("lk"), tenantId: tA, unitId: uA, departureId: DEP.Q, kind: "FOOD", amountSatang: 77_700, note: null, createdAt: new Date("2027-03-02T00:00:00Z"), updatedAt: new Date("2027-03-02T00:00:00Z") });
     try {
-      const rv1 = await snap("rv"), oa1 = T(await repVM("oa"));
-      eq([oa0.departuresWithoutCosts, oa1.departuresWithoutCosts, Number(oa1.costSatang) - Number(oa0.costSatang)], [4, 3, 77_700], "ตัวควบคุม OWNER");
-      ok(rv0 === rv1, "VM ของ report.view เปลี่ยนเมื่อรอบมีต้นทุน (รั่วว่ามีต้นทุน)");
+      const rv1 = await snap("rv"), oa1 = T(await repVM("oa")), rc1 = await csvOf("rv"), oc1 = await csvOf("oa");
+      eq([oa0.departuresWithoutCosts, oa1.departuresWithoutCosts, Number(oa1.costSatang) - Number(oa0.costSatang), oc0 === oc1], [{ ended: 2, upcoming: 2 }, { ended: 1, upcoming: 2 }, 77_700, false], "ตัวควบคุม OWNER");
+      ok(rv0 === rv1, "VM ของ report.view เปลี่ยนเมื่อรอบมีต้นทุน (รั่วว่ามีต้นทุน)"); ok(rc0 === rc1, "ไฟล์ CSV ของ report.view เปลี่ยนเมื่อรอบมีต้นทุน (D6)");
     } finally { await pool.query(`DELETE FROM "TripCost" WHERE id = $1`, [cid]); }
   });
   await st("LK-4", "แยกหน่วย/ร้าน: รายงานหน่วย a ไม่มียอด/ต้นทุน 999,900 ของหน่วย a2/ร้าน B · หน่วย a2 (OWNER) เห็นต้นทุน 999,900 ของตัวเอง · ผลปฏิเสธ (FORBIDDEN/NOT_FOUND) ไม่มีตัวเลข ≥ 4 หลัก", async () => {
@@ -1054,13 +1117,14 @@ try {
   const head = (dict: Record<string, string>, cs: string[]) => cs.map((c) => dict[`report.csv.${c}`] ?? `<${c}>`);
   let ownerCsv: Rec | null = null;
   const ownerExport = async () => { if (!ownerCsv) ownerCsv = V(await exp("oa"), "export OWNER"); return ownerCsv; };
-  await st("EX-1", "OWNER เม.ย.: ชื่อไฟล์ · BOM · CRLF ทุกบรรทัด · หัวไทย = report.csv.* 19 + ต้นทุน 4 คอลัมน์ · 7 แถวตามลำดับตาราง · บรรทัดท้าย = report.csv.footer (ไม่ถูกตัด ⇒ ไม่มีบรรทัดแจ้ง) · rows 7 total 7 truncated false withCost true", async () => {
+  await st("EX-1", "OWNER เม.ย.: ชื่อไฟล์ · BOM · CRLF ทุกบรรทัด · หัวไทย = report.csv.* 19 + ต้นทุน 4 คอลัมน์ · 7 แถวตามลำดับตาราง · ข้อมูลล้วน (D2: ไม่มีบรรทัดข้อความใด ๆ — บรรทัดสุดท้ายคือแถว dI) · rows 7 total 7 truncated false withCost true", async () => {
     needSetup(); const v = await ownerExport(); const csv = String(v.csv ?? "");
     eq([v.filename, v.rows, v.total, v.truncated, v.withCost], ["trips-report-2027-04-01-2027-04-30.csv", 7, 7, false, true], "ผล");
     ok(csv.startsWith("﻿") && csv.endsWith("\r\n") && !/[^\r]\n/.test(csv), "BOM/CRLF");
-    const ls = lines(csv); eq(cells(ls[0] ?? ""), head(fth, [...CSV_COLS, ...CSV_COST_COLS]), "หัว"); eq(ls.length, 1 + 7 + 1, "จำนวนบรรทัด");
+    const ls = lines(csv); eq(cells(ls[0] ?? ""), head(fth, [...CSV_COLS, ...CSV_COST_COLS]), "หัว"); eq(ls.length, 1 + 7, "จำนวนบรรทัด (หัว + 7 แถว)");
     eq(ls.slice(1, 8).map((l) => cells(l)[0]), ["2027-04-10", "2027-04-11", "2027-04-12", "2027-04-13", "2027-04-14", "2027-04-16", "2027-04-20"], "ลำดับ");
-    eq(cells(ls[8] ?? "")[0], fth["report.csv.footer"], "บรรทัดท้าย");
+    ok(ls.slice(1).every((l) => cells(l).length === CSV_COLS.length + CSV_COST_COLS.length && /^\d{4}-\d{2}-\d{2}$/.test(cells(l)[0] ?? "")), "ทุกบรรทัดหลังหัวเป็นแถวข้อมูล");
+    ok(!csv.includes(fth["report.mgmt"] ?? "\u0000") && !csv.includes(fth["report.estimate"] ?? "\u0000"), "ไฟล์มีข้อความตัวเลขบริหาร/ประมาณการ (ต้องอยู่บนจอเท่านั้น · D2)");
   });
   await st("EX-2", "ค่าในแถว: dR = 24 · 15 · 62.50 · 6 · 0 · 0 · 50400.00 · 8400.00 · 3297.18 · 47102.82 · 19150.00 · 4100.00 · 0.00 · 3 · 4095.00 · 21500.00 · 21507.82 · 45.66 · สถานะ \"เดินทางแล้ว\" · dX อัตราเต็มว่าง · กำไร -1200.00 (ไม่มี ') · มาร์จินว่าง · dQ ต้นทุน/กำไร/มาร์จิน ว่าง (ยังไม่มีแถวต้นทุน)", async () => {
     needSetup(); const ls = lines(String((await ownerExport()).csv)); const C = (i: number) => cells(ls[i] ?? ""); const col = (n: string) => [...CSV_COLS, ...CSV_COST_COLS].indexOf(n);
@@ -1081,10 +1145,10 @@ try {
       if (/4095\.00|21500\.00|21507\.82|27700\.00|70448\.02/.test(String(v.csv))) bad.push(`${t}: มีตัวเลขต้นทุน`); if (cells(ls[1] ?? "")[CSV_COLS.indexOf("sales")] !== "50400.00") bad.push(`${t}: ยอดขาย`); }
     ok(bad.length === 0, bad.join(" · "));
   });
-  await st("EX-5", "ภาษาอังกฤษ: หัว = report.csv.* อังกฤษ (ไม่มีอักษรไทย) · สถานะ = costs.state.* อังกฤษ · บรรทัดท้ายอังกฤษ · ชื่อสินค้าใช้ titleEn", async () => {
+  await st("EX-5", "ภาษาอังกฤษ: หัว = report.csv.* อังกฤษ (ไม่มีอักษรไทย) · สถานะ = costs.state.* อังกฤษ · ชื่อสินค้าใช้ titleEn · 8 บรรทัด", async () => {
     needSetup(); const ls = lines(String(V(await exp("oa", { locale: "en" }), "export en").csv));
     eq(cells(ls[0] ?? ""), head(fen, [...CSV_COLS, ...CSV_COST_COLS]), "หัว"); ok(!THAI.test(ls[0] ?? "ก"), "หัวมีอักษรไทย");
-    eq([cells(ls[1] ?? "")[CSV_COLS.indexOf("state")], cells(ls[3] ?? "")[CSV_COLS.indexOf("state")], cells(ls[1] ?? "")[CSV_COLS.indexOf("product")], cells(ls[8] ?? "")[0]], [fen["costs.state.ENDED"], fen["costs.state.CANCELLED"], "Racha test", fen["report.csv.footer"]], "เซลล์");
+    eq([cells(ls[1] ?? "")[CSV_COLS.indexOf("state")], cells(ls[3] ?? "")[CSV_COLS.indexOf("state")], cells(ls[1] ?? "")[CSV_COLS.indexOf("product")], ls.length], [fen["costs.state.ENDED"], fen["costs.state.CANCELLED"], "Racha test", 8], "เซลล์");
     ok(!ls.some((l) => THAI.test(l)), "ไฟล์อังกฤษมีอักษรไทย");
   });
   await st("EX-6", "Σ คอลัมน์ในไฟล์ = ยอดรวมของรายงาน (ยอดขาย 109400.00 · VAT 7156.98 · ต้นทุน 27700.00 · รับแล้ว 37950.00 · รอคืน 12300.00)", async () => {
@@ -1108,21 +1172,21 @@ try {
     codeR(await exp("oa", { basis: "booked" }), "INVALID_INPUT", "basis"); codeR(await exp("oa", { channel: "WEB" }), "INVALID_INPUT", "channel"); codeR(await exp("oa", { from: "2027-01-01", to: "2028-01-02" }), "RANGE_TOO_LARGE", "367");
     eq(await auditN(A_EXP) - n0, 0, "audit");
   });
-  await st("EX-9", "หน่วยไม่จด VAT (Σ VAT ของไฟล์ = 0 · Q11): ไม่มีคอลัมน์ vat · หัวรายได้ = report.csv.revenueNoVat · มีคอลัมน์ต้นทุน (MANAGER) · กำไร 7430.00", async () => {
-    needSetup(); const ls = lines(String(V(await exp("mg", {}, uN), "export uN").csv)); const hd = cells(ls[0] ?? "");
-    const want = head(fth, [...CSV_COLS.filter((c) => c !== "vat"), ...CSV_COST_COLS]); want[want.indexOf(fth["report.csv.revenueExVat"] ?? "")] = fth["report.csv.revenueNoVat"] ?? "";
-    eq(hd, want, "หัว"); eq(cells(ls[1] ?? "")[hd.indexOf(fth["report.csv.grossProfit"] ?? "")], "7430.00", "กำไร");
+  await st("EX-9", "หน่วยไม่จด VAT (D2 คอลัมน์คงที่): หัวเหมือนไฟล์ของหน่วยจด VAT ทุกคอลัมน์ (มี vat · หัวรายได้ = report.csv.revenueExVat) · vat = 0.00 · รายได้ก่อน VAT = ยอดขาย 10500.00 · กำไร 7430.00", async () => {
+    needSetup(); const ls = lines(String(V(await exp("mg", {}, uN), "export uN").csv)); const hd = cells(ls[0] ?? ""); const r = cells(ls[1] ?? "");
+    eq(hd, head(fth, [...CSV_COLS, ...CSV_COST_COLS]), "หัว");
+    eq([r[hd.indexOf(fth["report.csv.vat"] ?? "")], r[hd.indexOf(fth["report.csv.revenueExVat"] ?? "")], r[hd.indexOf(fth["report.csv.grossProfit"] ?? "")], ls.length], ["0.00", "10500.00", "7430.00", 2], "แถว");
   });
-  await st("EX-10", "เพดานความถี่ (checkRateLimitDb · 20/ชม./คน/หน่วย): ผู้ใช้ rl ส่งออก 20 ครั้ง ok · ครั้งที่ 21 ⇒ RATE_LIMITED ไม่เขียน audit ข้อความไม่มีตัวเลข ≥ 4 หลัก · now + 61 นาที ⇒ ok อีก · ถังใช้ key trips:report:export:<ร้าน>:<หน่วย>:<ผู้ใช้>", async () => {
+  await st("EX-10", "เพดานความถี่ต่อคนต่อหน่วย (D5 · checkRateLimitDb · 20/ชม.): rl ส่งออกหน่วย a 20 ครั้ง ok · ครั้งที่ 21 ⇒ RATE_LIMITED ไม่เขียน audit ข้อความ \"ลองใหม่ในอีก {n} นาที\" (1–60) · rl หน่วยไม่จด VAT ยัง ok (ต่อหน่วย) · rv หน่วย a ยัง ok (ต่อคน) · now + 61 นาที ⇒ ok · key trips:report:export:<ร้าน>:<หน่วย>:<ผู้ใช้>", async () => {
     needSetup(); const rs: string[] = [];
     for (let i = 0; i < 20; i++) rs.push(String((await exp("rl")).ok));
-    const n0 = await auditN(A_EXP); const r21 = await exp("rl");
-    eq([rs.every((x) => x === "true"), r21.code, await auditN(A_EXP) - n0, /\d{4,}/.test(String(r21.message ?? ""))], [true, "RATE_LIMITED", 0, false], "ครั้งที่ 21");
-    eq((await exp("rl", {}, uA, { now: new Date(NOW_R.getTime() + 61 * 60_000) })).ok, true, "หน้าต่างใหม่");
-    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "ChatRateBucket" WHERE key = $1`, [`${RATE_PREFIX}${tA}:${uA}:${U.rl.userId}`]))[0]?.n, 1, "key ของถัง");
+    const n0 = await auditN(A_EXP); const r21 = await exp("rl"); const mm = /ลองใหม่ในอีก (\d{1,2}) นาที/.exec(String(r21.message ?? ""));
+    eq([rs.every((x) => x === "true"), r21.code, await auditN(A_EXP) - n0, !!mm && Number(mm[1]) >= 1 && Number(mm[1]) <= 60], [true, "RATE_LIMITED", 0, true], `ครั้งที่ 21 (${String(r21.message ?? "").slice(0, 80)})`);
+    eq([(await exp("rl", {}, uN)).ok, (await exp("rv")).ok, (await exp("rl", {}, uA, { now: new Date(NOW_R.getTime() + 61 * 60_000) })).ok], [true, true, true], "ต่อหน่วย/ต่อคน/หน้าต่างใหม่");
+    eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "ChatRateBucket" WHERE key = ANY($1::text[])`, [[`${RATE_PREFIX}${tA}:${uA}:${U.rl.userId}`, `${RATE_PREFIX}${tA}:${uN}:${U.rl.userId}`]]))[0]?.n, 2, "key ของถัง (ต่อหน่วย)");
   });
   await st("EX-11", "กรองสินค้า PX ⇒ 1 แถว (dP) · total 1 · audit after.productId = PX · สินค้าหน่วยอื่น ⇒ NOT_FOUND", async () => {
-    needSetup(); const v = V(await exp("oa", { productId: PRD.PX.id }), "export PX"); eq([v.rows, v.total, lines(String(v.csv)).length], [1, 1, 3], "แถว");
+    needSetup(); const v = V(await exp("oa", { productId: PRD.PX.id }), "export PX"); eq([v.rows, v.total, v.truncated, lines(String(v.csv)).length], [1, 1, false, 2], "แถว");
     eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "AuditLog" WHERE action = $1 AND "tenantId" = $2 AND after->>'productId' = $3`, [A_EXP, tA, PRD.PX.id]))[0]?.n, 1, "audit after.productId");
     codeR(await exp("oa", { productId: PRD.PA2.id }), "NOT_FOUND", "สินค้าหน่วยอื่น");
   });
@@ -1143,11 +1207,12 @@ try {
   };
   const toSp = (fields: [string, string][]): Record<string, string | string[]> => { const o: Record<string, string | string[]> = {}; for (const [k, v] of fields) { const cur = o[k]; o[k] = cur === undefined ? v : Array.isArray(cur) ? [...cur, v] : [cur, v]; } return o; };
   const FILTER_K = ["from", "to", "basis", "productId", "channel", "tab", "group"];
-  await st("AC-1", "โค้ด: ReportExport ส่ง { from: vm.filter.from · to: vm.filter.to · productId: vm.filter.productId } ให้ exportTripReportCsvAction(vm.unit.slug, …) · ไม่ส่ง basis/channel/locale/now · ปุ่ม disabled ระหว่างรอ · ดาวน์โหลดด้วยชื่อไฟล์จากผล", () => {
+  await st("AC-1", "โค้ด: ReportExport ส่ง { from: vm.filter.from · to: vm.filter.to · productId: vm.filter.productId } ให้ exportTripReportCsvAction(vm.unit.slug, …) · ไม่ส่ง basis/channel/locale/now · ปุ่ม disabled ระหว่างรอ · ดาวน์โหลดด้วยชื่อไฟล์จากผล · ผล truncated ⇒ แสดง trips-rp-export-partial ด้วย report.export.partial (D2 · ทางนี้เกิดหลังกดเท่านั้น ⇒ ตรวจในโค้ด)", () => {
     needOwn(); const ex = compFiles.map((f) => stripComments(read(f))).find((s) => s.includes("exportTripReportCsvAction(")) ?? "";
     ok(ex, "ไม่มีคอมโพเนนต์ที่เรียก exportTripReportCsvAction"); const at = ex.indexOf("exportTripReportCsvAction("); const call0 = ex.slice(at, at + 300);
     ok(/vm\.unit\.slug|unitSlug/.test(call0) && /from:\s*vm\.filter\.from/.test(call0) && /to:\s*vm\.filter\.to/.test(call0) && /productId:\s*vm\.filter\.productId/.test(call0), `ช่องที่ส่งไม่ครบ: ${call0.slice(0, 160)}`);
     ok(!/basis:|channel:|locale:|now:/.test(call0), "ส่ง basis/channel/locale/now"); ok(/disabled=\{[^}]*(busy|pending)/.test(ex) && /\.filename/.test(ex) && /Blob\(/.test(ex), "ปุ่ม/ดาวน์โหลด");
+    ok(/\.truncated\b/.test(ex) && /\.total\b/.test(ex) && /["'`]trips-rp-export-partial["'`]/.test(ex) && /report\.export\.partial/.test(ex), "ไม่แจ้งไฟล์ถูกตัดบนจอ (truncated/total → trips-rp-export-partial)");
   });
   await st("AC-2", "OWNER ผ่าน action (คุกกี้ session จริง): ไฟล์ = exportTripReportCsv ของบริการที่ใช้นาฬิกาจริง (ทุกไบต์) · audit actor = ผู้ใช้ของคุกกี้ · locale th", async () => {
     needSetup(); const ids0 = new Set((await q<{ id: string }>(`SELECT id FROM "AuditLog" WHERE action = $1 AND "tenantId" = $2`, [A_EXP, tA])).map((x) => x.id));
@@ -1161,8 +1226,8 @@ try {
     needSetup(); const r = await actExport("oa", { from: APR.from, to: APR.to, locale: "th" }, "en"); ok(r.ok === true, `action en: ${fmt(r)}`);
     eq(cells(lines(String(asRec(r.value)?.csv))[0] ?? ""), head(fen, [...CSV_COLS, ...CSV_COST_COLS]), "หัวอังกฤษ");
   });
-  await st("AC-4", "action ไม่เชื่อ input: unitId ของหน่วยอื่นใน input ถูกทับด้วยหน่วยของ slug · productId หน่วยอื่น ⇒ NOT_FOUND · basis/channel ใน input ถูกทิ้ง (ไฟล์ฐานวันเดินทางเหมือนเดิม) · from/to ที่ส่งมาถูกใช้จริง (PX วันเดียว 16 เม.ย. ⇒ 1 แถว)", async () => {
-    needSetup(); const r1 = await actExport("oa", { from: APR.from, to: APR.to, unitId: uA2, basis: "booked", channel: "WEB" }); ok(r1.ok === true, `ทับ: ${fmt(r1)}`);
+  await st("AC-4", "action ไม่เชื่อ input: unitId ของหน่วยอื่นใน input ถูกทับด้วยหน่วยของ slug · productId หน่วยอื่น ⇒ NOT_FOUND · basis/channel ใน input ถูกทิ้ง (ไฟล์ฐานวันเดินทางเหมือนเดิม) · caps ใน input ไม่มีผล (D3) · from/to ที่ส่งมาถูกใช้จริง (PX วันเดียว 16 เม.ย. ⇒ 1 แถว)", async () => {
+    needSetup(); const r1 = await actExport("oa", { from: APR.from, to: APR.to, unitId: uA2, basis: "booked", channel: "WEB", caps: { bookings: 1, departures: 1 } }); ok(r1.ok === true, `ทับ: ${fmt(r1)}`);
     eq([asRec(r1.value)?.total, /9999\.00/.test(String(asRec(r1.value)?.csv))], [7, false], "หน่วยของ slug");
     codeR(await actExport("oa", { from: APR.from, to: APR.to, productId: PRD.PA2.id }), "NOT_FOUND", "สินค้าหน่วยอื่น");
     const r3 = await actExport("oa", { from: "2027-04-16", to: "2027-04-16", productId: PRD.PX.id }); eq([r3.ok, asRec(r3.value)?.total, asRec(r3.value)?.filename], [true, 1, "trips-report-2027-04-16-2027-04-16.csv"], "from/to/productId");
@@ -1199,10 +1264,14 @@ try {
   // ═══════════════ RS. จอที่เรนเดอร์จริง ═══════════════
   console.log("\n── RS: จอที่เรนเดอร์ (NextIntlClientProvider) ──");
   const txtOf = (html: string, id: string) => unent(byTestid(html, id));
-  await st("RS-1", "OWNER เม.ย. ไทย: บรรทัดตัวเลขบริหาร + ยังไม่ลงบัญชี + ป้ายประมาณการ · บรรทัด VAT (Σ VAT > 0) · KPI รายได้ \"รายได้ก่อน VAT\" · KPI กำไร 70,448.02 · ยังไม่บันทึกต้นทุน 4 รอบ · เหมาลำ 1 รอบ · ตารางรอบ 7 แถว · ลิงก์ trips-rp-back", async () => {
+  const noCostTh = (n: number, e: number, u: number) => String(PINNED["report.noCosts"]).replace("{n}", String(n)).replace("{ended}", String(e)).replace("{upcoming}", String(u));
+  await st("RS-1", "OWNER เม.ย. ไทย: บรรทัดตัวเลขบริหาร + ยังไม่ลงบัญชี + ป้ายประมาณการ · บรรทัด VAT (Σ VAT > 0) · KPI รายได้ \"รายได้ก่อน VAT\" · KPI กำไร 70,448.02 และ**ภายใน element KPI กำไร** trips-rp-kpi-profit-note = \"ยังไม่หักต้นทุนของ 4 รอบ (เดินทางแล้ว 2 · ยังไม่เดินทาง 2)\" (D1) · KPI อัตราเต็ม 33/86 ไม่แสดงที่นั่ง 35 (D5) · KPI คอมฯ ไม่มีป้ายรวม VAT (U3) · เหมาลำ 1 รอบ · ตารางรอบ 7 แถว · ลิงก์ trips-rp-back", async () => {
     needSetup(); const h = screenR(await repVM("oa")); const bad: string[] = [];
     for (const [id, want] of [["trips-rp-mgmt", PINNED["report.mgmt"]], ["trips-rp-accounting-note", PINNED["report.accounting"]], ["trips-rp-estimate", PINNED["report.estimate"]], ["trips-rp-vat-line", PINNED["report.vat"]],
-      ["trips-rp-kpi-revenue", "รายได้ก่อน VAT"], ["trips-rp-kpi-profit", "70,448.02"], ["trips-rp-nocost-note", "ยังไม่บันทึกต้นทุน 4 รอบ"], ["trips-rp-charter-note", "รอบเหมาลำ 1 รอบ"]] as const) if (!txtOf(h, id).includes(String(want))) bad.push(`${id}: "${txtOf(h, id).slice(0, 80)}"`);
+      ["trips-rp-kpi-revenue", "รายได้ก่อน VAT"], ["trips-rp-kpi-profit", "70,448.02"], ["trips-rp-kpi-load", "33/86"], ["trips-rp-charter-note", "รอบเหมาลำ 1 รอบ"]] as const) if (!txtOf(h, id).includes(String(want))) bad.push(`${id}: "${txtOf(h, id).slice(0, 80)}"`);
+    const kp = byTestid(h, "trips-rp-kpi-profit"); if (unent(byTestid(kp, "trips-rp-kpi-profit-note")) !== noCostTh(4, 2, 2)) bad.push(`ข้อความในช่องกำไร: "${unent(byTestid(kp, "trips-rp-kpi-profit-note"))}" (ต้องอยู่ภายใน trips-rp-kpi-profit)`);
+    if (/\b35\b/.test(txtOf(h, "trips-rp-kpi-load"))) bad.push("KPI อัตราเต็มแสดงที่นั่ง 35");
+    if (txtOf(h, "trips-rp-kpi-commission").includes(PINNED["report.kpi.commissionWithVat"] ?? "\u0000")) bad.push("ป้ายคอมฯ รวม VAT ในหน่วยจด VAT");
     if ([0, 1, 2, 3, 4, 5, 6].some((i) => !h.includes(`data-testid="trips-rp-dep-${i}"`)) || h.includes('data-testid="trips-rp-dep-7"')) bad.push("ตารางรอบไม่ใช่ 7 แถว");
     if (!hrefOf(h, "trips-rp-back")) bad.push("ไม่มีลิงก์กลับ"); ok(bad.length === 0, bad.join(" · "));
   });
@@ -1212,13 +1281,15 @@ try {
       if (!/aria-current="page"/.test(byTestid(h, `trips-rp-tab-${tab}`).slice(0, 300))) bad.push(`${tab}: aria-current`); }
     ok(bad.length === 0, bad.join(" · "));
   });
-  await st("RS-3", "หน่วยไม่จด VAT (Q11): ไม่มี trips-rp-vat-line · KPI รายได้ \"รายได้\" · ไม่มีคำว่า \"ก่อน VAT\" บนจอ", async () => {
-    needSetup(); const h = screenR(await repVM("mg", {}, uN)); const t = unent(h);
+  await st("RS-3", "หน่วยไม่จด VAT (Q11 · U3): ไม่มี trips-rp-vat-line · KPI รายได้ \"รายได้\" · ไม่มีคำว่า \"ก่อน VAT\" บนจอ · KPI คอมฯ มี \"(รวม VAT ของคอมมิชชัน)\" (VAT คอมฯ ถูกนับเป็นต้นทุนจริง) · flags.commissionWithVat true", async () => {
+    needSetup(); const vm = await repVM("mg", {}, uN); const h = screenR(vm); const t = unent(h);
     ok(!h.includes('data-testid="trips-rp-vat-line"') && !t.includes("ก่อน VAT") && txtOf(h, "trips-rp-kpi-revenue").startsWith("รายได้"), `จอ: ${txtOf(h, "trips-rp-kpi-revenue")}`);
+    ok(asRec(vm.flags)?.commissionWithVat === true && txtOf(h, "trips-rp-kpi-commission").includes(PINNED["report.kpi.commissionWithVat"] ?? "\u0000"), `คอมฯ: ${txtOf(h, "trips-rp-kpi-commission")}`);
   });
-  await st("RS-4", "report.view: ไม่มี element KPI คอมฯ/ต้นทุน/กำไร (ไม่ใช่ \"—\") · ไม่มี trips-rp-nocost-note · ไม่มีตัวเลขต้นทุน/คอมฯ/กำไรใน HTML · ยอดขายยังแสดง 109,400.00", async () => {
+  await st("RS-4", "report.view: ไม่มี element KPI คอมฯ/ต้นทุน/กำไร (ไม่ใช่ \"—\") · ไม่มีข้อความรอบยังไม่หักต้นทุน (KPI/แถวช่วง) · ไม่มีตัวเลขต้นทุน/คอมฯ/กำไรใน HTML · ยอดขายยังแสดง 109,400.00", async () => {
     needSetup(); const h = screenR(await repVM("rv")); const bad: string[] = [];
-    for (const id of ["trips-rp-kpi-commission", "trips-rp-kpi-cost", "trips-rp-kpi-profit", "trips-rp-nocost-note"]) if (h.includes(`data-testid="${id}"`)) bad.push(id);
+    for (const id of ["trips-rp-kpi-commission", "trips-rp-kpi-cost", "trips-rp-kpi-profit", "trips-rp-kpi-profit-note", "trips-rp-period-note-"]) if (h.includes(`data-testid="${id}`)) bad.push(id);
+    if (unent(h).includes("ยังไม่หักต้นทุนของ")) bad.push("ข้อความรอบยังไม่หักต้นทุน");
     for (const s of ["27,700.00", "70,448.02", "4,095.00", "21,500.00", "21,507.82", "1,995.00"]) if (h.includes(s)) bad.push(s);
     if (!txtOf(h, "trips-rp-kpi-sales").includes("109,400.00")) bad.push("ยอดขาย"); ok(bad.length === 0, `รั่ว: ${bad.join(", ")}`);
   });
@@ -1231,16 +1302,18 @@ try {
     needSetup(); const h = screenR(await repVM("oa", { channel: "WEB" }));
     ok(txtOf(h, "trips-rp-channel-note").includes(PINNED["report.note.channel"] ?? "\u0000") && !h.includes('data-testid="trips-rp-basis-note"') && !h.includes('data-testid="trips-rp-deps"'), "ป้ายช่องทาง");
   });
-  await st("RS-7", "ช่วงว่าง: trips-rp-empty = report.empty · ช่วง 19–25 เม.ย. (มีรอบแต่ไม่มีแถวต้นทุนเลย) ⇒ KPI กำไร \"—\" + \"ยังไม่หักต้นทุนรอบ\" ไม่มีตัวเลข", async () => {
+  await st("RS-7", "ช่วงว่าง: trips-rp-empty = report.empty · ช่วง 19–25 เม.ย. (มีรอบแต่ทั้งช่วงไม่มีแถวต้นทุน) ⇒ KPI ต้นทุน \"—\" ไม่มีตัวเลข (D1) · KPI กำไร \"—\" ไม่มียอด + ข้อความในช่อง \"ยังไม่หักต้นทุนของ 1 รอบ (เดินทางแล้ว 0 · ยังไม่เดินทาง 1)\"", async () => {
     needSetup(); ok(txtOf(screenR(await repVM("oa", { from: "2027-08-01", to: "2027-08-31" })), "trips-rp-empty").includes(PINNED["report.empty"] ?? "\u0000"), "จอว่าง");
-    const p = txtOf(screenR(await repVM("oa", { from: "2027-04-19", to: "2027-04-25" })), "trips-rp-kpi-profit"); ok(p.includes("—") && p.includes(fth["report.kpi.noCosts"] ?? "\u0000") && !/\d/.test(p), `กำไร: ${p}`);
+    const h = screenR(await repVM("oa", { from: "2027-04-19", to: "2027-04-25" })); const c = txtOf(h, "trips-rp-kpi-cost"), kp = byTestid(h, "trips-rp-kpi-profit"); const note = unent(byTestid(kp, "trips-rp-kpi-profit-note"));
+    const pv = unent(kp).replace(note, "");
+    ok(c.includes("—") && !/\d/.test(c), `KPI ต้นทุน: "${c}"`); ok(pv.includes("—") && !/\d/.test(pv) && note === noCostTh(1, 0, 1), `KPI กำไร: "${unent(kp)}"`);
   });
   await st("RS-8", "ภาษาอังกฤษ (รายงาน OWNER เม.ย. ทุกแท็บ): ไม่มีอักษรไทยบนจอ · \"4 departures\" · ไม่มีรหัสดิบ (AGENT_PORTAL · D8_14 · ENDED · CANCELLED …) ทั้งสองภาษา", async () => {
     needSetup(); const bad: string[] = [];
     for (const tab of TABS) for (const loc of ["th", "en"] as const) { const t = unent(screenR(await repVM("oa", { tab }), loc));
       if (loc === "en" && THAI.test(t)) bad.push(`en/${tab}: ${(/[^ ]*[฀-๿][^ ]*/.exec(t) ?? [""])[0]}`);
       const raw = t.split(/[^A-Z_0-9]+/).filter((w) => RAW_CODES.has(w)); if (raw.length) bad.push(`${loc}/${tab}: ${raw.slice(0, 3).join(",")}`); }
-    if (!txtOf(screenR(await repVM("oa"), "en"), "trips-rp-nocost-note").includes("4 departures")) bad.push("en noCosts");
+    if (!txtOf(screenR(await repVM("oa"), "en"), "trips-rp-kpi-profit-note").includes("4 departures")) bad.push("en noCosts (ภายใน KPI กำไร)");
     ok(bad.length === 0, bad.slice(0, 5).join(" · "));
   });
   await st("RS-9", "หนี้ a1 (§5.6): จอต้นทุน dQ (ไม่มีแถวต้นทุน) — KPI ต้นทุน \"—\" ไม่มีตัวเลข/\"ต่อที่นั่ง 0.00\" · บรรทัดต้นทุนใน breakdown ไม่ใช่ 0.00 · การ์ดแผงรอบ dQ ไม่มี 0.00 ของต้นทุน · จอต้นทุน dR ภาษาอังกฤษไม่มีอักษรไทย", async () => {
@@ -1262,17 +1335,65 @@ try {
     }
     ok(bad.length === 0, bad.join(" · "));
   });
-  await st("RS-11", "ไม่มี JS: ตัวกรองเป็น <form method=\"get\"> ปุ่ม type=submit · แท็บ/ช่วงสำเร็จรูป/กลุ่ม เป็น <a href> · ส่วนส่งออกมี <noscript> trips-rp-export-nojs (report.export.noJs) · ปุ่มส่งออก type=button", async () => {
+  await st("RS-11", "ไม่มี JS: ตัวกรองเป็น <form method=\"get\"> ปุ่ม type=submit · แท็บ/ช่วงสำเร็จรูป/กลุ่ม เป็น <a href> · ส่วนส่งออกมี <noscript> trips-rp-export-nojs (report.export.noJs) · ปุ่มส่งออก type=button · บรรทัด trips-rp-export-mgmt = report.mgmt ข้างปุ่ม (D2)", async () => {
     needSetup(); const h = screenR(await repVM("oa")); const bad: string[] = [];
     if (formOf(h).method !== "get" || !/^<button\b[^>]*type="submit"/.test(byTestid(h, "trips-rp-apply"))) bad.push("ฟอร์ม/ปุ่มกรอง");
     for (const id of ["trips-rp-tab-sales", "trips-rp-tab-load", "trips-rp-preset-thisMonth", "trips-rp-preset-last30", "trips-rp-group-week"]) if (!hrefOf(h, id)) bad.push(`${id} ไม่ใช่ลิงก์`);
     if (!/<noscript[\s\S]*trips-rp-export-nojs/.test(h) && !(h.includes("<noscript") && h.includes(PINNED["report.export.noJs"] ?? "\u0000"))) bad.push("ไม่มี noscript");
     if (!/^<button\b[^>]*type="button"/.test(byTestid(h, "trips-rp-export"))) bad.push("ปุ่มส่งออก");
+    if (txtOf(h, "trips-rp-export-mgmt") !== PINNED["report.mgmt"]) bad.push(`ข้างปุ่มส่งออก: "${txtOf(h, "trips-rp-export-mgmt")}"`);
     ok(bad.length === 0, bad.join(" · "));
   });
   await st("RS-12", "ข้อผิดพลาดของตัวกรอง: error=RANGE_TOO_LARGE ⇒ trips-rp-error role=\"alert\" ข้อความ errors.RANGE_TOO_LARGE · ไม่มี error ⇒ ไม่มีกล่อง", async () => {
     needSetup(); const vm = await repVM("oa"); const h = screenR(vm, "th", "RANGE_TOO_LARGE"); const e = byTestid(h, "trips-rp-error");
     ok(/role="alert"/.test(e.slice(0, 300)) && unent(e).includes(PINNED["errors.RANGE_TOO_LARGE"] ?? "\u0000"), `กล่อง: ${e.slice(0, 160)}`); ok(!screenR(vm).includes('data-testid="trips-rp-error"'), "มีกล่องเมื่อไม่มี error");
+  });
+  await st("RS-13", "D6 ทางจริงของหน้าเมื่อตัวกรองผิด (เรนเดอร์ page.tsx ในขอบเขตคำขอ): from 30 ก.พ. + ฐานวันจอง + สินค้า PR + แท็บ lead ⇒ ไม่ notFound · กล่อง trips-rp-error = report.error.filter · ฟอร์มยังเป็น basis booked · product PR · tab lead · ช่วง 367 วัน + แท็บ load ⇒ errors.RANGE_TOO_LARGE คงแท็บ load · สินค้าหน่วยอื่น ⇒ report.error.filter คงฐาน/แท็บ", async () => {
+    needSetup(); const PG = await tryImport("@/app/app/u/[unitSlug]/trips/reports/page"); ok(typeof PG.mod?.default === "function", `ยังไม่มีหน้า reports (${PG.err.slice(0, 100)})`);
+    const renderPage = async (sp: Record<string, string>): Promise<string> => {
+      const cookie = await sessionCookie("oa"); const path = `/app/u/${SLUG_A}/trips/reports`; const reqq = new Request(`http://qc.local${path}`, { headers: { cookie, "user-agent": "qc-t17b-page" } });
+      const jar = new (nextCookies?.RequestCookies as new (h: Headers) => unknown)(reqq.headers);
+      const workStore = { route: path, page: `${path}/page`, forceStatic: false, dynamicShouldError: false, isStaticGeneration: false, fallbackRouteParams: null, incrementalCache: {}, pendingRevalidatedTags: [] };
+      const unitStore = { type: "request", phase: "render", implicitTags: [], cookies: jar, mutableCookies: jar, userspaceMutableCookies: jar, headers: reqq.headers, draftMode: undefined, rootParams: {}, url: { pathname: path, search: "" } };
+      const run = (st0: Rec | null, store: unknown, g: () => unknown) => (st0?.run as (s1: unknown, g: () => unknown) => unknown).call(st0, store, g);
+      let el: unknown;
+      try { el = await run(asRec(nextWork?.workAsyncStorage), workStore, () => run(asRec(nextWorkUnit?.workUnitAsyncStorage), unitStore, () => (PG.mod?.default as AnyFn)({ params: Promise.resolve({ unitSlug: SLUG_A }), searchParams: Promise.resolve(sp) }))); }
+      catch (e) { throw new AssertFail(`หน้า throw (notFound/redirect?): ${errMsg(e)} ${String(asRec(e)?.digest ?? "")}`); }
+      const ce = RX?.react.createElement as AnyFn; const router = { push() {}, replace() {}, refresh() {}, back() {}, forward() {}, prefetch() {} };
+      return String((RX?.rds.renderToStaticMarkup as AnyFn)(ce(asRec(RX?.arc.AppRouterContext)?.Provider, { value: router }, ce(RX?.intl.NextIntlClientProvider, { locale: "th", messages: { trips: th }, timeZone: "Asia/Bangkok" }, el))));
+    };
+    const fld = (h: string) => Object.fromEntries(formOf(h).fields.filter(([k]) => ["basis", "product", "tab"].includes(k))); const bad: string[] = [];
+    const h1 = await renderPage({ from: "2027-02-30", to: "2027-04-30", basis: "booked", product: PRD.PR.id, tab: "lead" });
+    if (!unent(byTestid(h1, "trips-rp-error")).includes(PINNED["report.error.filter"] ?? "\u0000") || !/role="alert"/.test(byTestid(h1, "trips-rp-error").slice(0, 300))) bad.push(`กล่อง 1: ${unent(byTestid(h1, "trips-rp-error")).slice(0, 80)}`);
+    if (!isDeepStrictEqual(fld(h1), { basis: "booked", product: PRD.PR.id, tab: "lead" })) bad.push(`ค่าที่คงไว้ 1: ${fmt(fld(h1))}`);
+    const h2 = await renderPage({ from: "2027-01-01", to: "2028-01-02", tab: "load" });
+    if (!unent(byTestid(h2, "trips-rp-error")).includes(PINNED["errors.RANGE_TOO_LARGE"] ?? "\u0000") || fld(h2).tab !== "load") bad.push(`367 วัน: ${unent(byTestid(h2, "trips-rp-error")).slice(0, 60)} ${fmt(fld(h2))}`);
+    const h3 = await renderPage({ basis: "booked", product: PRD.PA2.id, tab: "channel" });
+    if (!unent(byTestid(h3, "trips-rp-error")).includes(PINNED["report.error.filter"] ?? "\u0000") || fld(h3).basis !== "booked" || fld(h3).tab !== "channel" || (fld(h3).product ?? "") !== "") bad.push(`สินค้าหน่วยอื่น: ${fmt(fld(h3))}`);
+    const h0 = await renderPage({ tab: "sales" }); if (h0.includes('data-testid="trips-rp-error"')) bad.push("มีกล่องเมื่อตัวกรองถูก");
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("RS-14", "D5 ระยะจองบนจอ: เม.ย. trips-rp-lead-excluded = \"ไม่นับการจองที่ยกเลิก รอคืนเงิน หรือนำเข้า (นำเข้า 1 การจอง)\" · ไม่มี trips-rp-lead-negative (0) · โตเกียว trips-rp-lead-negative = \"จองหลังวันเดินทาง 1 การจอง — ไม่อยู่ในช่องใด\" · ค่ากลาง 9 วัน", async () => {
+    needSetup(); const h = screenR(await repVM("oa", { tab: "lead" })); const ht = screenR(await repVM("oa", { tab: "lead" }, uT)); const bad: string[] = [];
+    if (txtOf(h, "trips-rp-lead-excluded") !== String(PINNED["report.lead.notCounted"]).replace("{n}", "1")) bad.push(`ไม่นับ: "${txtOf(h, "trips-rp-lead-excluded")}"`);
+    if (h.includes('data-testid="trips-rp-lead-negative"')) bad.push("มีบรรทัดค่าลบเมื่อ 0");
+    if (txtOf(ht, "trips-rp-lead-negative") !== String(PINNED["report.lead.negative"]).replace("{n}", "1")) bad.push(`ค่าลบ: "${txtOf(ht, "trips-rp-lead-negative")}"`);
+    if (!/\b9\b/.test(txtOf(h, "trips-rp-lead-median"))) bad.push(`ค่ากลาง: ${txtOf(h, "trips-rp-lead-median")}`);
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("RS-15", "D5 ส่วนแบ่งช่องทางบนจอ: แถวช่องทางแสดง 18.74% · 8.64% · 41.59% · 15.04% · 12.80% · 3.20% (ปัดอิสระ · รวม 100.01%) · ไม่มีแถวรวม % (ไม่มี \"100.00%\" / \"100.01%\" ในแท็บช่องทาง)", async () => {
+    needSetup(); const h = byTestid(screenR(await repVM("oa", { tab: "channel" })), "trips-rp-channels"); const t = unent(h); const bad: string[] = [];
+    for (const [c, pct] of [["WEB", "18.74%"], ["LIFF", "8.64%"], ["COUNTER", "41.59%"], ["AGENT_PORTAL", "15.04%"], ["AGENT_LINK", "12.80%"], ["IMPORT", "3.20%"]] as const) if (!unent(byTestid(h, `trips-rp-ch-${c}`)).includes(pct)) bad.push(`${c} ${pct}`);
+    if (t.includes("100.00%") || t.includes("100.01%")) bad.push("มีแถวรวม %"); ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("RS-16", "D1 แถวช่วงย่อย (รายสัปดาห์): แถว 12–18 เม.ย. มี trips-rp-period-note-2 = \"ยังไม่หักต้นทุนของ 3 รอบ (เดินทางแล้ว 2 · ยังไม่เดินทาง 1)\" · แถว 5–11 เม.ย. ไม่มี · D5 ฐานวันจองไม่มีปุ่ม trips-rp-preset-next30 · ฐานวันเดินทางมี", async () => {
+    needSetup(); const h = screenR(await repVM("oa", { group: "week" })); const bad: string[] = [];
+    if (txtOf(h, "trips-rp-period-note-2") !== noCostTh(3, 2, 1)) bad.push(`แถว 12–18: "${txtOf(h, "trips-rp-period-note-2")}"`);
+    if (h.includes('data-testid="trips-rp-period-note-1"')) bad.push("แถว 5–11 มีข้อความ");
+    if (!byTestid(h, "trips-rp-period-2").includes('data-testid="trips-rp-period-note-2"') && !h.includes('data-testid="trips-rp-period-note-2"')) bad.push("ไม่มีข้อความในแถว");
+    if (!h.includes('data-testid="trips-rp-preset-next30"')) bad.push("ฐานวันเดินทางไม่มี next30");
+    if (screenR(await repVM("oa", { basis: "booked" })).includes('data-testid="trips-rp-preset-next30"')) bad.push("ฐานวันจองมี next30");
+    ok(bad.length === 0, bad.join(" · "));
   });
   groupLine("RS");
 
@@ -1325,27 +1446,29 @@ try {
     eq((await q<{ n: number }>(`SELECT count(*)::int AS n FROM "TripBooking" WHERE "unitId" = $1 AND (("agentAccountId" IS NOT NULL AND "paidSatang" > 0) OR (status = 'PAID' AND "paidSatang" <> 410000))`, [uP]))[0]?.n, 0, "การจ่าย");
     console.log(`     ℹ️ snapshot ต่อการจอง ${raw?.snap} ไบต์ · ${raw?.bk} การจอง`);
   });
-  await st("PF-2", "366 วัน (OWNER · ฐานวันเดินทาง): ยอดรวม = แถวดิบ (ยอดขาย · เก็บแทน · VAT · รับแล้ว · ค้างรับ · ต้นทุน · ความจุ · ขาย · อัตราเต็ม 7500) · 2,196 รอบ · pageCount 44 · หน้า 44 = 46 แถว · หน้า 45 = 0 แถว (เวลา > 5 วิ = คำเตือนเท่านั้น)", async () => {
+  await st("PF-2", "366 วัน (OWNER · ฐานวันเดินทาง): ยอดรวม = แถวดิบ (ยอดขาย · เก็บแทน · VAT · รับแล้ว · ค้างรับ · ต้นทุน · ความจุ · ขาย · อัตราเต็ม 7500) · 2,196 รอบ · pageCount 44 · หน้า 44 = 46 แถว · หน้า 45 = 0 แถว · เวลา > 20 วิ = แดง · > 5 วิ = เตือน (D3)", async () => {
     await buildPerf(); ok(raw, "ต้องรัน PF-1 ก่อน"); const t0 = Date.now(); const vm = await repVM("oa", Y366, uP); const ms = Date.now() - t0;
-    console.log(`     ${ms > 5000 ? "⚠️" : "⏱"} 366 วัน ${ms} ms${ms > 5000 ? " (เกิน 5 วิ — คำเตือน ไม่แดง)" : ""}`);
+    console.log(`     ${ms > 5000 ? "⚠️" : "⏱"} 366 วัน ${ms} ms${ms > 5000 ? " (เกิน 5 วิ — คำเตือน)" : ""}`);
+    ok(ms <= 20_000, `โหลด 366 วัน ${ms} ms เกิน 20 วิ`);
     eq(pick(T(vm), ["departures", "bookings", "salesSatang", "passThroughSatang", "vatSatang", "collectedSatang", "outstandingSatang", "costSatang", "capacity", "sold", "loadFactorBp"]),
       [raw?.deps, raw?.bk, raw?.sales, raw?.pt, raw?.vat, raw?.collected, raw?.outstanding, raw?.cost, raw?.cap, raw?.sold, 7500], "ยอดรวม");
     eq([asRec(vm.departures)?.pageCount, depRows(vm).length, depRows(await repVM("oa", { ...Y366, page: 44 }, uP)).length, depRows(await repVM("oa", { ...Y366, page: 45 }, uP)).length], [44, 50, 46, 0], "หน้า");
   });
-  await st("PF-3", "จำนวนคำสั่ง SQL ต่อการโหลด (นับจาก event query ของ Prisma): ≤ 12 ทุกแท็บ + ฐานวันจอง · 31 วัน = 366 วัน (ไม่ขึ้นกับจำนวนรอบ/การจอง) · ผู้ไม่เห็นต้นทุนไม่อ่าน TripCost", async () => {
+  await st("PF-3", "จำนวนคำสั่ง SQL ต่อการโหลด (นับจาก event query ของ Prisma): ≤ 12 ทุกแท็บ + ฐานวันจอง · 31 วัน = 366 วัน (ไม่ขึ้นกับจำนวนรอบ/การจอง) · ค่าตั้ง VAT อ่านครั้งเดียวต่อการโหลด (คำสั่งที่แตะ SettingValue = ของ resolveSettings 1 ครั้ง · D3) · ผู้ไม่เห็นต้นทุนไม่อ่าน TripCost · ไม่มีคำสั่งที่ดึง policySnapshot ทั้งก้อน", async () => {
     await buildPerf(); const bad: string[] = []; const ns: string[] = [];
     for (const input of [{ tab: "sales" }, { tab: "load" }, { tab: "lead" }, { tab: "channel" }, { basis: "booked" }] as Rec[]) {
       const big = await measure(() => rep("oa", { ...Y366, ...input }, uP)), small = await measure(() => rep("oa", { from: "2027-03-01", to: "2027-03-31", ...input }, uP));
       ns.push(`${fmt(input)} ${big.n}/${small.n} (${big.ms} ms)`); if (big.n > 12 || big.n !== small.n || asRec(big.r)?.ok !== true) bad.push(`${fmt(input)}: 366 วัน ${big.n} · 31 วัน ${small.n} · ok ${asRec(big.r)?.ok}`);
+      const sv = big.sql.filter((x) => /"SettingValue"/.test(x)).length; if (sv !== settingsBase) bad.push(`${fmt(input)}: แตะ SettingValue ${sv} คำสั่ง (resolveSettings ครั้งเดียว = ${settingsBase})`);
+      if (big.sql.some((x) => /"policySnapshot"(?!\s*->)/.test(x) && /"TripBooking"/.test(x))) bad.push(`${fmt(input)}: ดึง policySnapshot ทั้งก้อน`);
     }
     const rvq = await measure(() => rep("rl", Y366, uA)); if (rvq.sql.some((s) => /"TripCost"/.test(s))) bad.push("ผู้ไม่เห็นต้นทุนอ่าน TripCost");
     console.log(`     ℹ️ คิวรี (366/31 วัน): ${ns.join(" · ")}`); ok(bad.length === 0, bad.join(" · "));
   });
-  await st("PF-4", "CSV 366 วัน: 2,000 แถวข้อมูล (TRIPS_REPORT_CSV_CAP) · truncated true · total 2196 · บรรทัดสุดท้ายของไฟล์ = report.csv.truncated (2000 จาก 2196) · บรรทัดก่อนสุดท้าย = report.csv.footer · audit rows 2000 total 2196 truncated true", async () => {
+  await st("PF-4", "CSV 366 วัน (D2): 2,000 แถวข้อมูล (TRIPS_REPORT_CSV_CAP) · ไฟล์ = หัว + 2,000 แถวเท่านั้น (บรรทัดสุดท้ายเป็นแถวข้อมูล) · ผล truncated true total 2196 · ชื่อไฟล์ …-partial.csv · audit rows 2000 total 2196 truncated true", async () => {
     await buildPerf(); const v = V(await exp("oa", Y366, uP), "export 366"); const ls = lines(String(v.csv));
-    eq([v.rows, v.total, v.truncated, ls.length], [2000, 2196, true, 1 + 2000 + 2], "ผล");
-    const want = String(fth["report.csv.truncated"] ?? "").replace("{shown}", "2000").replace("{total}", "2196");
-    eq([cells(ls[ls.length - 1] ?? "")[0], cells(ls[ls.length - 2] ?? "")[0]], [want, fth["report.csv.footer"]], "บรรทัดท้าย");
+    eq([v.rows, v.total, v.truncated, v.filename, ls.length], [2000, 2196, true, "trips-report-2027-01-01-2028-01-01-partial.csv", 1 + 2000], "ผล");
+    ok(/^\d{4}-\d{2}-\d{2}$/.test(cells(ls[ls.length - 1] ?? "")[0] ?? "") && cells(ls[ls.length - 1] ?? "").length === CSV_COLS.length + CSV_COST_COLS.length, `บรรทัดสุดท้ายไม่ใช่แถวข้อมูล: ${(ls[ls.length - 1] ?? "").slice(0, 80)}`);
     eq((await q<{ after: Rec }>(`SELECT after FROM "AuditLog" WHERE action = $1 AND "unitId" = $2`, [A_EXP, uP])).map((x) => pick(asRec(x.after) ?? {}, ["rows", "total", "truncated"])), [[2000, 2196, true]], "audit");
   });
   await st("PF-5", "แบ่งหน้าที่เรนเดอร์จริง (หน้า 2 จาก 44): \"หน้า 2 จาก 44\" · ลิงก์ก่อนหน้า/ถัดไป = page 1 / 3 คงช่วงและแท็บ · หน้า 1 ไม่มีลิงก์ก่อนหน้า · หน้า 44 ไม่มีลิงก์ถัดไป · 50 แถวต่อหน้า", async () => {
@@ -1363,6 +1486,14 @@ try {
     await pool.query(`INSERT INTO "TripDeparture" (${cs.map((c) => `"${c}"`).join(", ")}) SELECT ${cs.map((c) => over[c] ?? `t."${c}"`).join(", ")} FROM "TripDeparture" t CROSS JOIN generate_series(1, 1805) g WHERE t.id = $1`, [tplDeps[1]]);
     codeR(await rep("oa", Y366, uP), "REPORT_TOO_LARGE", "ตัวโหลด"); codeR(await exp("oa", Y366, uP), "REPORT_TOO_LARGE", "ส่งออก");
     eq((await rep("oa", { from: "2027-03-01", to: "2027-03-31" }, uP)).ok, true, "31 วัน");
+  });
+  await st("PF-7", "D5 ตัวเลือกสินค้าเกิน 200: หน่วยร้านใหญ่มี 201 สินค้า ⇒ vm.products 200 รายการ (เรียงชื่อ) · productsTotal 201 · productsTruncated true · จอมี trips-rp-product-truncated = \"แสดงสินค้า 200 จาก 201 รายการ (เรียงตามชื่อ)\"", async () => {
+    await buildPerf(); const cs = (await cols("TripProduct")).map((c) => c.column_name);
+    const over: Record<string, string> = { id: `t.id || '_p' || g`, slug: `t.slug || '-p' || g`, title: `jsonb_build_object('th', 'ร้านใหญ่ ส' || lpad(g::text, 3, '0'), 'en', 'Big S' || lpad(g::text, 3, '0'))` };
+    await pool.query(`INSERT INTO "TripProduct" (${cs.map((c) => `"${c}"`).join(", ")}) SELECT ${cs.map((c) => over[c] ?? `t."${c}"`).join(", ")} FROM "TripProduct" t CROSS JOIN generate_series(1, 198) g WHERE t.id = $1`, [PRD.F1?.id]);
+    const vm = await repVM("oa", { from: "2027-03-01", to: "2027-03-31" }, uP);
+    eq([asArr(vm.products).length, vm.productsTotal, vm.productsTruncated], [200, 201, true], "ตัวเลือก");
+    eq(txtOf(screenR(vm), "trips-rp-product-truncated"), String(PINNED["report.products.truncated"]).replace("{shown}", "200").replace("{total}", "201"), "ข้อความบนจอ");
   });
   groupLine("PF");
 

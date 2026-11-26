@@ -179,7 +179,7 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     { name: "departure-costs-not-found", mockup: "11", as: "dive-guide-mint", expectStatus: 404, path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs` },
   ],
   // TRIPS T1.7a2 ▸ รายงานทัวร์ตามช่วงเวลา (seed อ่านอย่างเดียว · เดือน พ.ย. 2569 ของ seed · 1440 + 390) — ไม่มีภาพออกแบบของจอนี้ ⇒ อ้างภาพ 11 (ปฏิทินที่เป็นทางเข้า) · ภาษาอังกฤษผ่าน locale "en"
-  //   PARITY: บรรทัดตัวเลขบริหาร + ป้ายประมาณการทุกแท็บ · 390 ไม่ล้น (KPI 2 คอลัมน์ · ตารางรอบเป็นการ์ด) · ไม่มีรหัสดิบ · กดจริง: ปิด JS แล้วใช้ฟอร์มตัวกรอง · ส่งออก CSV เปิดใน Excel/Numbers ◂
+  //   PARITY: บรรทัดตัวเลขบริหาร + ป้ายประมาณการทุกแท็บ · ข้อความรอบยังไม่หักต้นทุนอยู่ในช่อง KPI กำไร (D1) · บรรทัดตัวเลขบริหารข้างปุ่มส่งออก (D2) · 390 ไม่ล้น (KPI 2 คอลัมน์ · ตารางรอบเป็นการ์ด) · ไม่มีรหัสดิบ · กดจริง: ปิด JS แล้วใช้ฟอร์มตัวกรอง · ส่งออก CSV เปิดใน Excel/Numbers ◂
   "t1.7a2": [
     { name: "reports-sales", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&tab=sales`, actions: [{ waitFor: '[data-testid="trips-rp-kpis"]' }] },
     { name: "reports-load", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&tab=load`, actions: [{ waitFor: '[data-testid="trips-rp-load"]' }] },
@@ -189,6 +189,7 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     { name: "reports-sales-en", mockup: "11", locale: "en", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&tab=sales`, actions: [{ waitFor: '[data-testid="trips-rp-kpis"]' }] },
     { name: "departure-costs-en", mockup: "11", locale: "en", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs`, actions: [{ waitFor: '[data-testid="trips-cost-editor"]' }] },
     { name: "calendar-reports-link", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}`, actions: [{ waitFor: '[data-testid="trips-dep-reports"]' }] },
+    { name: "reports-filter-error", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-02-30&to=2026-11-30&basis=booked&tab=lead`, actions: [{ waitFor: '[data-testid="trips-rp-error"]' }] }, // ตัวกรองผิด ⇒ กล่องข้อผิดพลาด + คงค่าที่ถูก (D5 · D6)
   ],
   // TRIPS W1.2 ▸ ทัวร์ 4 ขั้นฝั่งลูกค้า (ภาพ 01 ข/ค/ง มือถือไทย · 19 จอใหญ่อังกฤษ) — ทุกฉาก public 1440 + 390 · วัน/เดือนปักด้วย --book-month/--book-date (ปริยาย 31 ธ.ค. ของ seed)
   //   "w1.2" อ่านอย่างเดียว (ไม่เขียนฐาน) · "w1.2-flow" กดผ่านฟอร์มจริง ⇒ เขียนฐานเลน (ถือ 3 ที่บนรอบ 31 ธ.ค. + การจอง HOLD + Party ผู้จองทดสอบ ค้างจนตัวกวาดวิ่ง) — รันหลังข้อสอบ/ก่อน reseed
