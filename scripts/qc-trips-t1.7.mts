@@ -147,7 +147,8 @@ const I18N_REQUIRED = [...Object.keys(PINNED), "costs.title", "costs.back", ...C
   ...["kind", "amount", "note", "add", "remove", "save", "saved", "limit", "reload"].map((k) => `costs.editor.${k}`), "costs.conflict", "costs.empty", "costs.readOnly", "costs.channels.title",
   ...WARN_CODES.map((k) => `costs.warn.${k}`), ...["sales", "detail", "noCost", "costs"].map((k) => `departures.money.${k}`), ...["COST_ROWS_LIMIT", "COST_AMOUNT_INVALID", "STATE_CONFLICT"].map((k) => `errors.${k}`)];
 const RAW_CODES = new Set([...DEP_STATES, ...COST_KINDS, "AGENT_PORTAL", "AGENT_LINK", "AGENT_API", "CHAT_AI", "COUNTER", "LIVE", "EXCLUDED", "PENDING_REFUND", "NOT_REGISTERED", "REGISTERED", ...WARN_CODES]);
-const VISUAL_SCENES = ["panel-money", "departure-costs", "departure-costs-forbidden"];
+// ORACLE-EDIT S-12 (ผู้คุม 26 พ.ย.): ฉากไม่มีสิทธิ์เดิมใช้ไกด์ที่เข้าหน่วยทัวร์ไม่ได้ ⇒ แอปตอบ 404 ถูกต้อง · seed ไม่มีผู้ใช้ที่เข้าหน่วยได้แต่ไม่มีคีย์ต้นทุน ⇒ ฉากคาด 404 ตามจริง
+const VISUAL_SCENES = ["panel-money", "departure-costs", "departure-costs-not-found"];
 /** ไฟล์เดิมที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด (null = ไม่จำกัด)] */
 // ORACLE-EDIT รอบ 2 (มติ Q5): src/lib/staff/service.ts ≤ +6/−0
 const LIMITED: [string, number, number | null][] = [["src/lib/staff/service.ts", 0, 4] /* ORACLE-EDIT รอบ 3 (U1): ไม่เกิน +4 ที่มีอยู่ */, ["src/lib/staff/levels.ts", 0, 2] /* ORACLE-EDIT รอบ 3 (U1) */, [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 3, 30], [PANEL, 8, 50], [`${COMP}/ProductsScreenParts.tsx`, 3, null], [PERMS, 0, 6],
@@ -419,11 +420,11 @@ try {
     const permKeys = new Set([...read(PERMS).matchAll(/"(trips\.[\w.*]+)":/g)].map((m) => m[1]));
     ok(!rows.some((r) => String(r.needs ?? "").split("+").some((k) => k && !permKeys.has(k))), "needs ไม่ใช่คีย์จริง");
   });
-  await st("S-12", `ฉากภาพ TRIPS_VISUAL_SPECS["t1.7"] = ${VISUAL_SCENES.join(" · ")} (mockup 11 · ฉากไม่มีสิทธิ์ใช้ผู้ใช้ seed ไกด์) · parity-trips.sh รับ 11`, () => {
+  await st("S-12", `ฉากภาพ TRIPS_VISUAL_SPECS["t1.7"] = ${VISUAL_SCENES.join(" · ")} (mockup 11 · ฉากไกด์ของ seed ที่เข้าหน่วยทัวร์ไม่ได้ ⇒ 404) · parity-trips.sh รับ 11`, () => {
     const s = read("scripts/visual-trips.mts"); ok(s.includes('"t1.7": ['), "ไม่มีกลุ่ม t1.7");
     const blk = s.slice(s.indexOf('"t1.7": ['), s.indexOf("],", s.indexOf('"t1.7": [')));
     for (const n of VISUAL_SCENES) ok(new RegExp(`name: "${n}", mockup: "11"`).test(blk), `ไม่มีฉาก ${n}`);
-    ok(/name: "departure-costs-forbidden", mockup: "11", as: "dive-guide-mint"/.test(blk), "ฉากไม่มีสิทธิ์ต้องใช้ผู้ใช้ไกด์ของ seed");
+    ok(/name: "departure-costs-not-found", mockup: "11", as: "dive-guide-mint", expectStatus: 404\b/.test(blk), "ฉากผู้เข้าหน่วยไม่ได้ต้องใช้ไกด์ของ seed และคาด 404");
     ok(/11-departures-calendar/.test(read("scripts/parity-trips.sh")), "parity-trips.sh ไม่รู้จักภาพ 11");
   });
   await st("S-13", `ขอบเขต (เทียบ BASE ${BASE_SHA.slice(0, 9)} · ไม่นับไฟล์ที่ตรงกับ session/trips หรือ commit ฝั่ง main ที่รวมแล้ว) · ไฟล์จำกัดอยู่ในงบ · ไม่มี reports.ts/หน้า reports (a2)`, () => {

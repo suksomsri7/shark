@@ -161,8 +161,9 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
   "t1.7": [
     { name: "panel-money", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}&dep=${i.racha1114}`, actions: [{ waitFor: '[data-testid="trips-dep-money"]' }] },
     { name: "departure-costs", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs`, actions: [{ waitFor: '[data-testid="trips-cost-editor"]' }] },
-    // ไม่มีสิทธิ์: ไกด์ของ seed (STAFF ไม่มีคีย์ trips) ⇒ หน้าไม่มีสิทธิ์ ไม่มีตัวเลขเงิน
-    { name: "departure-costs-forbidden", mockup: "11", as: "dive-guide-mint", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs`, actions: [{ waitFor: '[data-testid="trips-forbidden"]' }] },
+    // ORACLE-EDIT (ผู้คุม 26 พ.ย.): ไกด์ของ seed (STAFF · unitAccess = หน่วย BOOKING "andaman-dive" เท่านั้น) เข้าหน่วยทัวร์ไม่ได้ ⇒ แอปตอบ 404 ถูกต้อง (หน่วยอื่น ⇒ NOT_FOUND)
+    //   seed ไม่มีผู้ใช้ที่เข้าหน่วยทัวร์ได้แต่ไม่มีคีย์ต้นทุน (มีแค่เจ้าของ + ไกด์ · ห้ามเพิ่มผู้ใช้ seed) ⇒ ฉากนี้คาด 404 ตามจริง · หน้าไม่มีสิทธิ์ (trips-forbidden) ดูจากร้านชั่วคราวของ probe ผู้คุม
+    { name: "departure-costs-not-found", mockup: "11", as: "dive-guide-mint", expectStatus: 404, path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs` },
   ],
   // TRIPS W1.2 ▸ ทัวร์ 4 ขั้นฝั่งลูกค้า (ภาพ 01 ข/ค/ง มือถือไทย · 19 จอใหญ่อังกฤษ) — ทุกฉาก public 1440 + 390 · วัน/เดือนปักด้วย --book-month/--book-date (ปริยาย 31 ธ.ค. ของ seed)
   //   "w1.2" อ่านอย่างเดียว (ไม่เขียนฐาน) · "w1.2-flow" กดผ่านฟอร์มจริง ⇒ เขียนฐานเลน (ถือ 3 ที่บนรอบ 31 ธ.ค. + การจอง HOLD + Party ผู้จองทดสอบ ค้างจนตัวกวาดวิ่ง) — รันหลังข้อสอบ/ก่อน reseed
