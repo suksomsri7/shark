@@ -1672,6 +1672,7 @@
     "tenderTransfer": "Bank transfer",
     "tenderPromptpay": "PromptPay",
     "mismatch": "The number typed ({typed}) does not match the number of bookings ({n})",
-    "useNewButton": "This departure has bookings — use \"Cancel departure (has bookings)\" in the departure panel"
+    "useNewButton": "This departure has bookings — use \"Cancel departure (has bookings)\" in the departure panel",
+    "payReferenceRequired": "Transfer reference (required — the shop cancelled this departure)"
   }
 }

@@ -118,3 +118,7 @@ CREATE INDEX "TripDepartureCancelOutcome_bookingId_idx" ON "TripDepartureCancelO
 - งบเทียบ BASE: money.ts +21/−0 (+25) · departure-desk +12/−1 (+14/−2) · booking-screens +11 (+30) · cancel-departure.ts 608 (read-model +17 ในรอบนี้ · งบ +30) · DepartureCancel.tsx 231 (+97 ในรอบนี้ · งบ +110) · กลุ่ม Panel/Dialogs/BookingsScreen/Drawer +24/−6 (+70/−6) · BookingParts +3 (+12) · ข้อความ +13 คีย์ต่อภาษา (+14) · th −2 / en −1
 - typecheck สะอาด (exit 0)
 - qc-trips-t1.6 (ครั้งเดียว): **90/91** · แดงเดียว S-3 "แตะไฟล์ต้องห้าม BookingParts.tsx" = ข้อสอบยังไม่ได้เพิ่ม BookingParts.tsx (+12) เข้า LIMITED ตามมติ H3 (ORACLE-EDIT ที่คาด · ไฟล์ +3/−0)
+
+## ส่วนที่ 6 — รอบ 6 (H8)
+- `BookingDialogs.tsx` +7/−4 (งบ +14/−4) · PayDialog: `shopCancelled = vm.cancelChoice !== null` · ค่าเริ่ม TRANSFER (เว้นเปิดมาด้วย PROMPTPAY) · ปุ่มวิธีจ่ายเหลือ TRANSFER/PROMPTPAY · พร้อมเพย์บนรอบที่ร้านยกเลิกเป็นการกรอกยอดเอง (ไม่ออก QR) · ช่องอ้างอิง `required` + ป้ายใหม่ `depCancel.payReferenceRequired` ("บังคับ") · กดบันทึกโดยไม่มีอ้างอิง ⇒ ข้อความ SLIP_ONLY ไม่ส่งคำขอ · รอบปกติไม่เปลี่ยน
+- ข้อความ +1 คีย์ต่อภาษา (รวม 14) · qc-trips-t1.6 **91/91** · typecheck สะอาด

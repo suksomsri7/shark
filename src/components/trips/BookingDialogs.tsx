@@ -34,14 +34,15 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
   const due = vm.outstandingSatang;
   const initialAmount = formatBaht(due);
   const [amountText, setAmountText] = useState(initialAmount);
-  const [tender, setTender] = useState<PayTender>(initialTender);
+  const shopCancelled = vm.cancelChoice !== null; // TRIPS T1.6a1 H8 ▸ รอบที่ร้านยกเลิก: โอน/พร้อมเพย์ + เลขอ้างอิงบังคับ (ไม่มี QR) ◂
+  const [tender, setTender] = useState<PayTender>(shopCancelled && initialTender !== "PROMPTPAY" ? "TRANSFER" : initialTender);
   const [reference, setReference] = useState("");
   const [qr, setQr] = useState<PaymentIntentValue | null>(null);
   const [qrBusy, setQrBusy] = useState(false);
   const dirty = amountText !== initialAmount || reference !== "" || tender !== initialTender;
   const close = useGuardedClose(onClose, busy, dirty);
 
-  const promptpay = tender === "PROMPTPAY";
+  const promptpay = tender === "PROMPTPAY" && !shopCancelled;
   // พร้อมเพย์: บริการออก QR ยอดล็อกเท่านั้น (ไม่รับยอดที่พิมพ์) ⇒ ช่องยอดอ่านอย่างเดียว · ยอดที่บันทึก = ยอดล็อกของ QR (จากบริการ)
   const amount = promptpay ? (qr ? qr.amountSatang : null) : parseAmountSatang(amountText);
   const problem = promptpay ? null : amountProblemOf(amountText);
@@ -85,6 +86,7 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
 
   const submit = () => {
     if (amount === null || !canSubmit) return;
+    if (shopCancelled && ref === "") return setError(t("bookings.reason.DEPARTURE_CANCELLED_SLIP_ONLY"));
     const idempotencyKey = intentKey("pay", seed, [bookingId, amount, tender, ref === "" ? null : ref]);
     void run(() => recordTripPaymentAction(unitSlug, { bookingId, amountSatang: amount, tender, idempotencyKey, ...(ref === "" ? {} : { reference: ref }) }), onClose);
   };
@@ -111,7 +113,7 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
       <div className="flex min-w-0 flex-col gap-1">
         <span className="text-sm font-medium text-[color:var(--color-ink)]">{t("bookings.pay.tender")}</span>
         <div role="group" aria-label={t("bookings.pay.tender")} className="grid min-w-0 grid-cols-2 gap-2 sm:grid-cols-4">
-          {PAY_TENDERS.map((code) => (
+          {PAY_TENDERS.filter((code) => !shopCancelled || code === "TRANSFER" || code === "PROMPTPAY").map((code) => (
             <button
               key={code}
               type="button"
@@ -176,8 +178,9 @@ export function PayDialog({ unitSlug, vm, initialTender, onClose }: { unitSlug: 
         </p>
       ) : (
         <div className="flex min-w-0 flex-col gap-1">
-          <Field label={t("bookings.pay.reference")}>
+          <Field label={t(shopCancelled ? "depCancel.payReferenceRequired" : "bookings.pay.reference")}>
             <input
+              required={shopCancelled}
               data-testid="trips-pay-reference"
               className={INPUT}
               maxLength={64}
