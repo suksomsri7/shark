@@ -220,6 +220,8 @@
     "titleManage": "Manage booking"
   },
   "full": {
+    "leftOne": "1 seat left",
+    "holdDate": "Holding seats for {date}",
     "title": "This departure is full",
     "short": "Only {left} seats left — you need {want}",
     "want": "You need {want} · {left} left",
@@ -238,7 +240,7 @@
     "expiredNowFull": "The same departure is now full",
     "expiredNowClosed": "The same departure is no longer taking bookings",
     "reholdSubmit": "Hold seats again and pay",
-    "reholdNote": "You'll get a new booking code and need to enter your details again. Prices are current prices.",
+    "reholdNote": "You'll get a new booking code and need to enter your details again. Prices are current prices. Please check pickup and extras again on the next page.",
     "reholdPartial": "Some of your earlier choices are no longer available — check before holding",
     "expiredPaidTitle": "Already transferred after the hold expired?",
     "expiredPaidHow": "The shop will check your transfer and confirm the booking if seats are still available, or refund you in full.",

@@ -489,7 +489,7 @@ const lineIdOf = (l: Record<string, unknown>, field: string, prefix: string): st
 /**
  * การเลือกเดิมจากบรรทัด snapshot → พารามิเตอร์ของหน้าสินค้า (`n.<CODE>` · `x.<ref>=1` · `z`) · รายการเดิมที่จับคู่ไม่ได้ (ประเภทคนปิด · เสริมเลิกขาย · เขตปิด) ⇒ ตัดออก + partial
  * รายการเสริมส่ง `1` เสมอ (ฟอร์มเป็นช่องติ๊ก · qty ใน snapshot = ที่ขอ × วัน/คืน/คน ⇒ ส่งต่อแล้วคิดเงินซ้ำ · มติ D1)
- * สินค้ามีเขตรับส่งที่เปิดอยู่แต่ลิงก์ไม่มี `z` (เขตไม่มีค่าบริการไม่อยู่ใน snapshot) ⇒ partial (มติ D5)
+ * เขตรับส่งที่พาไปไม่ได้ (เขตไม่มีค่าบริการไม่อยู่ใน snapshot) ไม่ตั้ง partial — ข้อความใต้ปุ่มบอกให้ตรวจรับส่งเสมอ (มติ E2 แทน D5)
  * `skipExtras` = รายการเสริมบังคับ (คิดเองที่หน้าสินค้า ไม่ใช่การเลือก) · ไม่ใช่อาร์เรย์ / ไม่มี SEAT / ไม่เหลือประเภทคน ⇒ null · ไม่ throw
  */
 export function reholdSelectionOf(lines: unknown, cat: { paxCodes: readonly string[]; extras: readonly { id: string; ref: string }[]; zones: readonly { id: string; ref: string }[]; skipExtras?: readonly string[] }): { query: Record<string, string>; partial: boolean } | null {
@@ -521,7 +521,7 @@ export function reholdSelectionOf(lines: unknown, cat: { paxCodes: readonly stri
         kept++;
       }
     }
-    return kept > 0 ? { query, partial: partial || (cat.zones.length > 0 && !query.z) } : null;
+    return kept > 0 ? { query, partial } : null;
   } catch {
     return null;
   }

@@ -33,7 +33,7 @@ export function BookFull({ full, locale }: { full: BookFullVM; locale: BookLocal
               <li key={n.date} data-testid="book-full-nearby-item">
                 <a href={n.href} className={ITEM}>
                   <span className="font-semibold">{formatYmd(n.date, names)}</span>
-                  <span className="text-sm text-[color:var(--color-ink-soft)]">{t("full.left", { n: n.left })}</span>
+                  <span className="text-sm text-[color:var(--color-ink-soft)]">{t(n.left === 1 ? "full.leftOne" : "full.left", { n: n.left })}</span>
                   <span className={CHOOSE}>{t("full.choose")}</span>
                 </a>
               </li>
@@ -52,7 +52,7 @@ export function BookFull({ full, locale }: { full: BookFullVM; locale: BookLocal
                   <span lang={shopLang(s.title, locale)} className="min-w-0 break-words font-semibold">
                     {s.title.text}
                   </span>
-                  <span className="text-sm text-[color:var(--color-ink-soft)]">{t("full.left", { n: s.left })}</span>
+                  <span className="text-sm text-[color:var(--color-ink-soft)]">{t(s.left === 1 ? "full.leftOne" : "full.left", { n: s.left })}</span>
                   <span className={CHOOSE}>{t("full.choose")}</span>
                 </a>
               </li>

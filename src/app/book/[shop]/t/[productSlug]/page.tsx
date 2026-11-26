@@ -65,6 +65,7 @@ export default async function BookProductPage(props: Props) {
       quoteBookSelection({ shop, productSlug, query: { ...base, ...(withSelection ? params : {}) }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey });
     let q = await ask(true);
     let error = bookErrorParam(sp);
+    if (vm.full && error?.code === "SOLD_OUT") error = null; // TRIPS W1.4a E5 ▸ ก้อนรอบเต็มบอกแล้ว — ไม่มี "ที่นั่งไม่พอ" คู่กับรอบเวลาอื่นที่ว่าง ◂
     // การเลือกผิดรูป/ใช้ไม่ได้แล้ว ⇒ แสดงตัวเลือกว่าง + บอกช่องที่ผิด (ไม่สะท้อนค่า)
     if (!q.ok && q.code === "INVALID") {
       error = { code: "INVALID", fields: q.fields ?? [] };

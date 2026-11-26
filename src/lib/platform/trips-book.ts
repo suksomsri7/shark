@@ -1172,7 +1172,8 @@ async function expiredVMOf(o: Opened, unit: { id: string; tz: string }, dep: Boo
     : null;
   const t = bookSlotToken(tenantId, row.departureId);
   const back = { ...(lang ? { lang } : {}), m: dep.localDate.slice(0, 7), d: dep.localDate, ...(t ? { t } : {}) };
-  const rehold = sel ? { href: bookSelectHref(o.shop.slug, { productSlug: dep.product.slug, query: { ...back, ...sel.query } }), partial: sel.partial } : null;
+  // E1: รอบเดิมเต็ม ⇒ ไม่มีลิงก์ถือที่ใหม่ (หน้าปลายทางจะถอยไปวันอื่น) — ก้อนรอบเต็ม (วันใกล้เคียง) เป็นทางไปต่อ
+  const rehold = sel && now?.state !== "FULL" ? { href: bookSelectHref(o.shop.slug, { productSlug: dep.product.slug, query: { ...back, ...sel.query } }), partial: sel.partial } : null;
   const seats = items.reduce((n, it) => n + (it.usesCapacity ? it.qty : 0), 0);
   const nq = Object.fromEntries(Object.entries(sel?.query ?? {}).filter(([k]) => k.startsWith("n.")));
   // ก้อนรอบเต็มเฉพาะเมื่อถือใหม่ทางเว็บได้ (ไม่ใช่เอเจนซี่ · สินค้ายังรับจองทันที · มติ D4)

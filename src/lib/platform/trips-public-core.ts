@@ -524,6 +524,8 @@ export type BookFullVM = {
   nearby: { date: string; left: number; href: string }[];
   sameDay: { title: BookText; left: number; href: string }[];
   contact: BookContact;
+  /** จำนวนคนที่ขอ (`n.*` ที่ตรวจรูปแล้ว) — ลิงก์สลับภาษาของหน้าพาต่อ (มติ E6) */
+  keep: Record<string, string>;
 };
 /** ข้อความติดต่อร้าน (สูตรเดียวกับ bookContactText ของจอ) — ไม่มีทั้งเบอร์และ LINE ⇒ "" */
 export function bookReachOf(name: string, phone: string | null | undefined, line: string | null | undefined): BookContact {

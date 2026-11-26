@@ -287,7 +287,7 @@ export async function loadSameDayProducts(ref: { tenantId: string; unitId: strin
       SELECT p."id", p."slug", p."title", min(d."startsAt") AS "firstAt"
       FROM "TripProduct" p JOIN "TripDeparture" d ON d."productId" = p."id" AND d."tenantId" = p."tenantId" AND d."unitId" = p."unitId"
         AND d."localDate" = ${q.date}::date AND d."status" <> 'CANCELLED' AND d."capacity" - d."sold" - d."held" - d."reserved" >= ${need}
-      WHERE p."tenantId" = ${tenantId} AND p."unitId" = ${unitId} AND p."id" <> ${q.excludeProductId} AND p."status" = 'ACTIVE' AND p."productType" = 'TOUR'
+      WHERE EXISTS (SELECT 1 FROM "TripPrice" pr WHERE pr."productId" = p."id" AND pr."tenantId" = p."tenantId" AND pr."unitId" = p."unitId") AND p."tenantId" = ${tenantId} AND p."unitId" = ${unitId} AND p."id" <> ${q.excludeProductId} AND p."status" = 'ACTIVE' AND p."productType" = 'TOUR'
       GROUP BY p."id", p."slug", p."title" ORDER BY p."slug" ASC LIMIT ${take}) x
     ORDER BY x."firstAt" ASC, x."slug" ASC`;
   return rows.map((r) => ({ productId: r.id, slug: r.slug, title: textOf(r.title, q.locale) }));

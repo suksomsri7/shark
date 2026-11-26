@@ -35,7 +35,6 @@ import {
   BOOK_SAMEDAY_MAX,
   BOOK_SAMEDAY_SCAN_CAP,
   addBookDays,
-  bookHref,
   bookReachOf,
   fullStateOf,
   nearbyDatesOf,
@@ -64,6 +63,7 @@ import {
   parseBookQuery,
   parseBookSlot,
   sellableCountOf,
+  slotSellable,
   type BookBrandVM,
   type BookCarry,
   type BookDayVM,
@@ -605,7 +605,9 @@ export async function openBookProduct(
   if (q.d !== null && q.d.slice(0, 7) === vm.month) {
     const cell = vm.weeks.flat().find((c) => c?.date === q.d), slot = parseBookSlot(i.query), pax = parseBookSelection(i.query)?.pax ?? null;
     const shown = vm.selected?.date === q.d ? vm.selected.slots.filter((s) => s.selectable) : [];
-    const left = cell?.state === "FULL" ? 0 : (shown.find((s) => s.token === slot)?.left ?? Math.max(-1, ...shown.map((s) => s.left ?? 0)));
+    // E5: `t` ที่ไม่อยู่ในรอบที่เลือกได้ (รอบเวลาที่เต็ม · VM ไม่มีตัวอ้างของรอบนั้น) ⇒ ให้ bookFullOf หาจากทุกรอบของวัน
+    const hit = slot !== null ? shown.find((s) => s.token === slot) : undefined, unknownSlot = slot !== null && !hit;
+    const left = cell?.state === "FULL" ? 0 : (hit?.left ?? Math.max(-1, ...shown.map((s) => s.left ?? 0)));
     const seatCodes = vm.selected?.price ? vm.selected.price.pax.filter((x) => x.seat).map((x) => x.code) : null;
     const wantOf = async (): Promise<number | null> => {
       if (!pax) return null;
@@ -613,9 +615,12 @@ export async function openBookProduct(
       const n = pax.reduce((sum, x) => sum + (seat.has(x.code) ? x.qty : 0), 0);
       return n > 0 ? n : null;
     };
-    const sold = bookErrorParam(i.query)?.code === "SOLD_OUT" && left >= 0;
+    const sold = bookErrorParam(i.query)?.code === "SOLD_OUT" && (left >= 0 || unknownSlot);
     const want = cell?.state === "FULL" || sold ? await wantOf().catch(() => null) : null;
-    if (cell?.state === "FULL" || (sold && want !== null && want > left)) {
+    // E4: สินค้าที่ไม่รับจองทันทีทางเว็บ ⇒ ไม่มีก้อน (cta คิดแล้วใช้ผลนั้น · ยังไม่คิด ⇒ ถามด่านเดียวกัน)
+    const candidate = cell?.state === "FULL" || (sold && want !== null && (unknownSlot || want > left));
+    const saleOk = candidate && (vm.cta.enabled || (vm.cta.reason === null && (await bookSaleState({ tenantId: r.shop.tenantId, unitId: p.unit.id, productId: p.productId }, now)) === "OPEN"));
+    if (saleOk) {
       vm.full = await bookFullOf(r.shop, { ...p, date: q.d, slot, error: sold ? "SOLD_OUT" : null, want, nq: pax ? selectionQuery({ pax, extras: [], zone: null }) : {}, lang: q.lang, locale: vm.locale }, now);
     }
   }
@@ -688,8 +693,9 @@ export async function bookFullOf(shop: BookShop, a: BookFullAsk, now: Date): Pro
       if (sameDay.length >= BOOK_SAMEDAY_MAX) break;
       if ((await bookSaleState({ tenantId: shop.tenantId, unitId: a.unit.id, productId: o.productId }, now)) !== "OPEN") continue;
       const oa = await listAvailability(ctx, { productId: o.productId, from: a.date, to: a.date }).catch(() => null);
-      const best = oa && oa.ok ? Math.max(0, ...oa.value.filter((x) => x.saleBlock === null).map((x) => x.publicLeft)) : 0;
-      if (best >= need) sameDay.push({ title: o.title, left: best, href: bookHref(shop.slug, o.slug, back(a.date, {})) });
+      // E3: เกณฑ์เดียวกับปุ่มจองของหน้าสินค้า — bookSaleState OPEN (บน) + รอบขายได้ด้วย slotSellable ตัวเดียวกับปฏิทิน/รอบของหน้า · "มีราคา" กรองหยาบใน SQL (TripPrice)
+      const best = oa && oa.ok ? Math.max(0, ...oa.value.filter(slotSellable).map((x) => x.publicLeft)) : 0;
+      if (best >= need) sameDay.push({ title: o.title, left: best, href: bookSelectHref(shop.slug, { productSlug: o.slug, query: back(a.date, a.nq) }) }); // E7: พา n.* (รหัสที่สินค้านั้นไม่มีถูกทิ้งที่หน้าปลายทาง)
     }
     let contact = "";
     if (!nearby.length && !sameDay.length) {
@@ -697,7 +703,7 @@ export async function bookFullOf(shop: BookShop, a: BookFullAsk, now: Date): Pro
       const field = (k: string): string | null => { const v = isRec(c) ? c[k] : null; return typeof v === "string" && v.trim() ? v.trim() : null; };
       contact = bookReachOf(shop.name, field("phone"), field("line"));
     }
-    return { want: a.want, left, date: a.date, nearby, sameDay, contact };
+    return { want: a.want, left, date: a.date, nearby, sameDay, contact, keep: a.nq };
   } catch {
     return null;
   }
