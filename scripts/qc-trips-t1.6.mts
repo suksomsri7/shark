@@ -20,6 +20,7 @@
 // ผลรันรอบ 1 (ผู้เขียนข้อสอบ · 26 พ.ย.): PC-9 แดงเพราะตัวข้อสอบ — ForbiddenError ของ action เดิมเป็นข้อความไทย "ไม่มีสิทธิ์: …" ⇒ ตัวจับรับ /forbidden|ไม่มีสิทธิ์/ แล้ว ·
 //   ทางลูกค้าต้องเปิด trips.public.bookingEnabled + shopContact ของหน่วย (แบบ qc-trips-w1.3) — เพิ่มหลังรอบ 1 · ส่วนที่เหลือของ PC-9 ยังไม่ถูกรันจริง (ผู้คุมยืนยันในรอบถัดไป)
 // ORACLE-EDIT T1.6 รอบ 4 (มติ F1–F6 หลังผู้ตรวจโค้ดเงิน): +S-9 CD-14 CD-15 GD-6 RF-11 RF-12 RF-13 NM-8 NM-9 NM-10 · ตรึงใหม่ NM-3 NM-7 (ยื่นใหม่หลังรับเงิน = QUOTED) RF-10 (ผู้กระทำ trips.departureCancel.autoApprove · after.status ของ requote) · รวม 82 ข้อ
+// ORACLE-EDIT T1.6 รอบ 6 (มติ H1–H7): +S-10 S-11 CD-16 NM-11 PG-6 … PG-10 · รวม 91 ข้อ
 // รัน: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-trips-t1.6.mts   (ห้าม timeout ครอบ · ห้าม kill กลางคัน)
 // ผลที่ถูกต้องก่อนมีงาน T1.6a1: PC เขียวทั้งหมด · S-3 เขียว · ที่เหลือแดงพร้อมเหตุ ("ยังไม่มี…" / "migration missing")
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -369,7 +370,8 @@ try {
     await mkUser("wild", tA, "STAFF", [uA], ["trips.*"]);
     await mkUser("req", tA, "STAFF", [uA], [DV, BV, "trips.refund.request"]);
     await mkUser("cxl", tA, "STAFF", [uA], [DV, BV, "trips.booking.cancel"]);
-    await mkUser("pay", tA, "STAFF", [uA], [DV, BV, "trips.payment.record"]); // ORACLE-EDIT T1.6 รอบ 4 (F1): ผู้มีแต่สิทธิ์รับเงิน
+    await mkUser("pay", tA, "STAFF", [uA], [DV, BV, "trips.payment.record"]);
+    await mkUser("exe", tA, "STAFF", [uA], [DV, BV, "trips.refund.execute"]); // ORACLE-EDIT T1.6 รอบ 6 (H1): ผู้มีแต่สิทธิ์บันทึกโอนคืน // ORACLE-EDIT T1.6 รอบ 4 (F1): ผู้มีแต่สิทธิ์รับเงิน
     await mkUser("use", tA, "STAFF", [uA], []); await mkUser("view", tA, "STAFF", [uA], []);
     await mkUser("none", tA, "STAFF", [uA], []);
     await mkProd("PR", tA, uA); await mkProd("PR2", tA, uA); await mkProd("PA2", tA, uA2); await mkProd("PB", tB, uB); await mkProd("PC", tC, uC);
@@ -710,6 +712,20 @@ try {
   await st("S-9", "[โค้ด] F3: ผู้กระทำของการอนุมัติให้เองชื่อ trips.departureCancel.autoApprove อยู่ในโค้ดของใบ (refund.ts หรือ cancel-departure.ts) · ไม่ใช้ trips.refund.autoApprove กับคำขอติดป้าย", () => { // ORACLE-EDIT T1.6 รอบ 4
     const src = stripComments(read(MOD + "refund.ts")) + stripComments(read(SVC)); ok(src.includes('"trips.departureCancel.autoApprove"'), "ยังไม่มีผู้กระทำ trips.departureCancel.autoApprove");
   });
+  await st("S-10", "[โค้ด] H2: DepartureCancel.tsx กันกดซ้ำแบบ synchronous (useRef) · กุญแจกันซ้ำสร้างครั้งเดียวต่อการเรนเดอร์ของปุ่ม (useState/useRef/useMemo) ไม่ใช่ในตัวจัดการคลิก (ไม่มี set(\"idempotencyKey\", newKey( …)) · กล่องยืนยันมีคำบอกจำนวนไม่ตรง trips-depcancel-mismatch", () => { // ORACLE-EDIT T1.6 รอบ 6
+    const c = stripComments(read(`${COMP}/DepartureCancel.tsx`)); ok(c, "ไม่มี DepartureCancel.tsx"); const bad: string[] = [];
+    if (!/useRef\(/.test(c)) bad.push("ไม่มี useRef (กันกดซ้ำ)"); if (/set\(\s*["']idempotencyKey["']\s*,\s*newKey\(/.test(c)) bad.push("สร้างกุญแจใหม่ทุกคลิก");
+    if (!/use(State|Ref|Memo)\(\s*(\(\)\s*=>\s*)?newKey\(/.test(c)) bad.push("ไม่มีกุญแจต่อการเรนเดอร์"); if (!c.includes('"trips-depcancel-mismatch"')) bad.push("ไม่มี trips-depcancel-mismatch");
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("S-11", "[โค้ด] H3 H6: รหัส DEPARTURE_CANCELLED_SLIP_ONLY · DEPARTURE_CANCELLED · DEPARTURE_CANCELLED_USE_RESOLVE มีข้อความของตัวเองใน bookings.reason (th/en · สามข้อความต่างกัน · ไม่ใช่ข้อความ errors.STATE_CONFLICT) และอยู่ใน REASON_CODES ของ BookingParts · ข้อความใบนี้มี \"ยังไม่มีเงินในระบบ\" และ \"ปิดแบบไม่มีเงิน\" (th) · แม่แบบการ์ดสถานะ a1 ไม่มี \"ย้ายแล้ว\"", () => { // ORACLE-EDIT T1.6 รอบ 6
+    const codes = ["DEPARTURE_CANCELLED_SLIP_ONLY", "DEPARTURE_CANCELLED", "DEPARTURE_CANCELLED_USE_RESOLVE"]; const bad: string[] = [];
+    for (const [L, d] of [["th", fth], ["en", fen]] as const) { const v = codes.map((k) => d[`bookings.reason.${k}`]); if (v.some((x) => !x) || new Set(v).size !== 3 || v.includes(d["errors.STATE_CONFLICT"])) bad.push(`${L}: ${fmt(v)}`); }
+    const bp = read(`${COMP}/BookingParts.tsx`); for (const k of codes) if (!new RegExp(`"${k}"`).test(bp.slice(bp.indexOf("REASON_CODES"), bp.indexOf("];", bp.indexOf("REASON_CODES"))))) bad.push(`REASON_CODES ไม่มี ${k}`);
+    const vals = Object.entries(fth).filter(([k]) => k.startsWith("depCancel.")); if (!vals.some(([, v]) => v.includes("ยังไม่มีเงินในระบบ"))) bad.push("ไม่มี \"ยังไม่มีเงินในระบบ\""); if (!vals.some(([, v]) => v.includes("ปิดแบบไม่มีเงิน"))) bad.push("ไม่มี \"ปิดแบบไม่มีเงิน\"");
+    if (/ย้ายแล้ว/.test(fth["depCancel.status"] ?? "") || /Moved/i.test(fen["depCancel.status"] ?? "")) bad.push("การ์ดสถานะยังมี ย้ายแล้ว");
+    ok(bad.length === 0, bad.join(" · "));
+  });
   groupLine("S");
 
   // ═══════════════ P. ตัวช่วยบริสุทธิ์ ═══════════════
@@ -744,7 +760,7 @@ try {
 
   // ═══════════════ กลุ่มที่ต้องใช้ migration ═══════════════
   const MIG = await migState();
-  const GROUP_N: Record<string, number> = { CD: 15, GD: 6, RF: 13, NM: 10, RC: 3, AC: 4, PG: 5, PM: 3 };
+  const GROUP_N: Record<string, number> = { CD: 16, GD: 6, RF: 13, NM: 11, RC: 3, AC: 4, PG: 10, PM: 3 };
   const gated = async (g: string, title: string, body: () => Promise<void>) => {
     console.log(`\n── ${g}: ${title} ──`);
     if (!MIG.ok) { record(`${g}-0`, `[ฐาน] กลุ่ม ${g} (${GROUP_N[g]} ข้อ) ต้องใช้ migration ของ T1.6a1`, "FAIL", `migration missing — ${MIG.why}`); groupLine(g); return; }
@@ -782,6 +798,16 @@ try {
   const openMarked = async (b: Bk) => q<Rec>(`SELECT * FROM "TripRefundRequest" WHERE "bookingId" = $1 AND status = ANY($2::text[]) AND computed->>'path' = 'DEPARTURE_CANCEL' ORDER BY "createdAt" DESC, id DESC`, [b.id, OPEN_REQ]);
   const choiceAudits = async (b: Bk) => (await audits("trips.booking.cancel_choice")).filter((a) => a.targetId === b.id || JSON.stringify(a.after ?? {}).includes(b.id));
   const choiceMade = async (b: Bk) => (await outbox("trips.booking.cancel_choice_made")).filter((e) => asRec(e.payload)?.bookingId === b.id);
+  // ORACLE-EDIT T1.6 รอบ 6 (H1 H2): อ่านช่องของ <form> ที่เรนเดอร์จริง (input ซ่อน/ช่อง + select ที่เลือก) ⇒ ส่งให้ action จริงตามที่จอส่ง
+  const inputsOf = (frag: string): Record<string, string> => { const o: Record<string, string> = {}; for (const m of frag.matchAll(/<input\b[^>]*>/g)) { const n = /\sname="([^"]*)"/.exec(m[0])?.[1]; if (n) o[n] = decode(/\svalue="([^"]*)"/.exec(m[0])?.[1] ?? ""); }
+    for (const m of frag.matchAll(/<select\b[^>]*\sname="([^"]*)"[^>]*>([\s\S]*?)<\/select>/g)) { const body = m[2] ?? ""; const sel = /<option\b[^>]*\sselected[^>]*\svalue="([^"]*)"/.exec(body) ?? /<option\b[^>]*\svalue="([^"]*)"[^>]*\sselected/.exec(body) ?? /<option\b[^>]*\svalue="([^"]*)"/.exec(body); o[m[1] ?? ""] = decode(sel?.[1] ?? ""); } return o; };
+  const actOf = (name: string, tag: string, input: Rec) => runAction(MACT.mod?.[name], tag, `/app/u/${SLUG_A}/trips/bookings`, [SLUG_A, input]);
+  /** การจองที่มีคำขอติดป้าย QUOTED (ใบรับหลังยกเลิก · F1) บนเส้นเวลาจริง */
+  const mkQuotedMarked = async (tag: string): Promise<{ b: Bk; c: Bk; u: Bk }> => {
+    const M = await mkRealMini(tag, [{ k: "b", pay: "deposit" }, { k: "c", pay: "full" }, { k: "u", pay: "none" }]); const b = M.b as Bk, c = M.c as Bk, u = M.u as Bk;
+    V(await resolveSvc("oa", c, "REFUND", { now: new Date(Date.now() - 12 * HOUR) }), `REFUND ${tag}c`); V(await actPay("pay", b, 50_000, "PROMPTPAY"), `สลิป ${tag}b`);
+    V(await resolveSvc("oa", b, "REFUND", { now: new Date() }), `REFUND ${tag}b`); return { b, c, u };
+  };
   let cancelledC = false;
   const needC = () => { needFix(); ok(cancelledC, "dC ยังไม่ถูกยกเลิกด้วยทางใหม่ (CD-2 ไม่ผ่าน)"); };
   const CANCEL_KEY = `cdC${hex(6)}`;
@@ -930,6 +956,12 @@ try {
       codeR(await call("decideBelowMin", tc("st"), await inp(), { now: NOW }), "FORBIDDEN", "st"); eq((await depRow(D("HO"))).status, "OPEN", "ไม่เขียน");
       V(await call("decideBelowMin", tc("oa"), await inp(), { now: NOW }), "OWNER"); const d = await depRow(D("HO"));
       eq([d.status, d.cancelKind, num(d.held), (await bk(h.id)).status, (await q(`SELECT 1 FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE'`, [D("HO")])).length, (await outRows(D("HO"))).length], ["CANCELLED", "MIN_NOT_MET", 0, "CANCELLED", 0, 0], "ผล");
+    });
+    await st("CD-16", "[บริการ] H5: decideBelowMin CANCEL บนรอบต่ำกว่าขั้นต่ำที่มีคน สำเร็จแล้ว เรียกซ้ำด้วยกุญแจเดิม (เนื้อหาเดิม) ⇒ ok + replayed (ตรวจกุญแจก่อน \"ยังต่ำกว่าขั้นต่ำ\") · ไม่มีแถวผล/อีเวนต์เพิ่ม", async () => { // ORACLE-EDIT T1.6 รอบ 6
+      needFix(); const m = await mkMini("H5", { minPax: 8, unpaid: false }); const K = `h5${hex(6)}`; const inp = { unitId: uA, departureId: m.dep, decision: "CANCEL", reason: "คนไม่ครบขั้นต่ำ", confirmBookings: 1, expectedVersion: num((await depRow(m.dep)).version), idempotencyKey: K };
+      V(await call("decideBelowMin", tc("oa"), inp, { now: NOW }), "ครั้งแรก"); const n0 = (await outRows(m.dep)).length, e0 = (await outbox("trips.booking.cancel_choice_offered")).length;
+      const r = await call("decideBelowMin", tc("oa"), inp, { now: NOW }); ok(r.ok === true && replayedOf(r), `ซ้ำ: ${fmt(r)}`);
+      eq([(await outRows(m.dep)).length, (await outbox("trips.booking.cancel_choice_offered")).length], [n0, e0], "ไม่เพิ่ม");
     });
   });
 
@@ -1216,6 +1248,15 @@ try {
       const e1 = await choiceMade(b); const last = asRec(e1[e1.length - 1]?.payload) ?? {};
       eq([(await choiceAudits(b)).length - a0, e1.length - e0.length, new Set(e1.map((e) => e.idempotencyKey)).size === e1.length, last.refundRequestId, num((await reqRow(String(last.refundRequestId ?? ""))).amountSatang)], [1, 1, true, nw?.id, num((await bk(b.id)).paidSatang)], "audit/อีเวนต์");
     });
+    await st("NM-11", "[บริการ] H7: เงินที่เข้ากิ่ง \"รอบที่ร้านยกเลิก\" นับเป็นหลังยกเลิกเสมอ — ยกเลิก ณ NOW แล้ว recordTripPayment ด้วยนาฬิกาคำขอ NOW − 1 นาที (พร้อมเพย์ + เลขอ้างอิง): (1) ไม่มีคำขอ ⇒ resolve REFUND ⇒ QUOTED (2) มีคำขอติดป้าย APPROVED ⇒ ยื่นใหม่ ⇒ QUOTED (ไม่อนุมัติให้เอง)", async () => { // ORACLE-EDIT T1.6 รอบ 6
+      needFix(); await mkDep("H7", "2027-07-15"); const x = await mkBk("H7x", "H7"), y = await mkBk("H7y", "H7"); for (const b of [x, y]) await payOk(b, num((await dues(b.id))[0]?.amountSatang));
+      V(await cancelSvc("oa", D("H7"), { confirm: 2 }), "ยกเลิก H7"); V(await resolveSvc("oa", y, "REFUND", { now: addMs(NOW, 60_000) }), "REFUND y ก่อนรับเงิน"); const bad: string[] = [];
+      if ((await flaggedOf(y)).status !== "APPROVED") bad.push(`ตัวควบคุม y ${(await flaggedOf(y)).status}`);
+      for (const b of [x, y]) V(await pay(b, 20_000, { now: addMs(NOW, -60_000) }), `สลิปนาฬิกาเก่า ${b.key}`);
+      const oy = await openMarked(y); if (oy.length !== 1 || oy[0]?.status !== "QUOTED") bad.push(`(2) ${fmt(oy.map((r) => r.status))} ต้อง QUOTED ใบเดียว`);
+      V(await resolveSvc("oa", x, "REFUND", { now: addMs(NOW, HOUR) }), "REFUND x"); if ((await flaggedOf(x)).status !== "QUOTED") bad.push(`(1) ${(await flaggedOf(x)).status} ต้อง QUOTED`);
+      ok(bad.length === 0, bad.join(" · "));
+    });
   });
 
   // ═══════════════ RC. กระทบยอด ═══════════════
@@ -1349,6 +1390,48 @@ try {
       if (![...pg, ...po].every((c) => hp.includes(c))) bad.push(`pending ขาด ${[...pg, ...po].filter((c) => !hp.includes(c)).join(",")}`); if (hp.includes(B("q1").code)) bad.push("pending มี q1");
       if (!po.every((c) => ho.includes(c))) bad.push("overdue ไม่มี dPGO"); if (pg.some((c) => ho.includes(c))) bad.push("overdue มี dPG (ยังไม่เลยเส้นตาย)"); if (ho.includes(B("q1").code)) bad.push("overdue มี q1");
       ok(bad.length === 0, bad.join(" · "));
+    });
+    // ORACLE-EDIT T1.6 รอบ 6 (H1–H4 H6) — ชื่อที่ข้อสอบตรึง: trips-bk-depcancel-approve / trips-bk-depcancel-transfer = <form> ที่ช่องตรงกับ input ของ decideTripRefundAction / executeTripRefundAction · trips-bk-depcancel-state = ป้ายสถานะคำขอ
+    let H1: { b: Bk; c: Bk; u: Bk } | null = null;
+    await st("PG-6", "[หน้า+action] H1 อนุมัติในลิ้นชัก: คำขอติดป้าย QUOTED ⇒ ผู้มี refund.approve (sta) เห็นฟอร์ม trips-bk-depcancel-approve (ไม่มีช่องปรับยอด/หักเงิน · กุญแจกันซ้ำซ่อนไม่ว่าง · สองการเรนเดอร์คนละกุญแจ — H2) · ผู้ไม่มี (req) ไม่เห็น · ป้าย trips-bk-depcancel-state th มี \"รออนุมัติ\" · ส่งช่องของฟอร์มที่เรนเดอร์ให้ decideTripRefundAction จริง ⇒ APPROVED ยอดเต็ม refundBp 10000 · ป้ายเปลี่ยนเป็น \"อนุมัติแล้ว รอโอน\" · en สองป้ายต่างกันไม่มีอักษรไทย", async () => {
+      needFix(); H1 = await mkQuotedMarked("HQ"); const b = H1.b; const bad: string[] = []; const now = new Date();
+      const h1 = await drawerAt("sta", b, now), h2 = await drawerAt("sta", b, now), hr = await drawerAt("req", b, now); const f1 = byTestid(h1, "trips-bk-depcancel-approve");
+      if (!/^<form\b/.test(f1)) bad.push("ไม่มีฟอร์มอนุมัติ"); const in1 = inputsOf(f1), in2 = inputsOf(byTestid(h2, "trips-bk-depcancel-approve"));
+      if ("manualDeltaSatang" in in1 || "deductions" in in1 || "manualReason" in in1) bad.push(`มีช่องปรับยอด ${fmt(Object.keys(in1))}`); if (!in1.idempotencyKey || in1.idempotencyKey === in2.idempotencyKey) bad.push("กุญแจกันซ้ำ (H2)");
+      if (has(hr, "trips-bk-depcancel-approve")) bad.push("req เห็นปุ่มอนุมัติ"); if (!unent(byTestid(h1, "trips-bk-depcancel-state")).includes("รออนุมัติ")) bad.push(`ป้าย QUOTED "${unent(byTestid(h1, "trips-bk-depcancel-state"))}"`);
+      const enQ = unent(byTestid(await drawerAt("sta", b, now, "en"), "trips-bk-depcancel-state"));
+      if (!bad.length) { const r = await actOf("decideTripRefundAction", "sta", in1); if (r.ok !== true) bad.push(`ส่งฟอร์ม: ${fmt(r).slice(0, 120)}`); }
+      const rq = await flaggedOf(b); if (rq.status !== "APPROVED" || num(rq.amountSatang) !== num((await bk(b.id)).paidSatang) || num(asRec(rq.computed)?.refundBp) !== 10_000) bad.push(`หลังอนุมัติ ${fmt([rq.status, rq.amountSatang])}`);
+      const ha = await drawerAt("sta", b, new Date()); if (!unent(byTestid(ha, "trips-bk-depcancel-state")).includes("อนุมัติแล้ว รอโอน")) bad.push(`ป้าย APPROVED "${unent(byTestid(ha, "trips-bk-depcancel-state"))}"`);
+      const enA = unent(byTestid(await drawerAt("sta", b, new Date(), "en"), "trips-bk-depcancel-state")); if (!enQ || !enA || enQ === enA || THAI.test(enQ + enA)) bad.push(`en ${fmt([enQ, enA])}`);
+      ok(bad.length === 0, bad.join(" · "));
+    });
+    await st("PG-7", "[หน้า+action] H1 บันทึกโอนคืนในลิ้นชัก: คำขอติดป้าย APPROVED (จาก PG-6) ณ เวลาอนุมัติ + 4 วัน ⇒ ผู้มีสิทธิ์ execute (exe) เห็นฟอร์ม trips-bk-depcancel-transfer · req ไม่เห็น · คำเตือน 3 วันอยู่ในก้อนเดียวกับฟอร์มและไม่อ้าง \"ส่วนคืนเงิน\" ที่ไม่มีอยู่ · ส่งช่องของฟอร์มให้ executeTripRefundAction จริง ⇒ DONE · REFUNDED = ยอดจ่าย · pt = Σ pt ของใบรับ", async () => {
+      needFix(); ok(H1, "PG-6 ไม่ผ่าน"); const b = (H1 as { b: Bk }).b; const bad: string[] = []; const at = new Date(Date.now() + 4 * DAY);
+      const h = await drawerAt("exe", b, at); const sec = byTestid(h, "trips-bk-depcancel"); const f = byTestid(sec, "trips-bk-depcancel-transfer");
+      if (!/^<form\b/.test(f)) bad.push("ไม่มีฟอร์มบันทึกโอนในก้อน"); if (has(await drawerAt("req", b, at), "trips-bk-depcancel-transfer")) bad.push("req เห็นปุ่มโอน");
+      const w = unent(byTestid(sec, "trips-bk-refund-transfer-due")); if (!w) bad.push("ไม่มีคำเตือนในก้อน"); else if (/ส่วนคืนเงิน|refund section/i.test(w)) bad.push(`คำเตือนอ้างส่วนที่ไม่มี "${w}"`);
+      if (!bad.length) { const r = await actOf("executeTripRefundAction", "exe", inputsOf(f)); if (r.ok !== true) bad.push(`ส่งฟอร์ม: ${fmt(r).slice(0, 120)}`); }
+      const rec = await evs(b.id, "RECEIVED"), rf = await evs(b.id, "REFUNDED"); const sm = (a: Rec[], k: string) => a.reduce((x, y) => x + num(y[k]), 0);
+      eq([bad, (await flaggedOf(b)).status, sm(rf, "amountSatang"), sm(rf, "passThroughSatang")], [[], "DONE", sm(rec, "amountSatang"), sm(rec, "passThroughSatang")], "โอนคืน");
+    });
+    await st("PG-8", "[หน้า] H1 H6 การ์ดสถานะของรอบ (รอบเล็ก HC: b QUOTED มัดจำ + สลิป 50,000 · c APPROVED 410,000 · u ปิดไม่มีเงิน) ⇒ trips-depcancel-status แยก \"รออนุมัติ ฿(มัดจำ+500)\" กับ \"ต้องโอน ฿4,100.00\" · มี \"ปิดแบบไม่มีเงิน 1\" · ไม่มี \"ย้ายแล้ว\" (th) · en ไม่มี Moved", async () => {
+      needFix(); const M = await mkQuotedMarked("HC"); V(await resolveSvc("oa", M.u, "NO_MONEY", { now: new Date() }), "ปิด u"); const bad: string[] = [];
+      const x = num((await flaggedOf(M.b)).amountSatang); const baht = (n: number) => (n / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const th0 = unent(byTestid(await pageAt("departures", { dep: M.b.dep }), "trips-depcancel-status")), en0 = unent(byTestid(await pageAt("departures", { dep: M.b.dep }, "oa", "en"), "trips-depcancel-status"));
+      if (!/รออนุมัติ/.test(th0) || !th0.includes(baht(x)) || !th0.includes("4,100.00")) bad.push(`ยอดแยก (รออนุมัติ ${baht(x)} · ต้องโอน 4,100.00): "${th0}"`);
+      if (!/ปิดแบบไม่มีเงิน\s*1/.test(th0)) bad.push("ไม่มี ปิดแบบไม่มีเงิน 1"); if (/ย้ายแล้ว/.test(th0) || /Moved/i.test(en0)) bad.push("ยังมี ย้ายแล้ว/Moved");
+      ok(bad.length === 0, bad.join(" · "));
+    });
+    await st("PG-9", "[หน้า] H3 ลิ้นชักการจองที่มียอดค้างบนรอบที่ร้านยกเลิก ⇒ ไม่มีปุ่ม QR (trips-bk-qr) · ตัวควบคุม: การจองยังไม่จ่ายบนรอบปกติมี trips-bk-qr · (ทางเลือกช่องทางในกล่องรับเงิน + ช่องเลขอ้างอิงบังคับ = ด่านภาพ/กดจริง)", async () => {
+      needFix(); const m = await mkMini("H3", { paid: false }); const ctl = await mkMini("H3c", { paid: false }); V(await cancelSvc("oa", m.dep, { confirm: 1 }), "ยกเลิก H3");
+      eq([has(await drawerAt("oa", m.unpaid as Bk, NOW), "trips-bk-qr"), has(await drawerAt("oa", ctl.unpaid as Bk, NOW), "trips-bk-qr")], [false, true], "ปุ่ม QR");
+    });
+    await st("PG-10", "[หน้า+โค้ด] H4: รอบที่มีคนแสดงทางยกเลิกทางเดียว (ไม่มีทั้ง trips-dep-cancel และ trips-dep-cancel-bookings พร้อมกัน · มี trips-dep-cancel-bookings) · ข้อความ departures.* ของกล่องยกเลิก/ตัดสินต่ำกว่าขั้นต่ำไม่มี \"ยังไม่เปิด\" / \"ทำที่นี่ไม่ได้\" / \"not available\"", async () => {
+      needFix(); const h = await pageAt("departures", { dep: D("Q") }); const bad: string[] = [];
+      if (!has(h, "trips-dep-cancel-bookings") || has(h, "trips-dep-cancel")) bad.push(`ปุ่ม: ใหม่ ${has(h, "trips-dep-cancel-bookings")} เดิม ${has(h, "trips-dep-cancel")}`);
+      for (const [k, v] of [...Object.entries(fth), ...Object.entries(fen)]) if (/^departures\.(cancel|decide|dialog)/i.test(k) && /ยังไม่เปิด|ทำที่นี่ไม่ได้|not (yet )?available/i.test(v)) bad.push(`${k}: ${v.slice(0, 50)}`);
+      ok(bad.length === 0, bad.slice(0, 5).join(" · "));
     });
   });
 
