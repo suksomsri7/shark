@@ -246,7 +246,7 @@ export function DeparturePanel({ unitSlug, vm, base, q, resources, openDecide }:
             {t("depCancel.button")}
           </button>
         ) : null}
-        {a.cancel ? (
+        {a.cancel && !vm.cancelBlocked ? (
           <button type="button" data-testid="trips-dep-cancel" className={`${BTN_DANGER} w-full`} onClick={() => setOpen("cancel")}>
             {t("departures.actions.cancel")}
           </button>

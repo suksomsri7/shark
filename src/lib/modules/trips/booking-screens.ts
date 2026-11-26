@@ -640,7 +640,7 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
       travellers: { seats, names: passengers.map((x) => x.fullName).filter((n) => n.trim() !== ""), formsAvailable: false },
       refunds: refundList.ok ? refundList.value.items.map((r) => ({ requestId: r.id, status: r.status, amountSatang: r.amountSatang, createdLocal: localYmd(unit.tz, r.createdAt) })) : [],
       actions: { pay, qr: pay, approve, reject: approve, cancel: g.can(CANCEL) && UNPAID_CANCEL_STATUSES.includes(b.status), change: false, refund: false },
-      cancelChoice: await bookingCancelChoiceOf(g.db as unknown as Parameters<typeof bookingCancelChoiceOf>[0], g, b, now, { refund: g.can("trips.refund.request"), close: g.can(CANCEL) }),
+      cancelChoice: await bookingCancelChoiceOf(g.db as unknown as Parameters<typeof bookingCancelChoiceOf>[0], g, b, now, { refund: g.can("trips.refund.request"), close: g.can(CANCEL), approve: g.can("trips.refund.approve"), execute: g.can("trips.refund.execute") }),
     },
   };
 }

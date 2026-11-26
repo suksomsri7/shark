@@ -167,7 +167,7 @@ export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
       </p>
       {vm.cancelBlocked ? (
         <p role="note" className="rounded-lg border border-dashed border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)]">
-          {t("departures.decide.peopleOnly")}
+          {t("depCancel.useNewButton")}
         </p>
       ) : null}
       <div role="radiogroup" aria-label={t("departures.decide.title", { date: D.short(d.localDate), title: T(d.productTitle, d.productTitleEn) })} className="grid min-w-0 grid-cols-1 gap-2 sm:grid-cols-3">
@@ -181,7 +181,7 @@ export function DecideDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
         </button>
         <button type="button" role="radio" aria-checked={choice === "CANCEL"} data-testid="trips-decide-cancel" className={opt(choice === "CANCEL", cancelOff)} disabled={cancelOff} onClick={() => setChoice("CANCEL")}>
           <span className={cancelOff ? "" : "text-[color:var(--color-danger)]"}>{t("departures.decide.cancel")}</span>
-          <span className="font-normal text-[color:var(--color-muted)]">{vm.cancelBlocked ? t("departures.cancelDialog.blocked") : t("departures.decide.cancelHint")}</span>
+          <span className="font-normal text-[color:var(--color-muted)]">{vm.cancelBlocked ? t("depCancel.useNewButton") : t("departures.decide.cancelHint")}</span>
         </button>
       </div>
       {choice === "MERGE" ? (
@@ -240,7 +240,7 @@ export function CancelDialog({ unitSlug, vm, onClose }: { unitSlug: string; vm: 
     >
       {vm.cancelBlocked ? (
         <p role="alert" className="rounded-lg border border-dashed border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)]">
-          {t("departures.cancelDialog.blockedLong", { n: d.sold + d.held + d.reserved })}
+          {t("depCancel.useNewButton")}
         </p>
       ) : null}
       <div data-testid="trips-cancel-reason">{R.ui()}</div>

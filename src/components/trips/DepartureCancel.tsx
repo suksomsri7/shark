@@ -1,12 +1,13 @@
 "use client";
 // TRIPS T1.6a1 ▸ ร้านยกเลิกรอบที่มีคนจอง (ใบสั่ง T1.6 §9): กล่องยืนยัน (พิมพ์จำนวนการจอง) · การ์ดสถานะของรอบที่ร้านยกเลิก · ส่วนทางออกในลิ้นชักการจอง
 //   🔴 เขียนผ่าน cancel-departure-actions เท่านั้น · ชื่อช่องฟอร์มตาม §9 · ข้อความไม่มีรหัสดิบ · ไม่สัญญา "คืนอัตโนมัติ"/ระยะเวลา · a1 ไม่มีปุ่มย้าย
-import { useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { useLocale, useTranslations } from "next-intl";
 import type { DeparturePanelVM } from "@/lib/modules/trips";
 import type { BookingCancelChoiceVM } from "@/lib/modules/trips/cancel-departure";
 import { cancelDepartureWithBookingsAction, resolveCancelledBookingAction } from "@/lib/modules/trips/cancel-departure-actions";
+import { decideTripRefundAction, executeTripRefundAction } from "@/lib/modules/trips/money-actions";
 import { BTN, Dialog, ErrorLine, INPUT, useRunner } from "./ProductsScreenParts";
 import { BTN_DANGER, useDepDates, useTitle } from "./DepartureParts";
 import { formatBaht } from "./trips-shared";
@@ -66,6 +67,11 @@ export function DepartureCancelDialog({ unitSlug, vm, onClose }: { unitSlug: str
           {t("depCancel.confirmLabel", { n: c.bookings })}
           <input name="confirmBookings" inputMode="numeric" autoComplete="off" className={INPUT} value={typed} onChange={(e) => setTyped(e.target.value.replace(/\D/g, ""))} />
         </label>
+        {typed !== "" && typed !== String(c.bookings) ? (
+          <p data-testid="trips-depcancel-mismatch" role="status" className="text-sm text-[color:var(--color-danger)]">
+            {t("depCancel.mismatch", { typed, n: c.bookings })}
+          </p>
+        ) : null}
         {error ? (
           <p data-testid="trips-depcancel-error" role="alert" className="rounded-lg border border-[color:var(--color-danger)] px-3 py-2 text-sm text-[color:var(--color-danger)]">
             {error}
@@ -84,7 +90,7 @@ export function DepartureCancelDialog({ unitSlug, vm, onClose }: { unitSlug: str
   );
 }
 
-/** การ์ดสถานะของรอบที่ร้านยกเลิก (trips-depcancel-status) + ลิงก์รายการการจองที่ยังรอ */
+/** การ์ดสถานะของรอบที่ร้านยกเลิก (trips-depcancel-status) + ลิงก์รายการการจองที่ยังรอ · a1 ไม่แสดงจำนวนย้าย (H6) · รออนุมัติแยกจากต้องโอน (H1) */
 export function DepartureCancelStatus({ unitSlug, vm }: { unitSlug: string; vm: DeparturePanelVM }) {
   const t = useTranslations("trips");
   const s = vm.cancel?.status;
@@ -92,7 +98,9 @@ export function DepartureCancelStatus({ unitSlug, vm }: { unitSlug: string; vm: 
   return (
     <section data-testid="trips-depcancel-status" className={`${BOX} flex min-w-0 flex-col gap-1`}>
       <p className="font-bold">{t("depCancel.statusTitle")}</p>
-      <p className="break-words">{t("depCancel.status", { a: s.pending, o: s.overdue, b: s.moved, c: s.refunding, y: formatBaht(s.toTransferSatang), d: s.refunded, e: s.noMoney })}</p>
+      <p className="break-words">
+        {t("depCancel.status", { a: s.pending, o: s.overdue, qa: s.awaitingApproval, q: formatBaht(s.awaitingApprovalSatang), c: s.approved, y: formatBaht(s.toTransferSatang), d: s.refunded, e: s.noMoney })}
+      </p>
       <Link data-testid="trips-depcancel-list" href={cancelListHref(unitSlug, "pending")} className="inline-flex min-h-11 items-center font-medium underline underline-offset-2">
         {t("depCancel.list")}
       </Link>
@@ -100,33 +108,94 @@ export function DepartureCancelStatus({ unitSlug, vm }: { unitSlug: string; vm: 
   );
 }
 
-/** ส่วนทางออกในลิ้นชักการจอง: คืนเงินเต็ม (มีเงิน) · ปิดการจอง (ไม่มีเงิน) · คำเตือนโอนค้าง (ภายในร้าน · N5) */
+/** ปุ่มกดครั้งเดียว (H2): กันกดซ้ำแบบ synchronous (ref) · กุญแจเดียวต่อปุ่มหนึ่งตัวที่เรนเดอร์ (กดหลายครั้ง = คำขอเดียว) · ผิดพลาด ⇒ รีเฟรชลิ้นชักให้เห็นสถานะจริง */
+function OnceButton({ testid, prefix, className, disabled, label, act, name, value }: { testid: string; prefix: string; className: string; disabled?: boolean; label: string; act: (key: string) => Promise<{ ok: boolean; message?: string; messageTh?: string; code?: string }>; name?: string; value?: string }) {
+  const t = useTranslations("trips");
+  const { busy, error, run, router } = useRunner(t("common.failed"));
+  const [key] = useState(() => newKey(prefix));
+  const inflight = useRef(false);
+  const click = async () => {
+    if (inflight.current) return;
+    inflight.current = true;
+    try {
+      if (!(await run(() => act(key)))) router.refresh();
+    } finally {
+      inflight.current = false;
+    }
+  };
+  return (
+    <>
+      <button type="button" data-testid={testid} name={name} value={value} className={className} disabled={busy || disabled} onClick={() => void click()}>
+        {label}
+      </button>
+      <ErrorLine text={error} />
+    </>
+  );
+}
+
+/** ฟอร์มอนุมัติ/บันทึกโอนคืนของคำขอติดป้าย (H1): ช่องตรงกับ input ของ action เดิม (ไม่มีช่องปรับยอด) · กุญแจซ่อนหนึ่งตัวต่อการเรนเดอร์ · กันกดซ้ำ (ref) · ผิดพลาด ⇒ รีเฟรช */
+function RefundForm({ testid, prefix, label, act, children }: { testid: string; prefix: string; label: string; act: (input: Record<string, string>) => Promise<{ ok: boolean; message?: string; messageTh?: string; code?: string }>; children: ReactNode }) {
+  const t = useTranslations("trips");
+  const { busy, error, run, router } = useRunner(t("common.failed"));
+  const [key] = useState(() => newKey(prefix));
+  const inflight = useRef(false);
+  const submit = async (form: HTMLFormElement) => {
+    if (inflight.current) return;
+    inflight.current = true;
+    try {
+      const input = Object.fromEntries([...new FormData(form).entries()].map(([k, v]) => [k, String(v)]));
+      if (!(await run(() => act(input)))) router.refresh();
+    } finally {
+      inflight.current = false;
+    }
+  };
+  return (
+    <form
+      data-testid={testid}
+      className="flex min-w-0 flex-col gap-2"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void submit(e.currentTarget);
+      }}
+    >
+      {children}
+      <input type="hidden" name="idempotencyKey" value={key} />
+      <button type="submit" className={BTN} disabled={busy}>
+        {label}
+      </button>
+      <ErrorLine text={error} />
+    </form>
+  );
+}
+
+/** ส่วนทางออกในลิ้นชักการจอง: คืนเงินเต็ม (มีเงิน) · ปิดการจอง (ไม่มีเงิน) · อนุมัติ/บันทึกโอนคืนของคำขอติดป้าย (H1 · action เดิม) · คำเตือนโอนค้าง (ภายในร้าน · N5) */
 export function BookingCancelChoice({ unitSlug, bookingId, tz, cc }: { unitSlug: string; bookingId: string; tz: string; cc: BookingCancelChoiceVM }) {
   const t = useTranslations("trips");
   const locale = useLocale();
-  const { busy, error, run } = useRunner(t("common.failed"));
   const [reason, setReason] = useState("");
   const when = new Intl.DateTimeFormat(locale === "en" ? "en-GB" : "th-TH", { dateStyle: "medium", timeStyle: "short", timeZone: tz }).format(new Date(cc.decideBy));
   const pending = cc.choice === "PENDING";
-  const go = (choice: "REFUND" | "NO_MONEY") => {
+  const rq = cc.refund;
+  const resolve = (choice: "REFUND" | "NO_MONEY") => (key: string) => {
     const f = new FormData();
     f.set("bookingId", bookingId);
     f.set("expectedVersion", String(cc.version));
     f.set("choice", choice);
-    f.set("idempotencyKey", newKey(choice === "REFUND" ? "rf" : "nm"));
+    f.set("idempotencyKey", key);
     if (reason.trim()) f.set("reason", reason.trim());
-    return run(() => resolveCancelledBookingAction(unitSlug, f));
+    return resolveCancelledBookingAction(unitSlug, f);
   };
   const reasonOk = !cc.reasonRequired || reason.trim().length >= 3;
+  const statusText = rq ? (rq.status === "QUOTED" ? "depCancel.reqQuoted" : rq.status === "APPROVED" ? "depCancel.reqApproved" : rq.status === "DONE" ? "depCancel.reqDone" : "depCancel.choiceRefund") : null;
   return (
     <section data-testid="trips-bk-depcancel" className={`${BOX} flex min-w-0 flex-col gap-2`}>
       <p className="font-bold">{t("depCancel.drawerTitle")}</p>
       {pending ? <p>{cc.overdue ? t("depCancel.drawerOverdue") : t("depCancel.drawerPending", { date: when })}</p> : null}
-      {cc.choice === "REFUND" && cc.refund ? <p>{t("depCancel.choiceRefund", { x: formatBaht(cc.refund.amountSatang) })}</p> : null}
+      {cc.choice === "REFUND" && rq && statusText ? <p data-testid="trips-bk-depcancel-state">{t(statusText, { x: formatBaht(rq.amountSatang) })}</p> : null}
       {cc.choice === "NO_MONEY" ? <p>{t("depCancel.choiceNoMoney")}</p> : null}
       {cc.choice === "MOVED" ? <p>{t("depCancel.choiceMoved")}</p> : null}
       {cc.choice === "AGENCY_MONEY_HELD" ? <p>{t("depCancel.choiceAgency")}</p> : null}
-      {cc.refund?.transferDue ? (
+      {rq?.transferDue ? (
         <p data-testid="trips-bk-refund-transfer-due" role="alert" className="text-[color:var(--color-danger)]">
           {t("depCancel.transferDue", { days: TRANSFER_DUE_DAYS })}
         </p>
@@ -137,17 +206,26 @@ export function BookingCancelChoice({ unitSlug, bookingId, tz, cc }: { unitSlug:
           <input name="reason" className={INPUT} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} />
         </label>
       ) : null}
-      {cc.canRefund ? (
-        <button type="button" data-testid="trips-bk-resolve-refund" className={BTN} disabled={busy || !reasonOk} onClick={() => void go("REFUND")}>
-          {t("depCancel.refund", { x: formatBaht(cc.moneySatang) })}
-        </button>
+      {cc.canRefund ? <OnceButton testid="trips-bk-resolve-refund" prefix="rf" className={BTN} disabled={!reasonOk} label={t("depCancel.refund", { x: formatBaht(cc.moneySatang) })} act={resolve("REFUND")} /> : null}
+      {cc.canClose ? <OnceButton testid="trips-bk-resolve-close" prefix="nm" name="choice" value="NO_MONEY" className={BTN_DANGER} disabled={!reasonOk} label={t("depCancel.close")} act={resolve("NO_MONEY")} /> : null}
+      {cc.canApprove && rq ? (
+        <RefundForm testid="trips-bk-depcancel-approve" prefix="ap" label={t("depCancel.approve", { x: formatBaht(rq.amountSatang) })} act={(input) => decideTripRefundAction(unitSlug, input)}>
+          <input type="hidden" name="requestId" value={rq.requestId} />
+          <input type="hidden" name="decision" value="APPROVE" />
+        </RefundForm>
       ) : null}
-      {cc.canClose ? (
-        <button type="button" data-testid="trips-bk-resolve-close" name="choice" value="NO_MONEY" className={BTN_DANGER} disabled={busy || !reasonOk} onClick={() => void go("NO_MONEY")}>
-          {t("depCancel.close")}
-        </button>
+      {cc.canExecute && rq ? (
+        <RefundForm testid="trips-bk-depcancel-transfer" prefix="ex" label={t("depCancel.execute", { x: formatBaht(rq.amountSatang) })} act={(input) => executeTripRefundAction(unitSlug, input)}>
+          <input type="hidden" name="requestId" value={rq.requestId} />
+          <label className="flex min-w-0 flex-col gap-1">
+            {t("depCancel.executeTender")}
+            <select name="bankTender" className={INPUT} defaultValue="TRANSFER">
+              <option value="TRANSFER">{t("depCancel.tenderTransfer")}</option>
+              <option value="PROMPTPAY">{t("depCancel.tenderPromptpay")}</option>
+            </select>
+          </label>
+        </RefundForm>
       ) : null}
-      <ErrorLine text={error} />
     </section>
   );
 }

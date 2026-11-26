@@ -152,7 +152,8 @@ export async function departureCancelKindOf(db: Tx, g: { tenantId: string; unitI
 export async function receivedAfterCancelOf(db: Tx, g: { tenantId: string; unitId: string }, bookingId: string, departureId: string): Promise<boolean> {
   const rows = await db.$queryRaw<{ x: number }[]>`SELECT 1 AS "x" FROM "TripMoneyEvent" e JOIN "TripDepartureCancelOutcome" o ON o."bookingId" = e."bookingId" AND o."tenantId" = e."tenantId" AND o."departureId" = ${departureId}
     WHERE e."bookingId" = ${bookingId} AND e."tenantId" = ${g.tenantId} AND e."unitId" = ${g.unitId} AND e."kind" = 'RECEIVED' AND e."createdAt" > o."createdAt" LIMIT 1`;
-  return rows.length > 0;
+  // H7: รับเงินผ่านกิ่งรอบที่ร้านยกเลิกของ payTx (audit after.departureCancelled) ⇒ หลังยกเลิกเสมอ ไม่ขึ้นกับนาฬิกาของคำขอ
+  return rows.length > 0 || (await db.$queryRaw<{ x: number }[]>`SELECT 1 AS "x" FROM "AuditLog" WHERE "tenantId" = ${g.tenantId} AND "action" = 'trips.payment.record' AND "targetId" = ${bookingId} AND "after"->>'departureCancelled' = 'true' LIMIT 1`).length > 0;
 }
 
 // ═══════════════════════ audit · outbox ═══════════════════════
@@ -552,6 +553,7 @@ async function payTx(tx: Tx, c: Ctx, g: Gate, v: PayInput, base: string, keyHash
       tender: v.tender,
       slices: events.map((e) => `${e.dueId}:${e.amountSatang}:${e.vatSatang}:${e.passThroughSatang}`).join(","),
       slipId: v.slipId ?? null,
+      ...(shopCancelled ? { departureCancelled: true } : {}), // T1.6a1 H7 ▸ ข้อเท็จจริงว่าเข้ากิ่งรอบที่ร้านยกเลิก ◂
       idemKeyHash: keyHash,
       bodyHash,
       ...(v.reference ? { reference: v.reference } : {}),

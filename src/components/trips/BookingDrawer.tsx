@@ -266,7 +266,7 @@ export default function BookingDrawer({ unitSlug, vm, base, q, channels }: { uni
               {t("bookings.actions.pay")}
             </button>
           ) : null}
-          {a.qr ? (
+          {a.qr && !vm.cancelChoice ? (
             <button type="button" data-testid="trips-bk-qr" className={`${BTN} w-full`} onClick={() => setOpen({ kind: "pay", tender: "PROMPTPAY" })}>
               {t("bookings.actions.qr")}
             </button>

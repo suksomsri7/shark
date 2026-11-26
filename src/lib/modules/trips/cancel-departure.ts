@@ -365,10 +365,10 @@ async function settleNoMoneyInTx(
 }
 
 /** ยื่นคำขอคืนเต็ม (ป้าย DEPARTURE_CANCEL) ในธุรกรรมของผู้เรียก — ผู้เรียกถือแถวการจองแล้ว · อนุมัติให้เอง (ไม่ผ่าน X12 · N5) · แถวผล ⇒ REFUND */
-async function fileFullRefundInTx(tx: Tx, c: Ctx, lb: MoneyBooking, o: { kind: string; reason: string; key: string; outcomeId: string }): Promise<{ requestId: string; amountSatang: number; status: string }> {
+async function fileFullRefundInTx(tx: Tx, c: Ctx, lb: MoneyBooking, o: { kind: string; reason: string; key: string; outcomeId: string; lateMoney?: boolean }): Promise<{ requestId: string; amountSatang: number; status: string }> {
   const g: CGate = { tenantId: c.tenantId, unitId: c.unitId, tz: "" };
   // F1 (ข): มีใบรับบันทึกหลังแถวผล (เงินเข้าหลังร้านยกเลิก) ⇒ ไม่อนุมัติให้เอง — QUOTED (ยังติดป้าย · ปรับยอดไม่ได้) รอผู้ถือ trips.refund.approve
-  const late = await receivedAfterCancelOf(tx, g, lb.id, lb.departureId);
+  const late = o.lateMoney === true || (await receivedAfterCancelOf(tx, g, lb.id, lb.departureId)); // H7: ยื่นใหม่ใน payTx = หลังยกเลิกเสมอ
   const requestHash = sha256hex(JSON.stringify(["trips.depcancel.refund.v1", lb.id, o.kind, o.reason]));
   const f = await fileRefundRequestInTx(tx, c, g, lb, {
     reasonKind: o.kind as "EXTERNAL" | "MIN_NOT_MET" | "SHOP_FAULT",
@@ -482,7 +482,7 @@ export async function withdrawForPaymentInTx(tx: Tx, c: Ctx, g: CGate, b: MoneyB
       SELECT "cancelKind", "cancelReason" FROM "TripDeparture" WHERE "id" = ${lb.departureId} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`)[0];
     const out = await lockOutcomeTx(tx, g, lb.departureId, lb.id);
     if (!dep?.cancelKind || !out || out.choice !== "PENDING") return;
-    const f = await fileFullRefundInTx(tx, c, lb, { kind: dep.cancelKind, reason: dep.cancelReason ?? DEFAULT_REFUND_REASON, key: `depcancel:${lb.id}:refile:${open.id}`, outcomeId: out.id });
+    const f = await fileFullRefundInTx(tx, c, lb, { kind: dep.cancelKind, reason: dep.cancelReason ?? DEFAULT_REFUND_REASON, key: `depcancel:${lb.id}:refile:${open.id}`, outcomeId: out.id, lateMoney: true });
     // F2: ลำดับใหม่ (audit ของทางเลือกนับลำดับ) + audit ของการยื่นใหม่ ⇒ อีเวนต์ไม่ชนกุญแจเดิม (ไม่ถูก skipDuplicates กลืน)
     const seq = await choiceSeqOf(tx, g, lb.id);
     await emitMoney(tx, g, [madeEvt(lb.id, lb.departureId, "REFUND", seq, "STAFF", f.requestId)]);
@@ -502,7 +502,11 @@ export type DepartureCancelVM = {
   /** ก่อนยกเลิก: สรุปของกล่องยืนยัน (จำนวน = ค่าที่ต้องพิมพ์ยืนยัน) */
   confirm: { bookings: number; heldSatang: number; agency: number; noMoney: number };
   /** หลังร้านยกเลิก: การ์ดสถานะ · null = รอบไม่ได้ถูกยกเลิกทางนี้ */
-  status: { kind: string; decideBy: string; pending: number; overdue: number; moved: number; refunding: number; toTransferSatang: number; refunded: number; noMoney: number; agencyHeld: number } | null;
+  status: {
+    kind: string; decideBy: string; pending: number; overdue: number; moved: number; refunding: number; toTransferSatang: number; refunded: number; noMoney: number; agencyHeld: number;
+    /** H1: คำขอคืนเต็มที่ยังรอผู้อนุมัติ (QUOTED) แยกจากที่อนุมัติแล้วรอโอน (APPROVED) */
+    awaitingApproval: number; awaitingApprovalSatang: number; approved: number;
+  } | null;
 };
 type SummaryRow = { n: number; held: number | bigint | null; agency: number; nomoney: number };
 type OutcomeStatRow = { choice: string; reqStatus: string | null; amount: number | null };
@@ -538,6 +542,9 @@ export async function departureCancelSummaryOf(db: Tx, g: { tenantId: string; un
       moved: n((r) => r.choice === "MOVED"),
       refunding: refunding.length,
       toTransferSatang: refunding.filter((r) => r.reqStatus === "APPROVED").reduce((t, r) => t + Number(r.amount ?? 0), 0),
+      awaitingApproval: refunding.filter((r) => r.reqStatus === "QUOTED").length,
+      awaitingApprovalSatang: refunding.filter((r) => r.reqStatus === "QUOTED").reduce((t, r) => t + Number(r.amount ?? 0), 0),
+      approved: refunding.filter((r) => r.reqStatus === "APPROVED").length,
       refunded: n((r) => r.choice === "REFUND" && r.reqStatus === "DONE"),
       noMoney: n((r) => r.choice === "NO_MONEY"),
       agencyHeld: n((r) => r.choice === "AGENCY_MONEY_HELD"),
@@ -555,6 +562,9 @@ export type BookingCancelChoiceVM = {
   canClose: boolean;
   /** ต้องใส่เหตุผล (การจองของเอเจนซี่) */
   reasonRequired: boolean;
+  /** H1: อนุมัติคำขอ QUOTED (trips.refund.approve) · บันทึกโอนคืนของคำขอ APPROVED (trips.refund.execute) — action เดิม */
+  canApprove: boolean;
+  canExecute: boolean;
   refund: { requestId: string; status: string; amountSatang: number; transferDue: boolean } | null;
 };
 /** ทางออกของการจองบนรอบที่ร้านยกเลิก (ลิ้นชัก) · null = ไม่อยู่ในรอบที่ร้านยกเลิก */
@@ -563,7 +573,7 @@ export async function bookingCancelChoiceOf(
   g: { tenantId: string; unitId: string },
   b: { id: string; departureId: string; version: number; paidSatang: number; refundedSatang: number; collectMode: string; agentAccountId: string | null },
   now: Date,
-  can: { refund: boolean; close: boolean },
+  can: { refund: boolean; close: boolean; approve?: boolean; execute?: boolean },
 ): Promise<BookingCancelChoiceVM | null> {
   const rows = await db.$queryRaw<{ choice: string; decideBy: Date | null; reqId: string | null; reqStatus: string | null; amount: number | null; approvedAt: string | null }[]>`
     SELECT o."choice", d."cancelDecideBy" AS "decideBy", r."id" AS "reqId", r."status" AS "reqStatus", r."amountSatang" AS "amount",
@@ -588,6 +598,8 @@ export async function bookingCancelChoiceOf(
     canRefund: pending && money > 0 && !agency && can.refund,
     canClose: pending && money === 0 && can.close,
     reasonRequired: agency,
+    canApprove: o.choice === "REFUND" && o.reqStatus === "QUOTED" && can.approve === true,
+    canExecute: o.choice === "REFUND" && o.reqStatus === "APPROVED" && can.execute === true,
     refund: o.reqId
       ? { requestId: o.reqId, status: String(o.reqStatus), amountSatang: Number(o.amount ?? 0), transferDue: o.reqStatus === "APPROVED" && Number.isFinite(approvedAt) && now.getTime() - approvedAt > TRANSFER_DUE_DAYS * DAY_MS }
       : null,

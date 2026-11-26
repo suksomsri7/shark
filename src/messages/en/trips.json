@@ -677,7 +677,7 @@
       "note": "More detail (optional)",
       "otherText": "Reason (at least 3 characters)",
       "blocked": "This departure has bookings/holds and cannot be cancelled yet",
-      "blockedLong": "This departure has {n} sold/held/reserved seats — departures with people cannot be cancelled here yet (moving or refunding a whole departure is not available yet)",
+      "blockedLong": "This departure has {n} sold/held/reserved seats — use \"Cancel departure (has bookings)\" in the departure panel",
       "confirm": "Cancel this departure",
       "spoof": "A typed reason cannot start with \"preset:\" or \"merge:\""
     },
@@ -1092,6 +1092,9 @@
       "aria": "Actions for this booking"
     },
     "reason": {
+      "DEPARTURE_CANCELLED_SLIP_ONLY": "The shop cancelled this departure — only transfer/PromptPay with a reference, or a verified slip, can be recorded",
+      "DEPARTURE_CANCELLED": "The shop cancelled this departure — no further payment is requested",
+      "DEPARTURE_CANCELLED_USE_RESOLVE": "The shop cancelled this departure — use the cancelled-departure choice in this drawer",
       "REFUND_IN_PROGRESS": "This booking has an open refund request — no more payments can be taken",
       "NOTHING_DUE": "Nothing is outstanding on this booking",
       "PENDING_APPROVAL": "The booking is awaiting approval — approve it before taking payment",
@@ -1640,12 +1643,12 @@
       "SHOP_FAULT": "Shop's fault (e.g. boat breakdown)"
     },
     "reasonLabel": "Reason (3–500 characters)",
-    "summary": "Bookings {n} · Money held THB {x} (maximum full refund) · Agency {m} · No money {k}",
+    "summary": "Bookings {n} · Money held THB {x} (maximum full refund) · Agency {m} · No money in the system yet {k}",
     "note": "Every booking will wait for a choice: a full refund of the money received, or closing the booking when no money is held",
     "confirmLabel": "Type the number of bookings ({n}) to confirm — a cancelled departure cannot be reopened",
     "submit": "Cancel departure",
     "statusTitle": "The shop cancelled this departure",
-    "status": "Awaiting choice {a} · Past deadline {o} · Moved {b} · Refunding {c} (to transfer THB {y}) · Refunded {d} · No money {e}",
+    "status": "Awaiting choice {a} · Past deadline {o} · Awaiting approval {qa} (THB {q}) · Approved, awaiting transfer {c} (to transfer THB {y}) · Refunded {d} · Closed with no money {e}",
     "list": "View bookings awaiting a choice",
     "filterPending": "Awaiting choice (cancelled departures)",
     "filterOverdue": "Past the choice deadline",
@@ -1659,6 +1662,16 @@
     "choiceNoMoney": "Booking closed (no money held)",
     "choiceMoved": "Moved to another departure",
     "choiceAgency": "The agency holds this booking's money in the system — this path is not available yet",
-    "transferDue": "Refund approved but the transfer has not been recorded for more than {days} days — pay the customer, then record it under refunds"
+    "transferDue": "Refund approved but the transfer has not been recorded for more than {days} days — pay the customer, then press \"Record transfer done\" below",
+    "reqQuoted": "Full refund awaiting approval THB {x}",
+    "reqApproved": "Approved, awaiting transfer THB {x}",
+    "reqDone": "Refunded THB {x}",
+    "approve": "Approve full refund THB {x}",
+    "execute": "Record transfer done THB {x}",
+    "executeTender": "Refunded via",
+    "tenderTransfer": "Bank transfer",
+    "tenderPromptpay": "PromptPay",
+    "mismatch": "The number typed ({typed}) does not match the number of bookings ({n})",
+    "useNewButton": "This departure has bookings — use \"Cancel departure (has bookings)\" in the departure panel"
   }
 }

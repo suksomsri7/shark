@@ -44,7 +44,7 @@ const INPUT = z
 const DEP_SELECT = { id: true, productId: true, localDate: true, startsAt: true, status: true, capacity: true, sold: true, held: true, reserved: true, minPax: true } as const;
 const ymd = (d: Date) => d.toISOString().slice(0, 10);
 
-export type DecideBelowMinResult = { ok: true; decision: "RUN" | "CANCEL" | "MERGE"; status: string } | DeskFail;
+export type DecideBelowMinResult = { ok: true; decision: "RUN" | "CANCEL" | "MERGE"; status: string; replayed?: boolean } | DeskFail;
 
 /** ตัดสินรอบต่ำกว่าขั้นต่ำ — ด่าน gateUnit "status" ของ T0.3 (ไม่มี trips.departure.status ⇒ FORBIDDEN) */
 export async function decideBelowMin(ctx: TripCtx, input: unknown, opts?: TripOpts): Promise<DecideBelowMinResult> {
@@ -62,6 +62,12 @@ export async function decideBelowMin(ctx: TripCtx, input: unknown, opts?: TripOp
   const row = await db.tripDeparture.findFirst({ where: { id: v.departureId, tenantId: g.tenantId, unitId: g.unitId }, select: DEP_SELECT });
   if (!row) return deskFail("NOT_FOUND");
   const src = { ...row, localDate: ymd(row.localDate) };
+  // TRIPS T1.6a1 ▸ ทางใหม่ (รอบที่มีคน · kind MIN_NOT_MET) · H5: คีย์เดิมหลังสำเร็จ ⇒ replayed — ตรวจก่อนด่าน "ยังต่ำกว่าขั้นต่ำ" ◂
+  const withBookings = () => cancelDepartureWithBookings(ctx, { unitId: g.unitId, departureId: row.id, kind: "MIN_NOT_MET", reason: v.reason ?? "", confirmBookings: v.confirmBookings, expectedVersion: v.expectedVersion, idempotencyKey: v.idempotencyKey }, opts);
+  if (v.decision === "CANCEL" && v.idempotencyKey && row.status === "CANCELLED") {
+    const w = await withBookings();
+    return w.ok ? { ok: true, decision: "CANCEL", status: "CANCELLED", replayed: w.value.replayed } : w;
+  }
   if (departureCellState(src, { now, today, lowAtOrBelow: null }) !== "BELOW_MIN") return deskFail("NOT_BELOW_MIN");
 
   if (v.decision === "RUN") {
@@ -70,8 +76,8 @@ export async function decideBelowMin(ctx: TripCtx, input: unknown, opts?: TripOp
   }
   if (v.decision === "CANCEL") {
     // TRIPS T1.6a1 ▸ รอบที่มีคน ⇒ ยกเลิกทางใหม่ kind MIN_NOT_MET (สิทธิ์ departure.status ∧ refund.approve ตรวจในบริการ) · รอบว่างคงทางเดิม ◂
-    const w = row.sold + row.held + row.reserved > 0 ? await cancelDepartureWithBookings(ctx, { unitId: g.unitId, departureId: row.id, kind: "MIN_NOT_MET", reason: v.reason ?? "", confirmBookings: v.confirmBookings, expectedVersion: v.expectedVersion, idempotencyKey: v.idempotencyKey }, opts) : null;
-    if (w) return w.ok ? { ok: true, decision: "CANCEL", status: "CANCELLED" } : w;
+    const w = row.sold + row.held + row.reserved > 0 ? await withBookings() : null;
+    if (w) return w.ok ? { ok: true, decision: "CANCEL", status: "CANCELLED", replayed: w.value.replayed } : w;
     const r = await cancelDeparture(ctx, { unitId: g.unitId, departureId: row.id, reason: v.reason ?? "" }, opts);
     return r.ok ? { ok: true, decision: "CANCEL", status: r.status } : r;
   }
