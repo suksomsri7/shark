@@ -31,7 +31,9 @@ export default function ReportExport({ vm }: { vm: TripReportVM }) {
         setError(r.code === "RATE_LIMITED" ? t("errors.RATE_LIMITED", { min: minutes }) : KNOWN.has(r.code) ? t(`errors.${r.code}`) : t("report.export.error"));
         return;
       }
-      const blob = new Blob([r.value.csv], { type: "text/csv;charset=utf-8" });
+      // K1: ผลที่ส่งผ่าน React Flight เป็นแถวข้อความถูกตัด U+FEFF ตัวแรก ⇒ เติมคืนก่อนสร้างไฟล์ (ไม่ซ้ำสองตัว)
+      const csv = r.value.csv.startsWith("\uFEFF") ? r.value.csv : `\uFEFF${r.value.csv}`;
+      const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;

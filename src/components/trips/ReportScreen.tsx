@@ -477,7 +477,7 @@ export default function ReportScreen({ vm, error }: { vm: TripReportVM; error: s
                   ) : null}
                 </span>
                 {/* J4: ข้อความยาวอยู่นอกเซลล์ห้ามตัดบรรทัด — ที่ 390 ขึ้นบรรทัดใหม่ได้ */}
-                {cv && r.noCosts === true ? <span className="w-full text-sm text-[color:var(--color-muted)] [overflow-wrap:anywhere]">({t("report.dep.noCosts")})</span> : null}
+                {cv && r.noCosts === true && r.state !== "CANCELLED" ? <span className="w-full text-sm text-[color:var(--color-muted)] [overflow-wrap:anywhere]">({t("report.dep.noCosts")})</span> : null}
               </li>
             ))}
           </ul>

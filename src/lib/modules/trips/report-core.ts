@@ -426,7 +426,9 @@ const monthEnd = (ymd: string): string => {
 export function reportRangeOf(i: { from?: string | null; to?: string | null }, today: string): { ok: true; from: string; to: string; days: number } | { ok: false; code: "INVALID_INPUT" | "RANGE_TOO_LARGE" } {
   const f = i.from === undefined || i.from === null || i.from === "" ? null : i.from;
   const t = i.to === undefined || i.to === null || i.to === "" ? null : i.to;
-  if ((f !== null && !isRealYmd(f)) || (t !== null && !isRealYmd(t))) return { ok: false, code: "INVALID_INPUT" };
+  // K3: ปี 2000–2100 เท่านั้น (ตรวจก่อนบวกวัน — ปลายปี 9999 บวกวันแล้วล้นจนโยน error)
+  const yearOk = (x: string) => Number(x.slice(0, 4)) >= 2000 && Number(x.slice(0, 4)) <= 2100;
+  if ((f !== null && (!isRealYmd(f) || !yearOk(f))) || (t !== null && (!isRealYmd(t) || !yearOk(t)))) return { ok: false, code: "INVALID_INPUT" };
   const from = f ?? (t !== null ? monthStart(t) : monthStart(today));
   const to = t ?? (f !== null ? monthEnd(f) : monthEnd(today));
   if (from > to) return { ok: false, code: "INVALID_INPUT" };
