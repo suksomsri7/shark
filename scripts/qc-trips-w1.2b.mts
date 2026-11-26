@@ -15,7 +15,7 @@
 //   SN ตัวเขียน policySnapshot ทุกตัว (เลื่อนรอบพกต่อ · รายการตัวเขียน · ไม่ฟื้นหลังลบ)   RV ตัวอ่านการจองสาธารณะ (ผลทั้งก้อน · ขอบโมดูล)
 //   SV จอร้านไม่มีเบอร์เต็ม/อีเมลที่พิมพ์ · ไม่มีสิทธิ์ = ไม่เห็น · รูปเบอร์ปิดบังของ 0066…   AF ผู้โจมตีเลือกทางสำรอง (เบอร์ normalize < 8 หลัก + ชื่อ+อีเมลของเหยื่อ)
 //   ── มติผู้คุมรอบ 1 E1–E6 (ชนะ C-3 · ผู้เขียนข้อสอบแยกรอบ 2 · 26 พ.ย.) — ORACLE-EDIT FB-3 FB-4 AF-1 SN-2 S-1 ตามมติ ──
-//   ER ลบลูกค้า (crm.contact.erased · member.erased ผ่าน consumers จริง) ⇒ ตัดสำเนาที่พิมพ์   E2 มีคีย์ ⇒ ไม่ถอยไป Party   E3 ขอบโมดูล/หน้า   E5 ไม่มีชนิดพกอีเมล   AU แฮชไม่รวมข้อมูลบุคคล
+//   ER ลบลูกค้า (crm.contact.erased · member.erased ผ่าน consumers จริง) ⇒ แทนสำเนาที่พิมพ์ด้วยป้าย {v:1, erased:true} (E7)   E2 มีคีย์ ⇒ ไม่ถอยไป Party   E3 ขอบโมดูล/หน้า   E5 ไม่มีชนิดพกอีเมล   AU แฮชไม่รวมข้อมูลบุคคล
 //
 // 🔴 แถวทดสอบอยู่ใต้ร้านชั่วคราว slug `trips-w12b-*` · ลบใน finally + กวาดค้างตอนเริ่ม · ค่าคาดหวังคิดเองจากมติ (ไม่เรียกโค้ดที่ถูกทดสอบเพื่อหาคำตอบ)
 // 🔴 การจองสาธารณะสร้างผ่านเส้นจริงของ W1.2a (startBookHold → confirmBookHold) + ร้านรับเงิน (recordTripPayment STAFF) · การจองของร้าน = bookTripsNow STAFF PAY_LATER
@@ -367,6 +367,9 @@ try {
   const N2 = `คนชื่อใหม่ W12b ${STAMP}`; // ชื่อใหม่ เบอร์เดิมของ X (R11)
   const P: Record<string, string> = {};
   const who = (k: string) => { P[k] ??= freshPhone(); return P[k] as string; };
+  // ORACLE-EDIT M-3 (ผู้เขียนข้อสอบ r3 · 26 พ.ย.): เบอร์ที่ร้านพิมพ์รูป 0066… ต้องไม่ขึ้นต้น 066 — normalizePartyPhone("0066 66…") ตัด 66 ซ้ำ (หนี้ของ modules/party · เบอร์มือถือ 066 จริง)
+  //   เดิมสุ่มได้ 06 6… ราว 1 ใน 10 รอบ ⇒ M-3 แดงผิดเหตุ (รอบ r3) · ตอนนี้ P4 = 0617 + ตัวนับ
+  P.P4 = `0617${String(900_000 + parseInt(hex(2), 16)).padStart(6, "0")}`;
   const partyOf = async (bookingId: string) => (await q<{ id: string; name: string; phone: string | null; phoneNorm: string | null; email: string | null; mergedIntoId: string | null; updatedAt: Date }>(
     `SELECT p.id, p.name, p.phone, p."phoneNorm", p.email, p."mergedIntoId", p."updatedAt" FROM "Party" p JOIN "TripBooking" t ON t."bookerPartyId" = p.id WHERE t.id = $1`, [bookingId]))[0];
   const snapOf = async (bookingId: string): Promise<Rec> => asRec((await q<{ s: unknown }>(`SELECT "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [bookingId]))[0]?.s) ?? {};
@@ -421,6 +424,7 @@ try {
       // ── มติ E1–E5 (ผู้เขียนข้อสอบแยก รอบ 2 · 26 พ.ย.) ──
       await mkPublic("E0", "gen", { name: NE, phone: who("PE1"), email: EE }); // Party E (ลบผ่าน CRM)
       await mkPublic("E1", "gen", { name: NE, phone: who("PE2"), email: EE });
+      await mkPublic("E0L", "gen", { name: NE, phone: who("PE3"), email: EE }); // ของ Party E ที่ทำเป็น "ก่อนแก้" (ไม่มีคีย์) ด้านล่าง
       await mkPublic("M0", "gen", { name: `ผู้จอง M ${STAMP}`, phone: who("PM"), email: `${EMAIL_PREFIX}m.${STAMP}@example.com` }); // Party M (ลบผ่านสมาชิก)
       await mkPublic("U0", "gen", { name: `ผู้จอง U ${STAMP}`, phone: who("PU"), email: `${EMAIL_PREFIX}u.${STAMP}@example.com` }); // Party U (CRM ตัดการผูก ไม่ล้าง Party)
       for (const [tag, ph] of [["E2a", "+66123456"], ["E2b", "+00661234567"], ["E2c", "+6612345678"]] as const) await mkPublic(tag, "gen", { name: NX, phone: ph, email: EX });
@@ -430,6 +434,7 @@ try {
       await mkPublic("RFL", "gen", { name: `ผู้จอง RFL ${STAMP}`, phone: who("RFL"), email: `${EMAIL_PREFIX}rfl.${STAMP}@example.com` });
       await mkStaff("SAU", { name: `ผู้จอง AU ${STAMP}`, phone: e164(who("AU")) }, who("AU"));
       await makeLegacy(BK.RFL?.id ?? "");
+      await makeLegacy(BK.E0L?.id ?? "");
       { // ร้านอื่น (tB): การจองที่ชี้ id ของ Party E (ปลูกตรง) — ตัวรับของร้าน A ห้ามแตะ
         await insertRow("Tenant", { id: tB, name: "ทดสอบ W1.2b b", slug: `${SA}-b`, status: "ACTIVE", updatedAt: new Date() }); tenantIds.push(tB);
         await insertRow("BusinessUnit", { id: uB, tenantId: tB, type: "TRIPS", status: "ACTIVE", name: "หน่วย b", slug: `${SLUG}b-${STAMP}`, settings: JSON.stringify({}), updatedAt: new Date() });
@@ -841,13 +846,13 @@ try {
       GRANT(await verify(b, local), `${b.tag} + เบอร์ที่พิมพ์ (หลังเลื่อน)`);
     }
   });
-  await st("SN-2", "ตัวเขียน TripBooking.policySnapshot ใน src/ มี 4 ที่เท่านั้น (สร้าง finalizeCoreInTx · เลื่อน changeImpl · ลบ T0.8 pdpa · ตัวรับการลบลูกค้า E1) — ที่ใหม่ต้องเพิ่มข้อสอบแบบ SN-1", () => {
+  await st("SN-2", "ตัวเขียน TripBooking.policySnapshot ใน src/ มี 4 ที่เท่านั้น (สร้าง finalizeCoreInTx · เลื่อน changeImpl · ลบ T0.8 pdpa (ลบคีย์ทิ้ง) · ตัวรับการลบลูกค้า E1/E7 (แทนด้วยป้าย)) — ที่ใหม่ต้องเพิ่มข้อสอบแบบ SN-1", () => {
     const files = git(["ls-files", "src"]).split("\n").filter((f) => /\.(ts|tsx)$/.test(f));
     const hits: string[] = [];
     for (const f of files) {
       const t = stripComments(read(f));
       if (!/"TripBooking"|tripBooking\./.test(t)) continue;
-      for (const m of t.matchAll(/"policySnapshot"\s*=|jsonb_set\(\s*"policySnapshot"|tripBooking\.(?:create|createMany|update|updateMany|upsert)\(\{[\s\S]{0,4000}?policySnapshot\s*:/g)) hits.push(`${f}:${t.slice(0, m.index ?? 0).split("\n").length}`);
+      for (const m of t.matchAll(/"policySnapshot"\s*=|tripBooking\.(?:create|createMany|update|updateMany|upsert)\(\{[\s\S]{0,4000}?policySnapshot\s*:/g)) hits.push(`${f}:${t.slice(0, m.index ?? 0).split("\n").length}`);
     }
     // ORACLE-EDIT SN-2 (ผู้คุม 26 พ.ย. · มติ E1): ตัวรับการลบลูกค้า (ตัด booker) = ตัวเขียนที่ 4 ใน pdpa.ts หรือ public-booking.ts
     const fs4 = hits.map((h) => h.replace(/:\d+$/, "")).sort();
@@ -962,38 +967,44 @@ try {
   const hasTyped = async (id: string) => { const r = await bkRow(id); return !!r && "booker" in r.s; };
   console.log("\n── ER: ลบลูกค้าในรายชื่อกลาง ⇒ ลบสำเนาที่พิมพ์ (มติ E1) ──");
   let erDone = false;
-  await st("ER-1", "crm.contact.erased {contactId, systemId, partyId=E} (Party ถูกล้างแบบ eraseContact) ผ่านตัวรับจริง consumers[…] ⇒ การจองทุกตัวของ Party E ในร้าน (E0 E1) ไม่มีคีย์ booker · version +1 · การจองของ Party อื่น (A0) และของร้านอื่นที่ชี้ id เดียวกัน ไม่ถูกแตะ", async () => {
-    const [e0, e1, a0] = needBk("E0", "E1", "A0");
+  // ORACLE-EDIT ER-1…ER-6 (ผู้คุม 26 พ.ย. · มติ E7): ตัวรับการลบไม่ลบคีย์ทิ้ง แต่แทนด้วยป้าย TOMB ⇒ "มีคีย์ · ไม่มีเบอร์ที่ใช้ได้" ⇒ ไม่มีใครยืนยันได้
+  const TOMB = { v: 1, erased: true };
+  const tombOf = async (id: string) => (await bkRow(id))?.s.booker;
+  const detailMask = async (b: Bk) => { const c = await detailOf(b); return [c.name ?? null, c.phoneMasked ?? null]; };
+  await st("ER-1", "crm.contact.erased {contactId, systemId, partyId=E} (Party ถูกล้างแบบ eraseContact) ผ่านตัวรับจริง consumers[…] ⇒ ทุกการจองของ Party E ในร้าน (E0 E1 + E0L ที่ไม่มีคีย์มาก่อน) ได้ booker = {v:1, erased:true} พอดี (ไม่มีชื่อ/เบอร์/อีเมล) · version +1 · การจองของ Party อื่น (A0) และของร้านอื่นที่ชี้ id เดียวกัน ไม่ถูกแตะ", async () => {
+    const [e0, e1, e0l, a0] = needBk("E0", "E1", "E0L", "A0");
     const pe = (await partyOf(e0.id))?.id;
-    eq((await partyOf(e1.id))?.id, pe, "E1 ชี้ Party E");
+    eq([(await partyOf(e1.id))?.id, (await partyOf(e0l.id))?.id], [pe, pe], "E1 E0L ชี้ Party E");
     typedRed((await bkRow(e1.id))?.s.booker, "E1 ก่อนลบ");
-    const v0 = [await vOf(e0.id), await vOf(e1.id)], a0r = await bkRow(a0.id), tb0 = (await q<{ version: number; s: Rec }>(`SELECT version, "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [OTHER_T.bookingId]))[0];
+    const ids = [e0.id, e1.id, e0l.id];
+    const v0 = await Promise.all(ids.map(vOf)), a0r = await bkRow(a0.id), tb0 = (await q<{ version: number; s: Rec }>(`SELECT version, "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [OTHER_T.bookingId]))[0];
     await anonymise(pe);
     const r = await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyId: pe });
     ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
-    eq([await hasTyped(e0.id), await hasTyped(e1.id), await vOf(e0.id), await vOf(e1.id)], [false, false, (v0[0] ?? 0) + 1, (v0[1] ?? 0) + 1], "E0 E1 หลังลบ");
+    eq([await Promise.all(ids.map(tombOf)), await Promise.all(ids.map(vOf))], [ids.map(() => TOMB), v0.map((v) => v + 1)], "E0 E1 E0L หลังลบ");
     const a0n = await bkRow(a0.id), tb1 = (await q<{ version: number; s: Rec }>(`SELECT version, "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [OTHER_T.bookingId]))[0];
     eq([a0n?.version, a0n?.s, tb1?.version, tb1?.s], [a0r?.version, a0r?.s, tb0?.version, tb0?.s], "การจองของ Party อื่น / ร้านอื่น");
     erDone = true;
   });
-  await st("ER-2", "หลัง ER-1: จอร้าน (รายการ · รายละเอียด · ใบรายชื่อ · CSV) ของ E1 ไม่มีชื่อ/เบอร์/อีเมลที่พิมพ์ · verifyBookSelf ด้วยเบอร์ที่พิมพ์ (E0 · E1) ⇒ VERIFY_FAILED รูปเดียวกับเบอร์ผิด", async () => {
+  await st("ER-2", "หลัง ER-1: จอร้าน (รายการ · รายละเอียด · ใบรายชื่อ · CSV) ของ E1 ไม่มีชื่อ/เบอร์/อีเมลที่พิมพ์ · ชื่อ = ของ Party (ล้างแล้ว) · เบอร์ปิดบัง null · verifyBookSelf ด้วยเบอร์ที่พิมพ์ (E0 E1) ⇒ VERIFY_FAILED รูปเดียวกับเบอร์ผิด", async () => {
     needSelf(); const [e0, e1] = needBk("E0", "E1"); ok(erDone, "ER-1 ไม่ผ่าน");
     const { blob } = await staffBlobs(scr(), [e1]);
     const leak = [NE, EE, ...fullPhones([who("PE1"), who("PE2")])].filter((x) => blob.includes(x));
     ok(leak.length === 0, `จอร้านยังมีข้อมูลผู้จอง ${leak.length} ค่า`);
+    eq([await detailMask(e1), (await listRow(e1)).bookerName], [[ERASED_NAME, null], ERASED_NAME], "ชื่อถอยไป Party · เบอร์ปิดบัง null");
     const rs = [await verify(e0, who("PE1")), await verify(e1, who("PE2")), await verify(e1, "0899999990")];
     for (const [i, x] of rs.entries()) ERR(x, "VERIFY_FAILED", `กรณีที่ ${i + 1}`);
     eq(rs.map((x) => Object.keys(x).sort()), rs.map(() => Object.keys(rs[2] ?? {}).sort()), "คีย์ผล");
   });
-  await st("ER-3", "ส่งเหตุการณ์เดิมซ้ำ 2 ครั้ง (ตัวรับ idempotent) ⇒ ไม่มีอะไรเปลี่ยนเพิ่ม (version · snapshot ของ E0 E1 เท่าเดิม)", async () => {
-    const [e0, e1] = needBk("E0", "E1"); ok(erDone, "ER-1 ไม่ผ่าน");
+  await st("ER-3", "ส่งเหตุการณ์เดิมซ้ำ 2 ครั้ง (ตัวรับ idempotent) ⇒ ไม่มีอะไรเปลี่ยนเพิ่ม (version · snapshot ของ E0 E1 E0L เท่าเดิม · ป้ายเดิม)", async () => {
+    const [e0, e1, e0l] = needBk("E0", "E1", "E0L"); ok(erDone, "ER-1 ไม่ผ่าน");
     const pe = (await partyOf(e0.id))?.id;
-    const b0 = [await bkRow(e0.id), await bkRow(e1.id)];
+    const b0 = await Promise.all([e0, e1, e0l].map((b) => bkRow(b.id)));
     for (let i = 0; i < 2; i++) ok((await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyId: pe })).ok === true, "ตัวรับ");
-    const b1 = [await bkRow(e0.id), await bkRow(e1.id)];
+    const b1 = await Promise.all([e0, e1, e0l].map((b) => bkRow(b.id)));
     eq(b1.map((x) => [x?.version, x?.s]), b0.map((x) => [x?.version, x?.s]), "หลังส่งซ้ำ");
   });
-  await st("ER-4", "member.erased {customerId, partyId=M} (Party ถูกล้าง) ผ่านตัวรับจริง ⇒ M0 ไม่มีคีย์ booker · version +1 · ยืนยันด้วยเบอร์ที่พิมพ์ ⇒ VERIFY_FAILED", async () => {
+  await st("ER-4", "member.erased {customerId, partyId=M} (Party ถูกล้าง) ผ่านตัวรับจริง ⇒ M0 booker = ป้าย · version +1 · ยืนยันด้วยเบอร์ที่พิมพ์ ⇒ VERIFY_FAILED · เบอร์ปิดบัง null", async () => {
     needSelf(); const [m0] = needBk("M0");
     const pm = (await partyOf(m0.id))?.id;
     typedRed((await bkRow(m0.id))?.s.booker, "M0 ก่อนลบ");
@@ -1001,17 +1012,31 @@ try {
     await anonymise(pm);
     const r = await fire("member.erased", { customerId: rid("cu"), partyId: pm });
     ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
-    eq([await hasTyped(m0.id), await vOf(m0.id)], [false, v0 + 1], "M0 หลังลบ");
+    eq([await tombOf(m0.id), await vOf(m0.id)], [TOMB, v0 + 1], "M0 หลังลบ");
     ERR(await verify(m0, who("PM")), "VERIFY_FAILED", "M0 + เบอร์ที่พิมพ์");
+    eq((await detailMask(m0))[1], null, "เบอร์ปิดบัง");
   });
-  await st("ER-5", "CRM ตัดการผูกแต่ไม่ล้าง Party (มีผู้ถืออื่น · eraseContact ทาง unlinkParty): crm.contact.erased {partyId=U} ⇒ U0 ไม่มีคีย์ booker และเบอร์ที่พิมพ์ (= เบอร์ของ Party U) ยืนยันไม่ได้ — ⚠️ ผู้ร่างคาดว่าแดงแม้ทำตาม E1+E2 (ตัดคีย์แล้วกลายเป็น 'ไม่มีคีย์' ⇒ ถอยไป Party) · ผู้คุมตัดสิน", async () => {
+  await st("ER-5", "CRM ตัดการผูกแต่ไม่ล้าง Party (มีผู้ถืออื่น · Party U ยังมีเบอร์ = เบอร์ที่พิมพ์): crm.contact.erased {partyId=U} ⇒ U0 booker = ป้าย · ยืนยันด้วยเบอร์ที่พิมพ์และเบอร์ปัจจุบันของ Party ⇒ VERIFY_FAILED รูปเดียว · จอ: ชื่อ = ของ Party · เบอร์ปิดบัง null (มติ E7)", async () => {
     needSelf(); const [u0] = needBk("U0");
-    const pu = (await partyOf(u0.id))?.id;
+    const pu = await partyOf(u0.id);
     typedRed((await bkRow(u0.id))?.s.booker, "U0 ก่อนลบ");
-    const r = await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyId: pu });
+    const r = await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyId: pu?.id });
     ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
-    eq(await hasTyped(u0.id), false, "U0 ไม่มีคีย์ booker");
-    ERR(await verify(u0, who("PU")), "VERIFY_FAILED", "U0 + เบอร์ที่พิมพ์ (= เบอร์ของ Party ที่ยังอยู่)");
+    eq(await tombOf(u0.id), TOMB, "U0 booker");
+    const pNow = (await partyOf(u0.id))?.phoneNorm;
+    ok(pNow, "ตัวควบคุม: Party U ต้องยังมีเบอร์ (CRM ตัดการผูกเท่านั้น)");
+    const rs = [await verify(u0, who("PU")), await verify(u0, String(pNow)), await verify(u0, "0899999987")];
+    for (const [i, x] of rs.entries()) ERR(x, "VERIFY_FAILED", `กรณีที่ ${i + 1}`);
+    eq(rs.map((x) => Object.keys(x).sort()), rs.map(() => Object.keys(rs[2] ?? {}).sort()), "คีย์ผล");
+    eq(await detailMask(u0), [pu?.name, null], "จอรายละเอียด");
+  });
+  await st("ER-6", "ตัวอ่านป้าย: typedBookerOf({v:1, erased:true}) = { name: null, phone: null } (ไม่ใช่ null — null แปลว่า 'ไม่มีคีย์ ⇒ ถอยไป Party') · ไม่มีคีย์/ผิดรูป ⇒ null · มีค่าที่พิมพ์ ⇒ { name, phone } (ไม่มี email · E5)", async () => {
+    const vc = await tryImport("@/lib/modules/trips/booking-view-core");
+    const f = vc.mod?.typedBookerOf;
+    ok(typeof f === "function", `ไม่มี typedBookerOf (${vc.err.slice(0, 80)})`);
+    const tb = f as AnyFn;
+    eq([tb(TOMB), tb(undefined), tb({ v: 2, name: "x" }), tb({ v: 1, name: "ก", phone: "+66812345678", email: "a@b.co" })],
+      [{ name: null, phone: null }, null, null, { name: "ก", phone: "+66812345678" }], "typedBookerOf");
   });
   groupLine("ER");
 
@@ -1095,11 +1120,12 @@ try {
     ok(s1 !== f1 && sl === fl, "ตัวควบคุมของแฮช");
     eq([await fx(id1), await fx(idl)], [s1, fl], "facts.snapshotSha");
   });
-  await st("AU-3", "คำขอที่อนุมัติแล้ว (RFB2 มีคีย์) → สำเนาที่พิมพ์ถูกลบ (ตัด booker แบบตัวรับ E1) → executeTripRefund ⇒ DONE (ไม่ใช่ QUOTE_REFRESHED เพราะข้อมูลบุคคล)", async () => {
+  await st("AU-3", "คำขอที่อนุมัติแล้ว (RFB2 มีคีย์) → สำเนาที่พิมพ์ถูกแทนด้วยป้าย {v:1, erased:true} (แบบตัวรับ E1/E7) → executeTripRefund ⇒ DONE (ไม่ใช่ QUOTE_REFRESHED เพราะข้อมูลบุคคล)", async () => {
     const [b2] = needBk("RFB2");
     const id = await reqRefund(b2);
     await approve(id);
-    await pool.query(`UPDATE "TripBooking" SET "policySnapshot" = "policySnapshot" - 'booker' WHERE id = $1`, [b2.id]);
+    // ORACLE-EDIT AU-3 (ผู้คุม 26 พ.ย. · มติ E7): ตัวรับการลบแทนคีย์ด้วยป้าย (ไม่ลบทิ้ง) — แฮชของ E4 ตัด booker ⇒ ไม่เปลี่ยน
+    await pool.query(`UPDATE "TripBooking" SET "policySnapshot" = jsonb_set("policySnapshot", '{booker}', '{"v":1,"erased":true}'::jsonb) WHERE id = $1`, [b2.id]);
     const x = await execute(id);
     ok(x.ok === true && asRec(x.value)?.status === "DONE", `execute: ${fmt(x)}`);
   });
