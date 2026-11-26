@@ -428,7 +428,7 @@ try {
       RU[k] = await insertRow("TripResourceUse", { id: rid("rsu"), tenantId: tA, unitId: uA, resourceId: res, departureId: DEP[k], startsAt: d.startsAt, endsAt: d.endsAt, active: true, updatedAt: new Date() });
     }
     // รอบอื่น
-    for (const k of ["q1", "q2", "q3"]) await payOk(await mkBk(k, "Q"), ONE);
+    for (const k of ["q1", "q2", "q3", "q4"]) await payOk(await mkBk(k, "Q"), ONE);
     await mkBk("s1", "S"); await mkBk("m1", "M");
     const b12 = await mkBk("b12", "A", { a: 2 }); await payOk(b12, 100_000);
     await pool.query(`UPDATE "TripBooking" SET "collectMode" = 'AGENT', "agentAccountId" = $2, "contactRoute" = 'VIA_AGENT' WHERE id = $1`, [b12.id, `t16-agent-${STAMP}`]); // แถวตรง (A1.4 · เอเจนซี่มีเงิน)
@@ -512,10 +512,12 @@ try {
     try { const r = await f(); return { n: realSql().length, r }; } finally { counting = false; }
   };
   // ทางลูกค้า (W1.3): verify → grant → quote/cancel
+  const PUBI = await tryImport("@/lib/platform/trips-public"); let ipN = 0;
   const sfn = (name: string): AnyFn => { const f = SELF.mod?.[name]; if (typeof f !== "function") throw new AssertFail(`ไม่มี ${name} ใน platform/trips-self (${SELF.err.slice(0, 80)})`); return f as AnyFn; };
   const selfQuote = async (b: Bk, now: Date): Promise<Rec> => {
     const nonce = sfn("issueSelfFormNonce")({ now: addMs(now, -60_000), scope: { tenantId: b.tenant, purpose: "verify", token: b.token } });
-    const ck = `t16ck${hex(8)}`;
+    const bck = PUBI.mod?.bookClientKey; ok(typeof bck === "function", `ไม่มี bookClientKey (${PUBI.err.slice(0, 80)})`); // ORACLE-EDIT (ผู้คุม 26 พ.ย.): กุญแจเครื่องจาก IP แบบ qc-trips-w1.3 (เดิม NO_CLIENT)
+    ipN++; const ck = String((bck as AnyFn)(`100.66.16.${ipN & 255}`));
     const v = asRec(await sfn("verifyBookSelf")({ shop: SHOP_A, token: b.token, form: { phone: b.phone, nonce }, clientKey: ck }, { now: addMs(now, -30_000) })) ?? {};
     ok(v.ok === true && typeof v.grant === "string", `verifyBookSelf ${b.key}: ${fmt(v)}`);
     try { return asRec(await sfn("quoteBookSelfCancel")({ shop: SHOP_A, token: b.token, grant: v.grant, clientKey: ck }, { now })) ?? {}; } catch (e) { return { ok: "THROW", e: errMsg(e) }; }
@@ -584,7 +586,7 @@ try {
     ok(pos, "หาไฟล์ควบคุมบน main ไม่ได้"); eq(fromMainMerge(ROOT, String(pos)), true, `positive ${pos}`);
     eq([fromMainMerge(ROOT, "ledger/trips-briefs/T1.6.md"), fromMainMerge(ROOT, SVC), fromMainMerge(ROOT, MOD + "refund.ts")], [false, false, false], "negative");
   });
-  await st("PC-9", "[action+หน้า+บริการ] ตัวช่วยของข้อสอบทำงานกับของเดิม: cancelDepartureScreenAction ใน dV2 (ว่าง) โดย OWNER ⇒ CANCELLED · โดย none ⇒ FORBIDDEN/ForbiddenError · หน้า /trips/departures?dep=dQ เรนเดอร์ trips-dep-panel · ลิ้นชัก q1 เรนเดอร์ trips-bk-detail · หน้า /trips/bookings เรนเดอร์ trips-bk · ตัวนับ SQL > 0 · ทางลูกค้า verify → quoteBookSelfCancel ของ q2 ok", async () => {
+  await st("PC-9", "[action+หน้า+บริการ] ตัวช่วยของข้อสอบทำงานกับของเดิม: cancelDepartureScreenAction ใน dV2 (ว่าง) โดย OWNER ⇒ CANCELLED · โดย none ⇒ FORBIDDEN/ForbiddenError · หน้า /trips/departures?dep=dQ เรนเดอร์ trips-dep-panel · ลิ้นชัก q1 เรนเดอร์ trips-bk-detail · หน้า /trips/bookings เรนเดอร์ trips-bk · ตัวนับ SQL > 0 · ทางลูกค้า verify → quoteBookSelfCancel ของ q4 ok", async () => {
     needFix(); const ACT = await tryImport("@/lib/modules/trips/departure-screen-actions"); const f = ACT.mod?.cancelDepartureScreenAction;
     const path = `/app/u/${SLUG_A}/trips/departures`;
     const no = await runAction(f, "none", path, [SLUG_A, { departureId: D("V2"), reason: "ทดสอบตัวเรียก" }]);
@@ -594,7 +596,7 @@ try {
     ok(has(await drawerAt("oa", B("q1"), NOW), "trips-bk-detail"), "ลิ้นชักไม่มี trips-bk-detail");
     ok(has(await pageAt("bookings", {}), "trips-bk"), "หน้ารายการไม่มี trips-bk");
     const m = await measure(() => call("loadDeparturePanelVM", tc("oa"), { unitId: uA, departureId: D("Q") }, { now: NOW })); ok(m.n > 0 && asRec(m.r)?.ok === true, `ตัวนับ SQL ${m.n}`);
-    const sq = await selfQuote(B("q2"), NOW); ok(sq.ok === true, `quoteBookSelfCancel q2: ${fmt(sq)}`);
+    const sq = await selfQuote(B("q4"), NOW); ok(sq.ok === true, `quoteBookSelfCancel q4: ${fmt(sq)}`); // q4 = จ่ายแล้ว ไม่มีคำขอ (q2 มีคำขอค้างจาก PC-4 ⇒ REFUND_IN_PROGRESS)
   });
   groupLine("PC");
 
@@ -1206,6 +1208,7 @@ try {
   record("FATAL", "ข้อสอบล้มกลางทาง (ไม่ควรเกิด)", "FAIL", errMsg(e));
   exitCode = 1;
 } finally {
+  try { for (const t of tenantIds) await pool.query(`DELETE FROM "ChatRateBucket" WHERE key LIKE $1`, [`trips:%:${t}:%`]); } catch (e) { console.log(`  ⚠️ cleanup ถัง: ${errMsg(e)}`); }
   try { await cleanupTenants(tenantIds); await cleanupUsers(); } catch (e) { console.log(`  ⚠️ cleanup: ${errMsg(e)}`); }
   try {
     const left = (await q<{ n: number }>(`SELECT count(*)::int AS n FROM "Tenant" WHERE slug LIKE $1`, [`${SLUG}%`]))[0]?.n ?? -1;
