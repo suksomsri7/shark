@@ -19,6 +19,7 @@
 //   b4/b12 เอเจนซี่เก็บเงิน (A1.4) · p1 PENDING (HOLD → PENDING + ถือ SHOP_CONFIRM) · เวลาหมดถือที่ของ h1/p1 = NOW + 1 วัน · หลักฐานซื้อเก็บแทน · รายการรอ · ทรัพยากร · RF-6 คำขอที่มีป้ายกลับ QUOTED
 // ผลรันรอบ 1 (ผู้เขียนข้อสอบ · 26 พ.ย.): PC-9 แดงเพราะตัวข้อสอบ — ForbiddenError ของ action เดิมเป็นข้อความไทย "ไม่มีสิทธิ์: …" ⇒ ตัวจับรับ /forbidden|ไม่มีสิทธิ์/ แล้ว ·
 //   ทางลูกค้าต้องเปิด trips.public.bookingEnabled + shopContact ของหน่วย (แบบ qc-trips-w1.3) — เพิ่มหลังรอบ 1 · ส่วนที่เหลือของ PC-9 ยังไม่ถูกรันจริง (ผู้คุมยืนยันในรอบถัดไป)
+// ORACLE-EDIT T1.6 รอบ 4 (มติ F1–F6 หลังผู้ตรวจโค้ดเงิน): +S-9 CD-14 CD-15 GD-6 RF-11 RF-12 RF-13 NM-8 NM-9 NM-10 · ตรึงใหม่ NM-3 NM-7 (ยื่นใหม่หลังรับเงิน = QUOTED) RF-10 (ผู้กระทำ trips.departureCancel.autoApprove · after.status ของ requote) · รวม 82 ข้อ
 // รัน: bash scripts/iso.sh bash scripts/qc-trips.sh bash scripts/with-gate-lock.sh pnpm exec tsx scripts/qc-trips-t1.6.mts   (ห้าม timeout ครอบ · ห้าม kill กลางคัน)
 // ผลที่ถูกต้องก่อนมีงาน T1.6a1: PC เขียวทั้งหมด · S-3 เขียว · ที่เหลือแดงพร้อมเหตุ ("ยังไม่มี…" / "migration missing")
 import { existsSync, readFileSync, readdirSync } from "node:fs";
@@ -367,6 +368,7 @@ try {
     await mkUser("wild", tA, "STAFF", [uA], ["trips.*"]);
     await mkUser("req", tA, "STAFF", [uA], [DV, BV, "trips.refund.request"]);
     await mkUser("cxl", tA, "STAFF", [uA], [DV, BV, "trips.booking.cancel"]);
+    await mkUser("pay", tA, "STAFF", [uA], [DV, BV, "trips.payment.record"]); // ORACLE-EDIT T1.6 รอบ 4 (F1): ผู้มีแต่สิทธิ์รับเงิน
     await mkUser("use", tA, "STAFF", [uA], []); await mkUser("view", tA, "STAFF", [uA], []);
     await mkUser("none", tA, "STAFF", [uA], []);
     await mkProd("PR", tA, uA); await mkProd("PR2", tA, uA); await mkProd("PA2", tA, uA2); await mkProd("PB", tB, uB); await mkProd("PC", tC, uC);
@@ -704,6 +706,9 @@ try {
     }
     ok(bad.length === 0, bad.slice(0, 6).join(" · "));
   });
+  await st("S-9", "[โค้ด] F3: ผู้กระทำของการอนุมัติให้เองชื่อ trips.departureCancel.autoApprove อยู่ในโค้ดของใบ (refund.ts หรือ cancel-departure.ts) · ไม่ใช้ trips.refund.autoApprove กับคำขอติดป้าย", () => { // ORACLE-EDIT T1.6 รอบ 4
+    const src = stripComments(read(MOD + "refund.ts")) + stripComments(read(SVC)); ok(src.includes('"trips.departureCancel.autoApprove"'), "ยังไม่มีผู้กระทำ trips.departureCancel.autoApprove");
+  });
   groupLine("S");
 
   // ═══════════════ P. ตัวช่วยบริสุทธิ์ ═══════════════
@@ -738,7 +743,7 @@ try {
 
   // ═══════════════ กลุ่มที่ต้องใช้ migration ═══════════════
   const MIG = await migState();
-  const GROUP_N: Record<string, number> = { CD: 13, GD: 5, RF: 10, NM: 7, RC: 3, AC: 4, PG: 5, PM: 3 };
+  const GROUP_N: Record<string, number> = { CD: 15, GD: 6, RF: 13, NM: 10, RC: 3, AC: 4, PG: 5, PM: 3 };
   const gated = async (g: string, title: string, body: () => Promise<void>) => {
     console.log(`\n── ${g}: ${title} ──`);
     if (!MIG.ok) { record(`${g}-0`, `[ฐาน] กลุ่ม ${g} (${GROUP_N[g]} ข้อ) ต้องใช้ migration ของ T1.6a1`, "FAIL", `migration missing — ${MIG.why}`); groupLine(g); return; }
@@ -763,6 +768,19 @@ try {
     if (o.unpaid !== false) out.unpaid = await mkBk(`${tag}u`, tag);
     return out;
   };
+  // ORACLE-EDIT T1.6 รอบ 4 (F1 F2): รอบเล็กบนเส้นเวลาจริง — action ใช้นาฬิกาจริง ⇒ จองย้อน 20 วัน · ยกเลิกด้วยนาฬิกาฉีด 1 วันก่อนตอนนี้ ⇒ ใบรับที่ action บันทึกอยู่หลังแถวผลจริง
+  const ymdBkk = (d: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+  const mkRealMini = async (tag: string, keys: { k: string; pay: "full" | "deposit" | "none" }[]): Promise<Record<string, Bk>> => {
+    const real = Date.now(); miniN++; await mkDep(tag, ymdBkk(new Date(real + 40 * DAY)), { hm: `${String(6 + (miniN % 12)).padStart(2, "0")}:30` }); const out: Record<string, Bk> = {};
+    for (const x of keys) { const b = await mkBk(`${tag}${x.k}`, tag, { now: new Date(real - 20 * DAY) }); if (x.pay !== "none") await payOk(b, x.pay === "full" ? ONE : num((await dues(b.id))[0]?.amountSatang), new Date(real - 20 * DAY + 60_000)); out[x.k] = b; }
+    V(await cancelSvc("oa", D(tag), { confirm: keys.length, now: new Date(real - DAY) }), `ยกเลิก ${tag}`); return out;
+  };
+  const MACT = await tryImport("@/lib/modules/trips/money-actions");
+  const actPay = (tag: string, b: Bk, amount: number, tender: string, key?: string) => runAction(MACT.mod?.recordTripPaymentAction, tag, `/app/u/${SLUG_A}/trips/bookings`, [SLUG_A, { bookingId: b.id, amountSatang: amount, tender, idempotencyKey: key ?? `ap${hex(6)}` }]);
+  const actDecide = (tag: string, requestId: unknown, delta?: number) => runAction(MACT.mod?.decideTripRefundAction, tag, `/app/u/${SLUG_A}/trips/bookings`, [SLUG_A, { requestId, decision: "APPROVE", ...(delta !== undefined ? { manualDeltaSatang: delta, manualReason: "ปรับยอดทดสอบ" } : {}), idempotencyKey: `ad${hex(6)}` }]);
+  const openMarked = async (b: Bk) => q<Rec>(`SELECT * FROM "TripRefundRequest" WHERE "bookingId" = $1 AND status = ANY($2::text[]) AND computed->>'path' = 'DEPARTURE_CANCEL' ORDER BY "createdAt" DESC, id DESC`, [b.id, OPEN_REQ]);
+  const choiceAudits = async (b: Bk) => (await audits("trips.booking.cancel_choice")).filter((a) => a.targetId === b.id || JSON.stringify(a.after ?? {}).includes(b.id));
+  const choiceMade = async (b: Bk) => (await outbox("trips.booking.cancel_choice_made")).filter((e) => asRec(e.payload)?.bookingId === b.id);
   let cancelledC = false;
   const needC = () => { needFix(); ok(cancelledC, "dC ยังไม่ถูกยกเลิกด้วยทางใหม่ (CD-2 ไม่ผ่าน)"); };
   const CANCEL_KEY = `cdC${hex(6)}`;
@@ -887,6 +905,31 @@ try {
       codeR(await resolveSvc("oa", b, "NO_MONEY", { reason: "เอเจนซี่ขอปิด" }), "FORBIDDEN", "NO_MONEY", "AGENCY_NOT_ENABLED");
       eq([num((await bk(b.id)).paidSatang), (await reqs(b.id)).length, (await outOf(b)).choice], [100_000, 0, "AGENCY_MONEY_HELD"], "ไม่มีเงินหาย");
     });
+    // ORACLE-EDIT T1.6 รอบ 4 (รายการขาดของผู้ตรวจเงิน)
+    await st("CD-14", "[บริการ] race ยกเลิก ∥ executeTripRefund ของคำขอลูกค้าที่อนุมัติไว้ก่อน (ขั้น 50% · 16–20 วันก่อนเดินทาง) ×5: สำเร็จฝ่ายเดียว — ยกเลิกชนะ ⇒ คำขอ WITHDRAWN · ไม่มี REFUNDED · แถวผล PENDING (ไม่มี DONE ตามขั้นหลังยกเลิก) · โอนคืนชนะ ⇒ DONE · การจอง CANCELLED · ยกเลิกได้ BOOKINGS_CHANGED/STATE_CONFLICT · ไม่มี THROW/40P01", async () => {
+      needFix(); const bad: string[] = [];
+      for (let i = 0; i < 5; i++) {
+        const m = await mkMini(`EX${i}`, { unpaid: false, date: `2027-05-0${1 + i}` }); const P0 = m.paid as Bk;
+        const rr = V(await reqRefund(P0), `คำขอลูกค้า EX${i}`); V(await decide(P0, rr.requestId), "อนุมัติ"); const v = num((await depRow(m.dep)).version);
+        const [c, x] = await Promise.all([cancelSvc("oa", m.dep, { confirm: 1, version: v }), execute(P0, rr.requestId)]);
+        if (c.ok === "THROW" || x.ok === "THROW" || /40P01|deadlock/i.test(fmt([c, x]))) { bad.push(`#${i} THROW`); continue; }
+        const st0 = String((await reqRow(String(rr.requestId))).status), rf = (await evs(P0.id, "REFUNDED")).length;
+        if (c.ok === true && x.ok === true) bad.push(`#${i} สำเร็จทั้งคู่ (คำขอ ${st0} REFUNDED ${rf})`);
+        else if (c.ok === true) { if (st0 !== "WITHDRAWN" || rf !== 0 || (await outOf(P0)).choice !== "PENDING") bad.push(`#${i} ยกเลิกชนะแต่ ${st0}/${rf}`); }
+        else if (x.ok === true) { if (st0 !== "DONE" || (await bk(P0.id)).status !== "CANCELLED" || !["BOOKINGS_CHANGED", "STATE_CONFLICT"].some((t) => tags(c).includes(t))) bad.push(`#${i} โอนชนะแต่ ${fmt(c).slice(0, 80)}`); }
+        else bad.push(`#${i} ไม่สำเร็จทั้งคู่ ${fmt([c, x]).slice(0, 120)}`);
+        if ((await openReqs([P0.id])).length) bad.push(`#${i} คำขอเปิดค้าง`); const mi = await moneyInv(P0.id); if (mi.length) bad.push(`#${i} ${mi.join(",")}`);
+      }
+      ok(bad.length === 0, bad.slice(0, 5).join(" · "));
+    });
+    await st("CD-15", "[บริการ] รอบต่ำกว่าขั้นต่ำที่มีแต่ถือที่ (HOLD 1 ใบ · ไม่มีการจองยืนยัน) ผ่าน decideBelowMin: st (ไม่มี refund.approve) ⇒ FORBIDDEN (หนี้ที่รับ) · OWNER + confirmBookings 0 ⇒ ทางใหม่ MIN_NOT_MET · ถือที่ปล่อย · การจอง HOLD ⇒ CANCELLED · held 0 · ไม่มีแถวผล", async () => {
+      needFix(); miniN++; await mkDep("HO", "2027-05-12", { minPax: 8, hm: "14:00" }); const h = await mkBk("HOh", "HO", { pay: "PAY_NOW", now: addMs(NOW, -5 * 60_000) });
+      await pool.query(`UPDATE "TripHold" SET "expiresAt" = $2 WHERE "bookingId" = $1 AND status = 'ACTIVE'`, [h.id, addMs(NOW, DAY)]); // แถวตรง: ถือที่ไม่หมดเวลา
+      const inp = async () => ({ unitId: uA, departureId: D("HO"), decision: "CANCEL", reason: "คนไม่ครบขั้นต่ำ", confirmBookings: 0, expectedVersion: num((await depRow(D("HO"))).version), idempotencyKey: `ho${hex(6)}` });
+      codeR(await call("decideBelowMin", tc("st"), await inp(), { now: NOW }), "FORBIDDEN", "st"); eq((await depRow(D("HO"))).status, "OPEN", "ไม่เขียน");
+      V(await call("decideBelowMin", tc("oa"), await inp(), { now: NOW }), "OWNER"); const d = await depRow(D("HO"));
+      eq([d.status, d.cancelKind, num(d.held), (await bk(h.id)).status, (await q(`SELECT 1 FROM "TripHold" WHERE "departureId" = $1 AND status = 'ACTIVE'`, [D("HO")])).length, (await outRows(D("HO"))).length], ["CANCELLED", "MIN_NOT_MET", 0, "CANCELLED", 0, 0], "ผล");
+    });
   });
 
   // ═══════════════ GD. รั้วผู้เขียนอื่น (§6) — ก่อนงวดของ dC ถูกปิด ═══════════════
@@ -937,6 +980,15 @@ try {
       const r1 = await chg(B("b1"), D("Q")), r2 = await chg(B("q1"), D("C")); ok(r1.ok === false && r2.ok === false, `b1→dQ ${fmt(r1)} · q1→dC ${fmt(r2)}`);
       codeR(await call("cancelTripBooking", ctx, { bookingId: B("b1").id, mode: "EXECUTE", reason: "ลูกค้าขอยกเลิก", idempotencyKey: `g5c${hex(5)}` }), "STATE_CONFLICT", "cancelTripBooking", "DEPARTURE_CANCELLED_USE_RESOLVE");
       eq([(await bk(B("b1").id)).departureId, (await bk(B("b1").id)).status, (await bk(B("q1").id)).departureId, (await reqs(B("b1").id)).length], [D("C"), "PAID", D("Q"), 0], "ไม่เขียน");
+    });
+    // ORACLE-EDIT T1.6 รอบ 4 (รายการขาดของผู้ตรวจเงิน)
+    await st("GD-6", "[งาน] คิวเตือนงวด (runPaymentDue · trips.pay.reminderDaysBefore [7, 1] ตั้งชั่วคราว) ข้ามรอบที่ร้านยกเลิก: รอบ RM1 (ยกเลิก) กับ RM2 (ตัวควบคุม) จ่ายมัดจำแล้ว งวดที่ 2 ครบ 2027-04-30 · งาน ณ 2027-04-24 ⇒ RM2 ได้ trips.payment.due_soon · RM1 ไม่ได้ · งวด RM1 ไม่เปลี่ยน", async () => {
+      needFix(); const mk = async (tag: string) => { await mkDep(tag, "2027-05-20", { hm: tag === "RM1" ? "09:10" : "09:20" }); const b = await mkBk(`${tag}b`, tag); await payOk(b, num((await dues(b.id))[0]?.amountSatang)); return b; };
+      const r1 = await mk("RM1"), r2 = await mk("RM2"); V(await cancelSvc("oa", D("RM1"), { confirm: 1 }), "ยกเลิก RM1");
+      const dueIds = async (b: Bk) => (await dues(b.id)).map((d) => String(d.id)); const soon = async (b: Bk) => { const ids = await dueIds(b); return (await outbox("trips.payment.due_soon")).filter((e) => ids.some((x) => e.idempotencyKey.includes(x))).length; };
+      const s1 = fmt(await dues(r1.id)); await setV(tA, "oa", [unitSet(uA, "trips.pay.reminderDaysBefore", [7, 1])]);
+      try { await fn("runPaymentDue")(new Date("2027-04-24T05:00:00Z"), { tenantIds: [tA] }); } finally { await setV(tA, "oa", [unitSet(uA, "trips.pay.reminderDaysBefore", [])]); }
+      eq([await soon(r2) >= 1, await soon(r1), fmt(await dues(r1.id)) === s1], [true, 0, true], "เตือน");
     });
   });
 
@@ -1007,7 +1059,7 @@ try {
       eq([has(await drawerAt("oa", B("b8"), new Date(t0 + 3 * DAY + 60_000)), "trips-bk-refund-transfer-due"), has(await drawerAt("oa", B("b8"), new Date(t0 + 2 * DAY)), "trips-bk-refund-transfer-due")], [true, false], "คำเตือน");
     });
     // ORACLE-EDIT T1.6 รอบ 3 (ข้อเบี่ยง 1–2 ของผู้สร้าง): requote ของคำขอที่มีป้าย ⇒ ยังเต็ม · จบที่ APPROVED · audit บอกว่าใคร/อะไรอนุมัติ
-    await st("RF-10", "[บริการ] requote ของคำขอมีป้าย (รอบเล็ก RQ): resolve REFUND (ผู้ยื่น USER = OWNER) → เพิ่มหลักฐานเก็บแทน → execute ⇒ QUOTE_REFRESHED ยอด 410,000 · คำขอ APPROVED · fullRefund · refundBp 10000 · gen ≥ 1 · audit: trips.refund.request (USER ผู้กด) · trips.refund.approve ≥ 2 แถว SYSTEM after.auto · trips.refund.requote ≥ 1 · execute ซ้ำ ⇒ DONE 410,000", async () => {
+    await st("RF-10", "[บริการ] requote ของคำขอมีป้าย (รอบเล็ก RQ): resolve REFUND (ผู้ยื่น USER = OWNER) → เพิ่มหลักฐานเก็บแทน → execute ⇒ QUOTE_REFRESHED ยอด 410,000 · คำขอ APPROVED · fullRefund · refundBp 10000 · gen ≥ 1 · audit: trips.refund.request (USER ผู้กด) · trips.refund.approve ≥ 2 แถว SYSTEM ผู้กระทำ trips.departureCancel.autoApprove (F3) · trips.refund.requote ≥ 1 และ after.status = สถานะแถวจริง APPROVED (F3) · execute ซ้ำ ⇒ DONE 410,000", async () => {
       needFix(); const m = await mkMini("RQ", { unpaid: false }); V(await cancelSvc("oa", m.dep, { confirm: 1 }), "ยกเลิก RQ"); const b = m.paid as Bk;
       V(await resolveSvc("oa", b, "REFUND"), "REFUND"); const r0 = await flaggedOf(b); const id = String(r0.id);
       await insertRow("TripPassThroughEvidence", { id: rid("ev"), tenantId: tA, unitId: uA, departureId: m.dep, bookingId: b.id, extraKind: "PARK_FEE", paidToPayee: "กรมอุทยาน", amountSatang: PARK, paidAt: addMs(NOW, HOUR), fileIds: [], updatedAt: new Date() });
@@ -1018,11 +1070,36 @@ try {
       const au = async (a: string) => (await audits(a)).filter((x) => x.targetId === id);
       const rq = await au("trips.refund.request"), apv = await au("trips.refund.approve"), rqt = await au("trips.refund.requote");
       if (!(rq.length === 1 && rq[0]?.actorType === "USER" && rq[0]?.actorId === U.oa?.userId)) bad.push(`audit ยื่น ${fmt(rq.map((x) => [x.actorType, x.actorId]))}`);
-      if (!(apv.length >= 2 && apv.every((x) => x.actorType === "SYSTEM" && asRec(x.after)?.auto === true))) bad.push(`audit อนุมัติ ${fmt(apv.map((x) => [x.actorType, asRec(x.after)?.auto]))}`);
-      if (rqt.length < 1) bad.push("ไม่มี audit trips.refund.requote");
+      const isAA = (x: Rec) => x.actorType === "SYSTEM" && (x.actorId === "trips.departureCancel.autoApprove" || JSON.stringify(x.after ?? {}).includes("trips.departureCancel.autoApprove")); // ORACLE-EDIT T1.6 รอบ 4 (F3)
+      if (!(apv.length >= 2 && apv.every(isAA))) bad.push(`audit อนุมัติ (F3 ต้องเป็น trips.departureCancel.autoApprove) ${fmt(apv.map((x) => [x.actorType, x.actorId, asRec(x.after)?.auto]))}`);
+      if (rqt.length < 1 || !rqt.every((x) => asRec(x.after)?.status === r1.status)) bad.push(`audit requote (F3 after.status = ${r1.status}) ${fmt(rqt.map((x) => asRec(x.after)?.status))}`);
       const x2 = await execute(b, id, { now: addMs(NOW, 3 * HOUR) }); if (x2.ok !== true) bad.push(`execute ซ้ำ ${fmt(x2)}`);
       const rf = (await evs(b.id, "REFUNDED")).reduce((s0, x) => s0 + num(x.amountSatang), 0);
       eq([bad, (await reqRow(id)).status, rf], [[], "DONE", ONE], "requote");
+    });
+    // ORACLE-EDIT T1.6 รอบ 4 (F4 F5 F6)
+    await st("RF-11", "[บริการ] F4: resolve REFUND ด้วยกุญแจ K ⇒ คำขอ r1 · ถอน r1 (canDecide) · เรียกซ้ำด้วยกุญแจ K ⇒ ไม่ replay ความสำเร็จเก่า (ได้ STATE_CONFLICT หรือผลปัจจุบันที่ไม่ใช่ replayed) · แถวผลไม่ชี้ r1 · คำขอใหม่ไม่เกิน 1 ใบ", async () => {
+      needFix(); const m = await mkMini("IK", { unpaid: false }); V(await cancelSvc("oa", m.dep, { confirm: 1 }), "ยกเลิก IK"); const b = m.paid as Bk; const K = `ik${hex(6)}`;
+      V(await resolveSvc("oa", b, "REFUND", { key: K }), "REFUND"); const r1 = String((await flaggedOf(b)).id);
+      V(await call("withdrawTripRefund", staff(), { requestId: r1, reason: "ลูกค้าเปลี่ยนใจ", idempotencyKey: `w${hex(6)}` }, { canDecide: true }), "ถอน");
+      const n0 = (await reqs(b.id)).length; const r = await resolveSvc("oa", b, "REFUND", { key: K }); const o = await outOf(b); const bad: string[] = [];
+      if (r.ok === true && replayedOf(r)) bad.push(`replay ความสำเร็จเก่า ${fmt(r).slice(0, 100)}`); if (r.ok !== true && !tags(r).includes("STATE_CONFLICT")) bad.push(`ผล ${fmt(r).slice(0, 100)}`);
+      if (o.refundRequestId === r1) bad.push("แถวผลชี้คำขอที่ถอนแล้ว"); if ((await reqs(b.id)).length - n0 > 1) bad.push("คำขอเพิ่มเกิน 1");
+      if (r.ok === true && (o.choice !== "REFUND" || !o.refundRequestId)) bad.push(`ok แต่แถวผล ${fmt([o.choice, o.refundRequestId])}`);
+      ok(bad.length === 0, bad.join(" · "));
+    });
+    await st("RF-12", "[หน้า] F5: คำเตือนโอนค้างนับจากการอนุมัติครั้งแรก — คำขอมีป้ายอนุมัติ ณ NOW · requote ณ NOW + 4 วัน (หลักฐานใหม่ → execute ⇒ QUOTE_REFRESHED อนุมัติซ้ำ) · ลิ้นชัก ณ NOW + 5 วัน (1 วันหลัง requote) ⇒ ยังมี trips-bk-refund-transfer-due", async () => {
+      needFix(); const m = await mkMini("WT", { unpaid: false }); V(await cancelSvc("oa", m.dep, { confirm: 1 }), "ยกเลิก WT"); const b = m.paid as Bk;
+      V(await resolveSvc("oa", b, "REFUND"), "REFUND"); const id = String((await flaggedOf(b)).id);
+      await insertRow("TripPassThroughEvidence", { id: rid("ev"), tenantId: tA, unitId: uA, departureId: m.dep, bookingId: b.id, extraKind: "PARK_FEE", paidToPayee: "กรมอุทยาน", amountSatang: PARK, paidAt: addMs(NOW, DAY), fileIds: [], updatedAt: new Date() });
+      const x = await execute(b, id, { now: addMs(NOW, 4 * DAY) }); ok(x.ok !== true && tags(x).includes("QUOTE_REFRESHED") && (await reqRow(id)).status === "APPROVED", `requote ไม่เกิด ${fmt(x).slice(0, 100)}`);
+      ok(has(await drawerAt("oa", b, addMs(NOW, 5 * DAY)), "trips-bk-refund-transfer-due"), "ไม่มีคำเตือน (นับจาก requote แทนการอนุมัติครั้งแรก)");
+    });
+    await st("RF-13", "[บริการ] F6: การจองสกุลเงินอื่น (แถวตรง: USD หลังยกเลิกรอบ) ⇒ resolve REFUND ถูกปฏิเสธด้วยรหัสชัด (CURRENCY_NOT_ALLOWED / CURRENCY_NOT_THB) · ไม่มีคำขอ · แถวผล PENDING", async () => {
+      needFix(); const m = await mkMini("FX", { unpaid: false }); V(await cancelSvc("oa", m.dep, { confirm: 1 }), "ยกเลิก FX"); const b = m.paid as Bk;
+      await pool.query(`UPDATE "TripBooking" SET currency = 'USD', "fxRateMicros" = 36000000 WHERE id = $1`, [b.id]); // แถวตรง (สกุลอื่นยังสร้างผ่านบริการไม่ได้ · L1.x)
+      const r = await resolveSvc("oa", b, "REFUND"); ok(r.ok === false && ["CURRENCY_NOT_ALLOWED", "CURRENCY_NOT_THB"].some((t) => tags(r).includes(t)), `ผล ${fmt(r)}`);
+      eq([(await reqs(b.id)).length, (await outOf(b)).choice], [0, "PENDING"], "ไม่เขียน");
     });
   });
 
@@ -1050,11 +1127,12 @@ try {
       if (BK.c2) { V(await resolveSvc("oa", B("c2"), "NO_MONEY"), "c2"); const pr = await q<Rec>(`SELECT status FROM "TripPromoRedemption" WHERE "bookingId" = $1`, [B("c2").id]); if (pr.map((x) => x.status).join() !== "RELEASED") bad.push(`c2 โปรโมชัน ${fmt(pr)}`); } else bad.push("ไม่มี c2 (RF-7 ไม่ผ่าน)");
       ok(bad.length === 0, bad.join(" · ")); await seatInv(D("C"), "dC");
     });
-    await st("NM-3", "[บริการ] N13 เงินเข้าหลังยกเลิก (b11): resolve REFUND ⇒ APPROVED 123,000 · recordTripPayment สลิป 50,000 (STAFF) ⇒ ok · คำขอเดิม WITHDRAWN และคำขอใหม่ APPROVED 173,000 (มีป้าย) ในธุรกรรมเดียว · แถวผลชี้คำขอใหม่ · execute ⇒ DONE · REFUNDED pt = Σ pt ของใบรับ 2 ใบ · ไม่ OVER_REFUND · ค่าคงที่เงิน", async () => {
+    await st("NM-3", "[บริการ] N13 เงินเข้าหลังยกเลิก (b11): resolve REFUND ⇒ APPROVED 123,000 · recordTripPayment สลิป 50,000 (STAFF) ⇒ ok · คำขอเดิม WITHDRAWN และคำขอใหม่ QUOTED 173,000 (มีป้าย · F1 ใบรับหลังยกเลิก ⇒ ไม่อนุมัติให้เอง) ในธุรกรรมเดียว · แถวผลชี้คำขอใหม่ · ผู้อนุมัติอนุมัติ ⇒ APPROVED · execute ⇒ DONE · REFUNDED pt = Σ pt ของใบรับ 2 ใบ · ไม่ OVER_REFUND · ค่าคงที่เงิน", async () => {
       needC(); const b = B("b11"); V(await resolveSvc("oa", b, "REFUND"), "REFUND"); const r1 = await flaggedOf(b); eq([r1.status, num(r1.amountSatang)], ["APPROVED", DEP_B11], "คำขอแรก");
       V(await pay(b, SLIP_B11, { now: addMs(NOW, HOUR) }), "สลิปหลังยกเลิก");
       const r2 = await flaggedOf(b); const bad: string[] = [];
-      if ((await reqRow(String(r1.id))).status !== "WITHDRAWN") bad.push(`คำขอแรก ${(await reqRow(String(r1.id))).status}`); if (r2.id === r1.id || r2.status !== "APPROVED" || num(r2.amountSatang) !== DEP_B11 + SLIP_B11) bad.push(`คำขอใหม่ ${fmt([r2.status, r2.amountSatang])}`);
+      if ((await reqRow(String(r1.id))).status !== "WITHDRAWN") bad.push(`คำขอแรก ${(await reqRow(String(r1.id))).status}`); if (r2.id === r1.id || r2.status !== "QUOTED" || num(r2.amountSatang) !== DEP_B11 + SLIP_B11) bad.push(`คำขอใหม่ ${fmt([r2.status, r2.amountSatang])} (F1: ต้อง QUOTED)`); // ORACLE-EDIT T1.6 รอบ 4 (F1)
+      const dz = await decide(b, r2.id, { now: addMs(NOW, 90 * 60_000) }); if (dz.ok !== true || (await reqRow(String(r2.id))).status !== "APPROVED" || num((await reqRow(String(r2.id))).amountSatang) !== DEP_B11 + SLIP_B11) bad.push(`อนุมัติ ${fmt(dz)}`); // ORACLE-EDIT T1.6 รอบ 4 (F1)
       const o = await outOf(b); if (o.choice !== "REFUND" || o.refundRequestId !== r2.id) bad.push(`แถวผล ${fmt([o.choice, o.refundRequestId])}`);
       const x = await execute(b, r2.id, { now: addMs(NOW, 2 * HOUR) }); if (x.ok !== true) bad.push(`execute ${fmt(x)}`);
       const rec = await evs(b.id, "RECEIVED"), rf = await evs(b.id, "REFUNDED"); const sum = (a: Rec[], f: string) => a.reduce((s, y) => s + num(y[f]), 0);
@@ -1086,7 +1164,7 @@ try {
       }
       ok(bad.length === 0, bad.slice(0, 6).join(" · "));
     });
-    await st("NM-7", "[บริการ] N13 สลิปหลังยกเลิกขณะมีคำขอมีป้ายเปิด (รอบเล็ก SL · มัดจำ 30%): สลิปที่ล้ม (เกินยอดค้าง) ⇒ ok:false · คำขอเดิมยัง APPROVED เปิดใบเดียว แถวผลชี้ใบเดิม paid เดิม (ย้อนครบ) · สลิป 50,000 ⇒ เปิดใบเดียว = ใบใหม่ ยอดมัดจำ + 50,000 · ใบเดิม WITHDRAWN · ส่งซ้ำคีย์เดิม ⇒ ไม่มีคำขอเพิ่ม · ค่าคงที่เงิน", async () => {
+    await st("NM-7", "[บริการ] N13 สลิปหลังยกเลิกขณะมีคำขอมีป้ายเปิด (รอบเล็ก SL · มัดจำ 30%): สลิปที่ล้ม (เกินยอดค้าง) ⇒ ok:false · คำขอเดิมยัง APPROVED เปิดใบเดียว แถวผลชี้ใบเดิม paid เดิม (ย้อนครบ) · สลิป 50,000 ⇒ เปิดใบเดียว = ใบใหม่ ยอดมัดจำ + 50,000 สถานะ QUOTED (F1) · ใบเดิม WITHDRAWN · ส่งซ้ำคีย์เดิม ⇒ ไม่มีคำขอเพิ่ม · ค่าคงที่เงิน", async () => {
       needFix(); await mkDep("SL", "2027-07-10"); const b = await mkBk("SLp", "SL"); const dep0 = num((await dues(b.id))[0]?.amountSatang); await payOk(b, dep0);
       V(await cancelSvc("oa", D("SL"), { confirm: 1 }), "ยกเลิก SL"); V(await resolveSvc("oa", b, "REFUND"), "REFUND"); const r1 = await flaggedOf(b); const bad: string[] = [];
       const openOf = async () => q<Rec>(`SELECT id, status, "amountSatang" FROM "TripRefundRequest" WHERE "bookingId" = $1 AND status = ANY($2::text[])`, [b.id, OPEN_REQ]);
@@ -1094,10 +1172,47 @@ try {
       const f1 = await pay(b, over, { now: addMs(NOW, HOUR) }); if (f1.ok === true) bad.push(`สลิปเกินยอดรับได้ ${fmt(f1)}`);
       const o1 = await openOf(); if (o1.length !== 1 || o1[0]?.id !== r1.id || o1[0]?.status !== "APPROVED" || num((await bk(b.id)).paidSatang) !== p0 || (await outOf(b)).refundRequestId !== r1.id) bad.push(`หลังสลิปล้ม ${fmt(o1)} paid ${(await bk(b.id)).paidSatang}`);
       const key = `sl${hex(6)}`; V(await pay(b, SLIP_B11, { now: addMs(NOW, 2 * HOUR), key }), "สลิป 50,000");
-      const o2 = await openOf(); if (o2.length !== 1 || o2[0]?.id === r1.id || num(o2[0]?.amountSatang) !== dep0 + SLIP_B11 || (await reqRow(String(r1.id))).status !== "WITHDRAWN" || (await outOf(b)).refundRequestId !== o2[0]?.id) bad.push(`หลังสลิป ${fmt(o2)} เดิม ${(await reqRow(String(r1.id))).status}`);
+      const o2 = await openOf(); if (o2.length !== 1 || o2[0]?.id === r1.id || num(o2[0]?.amountSatang) !== dep0 + SLIP_B11 || o2[0]?.status !== "QUOTED" /* ORACLE-EDIT T1.6 รอบ 4 (F1) */ || (await reqRow(String(r1.id))).status !== "WITHDRAWN" || (await outOf(b)).refundRequestId !== o2[0]?.id) bad.push(`หลังสลิป ${fmt(o2)} เดิม ${(await reqRow(String(r1.id))).status}`);
       const n2 = (await reqs(b.id)).length; const rp = await pay(b, SLIP_B11, { now: addMs(NOW, 2 * HOUR), key }); if (rp.ok !== true) bad.push(`ส่งซ้ำ ${fmt(rp)}`);
       if ((await reqs(b.id)).length !== n2 || (await openOf()).length !== 1 || num((await bk(b.id)).paidSatang) !== p0 + SLIP_B11) bad.push("ส่งซ้ำแล้วคำขอ/เงินเพิ่ม");
       eq([bad, await moneyInv(b.id)], [[], []], "สลิป");
+    });
+    // ORACLE-EDIT T1.6 รอบ 4 (F1 F2) — รอบบนเส้นเวลาจริง (action ใช้นาฬิกาจริง)
+    await st("NM-8", "[action+บริการ] F1(ก): บนรอบที่ร้านยกเลิก ผู้มีแต่ trips.payment.record (recordTripPaymentAction): เงินสด / บัตร ⇒ STATE_CONFLICT DEPARTURE_CANCELLED_SLIP_ONLY ไม่เขียน (ยอดจ่าย · แถวเงิน · คำขอเดิม) · พร้อมเพย์/โอน (สลิป) ⇒ รับได้ · บริการก็ปฏิเสธเงินสดเช่นกัน", async () => {
+      needFix(); const M = await mkRealMini("SO", [{ k: "a", pay: "deposit" }]); const b = M.a as Bk; const bad: string[] = [];
+      const p0 = num((await bk(b.id)).paidSatang), e0 = (await evs(b.id)).length;
+      for (const t of ["CASH", "CARD"]) { const r = await actPay("pay", b, 10_000, t); if (!(r.ok === false && tags(r).includes("STATE_CONFLICT") && tags(r).includes("DEPARTURE_CANCELLED_SLIP_ONLY"))) bad.push(`action ${t}: ${fmt(r).slice(0, 100)}`); }
+      V(await pay(b, 10_000, { now: new Date() }), "บริการ PROMPTPAY (สลิป) รับได้");
+      const sv = await call("recordTripPayment", staff({ now: new Date() }), { bookingId: b.id, amountSatang: 10_000, tender: "CASH", idempotencyKey: `sc${hex(6)}` });
+      if (!(sv.ok === false && tags(sv).includes("DEPARTURE_CANCELLED_SLIP_ONLY"))) bad.push(`บริการ CASH: ${fmt(sv).slice(0, 100)}`);
+      if (num((await bk(b.id)).paidSatang) !== p0 + 10_000 || (await evs(b.id)).length !== e0 + 1) bad.push(`เขียนเกิน/ขาด: paid ${(await bk(b.id)).paidSatang} (ต้อง ${p0 + 10_000}) แถว ${(await evs(b.id)).length}`);
+      const ok2 = await actPay("pay", b, 10_000, "TRANSFER"); if (ok2.ok !== true) bad.push(`action TRANSFER: ${fmt(ok2).slice(0, 100)}`);
+      ok(bad.length === 0, bad.join(" · ")); eq(await moneyInv(b.id), [], "ค่าคงที่เงิน");
+    });
+    await st("NM-9", "[action+บริการ] F1(ข): ใบรับหลังเวลาแถวผล ⇒ คำขอคืนเต็มไม่อนุมัติให้เอง — (1) มีคำขอติดป้าย APPROVED แล้ว pay สลิป ⇒ เปิดใบเดียว QUOTED ยอดใหม่เต็ม (2) ไม่มีคำขอ pay สลิปแล้ว resolve REFUND ⇒ QUOTED · ผู้ไม่มี refund.approve (req) อนุมัติไม่ได้ (FORBIDDEN) · ปรับยอดไม่ได้ · ผู้มี refund.approve (sta) อนุมัติ ⇒ APPROVED เต็ม 100% · execute บน QUOTED ⇒ ไม่อนุมัติ · สลิปซ้ำบน QUOTED ⇒ ยื่นใหม่ยัง QUOTED · ตัวควบคุม: ไม่มีใบรับหลังยกเลิก ⇒ อนุมัติให้เอง", async () => {
+      needFix(); const M = await mkRealMini("PQ", [{ k: "a", pay: "deposit" }, { k: "b", pay: "deposit" }, { k: "c", pay: "full" }]); const A = M.a as Bk, Bb = M.b as Bk, C = M.c as Bk; const bad: string[] = [];
+      const pre = new Date(Date.now() - 12 * HOUR);
+      V(await resolveSvc("oa", A, "REFUND", { now: pre }), "REFUND a ก่อนรับเงิน"); V(await resolveSvc("oa", C, "REFUND", { now: pre }), "REFUND c (ตัวควบคุม)");
+      if ((await flaggedOf(A)).status !== "APPROVED" || (await flaggedOf(C)).status !== "APPROVED") bad.push(`ตัวควบคุม: ${(await flaggedOf(A)).status}/${(await flaggedOf(C)).status} (ไม่มีใบรับหลังยกเลิก ⇒ ต้อง APPROVED)`);
+      V(await actPay("pay", A, 50_000, "PROMPTPAY"), "สลิป a"); const oa1 = await openMarked(A); const paidA = num((await bk(A.id)).paidSatang);
+      if (oa1.length !== 1 || oa1[0]?.status !== "QUOTED" || num(oa1[0]?.amountSatang) !== paidA) bad.push(`(1) เปิด ${fmt(oa1.map((x) => [x.status, x.amountSatang]))} ต้อง QUOTED ${paidA} ใบเดียว`);
+      V(await actPay("pay", Bb, 50_000, "PROMPTPAY"), "สลิป b"); if ((await reqs(Bb.id)).length) bad.push("(2) รับเงินแล้วเกิดคำขอเอง");
+      V(await resolveSvc("oa", Bb, "REFUND", { now: new Date() }), "REFUND b หลังรับเงิน"); const rb = await flaggedOf(Bb); const paidB = num((await bk(Bb.id)).paidSatang);
+      if (rb.status !== "QUOTED" || num(rb.amountSatang) !== paidB || asRec(rb.computed)?.fullRefund !== true) bad.push(`(2) resolve ${fmt([rb.status, rb.amountSatang, asRec(rb.computed)?.fullRefund])}`);
+      const xq = await execute(Bb, rb.id, { now: new Date() }); if (xq.ok === true || (await reqRow(String(rb.id))).status !== "QUOTED") bad.push(`execute บน QUOTED: ${fmt(xq).slice(0, 80)} → ${(await reqRow(String(rb.id))).status}`);
+      V(await actPay("pay", Bb, 10_000, "PROMPTPAY"), "สลิปซ้ำ b"); const ob2 = await openMarked(Bb); if (ob2.length !== 1 || ob2[0]?.status !== "QUOTED" || num(ob2[0]?.amountSatang) !== paidB + 10_000) bad.push(`สลิปซ้ำ ${fmt(ob2.map((x) => [x.status, x.amountSatang]))}`);
+      const qa1 = String(oa1[0]?.id ?? "");
+      const nr = await actDecide("req", qa1); if (!(nr.ok !== true && (nr.code === "FORBIDDEN" || /forbidden|ไม่มีสิทธิ์/i.test(String(nr.e ?? ""))))) bad.push(`req อนุมัติได้ ${fmt(nr).slice(0, 80)}`);
+      const dl = await actDecide("sta", qa1, -1); if (!(dl.ok === false && tags(dl).includes("DEPARTURE_CANCEL_FULL_REFUND"))) bad.push(`ปรับยอด ${fmt(dl).slice(0, 80)}`);
+      V(await actDecide("sta", qa1), "sta อนุมัติ"); const ra = await reqRow(qa1); if (ra.status !== "APPROVED" || num(ra.amountSatang) !== paidA || num(asRec(ra.computed)?.refundBp) !== 10_000) bad.push(`หลังอนุมัติ ${fmt([ra.status, ra.amountSatang])}`);
+      ok(bad.length === 0, bad.join(" · "));
+    });
+    await st("NM-10", "[บริการ] F2: การยื่นใหม่หลังรับเงิน (มีคำขอติดป้ายเปิด) เขียน audit trips.booking.cancel_choice +1 และ outbox trips.booking.cancel_choice_made +1 (คีย์ใหม่ ไม่ถูกกลืนเป็นซ้ำ) ที่ payload.refundRequestId = คำขอใหม่ และ payload.amountSatang = ยอดใหม่", async () => {
+      needFix(); const M = await mkRealMini("RE", [{ k: "a", pay: "deposit" }]); const b = M.a as Bk;
+      V(await resolveSvc("oa", b, "REFUND", { now: new Date(Date.now() - 12 * HOUR) }), "REFUND"); const a0 = (await choiceAudits(b)).length, e0 = await choiceMade(b);
+      V(await pay(b, 30_000, { now: new Date() }), "สลิป"); const nw = (await openMarked(b))[0]; ok(nw, "ไม่มีคำขอเปิดหลังรับเงิน");
+      const e1 = await choiceMade(b); const last = asRec(e1[e1.length - 1]?.payload) ?? {};
+      eq([(await choiceAudits(b)).length - a0, e1.length - e0.length, new Set(e1.map((e) => e.idempotencyKey)).size === e1.length, last.refundRequestId, num(last.amountSatang)], [1, 1, true, nw?.id, num(nw?.amountSatang)], "audit/อีเวนต์");
     });
   });
 
