@@ -28,7 +28,7 @@ import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 import { loadTripsQcEnv } from "./trips-qc-env.mjs";
-import { fromMainMerge } from "./trips-main-merge.mjs"; // ORACLE-EDIT (ผู้คุม 19 พ.ย.: รวม main) — commit ฝั่ง main ที่รวมเข้ามา อยู่ที่เดียว
+import { changedOnlyByMainMerge, fromMainMerge } from "./trips-main-merge.mjs"; // ORACLE-EDIT (ผู้คุม 19 พ.ย.: รวม main) — commit ฝั่ง main ที่รวมเข้ามา อยู่ที่เดียว
 import * as FX from "./trips-fixture.mjs";
 
 const LABEL = "qc-trips-w1.2";
@@ -821,7 +821,7 @@ try {
       ok(del <= maxDel && (maxAdd === null || add <= maxAdd), `${f}: +${add} −${del} (จำกัด −${maxDel}${maxAdd === null ? "" : ` +${maxAdd}`})`);
     }
     // ORACLE-EDIT S-10 (ผู้คุม 19 พ.ย.: รวม main — migration ของ main ไม่ใช่ของใบ): ไฟล์ใต้ prisma ที่ตรงกับ commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge · scripts/trips-main-merge.mts) ไม่นับ · ฝั่ง TRIPS เพิ่ม/แก้ หรือ untracked ใต้ prisma ยังแดง
-    const prismaNew = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", "prisma"]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]).split("\n")].filter(Boolean))].filter((f) => !fromMainMerge(ROOT, f));
+    const prismaNew = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", "prisma"]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]).split("\n")].filter(Boolean))].filter((f) => !fromMainMerge(ROOT, f) && !changedOnlyByMainMerge(ROOT, BASE_SHA, f)); // ORACLE-EDIT S-10 (ผู้คุม 26 พ.ย.): ไฟล์ prisma ที่ต่างจาก BASE เพราะการรวม main อย่างเดียว (เช่น core.prisma ที่ TRIPS แก้ก่อน BASE แล้ว main แก้ต่อ) ไม่ใช่ของใบ — แบบเดียวกับ a1.1 M-6
     ok(prismaNew.length === 0, `ใบนี้ไม่มี migration: ${prismaNew.slice(0, 4).join(", ")}`);
   });
   groupLine("S");
