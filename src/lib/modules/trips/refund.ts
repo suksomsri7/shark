@@ -84,7 +84,8 @@ const AUTO_APPROVER: SellActor = { kind: "SYSTEM", job: "trips.refund.autoApprov
 // TRIPS T1.6a1 ▸ คำขอของรอบที่ร้านยกเลิก (ป้าย computed.path DEPARTURE_CANCEL + fullRefund · N4) · ผู้ถอนของทางนี้ ◂
 const fullRefundOf = (v: unknown): boolean => isRec(v) && v.path === "DEPARTURE_CANCEL" && v.fullRefund === true;
 const DEPARTURE_CANCEL_ACTOR: SellActor = { kind: "SYSTEM", job: "trips.departureCancel" };
-const DEPARTURE_CANCEL_APPROVER: SellActor = { kind: "SYSTEM", job: "trips.departureCancel.autoApprove" }; // F3
+const DEPARTURE_CANCEL_APPROVER_JOB = "trips.departureCancel.autoApprove";
+const DEPARTURE_CANCEL_APPROVER: SellActor = { kind: "SYSTEM", job: DEPARTURE_CANCEL_APPROVER_JOB }; // F3 · auditMoney ไม่จดชื่องาน SYSTEM ⇒ ใส่ใน after.approvedBy ด้วย
 
 // ═══════════════════════ ขั้นต่ำตามประกาศคืนเงิน 2563 (ทะเบียนกฎหมาย · มติ §22 ข้อ 4 · มติ r1 V5) ═══════════════════════
 /** ขั้นต่ำ (bp) ณ จำนวนวันก่อนเดินทาง = tourRefundFloorPctAt ของ `core/settings/legal/th-tour-2569.ts` (ตารางเดียวกับ W01) · หลังวันเดินทาง ⇒ null · ระดับสูงสุด WARN */
@@ -339,6 +340,7 @@ async function fileRefundRequestInTx(tx: Tx, c: Ctx, g: Gate, lb: MoneyBooking, 
       amountSatang: quote.refundSatang,
       manualDeltaSatang: 0,
       auto: true,
+      ...(a.fullRefund ? { approvedBy: DEPARTURE_CANCEL_APPROVER_JOB } : {}), // TRIPS T1.6a1 F3 ◂
       idemKeyHash: sha256hex(`auto:${id}`),
       bodyHash: a.requestHash,
     }, { status: "QUOTED", amountSatang: quote.refundSatang });
@@ -913,7 +915,7 @@ async function requoteApproved(c: Ctx, g: Gate, requestId: string): Promise<Sell
     );
     if (reapprove) {
       await auditMoney(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: DEPARTURE_CANCEL_APPROVER }, "trips.refund.approve", { type: "TripRefundRequest", id: r.id }, {
-        status: "APPROVED", bookingId: b.id, amountSatang: q.value.refundSatang, manualDeltaSatang: 0, auto: true, gen, idemKeyHash: sha256hex(`auto:${r.id}:g${gen}`),
+        status: "APPROVED", bookingId: b.id, amountSatang: q.value.refundSatang, manualDeltaSatang: 0, auto: true, approvedBy: DEPARTURE_CANCEL_APPROVER_JOB, gen, idemKeyHash: sha256hex(`auto:${r.id}:g${gen}`),
       }, { status: "QUOTED", amountSatang: q.value.refundSatang });
     }
     return sellFail("STATE_CONFLICT", { reason: "QUOTE_REFRESHED", requestId: r.id, amountSatang: q.value.refundSatang });

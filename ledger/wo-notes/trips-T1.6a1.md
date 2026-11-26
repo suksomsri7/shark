@@ -100,3 +100,8 @@ CREATE INDEX "TripDepartureCancelOutcome_bookingId_idx" ON "TripDepartureCancelO
 - **F6** resolve REFUND บนการจองที่ไม่ใช่ THB ⇒ `CURRENCY_NOT_ALLOWED` reason `CURRENCY_NOT_THB` (รหัสเดียวกับ moneyBookingGate) ทั้งก่อน tx และใต้ล็อก
 - งบ (เทียบ BASE): refund.ts **+58/−6** (งบ +70/−6) · money.ts +19/−0 (+25) · cancel-departure.ts 596 · ไฟล์อื่นไม่เปลี่ยนจากรอบ 2
 - ยังไม่ทำ: จอไม่มีป้าย "รอผู้อนุมัติ" สำหรับคำขอ QUOTED ของ F1(ข) (ลิ้นชักแสดง "บันทึกคืนเงินเต็มแล้ว ฿x" · ผู้อนุมัติใช้ทางอนุมัติคำขอคืนเงินเดิม)
+
+## ส่วนที่ 4 — รอบ 4 (RF-10 · F3)
+- auditMoney จดผู้กระทำ SYSTEM เป็น actorId null (ชื่องานจดเฉพาะ trips.public.self) ⇒ เพิ่ม `after.approvedBy = "trips.departureCancel.autoApprove"` เฉพาะทางนี้: อนุมัติให้เองตอนยื่นเมื่อ `a.fullRefund` (refund.ts:343) และอนุมัติซ้ำใน requote (refund.ts:918) · ค่าคงที่ refund.ts:87 · ไม่แตะ money.ts / audit ของทางอื่น
+- refund.ts รวม +60/−6 (งบ +70/−6) · money.ts +19 (ไม่เปลี่ยน)
+- qc-trips-t1.6 82/82 · qc-trips-t0.7 150/150 · typecheck สะอาด
