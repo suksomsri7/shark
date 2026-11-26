@@ -22,3 +22,7 @@ booking.ts +4/−1 (≤+10/−2) · public-booking.ts +7/−3 (≤+8/−3) · pd
 - ตัวรับการลบ: `onBookerPartyErased` (pdpa.ts · facade index.ts) เรียกต่อท้ายตัวรับเดิม `member.erased` และ `crm.contact.erased` ใน `src/lib/outbox-consumers.ts` (บล็อกรั้ว 2 จุด) · UPDATE เดียว: `policySnapshot || {"booker":{"v":1,"erased":true}}` + version +1 ทุกการจองของ Party ในร้านที่ยังไม่ใช่ป้าย (ส่งซ้ำ = 0 แถว) · payload ไม่มี partyId ⇒ ไม่ทำอะไร
 - ยืนยัน: มีคีย์ ⇒ เบอร์ที่พิมพ์เลขสำคัญ ≥ 8 เท่านั้น ไม่งั้น null · ไม่มีคีย์ ⇒ Party · `findBookReservation` คืน snapshot − booker · แฮช audit change / คำขอคืนเงิน ตัด booker
 - ผล: w1.2b 67/67 · w1.3 119/120 (S-10 ขอบเขตชุดเก่า) · t0.7 150/150 · typecheck 0 · fitness 54/54
+
+## รอบ 3 (มติ G1–G3)
+- ตัวรับการลบ: รับ `partyId` + `partyIds` (เฉพาะสตริง · ไม่ใช่อาร์เรย์ ⇒ ไม่ใช้) · ไล่สาย `mergedIntoId` ด้วย WITH RECURSIVE (UNION กันวน · ร้านเดียวกัน) · `oldSha` คิดจากสำเนาที่ตัด booker (ไม่ delete บนแถว)
+- ผล: w1.2b 72/72 · w1.3 119/120 (S-10 ขอบเขตชุดเก่า) · t0.7 150/150 · typecheck 0 · fitness 54/54

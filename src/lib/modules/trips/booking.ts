@@ -1729,8 +1729,8 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
   if (!policies.ok) return policies;
   if (!policies.value.departures[to]) return NF();
   const a = { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor };
-  const keptBooker = isRec(b.policySnapshot) && "booker" in b.policySnapshot ? { booker: b.policySnapshot.booker } : null; if (keptBooker && isRec(b.policySnapshot)) delete b.policySnapshot.booker; // TRIPS W1.2b ▸ แฮชใน audit ไม่รวมผู้จองที่พิมพ์ (มติ E4 · ไม่มีคีย์ = แฮชเดิม) ◂
-  const oldSha = sha256hex(JSON.stringify(b.policySnapshot));
+  const keptBooker = isRec(b.policySnapshot) && "booker" in b.policySnapshot ? { booker: b.policySnapshot.booker } : null; // TRIPS W1.2b ▸ ผู้จองที่พิมพ์ (หรือป้ายลบ) ของแถวที่อ่าน ◂
+  const oldSha = sha256hex(JSON.stringify(keptBooker && isRec(b.policySnapshot) ? { ...b.policySnapshot, booker: undefined } : b.policySnapshot)); // TRIPS W1.2b ▸ แฮชจากสำเนาที่ตัด booker (มติ E4 G3 · ไม่มีคีย์ = แฮชเดิม) ◂
   const approvalIds = (v.overrideApprovals ?? []).map((x) => x.approvalId);
   const r = await runBooking(g, async (tx): Promise<ChangeValue> => {
     // ชั้น 0: การแก้ของการจองเดียวกันทีละคำขอ (คีย์ซ้ำที่ยิงพร้อมกันได้ผลเดิม)

@@ -728,15 +728,20 @@ async function purgeStagesInTx(tx: Prisma.TransactionClient, u: Unit, passengerI
 }
 // ── /T0.8 pdpa ──
 
-// TRIPS W1.2b ▸ CRM/สมาชิกลบลูกค้า (crm.contact.erased · member.erased {partyId}) ⇒ ป้าย booker {v:1, erased:true} ทุกการจองของ Party นั้นในร้าน
-//   รวมการจองที่ไม่เคยมีคีย์ (มติ E1 E7 E9) · version +1 · ส่งซ้ำ = ไม่เปลี่ยน · ไม่มี partyId ⇒ ไม่ทำอะไร (ไม่มี Party ให้ตาม) ◂
+// TRIPS W1.2b ▸ CRM/สมาชิกลบลูกค้า (crm.contact.erased · member.erased {partyId?, partyIds?}) ⇒ ป้าย booker {v:1, erased:true} ทุกการจองในร้านของ Party ที่ระบุ
+//   และทุก Party ที่ถูกรวมเข้าหา (mergedIntoId ไล่สาย · ร้านเดียวกัน) รวมการจองที่ไม่เคยมีคีย์ (มติ E1 E7 E9 G1 G2) · version +1 · ส่งซ้ำ = ไม่เปลี่ยน
+//   partyIds: ใช้เฉพาะสมาชิกที่เป็นสตริง (ไม่ใช่อาร์เรย์ ⇒ ไม่ใช้) · ไม่มี id ⇒ ไม่ทำอะไร ◂
 export async function onBookerPartyErased(evt: { tenantId: string; payload: unknown }): Promise<{ n: number }> {
   const p = typeof evt.payload === "object" && evt.payload !== null ? (evt.payload as Record<string, unknown>) : {};
-  const partyId = typeof p.partyId === "string" ? p.partyId : "";
-  if (!partyId || !evt.tenantId) return { n: 0 };
+  const ids = [...new Set([p.partyId, ...(Array.isArray(p.partyIds) ? p.partyIds : [])].filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 64))];
+  if (!ids.length || !evt.tenantId) return { n: 0 };
   const n = await tenantDb({ tenantId: evt.tenantId }).$executeRaw`
+    WITH RECURSIVE ps("id") AS (
+      SELECT "id" FROM "Party" WHERE "tenantId" = ${evt.tenantId} AND "id" = ANY(${ids}::text[])
+      UNION SELECT c."id" FROM "Party" c JOIN ps ON c."mergedIntoId" = ps."id" WHERE c."tenantId" = ${evt.tenantId}
+    )
     UPDATE "TripBooking" SET "policySnapshot" = "policySnapshot" || '{"booker":{"v":1,"erased":true}}'::jsonb, "version" = "version" + 1, "updatedAt" = now()
-    WHERE "tenantId" = ${evt.tenantId} AND "bookerPartyId" = ${partyId} AND jsonb_typeof("policySnapshot") = 'object'
-      AND "policySnapshot"->'booker' IS DISTINCT FROM '{"v":1,"erased":true}'::jsonb`;
+    WHERE "tenantId" = ${evt.tenantId} AND ("bookerPartyId" = ANY(${ids}::text[]) OR "bookerPartyId" IN (SELECT "id" FROM ps))
+      AND jsonb_typeof("policySnapshot") = 'object' AND "policySnapshot"->'booker' IS DISTINCT FROM '{"v":1,"erased":true}'::jsonb`;
   return { n };
 }
