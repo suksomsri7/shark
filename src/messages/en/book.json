@@ -216,7 +216,8 @@
   },
   "page": {
     "titleCheckout": "Confirm booking",
-    "titleReservation": "My booking"
+    "titleReservation": "My booking",
+    "titleManage": "Manage booking"
   },
   "res": {
     "code": "Booking code {code}",
@@ -288,5 +289,90 @@
     "name": "Full name",
     "phone": "Phone",
     "email": "Email"
+  },
+  "self": {
+    "manage": {
+      "title": "Manage booking",
+      "cancel": "Cancel booking",
+      "cancelOnly": "Request cancellation",
+      "contact": "Contact {contact} and quote booking code {code}",
+      "contactBare": "Contact the shop and quote booking code {code}",
+      "agent": "This booking was made through an agent — contact your agent to change or cancel it"
+    },
+    "verify": {
+      "title": "Verify it's your booking",
+      "phone": "Phone number used when booking",
+      "submit": "Confirm",
+      "help": "Enter the phone number used for the booking. You'll then have 15 minutes to make changes; switching networks may ask you to verify again.",
+      "locked": "Too many wrong numbers. You can try again within 24 hours, or contact {contact} (booking code {code}).",
+      "lockedBare": "Too many wrong numbers. You can try again within 24 hours, or contact the shop (booking code {code})."
+    },
+    "cancel": {
+      "title": "Cancel booking",
+      "paid": "Paid",
+      "refund": "Refund due",
+      "kept": "Non-refundable under your terms",
+      "passThrough": "Fees the shop collected on others' behalf (e.g. park fees) are refunded in full",
+      "step": "{days} days before departure — your booking terms refund {pct}% of the trip price",
+      "stepOne": "{days} day before departure — your booking terms refund {pct}% of the trip price",
+      "stepDays": "{days} days before departure",
+      "stepDaysOne": "{days} day before departure",
+      "today": "Today is the travel date",
+      "requestNote": "This is a request. The shop will review it; until then your booking stays active.",
+      "partPaid": "While the shop reviews your request, ask the shop about any balance still due on this booking.",
+      "accept": "I want to cancel this booking and understand it can't be undone",
+      "acceptRequest": "I want to request cancellation and understand the terms above",
+      "submit": "Confirm cancellation",
+      "submitRequest": "Send cancellation request",
+      "done": "All set",
+      "unpaidDone": "Your booking is cancelled and the seats have been released. Please don't send any payment for it.",
+      "requested": "Refund request sent. The amount follows your booking terms; the shop will review it and send the refund. Questions? Contact {contact} (booking code {code})",
+      "requestedBare": "Refund request sent. The amount follows your booking terms; the shop will review it and send the refund. Questions? Contact the shop (booking code {code})",
+      "cancelRequested": "Cancellation request sent. The shop will review it. Questions? Contact {contact} and quote booking code {code}",
+      "cancelRequestedBare": "Cancellation request sent. The shop will review it. Questions? Contact the shop and quote booking code {code}",
+      "paidWarning": "If you have already transferred money, do not cancel here — contact {contact} and quote booking code {code}",
+      "paidWarningBare": "If you have already transferred money, do not cancel here — contact the shop first",
+      "legal": "The refund follows the cancellation terms at booking. The shop reviews it and makes the transfer. Your minimum rights are set by the 2020 refund notice of Thailand's Tourism Business and Guide Committee. Questions? Contact {contact} and quote booking code {code}",
+      "legalBare": "The refund follows the cancellation terms at booking. The shop reviews it and makes the transfer. Your minimum rights are set by the 2020 refund notice of Thailand's Tourism Business and Guide Committee. Questions? Contact the shop and quote booking code {code}"
+    },
+    "refund": {
+      "QUOTED": "Your refund request for {amount} is waiting for the shop to review. The shop makes the transfer. Questions? Contact {contact} and quote booking code {code}",
+      "QUOTEDBare": "Your refund request for {amount} is waiting for the shop to review. The shop makes the transfer. Questions? Contact the shop and quote booking code {code}",
+      "APPROVED": "The shop approved the refund of {amount}. The shop makes the transfer. Questions? Contact {contact} and quote booking code {code}",
+      "APPROVEDBare": "The shop approved the refund of {amount}. The shop makes the transfer. Questions? Contact the shop and quote booking code {code}",
+      "REJECTED": "The shop did not approve this request and it cannot be filed again on this page. Contact {contact} and quote booking code {code}",
+      "REJECTEDBare": "The shop did not approve this request and it cannot be filed again on this page. Contact the shop and quote booking code {code}",
+      "DONE": "The shop has marked a refund of {amount} as sent. If you haven't received it, contact {contact} (booking code {code}).",
+      "DONEBare": "The shop has marked a refund of {amount} as sent. If you haven't received it, contact the shop (booking code {code}).",
+      "byShop": "There is already a refund request for this booking ({amount}) handled by the shop. Questions? Contact {contact} and quote booking code {code}",
+      "byShopBare": "There is already a refund request for this booking ({amount}) handled by the shop. Questions? Contact the shop and quote booking code {code}",
+      "byShopRejected": "The shop closed a refund request for this booking. Questions? Contact {contact}.",
+      "byShopRejectedBare": "The shop closed a refund request for this booking. Questions? Contact the shop (booking code {code})."
+    },
+    "err": {
+      "NOT_FOUND": "Booking not found",
+      "RATE_LIMITED": "Too many attempts — try again later or contact the shop",
+      "INVALID": "Something went wrong with the form — reload the page and try again",
+      "INVALID_PHONE": "Please enter a valid phone number",
+      "VERIFY_FAILED": "That number does not match this booking — check and try again, or contact the shop",
+      "VERIFY_REQUIRED": "Please confirm the booker's phone number again",
+      "NOT_ALLOWED": "This booking cannot be managed on this page — contact the shop",
+      "ACCEPT_REQUIRED": "Please tick the box before confirming",
+      "AMOUNT_CHANGED": "The refund amount has changed (for example, a cancellation deadline passed or a payment was recorded). Check the new amount below and confirm again.",
+      "STATE_CHANGED": "This booking just changed — check the latest details below and try again",
+      "TOO_FAST": "That was too fast — wait a moment and try again",
+      "STALE_FORM": "This form is out of date — reload the page and try again",
+      "BUSY": "The system is busy — please try again",
+      "UNAVAILABLE": "Online booking management is not available right now — contact the shop",
+      "LIMITER_DOWN": "The system is busy — please try again in a moment"
+    },
+    "block": {
+      "AGENT": "This booking was made through an agent and cannot be managed on this page",
+      "PENDING": "This booking is waiting for the shop to confirm",
+      "ENDED": "This booking can no longer be managed on this page",
+      "STARTED": "The trip has already departed — it cannot be cancelled on this page",
+      "REFUND_IN_PROGRESS": "A refund request is being reviewed by the shop",
+      "REFUND_REJECTED": "The shop did not approve the request for this booking"
+    }
   }
 }

@@ -23,6 +23,7 @@ import { execFileSync } from "node:child_process";
 import { isDeepStrictEqual } from "node:util";
 import pg from "pg";
 import { loadTripsQcEnv } from "./trips-qc-env.mjs";
+import { fromMainMerge } from "./trips-main-merge.mjs"; // ORACLE-EDIT (ผู้คุม 19 พ.ย.: รวม main) — commit ฝั่ง main ที่รวมเข้ามา อยู่ที่เดียว
 import * as FX from "./trips-fixture.mjs";
 
 const LABEL = "qc-trips-w1.1";
@@ -346,7 +347,8 @@ try {
     needOwn();
     const bad: string[] = [];
     // ORACLE-EDIT S-4 (มติ R3 · W1.2 §2): เส้นจอง W1.2a ใต้ app/book (actions.ts · c/ · my/ · หน้าสินค้า) import ชั้น platform ของเส้นจองได้ — trips-book / trips-book-core (ยังห้าม prisma/modules/core)
-    const PLAT_OK = ["@/lib/platform/trips-public", "@/lib/platform/trips-public-core", "@/lib/platform/trips-book", "@/lib/platform/trips-book-core"];
+    // ORACLE-EDIT S-4 (ผู้คุม 19 พ.ย. · ใบสั่ง W1.3 §2 §3.2): หน้า my/[token] + my/actions.ts ของ W1.3a เรียกชั้น platform ของ "การจองของฉัน" — trips-self / trips-self-core (ยังห้าม prisma/modules/core)
+    const PLAT_OK = ["@/lib/platform/trips-public", "@/lib/platform/trips-public-core", "@/lib/platform/trips-book", "@/lib/platform/trips-book-core", "@/lib/platform/trips-self", "@/lib/platform/trips-self-core"];
     for (const f of appFiles) for (const m of stripComments(read(f)).matchAll(/from\s+["']([^"']+)["']/g)) {
       const s = m[1] ?? "";
       if (!(s === "react" || s.startsWith("next/") || s === "next" || PLAT_OK.includes(s) || s.startsWith("@/components/book/") || s.startsWith("./") || s.startsWith("../"))) bad.push(`${basename(f)} ← ${s}`);
@@ -364,7 +366,9 @@ try {
     const src = appFiles.map((f) => stripComments(read(f))).join("\n");
     // ORACLE-EDIT S-5 (มติ R3 · W1.2 §2): 'use server' มีได้เฉพาะ src/app/book/[shop]/actions.ts (action ของเส้นจอง W1.2a) · หน้า c/ my/ เป็นหน้า server ปกติ (ตรวจใน qc-trips-w1.2 S-4 S-7)
     const usFiles = appFiles.filter((f) => /["']use server["']/.test(read(f)));
-    eq(usFiles, usFiles.length ? ["src/app/book/[shop]/actions.ts"] : [], "ไฟล์ที่มี 'use server' ใต้ app/book");
+    // ORACLE-EDIT S-5 (ผู้คุม 19 พ.ย. · ใบสั่ง W1.3 §2): W1.3a เพิ่ม 'use server' ได้อีกหนึ่งไฟล์พอดี — src/app/book/[shop]/my/actions.ts (verifySelfAction · cancelSelfAction) · นอกสองไฟล์นี้ยังแดง
+    const US_OK = ["src/app/book/[shop]/actions.ts", "src/app/book/[shop]/my/actions.ts"];
+    ok(usFiles.every((f) => US_OK.includes(f)) && new Set(usFiles).size === usFiles.length, `ไฟล์ที่มี 'use server' ใต้ app/book: ${usFiles.join(", ")} (ได้เฉพาะ ${US_OK.join(" · ")})`);
     for (const [re, what] of [[/\bnow\s*:/, "now:"], [/\bdeps\s*:/, "deps:"], [/new Date\(/, "new Date("], [/Date\.now\(/, "Date.now"], [/bookPageGate/, "bookPageGate ตรง"],
       [/loadBook(Shop|Product)VM/, "loadBook*VM (ตัวโหลดนอกด่าน — มติ X1)"], [/resolveBookShop|bookFramePolicy|getPublicBranding|findPublicProduct|loadPublic(Catalog|Product)/, "ตัวแก้ร้าน/ตราสินค้า/ตัวอ่านสินค้า นอก open*"],
       [/clientIpFromHeaders\(|bookClientKey\(|canonicalClientIp\(/, "ตัวอ่าน IP/ทำกุญแจเอง (ต้องผ่าน bookRequestFromHeaders — มติ X2)"], [/x-forwarded-for|x-real-ip/i, "ชื่อหัว IP ในหน้า"]] as const) ok(!re.test(src), `app/book มี ${what}`);
@@ -496,7 +500,9 @@ try {
       if ((d ?? 0) > maxDel || (maxAdd !== null && (a ?? 0) > maxAdd)) over.push(`${f} +${a}/−${d} (ได้ +${maxAdd ?? "∞"}/−${maxDel})`);
     }
     ok(over.length === 0, over.join(" · "));
-    ok(git(["diff", "--name-only", BASE_SHA, "--", "prisma/migrations"]).trim() === "" && git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]).trim() === "", "มี migration/ไฟล์ prisma ใหม่");
+    // ORACLE-EDIT S-12 (ผู้คุม 19 พ.ย.: รวม main — migration ของ main ไม่ใช่ของใบ): ไฟล์ใต้ prisma ที่ตรงกับ commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge · scripts/trips-main-merge.mts) ไม่นับ — migration ที่ฝั่ง TRIPS เพิ่ม/แก้ หรือ untracked ยังแดง
+    const prismaNew = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", "prisma/migrations"]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]).split("\n")].filter(Boolean))].filter((f) => !fromMainMerge(ROOT, f));
+    ok(prismaNew.length === 0, `มี migration/ไฟล์ prisma ใหม่: ${prismaNew.slice(0, 4).join(", ")}`);
   });
   groupLine("S");
 

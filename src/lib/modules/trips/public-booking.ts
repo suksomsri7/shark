@@ -211,3 +211,56 @@ export async function findBookReservation(ref: { tenantId: string; unitIds: stri
     waiversSigned: Number(pax[0]?.signed ?? 0),
   };
 }
+
+// TRIPS W1.3 ▸ ข้อเท็จจริงของก้อน "จัดการการจอง" (ใบสั่ง W1.3 §3.2 §4 · อ่านอย่างเดียว) — ผู้เรียก (platform/trips-self · trips-book) ใช้ตัดสิน
+//   ไม่ออก VM: เบอร์ผู้จอง (phoneNorm) ใช้เทียบในเซิร์ฟเวอร์เท่านั้น · ข้อมูลผู้จองถูกลบ (piiPurgedAt) ⇒ ไม่มีเบอร์ · คำขอคืนเงิน = แถวล่าสุดที่ไม่ถูกถอน (P3 · K8) ◂
+export type BookSelfFacts = {
+  channel: string;
+  collectMode: string;
+  agentAccountId: string | null;
+  version: number;
+  bookerPhoneNorm: string | null;
+  refund: { status: string; amountSatang: number; by: string } | null;
+  /** ยกเลิกแล้วโดยเส้นลูกค้า (audit trips.booking.cancel ของ trips.public.self · V2) */
+  cancelledBySelf: boolean;
+};
+export async function findBookSelfFacts(ref: { tenantId: string; unitId: string }, bookingId: string): Promise<BookSelfFacts | null> {
+  if (!isId(bookingId) || !isId(ref.unitId)) return null;
+  const { tenantId, unitId } = ref;
+  const db = dbOf(tenantId, unitId);
+  const rows = await db.$queryRaw<{ channel: string; collectMode: string; agentAccountId: string | null; version: number; purged: boolean; phoneNorm: string | null; self: boolean }[]>`
+    SELECT b."channel", b."collectMode", b."agentAccountId", b."version", (b."piiPurgedAt" IS NOT NULL) AS "purged", p."phoneNorm",
+      (b."status" = 'CANCELLED' AND EXISTS (SELECT 1 FROM "AuditLog" a WHERE a."tenantId" = b."tenantId" AND a."createdAt" >= b."createdAt" - interval '1 day' AND a."targetId" = b."id" AND a."action" = 'trips.booking.cancel' AND a."actorId" = 'trips.public.self')) AS "self"
+    FROM "TripBooking" b LEFT JOIN "Party" p ON p."id" = b."bookerPartyId" AND p."tenantId" = b."tenantId"
+    WHERE b."id" = ${bookingId} AND b."tenantId" = ${tenantId} AND b."unitId" = ${unitId} LIMIT 1`;
+  const b = rows[0];
+  if (!b) return null;
+  const rq = await db.$queryRaw<{ status: string; amountSatang: number; by: string }[]>`
+    SELECT "status", "amountSatang", "by" FROM "TripRefundRequest" WHERE "bookingId" = ${bookingId} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId} AND "status" <> 'WITHDRAWN'
+    ORDER BY "createdAt" DESC, "id" DESC LIMIT 1`;
+  const r = rq[0];
+  return {
+    channel: String(b.channel),
+    collectMode: String(b.collectMode),
+    agentAccountId: b.agentAccountId ?? null,
+    version: Number(b.version),
+    bookerPhoneNorm: b.purged || typeof b.phoneNorm !== "string" || !b.phoneNorm ? null : b.phoneNorm,
+    refund: r ? { status: String(r.status), amountSatang: Number(r.amountSatang), by: String(r.by) } : null,
+    cancelledBySelf: b.self === true,
+  };
+}
+/** ผลเดิมของคีย์ฟอร์มลูกค้า (K5 · คีย์อย่างเดียว): คำขอคืนเงินของคีย์ หรือแถว audit ยกเลิกที่จด idemKeyHash (ช่วงเผื่อ 24 ชม. ก่อนเวลาสร้างการจอง แบบ T0.6 F1) — ไม่เคยทำ ⇒ null */
+export async function findSelfReplay(ref: { tenantId: string; unitId: string }, b: { id: string; createdAt: Date }, key: string, keyHash: string): Promise<{ request: { id: string; status: string; amountSatang: number; keptSatang: number; step: { daysBefore: number; refundBp: number } | null } | null } | null> {
+  const db = dbOf(ref.tenantId, ref.unitId);
+  const rq = (await db.$queryRaw<{ id: string; status: string; amountSatang: number; computed: unknown }[]>`
+    SELECT "id", "status", "amountSatang", "computed" FROM "TripRefundRequest" WHERE "tenantId" = ${ref.tenantId} AND "idempotencyKey" = ${key} AND "bookingId" = ${b.id}`)[0];
+  if (rq) {
+    const cp = isRec(rq.computed) ? rq.computed : {};
+    const step = isRec(cp.step) ? { daysBefore: Number(cp.step.daysBefore), refundBp: Number(cp.step.refundBp) } : null;
+    return { request: { id: rq.id, status: rq.status, amountSatang: Number(rq.amountSatang), keptSatang: Number(cp.keptSatang ?? 0), step } };
+  }
+  const since = new Date(new Date(b.createdAt).getTime() - 86_400_000).toISOString();
+  const a = await db.$queryRaw<{ x: number }[]>`
+    SELECT 1 AS "x" FROM "AuditLog" WHERE "tenantId" = ${ref.tenantId} AND "createdAt" >= ${since}::timestamp AND "targetId" = ${b.id} AND "action" = 'trips.booking.cancel' AND "after"->>'idemKeyHash' = ${keyHash} LIMIT 1`;
+  return a.length ? { request: null } : null;
+}

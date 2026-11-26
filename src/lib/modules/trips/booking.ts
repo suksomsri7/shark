@@ -12,7 +12,7 @@
 // 🔴 ทุกฟังก์ชันบริการคืน SellResult — error ที่ไม่คาดคิดถูกบันทึก ops แล้วคืน BUSY (R10) · *InTx ปฏิเสธด้วย throw (ผู้เรียก rollback)
 // ─────────────────────────────────────────────────────────────
 import { createHash, createHmac, randomBytes } from "node:crypto";
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client"; // TRIPS W1.3 ▸ ค่า (Prisma.raw/empty) ของ FOR UPDATE เฉพาะในธุรกรรม ◂
 import { tenantDb } from "@/lib/core/db";
 import { logOps } from "@/lib/core/ops";
 import { emitOutboxMany } from "@/lib/core/outbox";
@@ -72,6 +72,7 @@ import { buildTripBookingSnapshot, quoteTripLine, quoteTrips, type TripQuoteLine
 import { PricingAbort } from "./pricing-core";
 import { TripProductNotSellableError, assertProductSellableInTx } from "./products";
 import { redeemPromosInTx, releasePromoInTx } from "./promo";
+import { findSelfReplay } from "./public-booking"; // TRIPS W1.3 ▸ ตัวอ่านผลเดิมของฟอร์มลูกค้า (K5) ◂
 import { recomputeFromSnapshot, type TripsBookingSnapshot } from "./snapshot";
 import { canTransitionBooking, initialBookingStatus, isBookingStatus, type BookingStatus, type InitialHoldMode } from "./state";
 // TRIPS T0.7 ▸ เงินฝั่ง trips: งวดในธุรกรรมยืนยัน · ยกเลิก/แก้การจองที่ขายแล้ว (ใบสั่ง T0.7 §9) ◂
@@ -939,6 +940,7 @@ async function auditBooking(tx: Tx, a: AuditActor, action: string, targetId: str
       targetId,
       ...(before ? { before: { ...before } } : {}),
       after: { ...after },
+      ...(a.actor.kind === "SYSTEM" && a.actor.job === TRIPS_PUBLIC_SELF_ACTOR ? { actorId: TRIPS_PUBLIC_SELF_ACTOR, after: { ...after, by: "PUBLIC" } } : {}), // TRIPS W1.3 ▸ K3 ◂
     },
   });
 }
@@ -1415,6 +1417,53 @@ async function idemAudits(db: Tx, tenantId: string, action: string, b: { id: str
   return rows.filter((r) => isRec(r.after)).map((r) => ({ after: r.after as Record<string, unknown> }));
 }
 
+// TRIPS W1.3 ▸ รั้วลูกค้า (ใบสั่ง W1.3 §3.3 · K2–K5 K16 · L1 L9): PUBLIC ผ่านเมื่อ opts.publicSelf = { bookingId, tokenHash, expectedVersion } ตรงคำขอ + แถว (ตรวจซ้ำใต้ล็อก) ·
+//   เหตุ CUSTOMER + ข้อความคงที่ · MONEY · ไม่มี deductions · ไม่ใช่ PENDING/เอเจนซี่ · รุ่นไม่ตรง ⇒ STATE_CONFLICT · audit SYSTEM/trips.public.self/by PUBLIC (K3) · ส่งซ้ำ ⇒ ผลเดิม (K5)
+export const TRIPS_PUBLIC_SELF_REASON = "ลูกค้ายกเลิกเองผ่านลิงก์การจอง";
+export const TRIPS_PUBLIC_SELF_ACTOR = "trips.public.self";
+export const PUBLIC_SELF_AUDITOR: SellActor = { kind: "SYSTEM", job: TRIPS_PUBLIC_SELF_ACTOR };
+export type PublicSelf = { bookingId: string; tokenHash: string; expectedVersion: number; expectedRefundSatang?: number }; // P2: ยอดที่ลูกค้าเห็น (เทียบใต้ล็อก)
+/** ไม่ใช่ PUBLIC ⇒ null · PUBLIC ผ่านรั้ว ⇒ publicSelf · ไม่มี publicSelf ⇒ FORBIDDEN OTP_REQUIRED (เดิม) · เกินสิทธิ์ ⇒ FORBIDDEN */
+export function publicSelfGate(c: Ctx, opts: unknown, req: unknown): Failure | PublicSelf | null {
+  if (c.actor.kind !== "PUBLIC") return null;
+  const ps = isRec(opts) && isRec(opts.publicSelf) ? opts.publicSelf : null;
+  if (!ps) return sellFail("FORBIDDEN", { reason: "OTP_REQUIRED" });
+  const r = isRec(req) ? req : {};
+  const ok = typeof ps.bookingId === "string" && ps.bookingId === r.bookingId && typeof ps.tokenHash === "string" && /^[0-9a-f]{64}$/.test(ps.tokenHash) && Number.isSafeInteger(ps.expectedVersion) &&
+    r.reasonKind === "CUSTOMER" && r.reason === TRIPS_PUBLIC_SELF_REASON && (r.choice === undefined || r.choice === "MONEY") && r.deductions === undefined && r.moveToSlotId === undefined;
+  const er = Number.isSafeInteger(ps.expectedRefundSatang) && Number(ps.expectedRefundSatang) >= 0 ? { expectedRefundSatang: Number(ps.expectedRefundSatang) } : {};
+  return ok ? { bookingId: String(ps.bookingId), tokenHash: String(ps.tokenHash), expectedVersion: Number(ps.expectedVersion), ...er } : sellFail("FORBIDDEN");
+}
+/** แถว (`lock` = FOR UPDATE ในธุรกรรมของผู้เรียกเท่านั้น · นอกธุรกรรมอ่านเฉย ๆ · P3): token ไม่ตรง/PENDING/เอเจนซี่ ⇒ FORBIDDEN · `version` และรุ่นไม่ตรงที่หน้าเห็น ⇒ STATE_CONFLICT */
+export async function publicSelfRowFail(db: Tx, g: { tenantId: string; unitId: string }, id: string, ps: PublicSelf, version: boolean, lock = true): Promise<Failure | null> {
+  const r = (await db.$queryRaw<{ h: string | null; s: string; v: number; ch: string; cm: string; ag: string | null }[]>`
+    SELECT "publicTokenHash" AS "h", "status" AS "s", "version" AS "v", "channel" AS "ch", "collectMode" AS "cm", "agentAccountId" AS "ag" FROM "TripBooking" WHERE "id" = ${id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} ${lock ? Prisma.raw("FOR UPDATE") : Prisma.empty}`)[0];
+  if (!r || r.h !== ps.tokenHash || r.s === "PENDING" || String(r.ch).startsWith("AGENT_") || r.cm === "AGENT" || r.ag) return sellFail("FORBIDDEN");
+  return version && r.v !== ps.expectedVersion ? sellFail("STATE_CONFLICT") : null;
+}
+/** ผลเดิมของคีย์ (คีย์อย่างเดียว · ไม่ดูสถานะ · ตัวอ่านใน public-booking) */
+async function replaySelf(g: Gate, c: Ctx, b: { id: string; createdAt: Date }, idem: string): Promise<CancelResult | null> {
+  const key = `cancel:${b.id}:${nsKey(c, idem, null)}`;
+  const r = await findSelfReplay(g, b, key, sha256hex(key));
+  const q = r?.request;
+  return !r ? null : q ? { computed: { refundSatang: q.amountSatang, feeSatang: q.keptSatang, ladderStep: q.step, source: "SNAPSHOT" }, requestId: q.id, status: q.status } : { computed: { refundSatang: 0, feeSatang: 0, ladderStep: null, source: "SNAPSHOT" }, status: "CANCELLED" };
+}
+/** อ่านผลเดิมของฟอร์มเดิม (PUBLIC + publicSelf · ไม่เขียน) — null = ยังไม่เคยทำ */
+export async function selfReplayOf(ctx: unknown, input: unknown, opts?: CancelOpts): Promise<SellResult<CancelResult | null>> {
+  return safely("selfReplayOf", ctx, async () => {
+    const pc = parseCtx(ctx);
+    if (!pc.ok) return pc;
+    const i = isRec(input) ? input : {};
+    const pub = publicSelfGate(pc.c, opts, { bookingId: i.bookingId, reasonKind: "CUSTOMER", reason: TRIPS_PUBLIC_SELF_REASON });
+    if (!pub || "ok" in pub) return pub ?? sellFail("FORBIDDEN");
+    const g = await gateOf(pc.c);
+    const b = g && typeof i.idempotencyKey === "string" && /^[A-Za-z0-9_-]{8,90}$/.test(i.idempotencyKey) ? await readBooking(unitDb(g), g, pub.bookingId) : null;
+    if (!g || !b || (await publicSelfRowFail(unitDb(g), g, b.id, pub, false, false))) return sellFail("FORBIDDEN");
+    return { ok: true, value: await replaySelf(g, pc.c, b, String(i.idempotencyKey)) };
+  });
+}
+// ◂ TRIPS W1.3
+
 // ═══════════════════════ ยกเลิกก่อนจ่าย (ใบสั่ง §5.6) ═══════════════════════
 /**
  * tripSellable.cancel — QUOTE = คำนวณจาก snapshot (ไม่เขียน) · EXECUTE (STAFF/SYSTEM) บน HOLD/PENDING:
@@ -1425,7 +1474,7 @@ async function idemAudits(db: Tx, tenantId: string, action: string, b: { id: str
  * TRIPS T0.7 ▸ สิทธิ์ของผู้เรียกผ่าน server action (มติ r1 V2): ยกเลิกการจองที่ขายแล้ว = ยื่นคำขอคืนเงิน ⇒ ต้องมี trips.refund.request (canRequest) ·
  * เหตุที่ไม่ใช่ลูกค้าต้องมี trips.refund.approve (canDecide) · ไม่ส่ง = ผู้เรียกในระบบที่ไว้ใจ (tripSellable ของแพลตฟอร์ม · SYSTEM) ◂
  */
-export type CancelOpts = { refund?: { canRequest: boolean; canDecide: boolean } };
+export type CancelOpts = { refund?: { canRequest: boolean; canDecide: boolean }; publicSelf?: PublicSelf }; // TRIPS W1.3 ▸ publicSelf = รั้วลูกค้า (K2) ◂
 export async function cancelTripBooking(ctx: unknown, input: unknown, opts?: CancelOpts): Promise<SellResult<CancelResult>> {
   return safely("cancelTripBooking", ctx, () => cancelImpl(ctx, input, opts));
 }
@@ -1433,7 +1482,8 @@ async function cancelImpl(ctx: unknown, input: unknown, opts?: CancelOpts): Prom
   const pc = parseCtx(ctx);
   if (!pc.ok) return pc;
   const c = pc.c;
-  if (c.actor.kind === "PUBLIC") return sellFail("FORBIDDEN", { reason: "OTP_REQUIRED" });
+  const pub = publicSelfGate(c, opts, input); // TRIPS W1.3 ▸ PUBLIC ไม่มี publicSelf ⇒ FORBIDDEN OTP_REQUIRED เดิม · มี ⇒ ตรวจรั้ว (K2) ◂
+  if (pub && "ok" in pub) return pub;
   const p = cancelRequestSchema.safeParse(input);
   if (!p.success) return invalidInput(p.error);
   const v = p.data;
@@ -1443,6 +1493,12 @@ async function cancelImpl(ctx: unknown, input: unknown, opts?: CancelOpts): Prom
   if (!g) return NF();
   const b = await readBooking(unitDb(g), g, v.bookingId);
   if (!b) return NF();
+  // TRIPS W1.3 ▸ แถวผ่านรั้ว (token · PENDING · เอเจนซี่) → ฟอร์มเดิม ⇒ ผลเดิมก่อนด่านสถานะ (K5) → รุ่นที่หน้าเห็น (L1) ◂
+  const pf = pub ? await publicSelfRowFail(unitDb(g), g, b.id, pub, false, false) : null;
+  if (pf) return pf;
+  const rp = pub && v.mode === "EXECUTE" ? await replaySelf(g, c, b, v.idempotencyKey) : null;
+  if (rp) return { ok: true, value: rp };
+  if (pub && b.version !== pub.expectedVersion) return sellFail("STATE_CONFLICT");
   const sc = sellCtxOf(c, ctx);
   // TRIPS T0.7 ▸ การจองที่ขายแล้ว: QUOTE = ใบเสนอคืนเงินจาก snapshot (รวมหลักฐานเก็บแทน · ไม่เขียน) · EXECUTE = ยื่นคำขอคืนเงิน G.3 (คีย์ cancel:<bookingId>:…) ◂
   if (REFUNDABLE_SOLD.has(b.status)) {
@@ -1451,13 +1507,14 @@ async function cancelImpl(ctx: unknown, input: unknown, opts?: CancelOpts): Prom
       if (!mb) return NF();
       const q = await tripRefundQuote(unitDb(g), g, mb, c.clock.iso, v.reasonKind ?? "CUSTOMER", 0);
       if (!q.ok) return q;
-      return { ok: true, value: { computed: { refundSatang: q.value.refundSatang, feeSatang: q.value.keptSatang, ladderStep: q.value.step, source: "SNAPSHOT" }, status: b.status } };
+      const computed = { refundSatang: q.value.refundSatang, feeSatang: q.value.keptSatang, ladderStep: q.value.step, source: "SNAPSHOT" as const, ...(pub ? { passThroughSatang: q.value.refundPassThroughSatang } : {}) }; // TRIPS W1.3 ▸ L7 เงินเก็บแทน (เส้นลูกค้าเท่านั้น) ◂
+      return { ok: true, value: { computed, status: b.status } };
     }
     if (opts?.refund && !opts.refund.canRequest) return sellFail("FORBIDDEN");
     const rq = await requestTripRefundForCancel(
       c,
       { bookingId: b.id, expectedVersion: b.version, reasonKind: v.reasonKind ?? "CUSTOMER", choice: v.choice ?? "MONEY", reason: v.reason, idempotencyKey: v.idempotencyKey },
-      opts?.refund ? { canDecide: opts.refund.canDecide } : undefined,
+      opts?.refund || pub ? { ...(opts?.refund ? { canDecide: opts.refund.canDecide } : {}), ...(pub ? { publicSelf: pub } : {}) } : undefined, // TRIPS W1.3 ▸ K2 ◂
     );
     if (!rq.ok) return rq;
     const step = isRec(rq.value.computed.step) ? { daysBefore: Number(rq.value.computed.step.daysBefore), refundBp: Number(rq.value.computed.step.refundBp) } : null;
@@ -1488,7 +1545,7 @@ async function cancelImpl(ctx: unknown, input: unknown, opts?: CancelOpts): Prom
   const r = await runBooking(g, async (tx): Promise<SellResult<CancelResult> | "DONE"> => {
     let version: number;
     try {
-      version = await cancelUnpaidInTx(tx, sc, b, v.reason, policies);
+      version = await cancelUnpaidInTx(tx, pub ? { ...sc, actor: PUBLIC_SELF_AUDITOR } : sc, b, v.reason, policies); // TRIPS W1.3 ▸ ที่ถือของการจองปล่อยด้วยสิทธิ์ของรั้ว (ลูกค้าไม่มี capKey ตะกร้า) ◂
     } catch (e) {
       if (e instanceof BookingAbort && e.code === "STATE_CONFLICT" && !e.details) {
         const rr = replay(await idemAudits(tx, g.tenantId, "trips.booking.cancel", b, keyHash));
@@ -1496,8 +1553,10 @@ async function cancelImpl(ctx: unknown, input: unknown, opts?: CancelOpts): Prom
       }
       throw e;
     }
+    const tf = pub ? await publicSelfRowFail(tx, g, b.id, pub, false) : null; // TRIPS W1.3 ▸ ใต้ล็อกแถว (CAS ถือแถวแล้ว) ◂
+    if (tf) throw new BookingAbort(tf.code);
     await emitBooking(tx, g, "trips.booking.cancelled", b.id, { id: b.id, departureId: b.departureId, status: "CANCELLED", channel: b.channel, amountSatang: payableOf(b) });
-    await auditBooking(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor }, "trips.booking.cancel", b.id, { status: "CANCELLED", version, idemKeyHash: keyHash, bodyHash }, { status: b.status, version: b.version });
+    await auditBooking(tx, { tenantId: g.tenantId, unitId: g.unitId, actor: pub ? PUBLIC_SELF_AUDITOR : c.actor }, "trips.booking.cancel", b.id, { status: "CANCELLED", version, idemKeyHash: keyHash, bodyHash }, { status: b.status, version: b.version });
     return "DONE";
   });
   if (!r.ok) return r;

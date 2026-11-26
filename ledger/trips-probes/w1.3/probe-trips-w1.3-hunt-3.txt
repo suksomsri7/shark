@@ -1,0 +1,237 @@
+// probe-trips-w1.3-hunt-3 — target 3 (state changes between opening the cancel screen and submitting) · 6 (bookings that must show no self-service) · 4 (hand-typed ?done / ?e)
+// form POSTs as a no-JS browser sends them (raw HTTP, same-origin Origin) · state changes in-process through the trips facade / SQL like the oracle fixtures · sweeper restricted to my tenant
+import * as L from "./probe-trips-w1.3-hunt-lib.mjs";
+const { line, info, guard, freshIp, sleep, req, submit, loc, postForm, visibleText } = L;
+
+L.boot("probe-w1.3-hunt-3");
+const CONTACT_PHONE = "076-131-313";
+try {
+  await L.sweepStale();
+  const A = await L.mkShop("a", { contact: { phone: CONTACT_PHONE, line: "@w13hunt", address: "1 ถนนล่า ภูเก็ต" } });
+  const P = await L.mkProd(A, "A");
+  const today = L.ymdBkk(new Date());
+  const D45 = L.addDays(today, 45), D20 = L.addDays(today, 20);
+  const d45 = await L.mkDep(P, D45, { capacity: 80 });
+  const d20 = await L.mkDep(P, D20, { capacity: 80 });
+  const strip = (s: string, b: L.Bk) => s.replace(L.BASE, "").replace(b.token, "<tok>").replace(/g=g1\.[^&]+/, "g=<g>");
+  const eCode = (l: string) => /[?&]e=([A-Z_]+)/.exec(l)?.[1] ?? (/done=([A-Z_]+)/.exec(l) ? `done:${/done=([A-Z_]+)/.exec(l)?.[1]}` : /do=cancel/.test(l) ? "cancel-page" : "manage");
+  const verifyHttp = async (b: L.Bk, phone = b.phone, ip = b.ip) => {
+    const path = `${b.path}?do=cancel`;
+    const g = await req(path, { ip, headers: { "x-real-ip": ip } });
+    const f = postForm(g.body);
+    if (!f) return { loc: "", status: g.status, body: g.body };
+    await sleep(L.FORM_WAIT);
+    const r = await submit(path, [...f.fields.filter(([k]) => k !== "phone"), ["phone", phone]], ip, { headers: { "x-real-ip": ip } });
+    return { loc: loc(r), status: r.status, body: r.body };
+  };
+  const openCancel = async (b: L.Bk) => {
+    const v = await verifyHttp(b);
+    const r = await req(v.loc, { ip: b.ip, headers: { "x-real-ip": b.ip } });
+    const f = postForm(r.body);
+    await sleep(L.FORM_WAIT); // nonce min age (TOO_FAST) — PROBE-EDIT r2
+    return { url: v.loc, fields: [...(f?.fields ?? []).filter(([k]) => k !== "accept"), ["accept", "on"]] as [string, string][], body: r.body, seen: Number(f ? L.fieldOf(f, "seen") : NaN) };
+  };
+  const post = (b: L.Bk, url: string, fields: [string, string][]) => submit(url, fields, b.ip, { headers: { "x-real-ip": b.ip } });
+  const page = async (b: L.Bk, path: string, ip = b.ip) => (await req(path, { ip, headers: { "x-real-ip": ip } })).body;
+  const errBox = (h: string) => /data-testid="book-self-error"[^>]*data-code="([A-Z_]+)"|data-code="([A-Z_]+)"[^>]*data-testid="book-self-error"/.exec(h)?.slice(1).find(Boolean) ?? null;
+  const moneyIn = (h: string, id: string) => L.moneyOf(h.replace(/<\/dd>/g, "</span>"), id);
+  const paid = async (dep = d45, date = D45, n: Record<string, number> = { ADULT: 1 }) => { const b = await L.mkHold(A, P, dep, date, n); await L.pay(A, b, await L.dueOf(b)); return b; };
+  const staffReq = async (b: L.Bk) => {
+    const v = (await L.bRow(b.id))?.version ?? 0;
+    return L.tcall("requestTripRefund", L.staffCtx(A), { bookingId: b.id, expectedVersion: v, reasonKind: "CUSTOMER", choice: "MONEY", reason: "ล่า W13 staff", idempotencyKey: `w13hsr_${L.hex(6)}` });
+  };
+  const reject = async (requestId: string) => L.tcall("decideTripRefund", L.staffCtx(A), { requestId, decision: "REJECT", reason: "ล่า W13 reject", idempotencyKey: `w13hdj_${L.hex(6)}` });
+
+  // ═══ 3. state changes between screen and submit ═══
+  await guard("3a-payment-partpaid", async () => {
+    const b = await L.mkHold(A, P, d45, D45, { ADULT: 2 });
+    const gross = await L.dueOf(b);
+    await L.pay(A, b, Math.floor(gross / 4));
+    const c = await openCancel(b);
+    await L.pay(A, b, Math.floor(gross / 4));
+    const r = await post(b, c.url, c.fields);
+    const after = await page(b, loc(r));
+    const rq = await L.refundsOf(b.id);
+    line("3a-payment", "PART_PAID screen → staff records 2nd payment → submit ⇒ AMOUNT_CHANGED, no row, screen shows new amount + error box", `seen=${c.seen} → ${eCode(loc(r))} rows=${rq.length} err=${errBox(after)} newShown=${moneyIn(after, "book-cancel-refund")} paid=${(await L.bRow(b.id))?.paidSatang}`,
+      rq.length === 0 && ["AMOUNT_CHANGED", "STATE_CHANGED"].includes(eCode(loc(r))) && !!errBox(after) && moneyIn(after, "book-cancel-refund") === (await L.bRow(b.id))?.paidSatang);
+  });
+  await guard("3b-hold→paid", async () => {
+    const b = await L.mkHold(A, P, d45, D45, { ADULT: 1 });
+    const c = await openCancel(b);
+    await L.pay(A, b, await L.dueOf(b));
+    const r = await post(b, c.url, c.fields);
+    const after = await page(b, loc(r));
+    const row = await L.bRow(b.id);
+    line("3b-hold→paid", "UNPAID screen → paid in full → submit ⇒ STATE_CHANGED, not cancelled, no row, screen now REFUND_REQUEST + error", `→ ${eCode(loc(r))} status=${row?.status} rows=${(await L.refundsOf(b.id)).length} err=${errBox(after)} kind=${/data-kind="([A-Z_]+)"/.exec(after)?.[1]}`,
+      row?.status === "PAID" && (await L.refundsOf(b.id)).length === 0 && eCode(loc(r)) === "STATE_CHANGED" && /data-kind="REFUND_REQUEST"/.test(after) && !!errBox(after));
+  });
+  await guard("3c-staff-request", async () => {
+    const b = await paid();
+    const c = await openCancel(b);
+    const s = await staffReq(b);
+    const r = await post(b, c.url, c.fields);
+    const after = await page(b, loc(r));
+    const rq = await L.refundsOf(b.id);
+    line("3c-staff-request", "screen open → staff files refund → submit ⇒ no customer row (1 STAFF row) · page shows byShop status", `staff=${String(s.ok)} → ${eCode(loc(r))} rows=${JSON.stringify(rq.map((x) => [x.by, x.status, x.amountSatang]))} status=${/data-testid="book-refund-status"[^>]*/.exec(after)?.[0]?.slice(0, 120)}`,
+      rq.length === 1 && rq[0]?.by === "STAFF" && /data-testid="book-refund-status"/.test(after));
+  });
+  await guard("3d-staff-cancel", async () => {
+    const b = await L.mkHold(A, P, d20, D20, { ADULT: 2 });
+    const c = await openCancel(b);
+    const before = await L.depRow(d20);
+    const sc = await L.tcall("cancelTripBooking", L.staffCtx(A), { bookingId: b.id, mode: "EXECUTE", reason: "ล่า staff cancel", reasonKind: "CUSTOMER", idempotencyKey: `w13hsc_${L.hex(6)}` });
+    const mid = await L.depRow(d20);
+    const r = await post(b, c.url, c.fields);
+    const after = await L.depRow(d20);
+    const audits = await L.q<{ n: string }>(`SELECT count(*)::text n FROM "AuditLog" WHERE "tenantId" = $1 AND "targetId" = $2 AND action = 'trips.booking.cancel'`, [A.tenant, b.id]).catch((e) => [{ n: String(e).slice(0, 60) }]);
+    line("3d-staff-cancel", "screen open → staff cancels → submit ⇒ no 2nd effect · seats released once", `staff=${String(sc.ok)}${sc.ok !== true ? JSON.stringify(sc).slice(0, 120) : ""} → ${eCode(loc(r))} status=${(await L.bRow(b.id))?.status} held ${before?.held}→${mid?.held}→${after?.held} cancelAudits=${audits[0]?.n}`,
+      (await L.bRow(b.id))?.status === "CANCELLED" && after?.held === mid?.held && !/done=/.test(loc(r)));
+  });
+  await guard("3e-hold-expired-unswept", async () => {
+    const b = await L.mkHold(A, P, d20, D20, { ADULT: 1 });
+    const c = await openCancel(b);
+    await L.q(`UPDATE "TripHold" SET "expiresAt" = now() - interval '1 minute' WHERE "bookingId" = $1 AND status = 'ACTIVE'`, [b.id]);
+    const r = await post(b, c.url, c.fields);
+    const row = await L.bRow(b.id);
+    const pg = await page(b, loc(r) || b.path);
+    line("3e-expired-unswept", "hold past expiry (not swept) → submit ⇒ not reported cancelled · manage shows ENDED", `→ ${eCode(loc(r))} status=${row?.status} block=${/data-block="([A-Z_]*)"/.exec(pg)?.[1]}`, !/done=/.test(loc(r)) && row?.status === "HOLD");
+    // now sweeper (my tenant only)
+    const before = await L.depRow(d20);
+    const sw = await L.tcall("runExpireHolds", new Date(), { tenantIds: [A.tenant] });
+    const after = await L.depRow(d20);
+    const r2 = await post(b, c.url, c.fields);
+    line("3e-swept", "sweeper (my tenant) expires → resubmit ⇒ no effect, EXPIRED, seats released once", `sweep=${JSON.stringify(sw).slice(0, 100)} status=${(await L.bRow(b.id))?.status} held ${before?.held}→${after?.held} → ${eCode(loc(r2))} held now ${(await L.depRow(d20))?.held}`,
+      (await L.bRow(b.id))?.status === "EXPIRED" && !/done=/.test(loc(r2)) && (await L.depRow(d20))?.held === after?.held);
+  });
+  await guard("3e2-sweep-between", async () => {
+    // screen open → hold expires + sweeper → submit (the race the brief names)
+    const b = await L.mkHold(A, P, d20, D20, { ADULT: 1 });
+    const c = await openCancel(b);
+    await L.q(`UPDATE "TripHold" SET "expiresAt" = now() - interval '1 minute' WHERE "bookingId" = $1 AND status = 'ACTIVE'`, [b.id]);
+    await L.tcall("runExpireHolds", new Date(), { tenantIds: [A.tenant] });
+    const r = await post(b, c.url, c.fields);
+    line("3e2-sweep-between", "screen → expire+sweep → submit ⇒ NOT done, booking EXPIRED", `→ ${eCode(loc(r))} status=${(await L.bRow(b.id))?.status}`, !/done=/.test(loc(r)) && (await L.bRow(b.id))?.status === "EXPIRED");
+  });
+  await guard("3f-pass-through-evidence", async () => {
+    const b = await paid(d20, D20, { ADULT: 2 });
+    const c = await openCancel(b);
+    const row0 = await L.bRow(b.id);
+    await L.insertRow("TripPassThroughEvidence", { id: L.rid("pte"), tenantId: A.tenant, unitId: A.unit, departureId: b.dep, bookingId: null, extraKind: "PARK_FEE", paidToPayee: "อุทยาน (ล่า)", amountSatang: 2 * L.PA, paidAt: new Date(), fileIds: [], updatedAt: new Date() });
+    const r = await post(b, c.url, c.fields);
+    const after = await page(b, loc(r));
+    const rq = await L.refundsOf(b.id);
+    line("3f-evidence", "screen (pass-through refundable) → departure-level evidence inserted → submit ⇒ no row at old amount · new amount shown + error", `seen=${c.seen} pt=${c.body.includes("book-cancel-pass-through")} → ${eCode(loc(r))} rows=${JSON.stringify(rq.map((x) => x.amountSatang))} v ${row0?.version}→${(await L.bRow(b.id))?.version} new=${moneyIn(after, "book-cancel-refund")} err=${errBox(after)}`,
+      rq.every((x) => x.amountSatang !== c.seen) && (rq.length === 0 ? !!errBox(after) : true));
+  });
+
+  // ═══ 6. no self-service controls ═══
+  const noControls = async (tag: string, b: L.Bk, o: { expectContact?: boolean; expectStatus?: boolean } = {}) => {
+    const plain = await page(b, b.path, freshIp());
+    const withDo = await page(b, `${b.path}?do=cancel`, freshIp());
+    const v = await verifyHttp(b, b.phone, freshIp());
+    const mi = plain.indexOf('data-testid="book-manage"');
+    const vt = visibleText(mi >= 0 ? plain.slice(mi, plain.indexOf("</section>", mi)) : "");
+    const contacts = vt.split(CONTACT_PHONE).length - 1; // inside the manage block only (L7 ฉ)
+    const res = `btn=${L.testid(plain, "book-manage-cancel")}/${L.testid(withDo, "book-manage-cancel")} verifyForm=${L.testid(withDo, "book-verify")} verifyPOST→${eCode(v.loc)} manage=${L.testid(plain, "book-manage")} block=${/data-block="([A-Z_]*)"/.exec(plain)?.[1]} contactPhoneCount=${contacts} status=${/data-testid="book-refund-status"[^>]*data-status="([A-Z]+)"/.exec(plain)?.[1] ?? "-"}`;
+    return { plain, withDo, v, contacts, res, ok: !L.testid(plain, "book-manage-cancel") && !L.testid(withDo, "book-manage-cancel") && !L.testid(withDo, "book-verify") && !v.loc.includes("g=") };
+  };
+  await guard("6-pending", async () => {
+    const b = await L.mkHold(A, P, d45, D45);
+    await L.q(`UPDATE "TripBooking" SET status = 'PENDING' WHERE id = $1`, [b.id]);
+    const x = await noControls("pending", b);
+    line("6-PENDING", "no manage block (W1.2 pending page) · no verify · no grant", `${x.res} pendingPage=${L.testid(x.plain, "book-res-pending")}`, x.ok && !L.testid(x.plain, "book-manage"));
+  });
+  for (const [tag, sql] of [["collectMode AGENT", `UPDATE "TripBooking" SET "collectMode" = 'AGENT' WHERE id = $1`], ["channel AGENT_LINK", `UPDATE "TripBooking" SET channel = 'AGENT_LINK' WHERE id = $1`], ["agentAccountId", `UPDATE "TripBooking" SET "agentAccountId" = 'w13h_fake_agent' WHERE id = $1`]] as const)
+    await guard(`6-${tag}`, async () => {
+      const b = await paid();
+      try { await L.q(sql, [b.id]); } catch (e) { info("6", `${tag}: fixture SQL failed ${String(e).slice(0, 120)}`); return; }
+      const x = await noControls(tag, b);
+      line(`6-${tag}`, "agency booking: no button · no verify · no grant · agency text", x.res, x.ok && /data-block="AGENT"/.test(x.plain));
+    });
+  await guard("6-started", async () => {
+    const dep = await L.mkDep(P, L.addDays(today, 30), { capacity: 10 });
+    const b = await paid(dep, L.addDays(today, 30));
+    await L.q(`UPDATE "TripDeparture" SET "startsAt" = now() - interval '1 hour' WHERE id = $1`, [dep]);
+    const x = await noControls("started", b);
+    line("6-STARTED", "departure started: no controls", x.res, x.ok && /data-block="STARTED"/.test(x.plain));
+  });
+  await guard("6-cancelled", async () => {
+    const b = await L.mkHold(A, P, d20, D20);
+    await L.tcall("cancelTripBooking", L.staffCtx(A), { bookingId: b.id, mode: "EXECUTE", reason: "ล่า", reasonKind: "CUSTOMER", idempotencyKey: `w13hsc_${L.hex(6)}` });
+    const x = await noControls("cancelled", b);
+    line("6-CANCELLED", "cancelled: no controls", x.res, x.ok);
+    const fake = await page(b, `${b.path}?done=CANCELLED`, freshIp());
+    info("4-done-staffcancel", `?done=CANCELLED on a STAFF-cancelled booking ⇒ banner=${L.testid(fake, "book-cancel-done")} text="${/data-testid="book-cancel-done"[\s\S]{0,400}/.exec(visibleText(fake.replace(/data-testid="book-cancel-done"/, "§DONE§")))?.[0] ?? ""}"`);
+    const vt = visibleText(fake);
+    const i = vt.indexOf(A.name);
+    info("4-done-staffcancel", `visible: ${vt.slice(Math.max(0, vt.indexOf("จัดการการจอง")), Math.max(0, vt.indexOf("จัดการการจอง")) + 300)}`);
+    void i;
+  });
+  await guard("6-refund-in-progress", async () => {
+    const b = await paid();
+    const s = await staffReq(b);
+    const x = await noControls("rip", b);
+    line("6-REFUND_IN_PROGRESS(staff)", "staff request open: no controls · byShop status · contact once", `${x.res} staff=${String(s.ok)}`, x.ok && x.contacts <= 1);
+  });
+  await guard("6-customer-rejected", async () => {
+    const b = await paid();
+    const c = await openCancel(b);
+    await sleep(L.FORM_WAIT);
+    const r = await post(b, c.url, c.fields);
+    const rq = await L.refundsOf(b.id);
+    const dj = await reject(rq[0]?.id ?? "");
+    const x = await noControls("crej", b);
+    line("6-REJECTED(customer)", "customer request rejected: no button · status REJECTED · contact once", `filed→${eCode(loc(r))} reject=${String(dj.ok)} ${x.res}`, x.ok && x.contacts === 1 && /data-status="REJECTED"/.test(x.plain) && /data-mine="true"/.test(x.plain));
+    // re-file via a fresh form opened BEFORE the rejection? use grant from earlier verify: open a new cancel page with old grant
+    const again = await req(c.url, { ip: b.ip, headers: { "x-real-ip": b.ip } });
+    const f2 = postForm(again.body);
+    const replayOld = await post(b, c.url, c.fields);
+    line("6-REJECTED-refile", "after rejection: cancel page has no form · old form replay ⇒ no new row", `cancelForm=${!!f2} replay→${eCode(loc(replayOld))} rows=${(await L.refundsOf(b.id)).length}`, !f2 && (await L.refundsOf(b.id)).length === 1);
+    // hand-typed done banner on a rejected request
+    const fake = await page(b, `${b.path}?done=REFUND_REQUESTED`, freshIp());
+    const st = /data-testid="book-refund-status"[^>]*>([^<]*)</.exec(fake)?.[1] ?? "";
+    line("4-done-on-rejected", "?done=REFUND_REQUESTED typed by hand on a REJECTED customer request ⇒ no 'done' banner, status text stays REJECTED", `banner=${L.testid(fake, "book-cancel-done")} status="${st.slice(0, 90)}"`, !L.testid(fake, "book-cancel-done") && !/ยื่นคำขอคืนเงินแล้ว/.test(st));
+    L.save("4-done-on-rejected.html", fake);
+    const fakeEn = await page(b, `${b.path}?lang=en&done=REFUND_REQUESTED`, freshIp());
+    const stEn = /data-testid="book-refund-status"[^>]*>([^<]*)</.exec(fakeEn)?.[1] ?? "";
+    line("4-done-on-rejected-en", "same in en", `banner=${L.testid(fakeEn, "book-cancel-done")} status="${stEn.slice(0, 90)}"`, !L.testid(fakeEn, "book-cancel-done") && !/Refund request sent/.test(stEn));
+  });
+  await guard("6-staff-rejected", async () => {
+    const b = await paid();
+    const s = await staffReq(b);
+    const dj = await reject(String((s.value as L.Rec | undefined)?.requestId ?? (s.value as L.Rec | undefined)?.id ?? (await L.refundsOf(b.id))[0]?.id ?? ""));
+    const plain = await page(b, b.path, freshIp());
+    const st = /data-testid="book-refund-status"[^>]*>([^<]*)</.exec(plain)?.[1] ?? "";
+    const btn = L.testid(plain, "book-manage-cancel");
+    let filed = "-";
+    if (btn) {
+      const c = await openCancel(b);
+      await sleep(L.FORM_WAIT);
+      const r = await post(b, c.url, c.fields);
+      filed = `${eCode(loc(r))} rows=${JSON.stringify((await L.refundsOf(b.id)).map((x) => [x.by, x.status]))}`;
+    }
+    line("6-REJECTED(staff)", "staff-filed request rejected: neutral text (byShopRejected) · button present · customer can file", `reject=${String(dj.ok)} btn=${btn} status="${st.slice(0, 80)}" mine=${/data-mine="([a-z]+)"/.exec(plain)?.[1]} file→${filed}`,
+      btn && /data-mine="false"/.test(plain) && !/ร้านไม่อนุมัติคำขอนี้/.test(st) && /CUSTOMER/.test(filed));
+    const vt = visibleText(plain);
+    info("6-staff-rejected", `contact phone count on page = ${vt.split(CONTACT_PHONE).length - 1}`);
+  });
+
+  // ═══ 4. hand-typed params on bookings where they are false ═══
+  await guard("4-typed", async () => {
+    const h = await L.mkHold(A, P, d20, D20);
+    const p = await paid();
+    for (const [name, b, path] of [["done=CANCELLED on live HOLD", h, `${h.path}?done=CANCELLED`], ["done=REFUND_REQUESTED on PAID w/o request", p, `${p.path}?done=REFUND_REQUESTED`], ["done=CANCEL_REQUESTED on PAID", p, `${p.path}?done=CANCEL_REQUESTED`]] as const) {
+      const x = await page(b, path, freshIp());
+      line(`4-${name}`, "no done banner", `banner=${L.testid(x, "book-cancel-done")}`, !L.testid(x, "book-cancel-done"));
+    }
+    const lk = await page(h, `${h.path}?do=cancel&e=LOCKED`, freshIp());
+    line("4-e=LOCKED typed", "hand-typed ?e=LOCKED on a booking that is not locked ⇒ not the 'locked' screen (verify form)", `lockedScreen=${L.testid(lk, "book-self-locked")} verifyForm=${L.testid(lk, "book-verify")}`, !L.testid(lk, "book-self-locked"));
+    const e2 = await page(h, `${h.path}?do=cancel&e=VERIFY_FAILED`, freshIp());
+    info("4-e typed", `?e=VERIFY_FAILED typed ⇒ error box=${errBox(e2)} (cosmetic)`);
+  });
+} catch (e) {
+  console.log(`FATAL ${String(e instanceof Error ? e.stack : e).slice(0, 800)}`);
+} finally {
+  await L.cleanup();
+  L.summary("hunt-3");
+}

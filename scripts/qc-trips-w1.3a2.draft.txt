@@ -1,0 +1,183 @@
+// DRAFT ข้อสอบของใบ W1.3a2 (เลื่อนรอบ) + W1.3b (ขอลิงก์ใหม่) — ย้ายออกจาก scripts/qc-trips-w1.3.mts ตามมติ K1 (19 พ.ย.)
+// ⚠️ ไฟล์นี้ไม่ใช่ข้อสอบที่รันได้ (.txt) — ผู้เขียนข้อสอบของใบ a2/b ต้องเขียนใหม่ให้ตรงใบสั่ง ledger/trips-briefs/W1.3a2.md
+//    เงื่อนไขผู้ตรวจที่ข้อเหล่านี้ยังไม่ครอบ: นับ "เลื่อนได้ครั้งเดียว" แบบ atomic ใน tx หลังล็อกการแก้ · ห้ามเลื่อนเมื่อมีงวด OVERDUE หรือ dueAt ใหม่อยู่ในอดีต ·
+//    รูปงวดต้องไม่เปลี่ยนสำหรับ PUBLIC ทุกสถานะ · ตรวจสถานะรอบ + เวลาปิดรับ WEB หลังล็อกรอบ · การจองที่มีโค้ดส่วนลด ⇒ NOT_ALLOWED (ไม่ใช่ BUSY) · ส่งซ้ำหาด้วย idemKeyHash อย่างเดียว · ระบุวันฐานของ X16
+//    ข้อของ TK: หลังขอลิงก์ใหม่ หน้า DONE ของตะกร้าเดิม / refsOfBasket คืน token ที่ตายแล้ว — ต้องตัดสินใน W1.3b (token กู้คืนได้ หรือเครื่องมือร้านออกลิงก์ใหม่)
+// ตัวช่วยที่ข้อเหล่านี้ใช้ (เดิมอยู่ในข้อสอบ w1.3):
+  const moveQ = (b: Bk, grant: unknown, query: Rec, when = ACT) => call("quoteBookSelfMove", { shop: b.shop, token: b.token, grant, query, clientKey: b.ck }, when);
+  const moveX = (b: Bk, grant: unknown, form: Rec, o: { nonce?: string; when?: { now: Date } } = {}) => {
+  const rotate = (b: Bk, grant: unknown, o: { nonce?: string; when?: { now: Date }; token?: string } = {}) => {
+  const moveTokenOf = async (b: Bk, grant: string, date: string, when = ACT): Promise<string> => {
+  const moveTokenOf = async (b: Bk, grant: string, date: string, when = ACT): Promise<string> => {
+    const r = await moveQ(b, grant, { d: date, m: date.slice(0, 7) }, when);
+    const t = asRec(asRec(r.vm)?.selected)?.token;
+    ok(r.ok === true && typeof t === "string" && t, `quoteBookSelfMove ${b.tag} ${date}: ไม่มี selected.token · ${fmt(r)}`);
+    return String(t);
+  };
+
+// ── ฟิกซ์เจอร์ที่เกี่ยว (เดิม): รอบ d45b px (ราคาผู้ใหญ่ +฿500 · เด็กปักเท่าเดิม) closed fullApr src last(12 ขาย 11) pc1 pc2 far(20 ก.ค.) · สินค้า F (changeDateFee ฿200) · การจอง b45 b45x bPx bFee bPc r0..r9 bTk ──
+
+// ── PC เดิมของการเลื่อน ──
+  await st("PC-4", "เลื่อนรอบยอดเท่าเดิมทำได้จริงด้วยบริการ (STAFF · quoteTrips + changeTripBooking) บนการจองที่จ่ายแล้ว: ย้ายที่นั่ง pc1 → pc2 · ยอด/เงินที่จ่ายเท่าเดิม · รหัสเดิม", async () => {
+    const [b] = needBk("bPc");
+    const before = await bRow(b.id);
+    const line = { productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: DEP.pc2, optionId: PRD.A?.opt, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 1 }] };
+    const qt = await tcall("quoteTrips", staffCtx(tA, ACT), { lines: [line] });
+    const qv = asRec(qt.value);
+    ok(qt.ok === true && typeof qv?.quoteId === "string", `quoteTrips: ${fmt(qt)}`);
+    const ch = await tcall("changeTripBooking", staffCtx(tA, ACT), { bookingId: b.id, expectedVersion: before.version, line, quoteId: qv?.quoteId, quoteExpiresAt: qv?.expiresAt, idempotencyKey: `w13pc_${hex(6)}` });
+    ok(ch.ok === true, `changeTripBooking: ${fmt(ch)}`);
+    const after = await bRow(b.id);
+    eq([after.departureId, after.paidSatang, payableOfSnap(after.policySnapshot), after.code, after.status], [DEP.pc2, ONE, ONE, before.code, "PAID"], "หลังเลื่อน");
+    eq([(await depRow(DEP.pc1 ?? "")).sold, (await depRow(DEP.pc2 ?? "")).sold], [0, 1], "ที่นั่งย้าย");
+  });
+  await st("PC-5", `ราคาเฉพาะรอบ px แพงกว่า: quoteTrips 2 ผู้ใหญ่ 1 เด็ก + กล้อง ที่รอบ px = ${TOTAL + 2 * PX_DELTA} (≠ ${TOTAL}) — ฟิกซ์เจอร์ของ PRICE_DIFFERS`, async () => {
+    needBk("b45");
+    const line = { productKind: "TRIP", unitId: uA, productId: PRD.A?.id, slotId: DEP.px, optionId: PRD.A?.opt, pax: [{ paxTypeId: PRD.A?.pt.ADULT, qty: 2 }, { paxTypeId: PRD.A?.pt.CHILD, qty: 1 }], extras: [{ extraId: PRD.A?.cam, qty: 1 }] };
+    const qt = await tcall("quoteTrips", staffCtx(tA, ACT), { lines: [line] });
+    eq([qt.ok, asRec(asRec(asRec(qt.value)?.totals)?.payable)?.satang], [true, TOTAL + 2 * PX_DELTA], "payable รอบ px");
+  });
+  await st("PC-7", "รอบ last เหลือ 1 ที่ (12 − 11) · รอบ fullApr เต็ม · รอบ src มีการจอง 10 ราย (ผู้ใหญ่ 1 คน/ราย) — ฟิกซ์เจอร์ของ X3 เลื่อนชนที่นั่งสุดท้าย", async () => {
+    needBk("r0", "r9");
+    const l = await depRow(DEP.last ?? ""), f = await depRow(DEP.fullApr ?? ""), s = await depRow(DEP.src ?? "");
+    eq([l.capacity - l.sold - l.held, f.capacity - f.sold - f.held, s.sold], [1, 0, 10], "ที่ว่าง");
+  });
+  groupLine("PC");
+
+// ── MV ──
+  // ═══════════════ MV. เลื่อนรอบ ═══════════════
+  console.log("\n── MV: เลื่อนรอบ (สินค้าเดิม · ยอดเท่าเดิม · 1 ครั้ง) ──");
+  await st("MV-1", "quote เดือน เม.ย.: 16 เม.ย. เลือกได้ (left ≥ 3) · 19 เม.ย. (เต็ม) เลือกไม่ได้ · 18 เม.ย. (รอบยกเลิก) ไม่มีหรือเลือกไม่ได้ · ก.ค. 20 (เกิน X16 90 วัน) เลือกไม่ได้ · ไม่มีคีย์ภายใน", async () => {
+    needSelf(); const [b] = needBk("b45");
+    const g = await grantOf(b);
+    const r = await moveQ(b, g, { m: "2027-04" });
+    ok(r.ok === true, `quote: ${fmt(r)}`);
+    const days = asArr(asRec(r.vm)?.days);
+    const day = (d: string) => days.find((x) => x.date === d);
+    ok(day("2027-04-16")?.selectable === true && Number(day("2027-04-16")?.left) >= 3, `16 เม.ย.: ${fmt(day("2027-04-16"))}`);
+    ok(day("2027-04-19")?.selectable === false, `19 เม.ย. เต็ม: ${fmt(day("2027-04-19"))}`);
+    ok(!day("2027-04-18") || day("2027-04-18")?.selectable === false, `18 เม.ย. ยกเลิก: ${fmt(day("2027-04-18"))}`);
+    const j = await moveQ(b, g, { m: "2027-07" });
+    const jd = asArr(asRec(j.vm)?.days).find((x) => x.date === "2027-07-20");
+    ok(j.ok === true && (!jd || jd.selectable === false), `20 ก.ค. นอกหน้าต่าง: ${fmt(jd)}`);
+    noInternal(r.vm, [b.id, ...Object.values(DEP)], "vm เลื่อน", [b.phone]);
+  });
+  await st("MV-2", `quote วัน 16 เม.ย. ⇒ selected (token) · summary {totalSatang ${TOTAL}, sameTotal true} · form.nonce`, async () => {
+    needSelf(); const [b] = needBk("b45");
+    const r = await moveQ(b, await grantOf(b), { d: "2027-04-16", m: "2027-04" });
+    const vm = asRec(r.vm) ?? {};
+    ok(r.ok === true && typeof asRec(vm.selected)?.token === "string", `selected: ${fmt(r)}`);
+    eq(vm.summary, { totalSatang: TOTAL, sameTotal: true }, "summary");
+    ok(typeof asRec(vm.form)?.nonce === "string", "ไม่มี form.nonce");
+  });
+  await st("MV-3", "เลื่อน 15 → 16 เม.ย. ⇒ ok · การจองย้ายรอบ (departureId · travelDate) · version +1 · ยอด/เงินที่จ่าย/รหัสเท่าเดิม · ตารางยกเลิกใน snapshot เดิม · ที่นั่ง d45 −3 · d45b +3 · token เดิมเปิดหน้าเห็นวันใหม่", async () => {
+    needSelf(); const [b] = needBk("b45");
+    const g = await grantOf(b);
+    const before = await bRow(b.id), s45 = await depRow(DEP.d45 ?? ""), s45b = await depRow(DEP.d45b ?? "");
+    const t = await moveTokenOf(b, g, "2027-04-16");
+    const r = await moveX(b, g, { d: "2027-04-16", t, seen: String(TOTAL) });
+    eq([r.ok, r.date, r.replayed], [true, "2027-04-16", false], `ผล ${fmt(r)}`);
+    const after = await bRow(b.id);
+    eq([after.departureId, after.travelDate, after.version, after.paidSatang, payableOfSnap(after.policySnapshot), after.code, after.status],
+      [DEP.d45b, "2027-04-16", before.version + 1, TOTAL, TOTAL, before.code, "PAID"], "การจอง");
+    eq(after.policySnapshot.cancelLadder, before.policySnapshot.cancelLadder, "ตารางยกเลิกคงเดิม");
+    eq([(await depRow(DEP.d45 ?? "")).sold, (await depRow(DEP.d45b ?? "")).sold], [s45.sold - 3, s45b.sold + 3], "ที่นั่ง");
+    eq(asRec((await openRes(b)).vm)?.date, "2027-04-16", "หน้าการจอง");
+  });
+  await st("MV-4", "เลื่อนครบ 1 ครั้งแล้ว ⇒ manage.move false (MOVE_LIMIT) · เลื่อนอีก ⇒ NOT_ALLOWED{MOVE_LIMIT} ไม่เปลี่ยน", async () => {
+    needSelf(); const [b] = needBk("b45");
+    eq(await manageOf(b), { cancel: "REFUND_REQUEST", move: false, block: "MOVE_LIMIT", refund: null }, "manage");
+    const v = (await bRow(b.id)).version;
+    BLOCKED(await moveX(b, await grantOf(b), { d: "2027-04-15", t: "x", seen: String(TOTAL) }), "MOVE_LIMIT", "เลื่อนครั้งที่ 2");
+    eq((await bRow(b.id)).version, v, "version ไม่เปลี่ยน");
+  });
+  await st("MV-5", `วันที่ราคาต่าง (px +฿${PX_DELTA / 100}/ผู้ใหญ่) ⇒ quote sameTotal false · form null · ยิงเลื่อนตรง ⇒ NOT_ALLOWED{PRICE_DIFFERS} การจองไม่เปลี่ยน (b = จ่ายส่วนต่าง)`, async () => {
+    needSelf(); const [b] = needBk("bPx");
+    const g = await grantOf(b);
+    const r = await moveQ(b, g, { d: "2027-04-17", m: "2027-04" });
+    const vm = asRec(r.vm) ?? {};
+    ok(r.ok === true && asRec(vm.summary)?.sameTotal === false && Number(asRec(vm.summary)?.totalSatang) === TOTAL + 2 * PX_DELTA && vm.form === null, `quote px: ${fmt(r)}`);
+    const t = String(asRec(vm.selected)?.token ?? "");
+    const v = await bRow(b.id);
+    BLOCKED(await moveX(b, g, { d: "2027-04-17", t, seen: String(TOTAL) }), "PRICE_DIFFERS", "เลื่อนไปวันราคาต่าง");
+    eq([(await bRow(b.id)).version, (await bRow(b.id)).departureId], [v.version, v.departureId], "ไม่เปลี่ยน");
+  });
+  await st("MV-6", "ตัวอ้างรอบไม่ใช่ของวันที่ส่ง / รอบยกเลิก ⇒ SLOT_CLOSED (ไม่ถอยไปรอบอื่น · W7) · วันนอกหน้าต่าง X16 ⇒ NOT_ALLOWED{WINDOW}", async () => {
+    needSelf(); const [b] = needBk("bPx");
+    const g = await grantOf(b);
+    const t16 = await moveTokenOf(b, g, "2027-04-16");
+    const v = await bRow(b.id);
+    ERR(await moveX(b, g, { d: "2027-04-18", t: t16, seen: String(TOTAL) }), "SLOT_CLOSED", "t ของวันอื่น");
+    const jr = await moveQ(b, g, { d: "2027-07-20", m: "2027-07" });
+    const tj = String(asRec(asRec(jr.vm)?.selected)?.token ?? "");
+    BLOCKED(await moveX(b, g, { d: "2027-07-20", t: tj, seen: String(TOTAL) }), "WINDOW", "นอกหน้าต่าง");
+    eq((await bRow(b.id)).version, v.version, "ไม่เปลี่ยน");
+  });
+  await st("MV-7", "เลื่อนไม่ได้: ยังไม่จ่าย ⇒ NOT_ALLOWED{NOT_SOLD} · สินค้ามีค่าเปลี่ยนวัน ⇒ NOT_ALLOWED{FEE} · ยอดที่เห็นไม่ตรง ⇒ AMOUNT_CHANGED", async () => {
+    needSelf(); const [h, f, x] = needBk("bHold2", "bFee", "b45x");
+    BLOCKED(await moveX(h, await grantOf(h), { d: "2027-04-28", t: "x", seen: String(TOTAL) }), "NOT_SOLD", "HOLD");
+    BLOCKED(await moveX(f, await grantOf(f), { d: "2027-04-16", t: "x", seen: String(ONE) }), "FEE", "ค่าเปลี่ยนวัน");
+    const g = await grantOf(x);
+    const t = await moveTokenOf(x, g, "2027-04-16");
+    const r = await moveX(x, g, { d: "2027-04-16", t, seen: String(TOTAL - 100) });
+    ok(r.ok === false && r.code === "AMOUNT_CHANGED", `seen ผิด: ${fmt(r)}`);
+    eq((await bRow(x.id)).departureId, DEP.d45, "ไม่ย้าย");
+  });
+  groupLine("MV");
+
+
+// ── TK (W1.3b) ──
+  // ═══════════════ TK. ขอลิงก์ใหม่ ═══════════════
+  console.log("\n── TK: ขอลิงก์ใหม่ (เพิกถอน token โดยไม่ต้อง migration) ──");
+  await st("TK-1", "ขอลิงก์ใหม่ ⇒ token ใหม่ 43 ตัว ≠ เดิม · publicTokenHash = sha256(ใหม่) · token เดิมเปิดหน้า ⇒ NOT_FOUND · token ใหม่เปิดได้ รหัสเดิม · token ที่คำนวณจากสูตรเดิม (bookingPublicToken) ⇒ NOT_FOUND", async () => {
+    needSelf(); const [b] = needBk("bTk");
+    const code = (await bRow(b.id)).code;
+    const g = await grantOf(b);
+    const r = await rotate(b, g);
+    ok(r.ok === true && typeof r.token === "string" && /^[A-Za-z0-9_-]{43}$/.test(String(r.token)) && r.token !== b.token, `rotate: ${fmt(r)}`);
+    const nt = String(r.token);
+    eq((await bRow(b.id)).publicTokenHash, sha256hex(nt), "hash ใหม่");
+    ERR(await openRes(b, ACT), "NOT_FOUND", "token เดิม");
+    const o2 = await openRes(b, ACT, nt);
+    eq([o2.ok, asRec(o2.vm)?.code], [true, code], "token ใหม่");
+    const hm = tfn("bookingPublicToken")(b.id);
+    if (typeof hm === "string") ERR(await openRes(b, ACT, hm), "NOT_FOUND", "token จากสูตร HMAC เดิม");
+    const old = { ...b }; BK.bTkOld = old; b.token = nt;
+  });
+  await st("TK-2", "หลังขอลิงก์ใหม่: grant เดิมกับ token ใหม่ ⇒ VERIFY_REQUIRED · ส่งฟอร์มขอลิงก์เดิมซ้ำ (token เดิม) ⇒ NOT_FOUND · hash เปลี่ยนครั้งเดียว", async () => {
+    needSelf(); const [b, old] = needBk("bTk", "bTkOld");
+    const h0 = (await bRow(b.id)).publicTokenHash;
+    const gOld = await (async () => { const r = await verify(b, { clientKey: b.ck }); return String(r.grant ?? ""); })();
+    ok(gOld, "ยืนยันด้วย token ใหม่ไม่ได้");
+    ERR(await rotate(old, gOld), "NOT_FOUND", "ขอซ้ำด้วย token เดิม");
+    eq((await bRow(b.id)).publicTokenHash, h0, "hash ไม่เปลี่ยนอีก");
+    const g2 = await grantOf(b);
+    const r = await rotate(b, g2);
+    ok(r.ok === true, `ขอใหม่อีกรอบ: ${fmt(r)}`);
+    ERR(await cancelQ(b, g2, ACT, { token: String(r.token) }), "VERIFY_REQUIRED", "grant ของ token ก่อนหน้า");
+    b.token = String(r.token);
+  });
+  groupLine("TK");
+
+
+// ── X3-2 / X4-2 (ส่วนเลื่อน) ──
+  await st("X3-2", "10 การจองเลื่อนไปรอบที่เหลือ 1 ที่พร้อมกัน ⇒ สำเร็จ 1 พอดี · ที่เหลือ SOLD_OUT · รอบปลายทาง sold = capacity (ไม่ขายเกิน) · รอบต้นทาง sold 9", async () => {
+    needSelf(); const bs = needBk(...Array.from({ length: 10 }, (_, i) => `r${i}`));
+    const prep = await Promise.all(bs.map(async (b) => { const g = await grantOf(b); return { b, g, t: await moveTokenOf(b, g, "2027-04-22") }; }));
+    const rs = await Promise.all(prep.map(({ b, g, t }) => moveX(b, g, { d: "2027-04-22", t, seen: String(ONE) })));
+    eq(rs.filter((r) => r.ok === true).length, 1, `สำเร็จ ${fmt(rs.map((r) => r.code ?? r.ok))}`);
+    ok(rs.filter((r) => r.ok !== true).every((r) => r.code === "SOLD_OUT"), `ผลที่ไม่สำเร็จต้อง SOLD_OUT: ${fmt(rs.map((r) => r.code ?? r.ok))}`);
+    const l = await depRow(DEP.last ?? ""), s = await depRow(DEP.src ?? "");
+    eq([l.sold, l.held, l.sold + l.held <= l.capacity, s.sold], [12, 0, true, 9], "ที่นั่ง");
+  });
+  await st("X4-2", "ส่งฟอร์มเลื่อนเดิมซ้ำ ⇒ ครั้งที่ 2 ok replayed true (ไม่ติด MOVE_LIMIT) · version +1 ครั้งเดียว · ที่นั่งย้ายครั้งเดียว", async () => {
+    needSelf(); const [b] = needBk("b45x");
+    const g = await grantOf(b);
+    const t = await moveTokenOf(b, g, "2027-04-16");
+    const v0 = (await bRow(b.id)).version, s0 = (await depRow(DEP.d45b ?? "")).sold;
+    const n = snonce(b, "move", 60_000);
+    const r1 = await moveX(b, g, { d: "2027-04-16", t, seen: String(TOTAL) }, { nonce: n });
+    const r2 = await moveX(b, g, { d: "2027-04-16", t, seen: String(TOTAL) }, { nonce: n });
+    eq([r1.ok, r1.replayed, r2.ok, r2.replayed, r2.date], [true, false, true, true, "2027-04-16"], "ผล");
+    eq([(await bRow(b.id)).version, (await depRow(DEP.d45b ?? "")).sold], [v0 + 1, s0 + 3], "ครั้งเดียว");
+  });

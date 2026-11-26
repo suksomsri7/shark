@@ -419,7 +419,7 @@ try {
     ok(!/amountSatang:\s*b\.grossSatang/.test(s.slice(i, i + 600)), "ยังใช้ grossSatang");
     const rows = git(["diff", "--numstat", BASE_SHA, "--", D + "capacity.ts"]).trim().split(/\s+/);
     // ORACLE-EDIT S-11 (T0.4c มติ R2 R5 · ใบ §2 ไฟล์เจ้าของ capacity.ts): ใบ T0.4c แก้ capacity.ts 40+/2− (เพดาน PUBLIC + assertDeparturesSellableInTx + เพดาน retryAfterSec ของผู้คุม) — โควตาเดิม 8 + 42 = 50 · ส่วนของ T0.7 ยังตรวจด้วยตัวยิงข้างบน
-    ok(Number(rows[0] ?? 0) + Number(rows[1] ?? 0) <= 8 + 42 + 8 /* ORACLE-EDIT S-11 (ผู้คุม 19 พ.ย. · T0.4d มติ D3 D4 G2): ใบ T0.4d แก้ capacity.ts ตามใบ (นับเฉพาะผู้กระทำ PUBLIC · prior ของตะกร้า) ⇒ เทียบ BASE 50+/8− = 58 */, `capacity.ts แก้ ${rows[0]}+/${rows[1]}−`);
+    ok(Number(rows[0] ?? 0) + Number(rows[1] ?? 0) <= 8 + 42 + 8 + 1 /* ORACLE-EDIT S-11 (ผู้คุม 19 พ.ย. รอบ 3 · W1.3a มติ L5): +1 บรรทัด audit ของ trips.hold.release จากเส้นลูกค้า (รูป K3) ⇒ 59 */ /* ORACLE-EDIT S-11 (ผู้คุม 19 พ.ย. · T0.4d มติ D3 D4 G2): ใบ T0.4d แก้ capacity.ts ตามใบ (นับเฉพาะผู้กระทำ PUBLIC · prior ของตะกร้า) ⇒ เทียบ BASE 50+/8− = 58 */, `capacity.ts แก้ ${rows[0]}+/${rows[1]}−`);
   });
   await st("S-12", "สิทธิ์ 4 คีย์ใหม่ในโมดูล trips (ป้ายไทย)", async () => {
     const P = (await tryImport("@/lib/core/permissions")).mod;

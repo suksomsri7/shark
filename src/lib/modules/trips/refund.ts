@@ -17,6 +17,7 @@ import { resolveSettings } from "@/lib/core/settings";
 import { tourRefundFloorPctAt } from "@/lib/core/settings/legal/th-tour-2569";
 import { requestBindings } from "@/lib/modules/approval";
 import { BookingAbort, runTripsTx, tripsSafely } from "./booking";
+import { PUBLIC_SELF_AUDITOR, publicSelfGate, publicSelfRowFail } from "./booking"; // TRIPS W1.3 ▸ รั้วลูกค้า (K2–K4) ◂
 import { seatsOfSnapshot, tripText, type SnapshotShape } from "./booking-core";
 import { holdRequestHash, invalidInput, parseCtx, returnSoldInTx, sellFail, type CapacityPolicies, type Ctx, type Failure, type Gate, type Tx } from "./capacity";
 import { gateOf, loadCapacityPolicies, unitClient } from "./capacity-service";
@@ -295,11 +296,11 @@ async function fileRefundRequestInTx(tx: Tx, c: Ctx, g: Gate, lb: MoneyBooking, 
   await tx.$queryRaw`
     INSERT INTO "TripRefundRequest" ("id", "tenantId", "unitId", "bookingId", "by", "reasonKind", "deductions", "status", "computed", "choice", "amountSatang", "manualDeltaSatang",
       "approvalId", "decidedById", "idempotencyKey", "requestHash", "createdAt", "updatedAt")
-    VALUES (${id}, ${g.tenantId}, ${g.unitId}, ${lb.id}, ${c.actor.kind === "SYSTEM" ? "SYSTEM" : "STAFF"}, ${a.reasonKind}, ${JSON.stringify(a.deductions)}::jsonb, 'QUOTED', ${JSON.stringify(computed)}::jsonb,
+    VALUES (${id}, ${g.tenantId}, ${g.unitId}, ${lb.id}, ${c.actor.kind === "SYSTEM" ? "SYSTEM" : c.actor.kind === "PUBLIC" ? "CUSTOMER" : "STAFF"}, ${a.reasonKind}, ${JSON.stringify(a.deductions)}::jsonb, 'QUOTED', ${JSON.stringify(computed)}::jsonb,
       'MONEY', ${quote.refundSatang}, 0, NULL, NULL, ${a.key}, ${a.requestHash}, ${iso}::timestamp, ${iso}::timestamp)
     RETURNING "id"`;
   const evts: MoneyEvt[] = [refundEvt("trips.refund.requested", { id, bookingId: lb.id, choice: "MONEY" }, quote.refundSatang, 0)];
-  await auditMoney(tx, audActor(c, g), "trips.refund.request", { type: "TripRefundRequest", id }, {
+  await auditMoney(tx, c.actor.kind === "PUBLIC" ? { ...audActor(c, g), actor: PUBLIC_SELF_AUDITOR } : audActor(c, g), "trips.refund.request", { type: "TripRefundRequest", id }, { // TRIPS W1.3 ▸ K3 ◂
     status: "QUOTED",
     bookingId: lb.id,
     amountSatang: quote.refundSatang,
@@ -357,6 +358,9 @@ async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel",
   if (v.choice === "MOVE_DATE") return sellFail("VALIDATION", { reason: "MOVE_DATE_VIA_CHANGE" });
   // มติ r1 V2: เหตุที่ไม่ใช่ลูกค้า (คืน 100 %) ต้องมีสิทธิ์อนุมัติคืนเงิน — ผู้เรียกผ่าน action ส่ง canDecide ตามสิทธิ์จริง · ไม่ส่ง opts = ผู้เรียกในระบบที่ไว้ใจ (SYSTEM/บริการ)
   if (v.reasonKind !== "CUSTOMER" && opts?.canDecide === false) return sellFail("FORBIDDEN", { reason: "REASON_REQUIRES_APPROVER" });
+  // TRIPS W1.3 ▸ PUBLIC มาถึงได้ทางรั้ว publicSelf เท่านั้น (ตรวจซ้ำ · K2) · คำขอของลูกค้า QUOTED เสมอ (K4) ◂
+  const pub = publicSelfGate(c, opts, v);
+  if (pub && "ok" in pub) return pub;
   const g = await gateOf(c);
   if (!g) return NF();
   const db = unitClient(g);
@@ -390,6 +394,14 @@ async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel",
     // 2b
     const lb = await lockMoneyBookingInTx(tx, g, b.id);
     if (!lb) throw new BookingAbort("NOT_FOUND");
+    // TRIPS W1.3 ▸ ใต้ล็อกแถว: รั้ว (token · PENDING · เอเจนซี่ · รุ่นที่หน้าเห็น · K2 L1 L9) · คำขอล่าสุดของลูกค้าถูกปฏิเสธ ⇒ ยื่นใหม่ผ่านหน้าไม่ได้ (K8 L3) ◂
+    const pf = pub ? await publicSelfRowFail(tx, g, lb.id, pub, true) : null;
+    if (pf) throw new BookingAbort(pf.code, pf.details);
+    const last = pub ? (await tx.$queryRaw<{ s: string; b: string }[]>`SELECT "status" AS "s", "by" AS "b" FROM "TripRefundRequest" WHERE "bookingId" = ${lb.id} AND "tenantId" = ${g.tenantId} AND "status" <> 'WITHDRAWN' ORDER BY "createdAt" DESC, "id" DESC LIMIT 1`)[0] : undefined;
+    if (last && last.s === "REJECTED" && last.b === "CUSTOMER") throw new BookingAbort("FORBIDDEN", { reason: "REFUND_REJECTED" });
+    // P2: ยอดที่ลูกค้าเห็นต้องเท่ายอดที่คิดใต้ล็อก (นาฬิกา/หลักฐานเดียวกับที่ fileRefundRequestInTx จะใช้) — ไม่ตรง ⇒ STATE_CONFLICT ไม่มีการเขียน
+    const fresh = pub?.expectedRefundSatang !== undefined ? await tripRefundQuote(tx, g, lb, c.clock.iso, v.reasonKind, deductionsSatang) : null;
+    if (fresh && (!fresh.ok || fresh.value.refundSatang !== pub?.expectedRefundSatang)) throw new BookingAbort("STATE_CONFLICT", { reason: "AMOUNT_CHANGED" });
     const again = await requestByKey(tx, g.tenantId, key);
     if (again) return { replay: again };
     if (!REFUNDABLE.has(lb.status)) throw new BookingAbort("STATE_CONFLICT", { reason: "NOT_REFUNDABLE_STATUS" });
@@ -404,6 +416,7 @@ async function requestCore(c: Ctx, v: RequestInput, prefix: "refund" | "cancel",
         key,
         requestHash,
         autoApproveUpTo: autoApprove, // เหตุไม่ใช่ลูกค้าที่ไม่มีสิทธิ์อนุมัติถูกปฏิเสธข้างบนแล้ว (มติ r2 W8 — ไม่มีกิ่ง "งดอนุมัติอัตโนมัติ" ที่ไปไม่ถึง)
+        ...(pub ? { autoApproveUpTo: 0 } : {}), // TRIPS W1.3 ▸ K4 ◂
       }),
     };
   });
@@ -434,7 +447,8 @@ export async function requestTripRefund(ctx: unknown, input: unknown, opts?: Ref
   return tripsSafely("requestTripRefund", ctx, async () => {
     const pc = parseCtx(ctx);
     if (!pc.ok) return pc;
-    if (pc.c.actor.kind === "PUBLIC") return sellFail("FORBIDDEN", { reason: "OTP_REQUIRED" });
+    const ps = publicSelfGate(pc.c, opts, input); // TRIPS W1.3 ▸ ไม่มี publicSelf ⇒ FORBIDDEN OTP_REQUIRED เดิม (K2) ◂
+    if (ps && "ok" in ps) return ps;
     const p = requestInput.safeParse(input);
     if (!p.success) return invalidInput(p.error);
     return requestCore(pc.c, p.data, "refund", opts);
