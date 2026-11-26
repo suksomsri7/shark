@@ -476,6 +476,7 @@ export {
 export type { PassengerDTO, PublicFormView, PublicFormCtx } from "./passengers";
 export { purgeTripPersonalDataForUnit, recordPdpaRequest, listPdpaRequests, resolvePdpaRequest, exportPassengerData } from "./pdpa";
 export type { PdpaRequestItem, PurgeUnitResult } from "./pdpa";
+export { onBookerPartyErased } from "./pdpa"; // TRIPS W1.2b ▸ ตัวรับการลบลูกค้าของ CRM/สมาชิก (มติ E1) ◂
 export { runPdpaPurge } from "./jobs";
 export type { PdpaPurgeOpts, PdpaPurgeResult } from "./jobs";
 // ◂ TRIPS T0.8

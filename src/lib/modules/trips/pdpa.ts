@@ -508,8 +508,9 @@ export async function purgeTripPersonalDataForUnit(i: { tenantId: string; unitId
             SELECT 1 AS "x" FROM "TripMoneyEvent" WHERE "bookingId" = ${b.id} AND "tenantId" = ${u.tenantId}
             UNION ALL SELECT 1 AS "x" FROM "TripRefundRequest" WHERE "bookingId" = ${b.id} AND "tenantId" = ${u.tenantId} AND "status" = ANY(${OPEN_REFUND}::text[]) LIMIT 1`;
           if (blocked.length) return none;
+          // TRIPS W1.2b ▸ ผู้จองที่พิมพ์ตอนจอง (policySnapshot.booker) ลบในคำสั่งเดียวกับการตัดผู้จอง · ส่วนอื่นของ snapshot ไม่เปลี่ยน ◂
           const cas = await tx.$queryRaw<{ id: string }[]>`
-            UPDATE "TripBooking" SET "bookerPartyId" = NULL, "piiPurgedAt" = ${nowIso}::timestamp, "version" = "version" + 1, "updatedAt" = ${nowIso}::timestamp
+            UPDATE "TripBooking" SET "bookerPartyId" = NULL, "policySnapshot" = "policySnapshot" - 'booker', "piiPurgedAt" = ${nowIso}::timestamp, "version" = "version" + 1, "updatedAt" = ${nowIso}::timestamp
             WHERE "id" = ${b.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "status" = 'EXPIRED' AND "piiPurgedAt" IS NULL AND "paidSatang" = 0
               AND "version" = ${b.version} AND NOT EXISTS (SELECT 1 FROM "TripMoneyEvent" m WHERE m."bookingId" = ${b.id} AND m."tenantId" = ${u.tenantId})
             RETURNING "id"`;
@@ -726,3 +727,21 @@ async function purgeStagesInTx(tx: Prisma.TransactionClient, u: Unit, passengerI
   return dueStages.length;
 }
 // ── /T0.8 pdpa ──
+
+// TRIPS W1.2b ▸ CRM/สมาชิกลบลูกค้า (crm.contact.erased · member.erased {partyId?, partyIds?}) ⇒ ป้าย booker {v:1, erased:true} ทุกการจองในร้านของ Party ที่ระบุ
+//   และทุก Party ที่ถูกรวมเข้าหา (mergedIntoId ไล่สาย · ร้านเดียวกัน) รวมการจองที่ไม่เคยมีคีย์ (มติ E1 E7 E9 G1 G2) · version +1 · ส่งซ้ำ = ไม่เปลี่ยน
+//   partyIds: ใช้เฉพาะสมาชิกที่เป็นสตริง (ไม่ใช่อาร์เรย์ ⇒ ไม่ใช้) · ไม่มี id ⇒ ไม่ทำอะไร ◂
+export async function onBookerPartyErased(evt: { tenantId: string; payload: unknown }): Promise<{ n: number }> {
+  const p = typeof evt.payload === "object" && evt.payload !== null ? (evt.payload as Record<string, unknown>) : {};
+  const ids = [...new Set([p.partyId, ...(Array.isArray(p.partyIds) ? p.partyIds : [])].filter((x): x is string => typeof x === "string" && x.length > 0 && x.length <= 64))];
+  if (!ids.length || !evt.tenantId) return { n: 0 };
+  const n = await tenantDb({ tenantId: evt.tenantId }).$executeRaw`
+    WITH RECURSIVE ps("id") AS (
+      SELECT "id" FROM "Party" WHERE "tenantId" = ${evt.tenantId} AND "id" = ANY(${ids}::text[])
+      UNION SELECT c."id" FROM "Party" c JOIN ps ON c."mergedIntoId" = ps."id" WHERE c."tenantId" = ${evt.tenantId}
+    )
+    UPDATE "TripBooking" SET "policySnapshot" = "policySnapshot" || '{"booker":{"v":1,"erased":true}}'::jsonb, "version" = "version" + 1, "updatedAt" = now()
+    WHERE "tenantId" = ${evt.tenantId} AND ("bookerPartyId" = ANY(${ids}::text[]) OR "bookerPartyId" IN (SELECT "id" FROM ps))
+      AND jsonb_typeof("policySnapshot") = 'object' AND "policySnapshot"->'booker' IS DISTINCT FROM '{"v":1,"erased":true}'::jsonb`;
+  return { n };
+}
