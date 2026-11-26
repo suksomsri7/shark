@@ -5,6 +5,7 @@
 import { formatYmd } from "@/components/trips/trips-shared";
 import { bookHref, type BookCarry, type BookProductVM } from "@/lib/platform/trips-public-core";
 import { BookCalendar } from "./BookCalendar";
+import { BookFull } from "./BookFull"; // TRIPS W1.4a ▸ ◂
 import { BookSection, BookUntranslated, shopLang } from "./BookContent";
 import { BookCancel, BookPrices, bookMoney } from "./BookPrices";
 import { BookSelectBottom, BookSelectPanel, BookSummaryPanel, type BookSelectData } from "./BookSelect";
@@ -76,6 +77,8 @@ export function BookProduct({ vm, carry, select, closed: closedByHold }: { vm: B
             </p>
           ) : null}
 
+          {/* TRIPS W1.4a ▸ ก้อนรอบเต็มของวันที่ขอ (ทางเลือกเป็นลิงก์ · ไม่ต้องมี JS) ◂ */}
+          {vm.full ? <BookFull full={vm.full} locale={vm.locale} /> : null}
           <BookCalendar vm={vm} carry={carry} />
           {select ? <BookSelectPanel data={select} locale={vm.locale} /> : null}
           {sel ? <BookPrices price={price} locale={vm.locale} /> : null}

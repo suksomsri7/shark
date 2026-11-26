@@ -52,6 +52,8 @@ export type BookReservationRow = {
   collectMode: string;
   policySnapshot: unknown;
   holdExpiresAt: string | null;
+  /** TRIPS W1.4a ▸ expiresAt ล่าสุดของที่ถือทุกสถานะ (อ่านเฉพาะการจอง EXPIRED · อื่น ⇒ null) ◂ */
+  heldUntil?: string | null;
   named: number;
   waiversSigned: number;
 };
@@ -199,6 +201,8 @@ export async function findBookReservation(ref: { tenantId: string; unitIds: stri
       FROM "TripPassenger" WHERE "bookingId" = ${b.id} AND "tenantId" = ${tenantId} AND "unitId" = ${b.unitId}`,
   ]);
   const exp = holds[0]?.expiresAt;
+  const last = b.status === "EXPIRED" ? (await db.$queryRaw<{ last: Date | null }[]>`
+    SELECT max("expiresAt") AS "last" FROM "TripHold" WHERE "bookingId" = ${b.id} AND "tenantId" = ${tenantId} AND "unitId" = ${b.unitId}`)[0]?.last : null;
   return {
     bookingId: b.id,
     unitId: b.unitId,
@@ -209,6 +213,7 @@ export async function findBookReservation(ref: { tenantId: string; unitIds: stri
     collectMode: String(b.collectMode),
     policySnapshot: b.policySnapshot,
     holdExpiresAt: exp ? new Date(exp).toISOString() : null,
+    heldUntil: last ? new Date(last).toISOString() : null,
     named: Number(pax[0]?.named ?? 0),
     waiversSigned: Number(pax[0]?.signed ?? 0),
   };
@@ -269,4 +274,20 @@ export async function findSelfReplay(ref: { tenantId: string; unitId: string }, 
   const a = await db.$queryRaw<{ x: number }[]>`
     SELECT 1 AS "x" FROM "AuditLog" WHERE "tenantId" = ${ref.tenantId} AND "createdAt" >= ${since}::timestamp AND "targetId" = ${b.id} AND "action" = 'trips.booking.cancel' AND "after"->>'idemKeyHash' = ${keyHash} LIMIT 1`;
   return a.length ? { request: null } : null;
+}
+
+// TRIPS W1.4a ▸ "ทริปอื่นวันเดียวกัน" (ใบสั่ง W1.4 §4.1 · มติ C-5): สินค้าทัวร์อื่นที่มองเห็นของหน่วยเดียวกัน (ACTIVE + TOUR) ที่มีรอบวันนั้น (ไม่นับรอบยกเลิก)
+//   อ่าน `take` สินค้าแรกเรียง slug แล้วเรียงเวลาออกรอบแรกของวันนั้น · ที่ว่างจริงผู้เรียกอ่านด้วย listAvailability · คิวรีเดียว อ่านอย่างเดียว ◂
+export async function loadSameDayProducts(ref: { tenantId: string; unitId: string }, q: { date: string; excludeProductId: string; locale: string; take: number }): Promise<{ productId: string; slug: string; title: BookText }[]> {
+  const { tenantId, unitId } = ref;
+  const take = Number.isInteger(q.take) && q.take > 0 ? q.take : 1;
+  const rows = await dbOf(tenantId, unitId).$queryRaw<{ id: string; slug: string; title: unknown }[]>`
+    SELECT x."id", x."slug", x."title" FROM (
+      SELECT p."id", p."slug", p."title", (SELECT min(d."startsAt") FROM "TripDeparture" d WHERE d."productId" = p."id" AND d."tenantId" = p."tenantId" AND d."unitId" = p."unitId"
+        AND d."localDate" = ${q.date}::date AND d."status" <> 'CANCELLED') AS "firstAt"
+      FROM "TripProduct" p WHERE p."tenantId" = ${tenantId} AND p."unitId" = ${unitId} AND p."id" <> ${q.excludeProductId} AND p."status" = 'ACTIVE' AND p."productType" = 'TOUR'
+        AND EXISTS (SELECT 1 FROM "TripDeparture" e WHERE e."productId" = p."id" AND e."tenantId" = p."tenantId" AND e."unitId" = p."unitId" AND e."localDate" = ${q.date}::date AND e."status" <> 'CANCELLED')
+      ORDER BY p."slug" ASC LIMIT ${take}) x
+    ORDER BY x."firstAt" ASC, x."slug" ASC`;
+  return rows.map((r) => ({ productId: r.id, slug: r.slug, title: textOf(r.title, q.locale) }));
 }

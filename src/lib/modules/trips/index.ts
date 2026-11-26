@@ -514,6 +514,7 @@ export { loadBookCatalog, loadBookDay, loadBookDeparture, findBookBasket, findBo
 export type { BookCatalog, BookDaySlot, BookDepartureRow, BookBasketRow, BookReservationRow } from "./public-booking";
 export { hhmm as tripsHhmm } from "./departures-core";
 // ── /W1.2 public booking ──
+export { loadSameDayProducts } from "./public-booking"; // TRIPS W1.4a ▸ ทริปอื่นวันเดียวกันของก้อนรอบเต็ม (อ่านอย่างเดียว) ◂
 // ── W1.3 self-service ──
 // TRIPS W1.3 ▸ การจองของฉัน: ข้อเท็จจริงของก้อนจัดการ (อ่านอย่างเดียว) · เหตุผลคงที่ของลูกค้า (K16) · หาผลเดิมของฟอร์มเดิม (K5) · ผู้เรียก = platform/trips-self · ใบสั่ง ledger/trips-briefs/W1.3.md ◂
 export { findBookSelfFacts } from "./public-booking";

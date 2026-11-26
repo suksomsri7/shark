@@ -219,7 +219,29 @@
     "titleReservation": "My booking",
     "titleManage": "Manage booking"
   },
+  "full": {
+    "title": "This departure is full",
+    "short": "Only {left} seats left — you need {want}",
+    "want": "You need {want} · {left} left",
+    "nearby": "Nearby dates with seats",
+    "left": "{n} seats left",
+    "choose": "Choose",
+    "sameDay": "Other trips on the same day",
+    "none": "No nearby dates have enough seats. Check the calendar or contact the shop: {contact}.",
+    "noneNoContact": "No nearby dates have enough seats. Check the calendar or contact the shop."
+  },
   "res": {
+    "expiredTitle": "Your hold has expired",
+    "expiredWhen": "Seats were held until {time} on {date}",
+    "expiredMoney": "No payment has been recorded for this booking, and the seats have been released.",
+    "expiredNowOpen": "The same departure has {n} seats left now",
+    "expiredNowFull": "The same departure is now full",
+    "expiredNowClosed": "The same departure is no longer taking bookings",
+    "reholdSubmit": "Hold seats again and pay",
+    "reholdNote": "You'll get a new booking code and need to enter your details again. Prices are current prices.",
+    "reholdPartial": "Some of your earlier choices are no longer available — check before holding",
+    "expiredPaidTitle": "Already transferred after the hold expired?",
+    "expiredPaidHow": "The shop will check your transfer and confirm the booking if seats are still available, or refund you in full.",
     "code": "Booking code {code}",
     "total": "Booking total",
     "pay": {

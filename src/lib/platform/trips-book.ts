@@ -39,8 +39,9 @@ import {
   type BookCatalog,
   type BookDaySlot,
   type BookDepartureRow,
+  type BookReservationRow,
 } from "@/lib/modules/trips";
-import { bookBrandOf, bookMiss, bookPublicRef, bookSaleState, bookSlotToken, bookVisibleProduct, resolveBookShop, type BookShop } from "./trips-public";
+import { bookBrandOf, bookFullOf, bookMiss, bookPublicRef, bookSaleState, bookSlotToken, bookVisibleProduct, resolveBookShop, type BookShop } from "./trips-public";
 import { BOOK_LIMITER_DOWN_RETRY_SEC, BOOK_READ_LIMIT, BOOK_SLOT_TOKEN_RE, bookLocaleOf, cancelRowsOf, isBookYmd, type BookLocale, type BookText } from "./trips-public-core";
 import {
   BOOK_BASKET_TOKEN_RE,
@@ -62,6 +63,9 @@ import {
   bookerPhoneOf,
   bookFillMinutes,
   bookHoldTooShort,
+  bookSelectHref,
+  reholdSelectionOf,
+  type BookExpiredVM,
   bookTodoOf,
   cancelDeadlinesOf,
   parseBookSelection,
@@ -1106,6 +1110,8 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
     // TRIPS W1.3 ▸ ก้อน "จัดการการจอง" (ใบสั่ง W1.3 §3.2 · K8 K10) — ข้อเท็จจริงอ่านไม่ได้ ⇒ ไม่มีปุ่ม (ENDED) · ไม่มี id/ข้อมูลบุคคล ◂
     const facts = await findBookSelfFacts({ tenantId: o.shop.tenantId, unitId: unit.id }, row.bookingId).catch(() => null);
     const manage = selfManageVMOf({ status: row.status, startsAt: dep.startsAt, now: o.now.toISOString(), holdExpiresAt: row.holdExpiresAt, paidSatang: row.paidSatang, facts });
+    // TRIPS W1.4a ▸ ก้อนหมดเวลา (ใบสั่ง W1.4 §4.2) — สถานะอื่น ⇒ null ◂
+    const expired = finalState === "EXPIRED" ? await expiredVMOf(o, unit, dep, row, items, cat, facts, lang === "th" || lang === "en" ? lang : null, locale) : null;
     return {
       ok: true,
       vm: {
@@ -1133,11 +1139,41 @@ export async function openBookReservation(input: { shop: unknown; token: unknown
         manage,
         selfCancelled: facts?.cancelledBySelf === true,
         selfVerifyNonce: manage.cancel !== null ? issueSelfFormNonce({ now: o.now, scope: { tenantId: o.shop.tenantId, purpose: "verify", token } }) : null,
+        expired,
       },
     };
   } catch {
     return fail("BUSY");
   }
+}
+/**
+ * TRIPS W1.4a ▸ ก้อนหมดเวลา: ที่ว่างของรอบเดิมตอนนี้ (getAvailability WEB) · ลิงก์ถือที่ใหม่ = GET ไปหน้าสินค้าพร้อมการเลือกเดิม (ไม่มี token เดิม/ข้อมูลผู้จอง · มติ C-2 C-3)
+ * ไม่มีลิงก์เมื่อ: ร้านปิดจอง/สินค้าไม่ขายสาธารณะ · รอบเดิมปิด · การจองผ่านเอเจนซี่ · snapshot อ่านไม่ได้ · รอบเดิมเต็ม ⇒ ลิงก์ + ก้อนรอบเต็มของวันเดิม — อ่านอย่างเดียว ◂
+ */
+async function expiredVMOf(o: Opened, unit: { id: string; tz: string }, dep: BookDepartureRow, row: BookReservationRow, items: PricedLike[], cat: BookCatalog, facts: { channel: string; agentAccountId: string | null } | null, lang: BookLocale | null, locale: BookLocale): Promise<BookExpiredVM> {
+  const tenantId = o.shop.tenantId;
+  const held = row.heldUntil ? new Date(row.heldUntil) : null;
+  const av = await getAvailability(ctxOf(o, unit.id, locale), { departureId: row.departureId }).catch(() => null);
+  const a = av && av.ok ? av.value : null;
+  const now: BookExpiredVM["now"] = !a ? null : a.saleBlock !== null ? { state: "CLOSED", left: 0 } : { state: a.publicLeft <= 0 ? "FULL" : a.showLeft ? "LOW" : "OPEN", left: a.publicLeft };
+  const agent = row.collectMode === "AGENT" || !facts || facts.channel.startsWith("AGENT") || facts.agentAccountId !== null;
+  const secret = o.secret;
+  const open = now !== null && now.state !== "CLOSED" && !agent && (await bookSaleState({ tenantId, unitId: unit.id, productId: dep.productId }, o.now)) === "OPEN";
+  const sel = open
+    ? reholdSelectionOf(items, {
+        paxCodes: cat.paxTypes.filter((p) => p.active).map((p) => p.code),
+        extras: cat.extras.filter((e) => e.active && e.productLevel && !e.mandatory).map((e) => ({ id: e.id, ref: refOf(secret, tenantId, "extra", e.id) })),
+        zones: cat.zones.filter((z) => z.active).map((z) => ({ id: z.id, ref: refOf(secret, tenantId, "zone", z.id) })),
+        skipExtras: cat.extras.filter((e) => e.mandatory).map((e) => e.id),
+      })
+    : null;
+  const t = bookSlotToken(tenantId, row.departureId);
+  const back = { ...(lang ? { lang } : {}), m: dep.localDate.slice(0, 7), d: dep.localDate, ...(t ? { t } : {}) };
+  const rehold = sel ? { href: bookSelectHref(o.shop.slug, { productSlug: dep.product.slug, query: { ...back, ...sel.query } }), partial: sel.partial } : null;
+  const seats = items.reduce((n, it) => n + (it.usesCapacity ? it.qty : 0), 0);
+  const nq = Object.fromEntries(Object.entries(sel?.query ?? {}).filter(([k]) => k.startsWith("n.")));
+  const full = now?.state === "FULL" ? await bookFullOf(o.shop, { productId: dep.productId, productSlug: dep.product.slug, unit, date: dep.localDate, slot: t, error: null, want: async () => (seats > 0 ? seats : null), nq, lang, locale }, o.now) : null;
+  return { heldUntilDate: held ? utcToLocal(unit.tz, held).ymd : null, heldUntilLocal: held ? localHm(unit.tz, held) : null, now, rehold, full };
 }
 /** สินค้านี้ต้องเซ็นเอกสารรับทราบความเสี่ยงไหม (ค่าตั้ง trips.waiver.requiredFor · อ่านไม่ได้ ⇒ ไม่แสดงรายการนี้) */
 async function waiverRequiredOf(tenantId: string, unitId: string, dep: BookDepartureRow, now: Date): Promise<boolean> {

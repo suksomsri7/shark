@@ -26,14 +26,16 @@ const NO_INDEX: Metadata = { robots: { index: false, follow: false } };
 const openOnce = cache(async (shop: string, productSlug: string, lang: string | null, a: string | null, m: string | null, d: string | null, t: string | null) => {
   const h = await headers();
   const req = bookRequestFromHeaders((name) => h.get(name));
-  const r = await openBookProduct({ shop, productSlug, query: { lang, a, m, d, t }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey, countView: req.countView });
+  // TRIPS W1.4a ▸ `t` = JSON {t, n.*, e} (ค่าพื้นฐานตัวเดียวของ cache) — n.* ตรวจรูปที่ platform · e เฉพาะ SOLD_OUT (ก้อนรอบเต็ม) ◂
+  const r = await openBookProduct({ shop, productSlug, query: { lang, a, m, d, ...(JSON.parse(t ?? "{}") as Record<string, string>) }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey, countView: req.countView });
   return { r, req };
 });
 async function opened(props: Props) {
   const { shop, productSlug } = await props.params;
   const sp = await props.searchParams;
   const q = parseBookQuery(sp);
-  return openOnce(shop, productSlug, q.lang, q.a, q.m, q.d, parseBookSlot(sp));
+  const n = Object.fromEntries(Object.entries(selectionParamsOf(sp)).filter(([k]) => k.startsWith("n.")));
+  return openOnce(shop, productSlug, q.lang, q.a, q.m, q.d, JSON.stringify({ ...n, ...(parseBookSlot(sp) ? { t: parseBookSlot(sp) } : {}), ...(bookErrorParam(sp)?.code === "SOLD_OUT" ? { e: "SOLD_OUT" } : {}) }));
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
