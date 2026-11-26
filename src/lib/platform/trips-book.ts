@@ -1159,10 +1159,13 @@ async function expiredVMOf(o: Opened, unit: { id: string; tz: string }, dep: Boo
   const agent = row.collectMode === "AGENT" || !facts || facts.channel.startsWith("AGENT") || facts.agentAccountId !== null;
   const secret = o.secret;
   const open = now !== null && now.state !== "CLOSED" && !agent && (await bookSaleState({ tenantId, unitId: unit.id, productId: dep.productId }, o.now)) === "OPEN";
+  // มติ D13: รายการเสริมที่พาไปได้ = ที่หน้าสินค้าเสนอจริง (optionsOf ตัวเดียวกับหน้า) · ที่หน้าไม่เสนอ (เช่นต่อวัน/ต่อคืนของทริปหลายวัน) ⇒ ไม่พา + partial
+  const slot: BookDaySlot = { departureId: row.departureId, optionId: dep.optionId, optionName: { text: null, fallback: false }, startsAt: dep.startsAt, startTime: dep.startTime, timeText: dep.timeText, status: "OPEN", publicLeft: now?.left ?? 0, saleBlock: null };
+  const offered = open ? new Set((await optionsOf(o, ctxOf(o, unit.id, locale), { unitId: unit.id, productId: dep.productId, slot, token: null }, cat).catch(() => null))?.extras.map((e) => e.ref) ?? []) : new Set<string>();
   const sel = open
     ? reholdSelectionOf(items, {
         paxCodes: cat.paxTypes.filter((p) => p.active).map((p) => p.code),
-        extras: cat.extras.filter((e) => e.active && e.productLevel && !e.mandatory).map((e) => ({ id: e.id, ref: refOf(secret, tenantId, "extra", e.id) })),
+        extras: cat.extras.map((e) => ({ id: e.id, ref: refOf(secret, tenantId, "extra", e.id) })).filter((e) => offered.has(e.ref)),
         zones: cat.zones.filter((z) => z.active).map((z) => ({ id: z.id, ref: refOf(secret, tenantId, "zone", z.id) })),
         skipExtras: cat.extras.filter((e) => e.mandatory).map((e) => e.id),
       })

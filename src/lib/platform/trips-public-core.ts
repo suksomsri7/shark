@@ -508,10 +508,10 @@ export function refundPercentOf(refundBp: number): number {
 export const BOOK_SAMEDAY_SCAN_CAP = 20;
 export const BOOK_SAMEDAY_MAX = 3;
 /**
- * สินค้าที่ผ่านตัวกรองหยาบใน SQL ที่ตรวจจริงสูงสุดต่อการเปิดหน้า (มติ D3: วันเต็มเพิ่มคำสั่งอ่าน ≤ 30) — วัดจริง 26 พ.ย.: ฐานของก้อน 8 · ตรวจหนึ่งตัว 9
- * (bookSaleState 2 + listAvailability 7) · ช่องทางติดต่อ 2 ⇒ ตรวจได้ 2 ตัว (8 + 18 + 2 = 28) — แสดงได้ ≤ 2 แม้ BOOK_SAMEDAY_MAX = 3
+ * สินค้าที่ผ่านตัวกรองหยาบใน SQL ที่ตรวจจริง (bookSaleState + listAvailability) สูงสุดต่อการเปิดหน้า ตามลำดับหลังตัวกรอง แล้วหยุดแม้ได้ไม่ถึง 3 (มติ D12)
+ * วัดจริง 26 พ.ย.: ฐานของก้อน 8 · ตรวจหนึ่งตัว 9 · ช่องทางติดต่อ 2 ⇒ แย่สุด 8 + 36 + 2 = 46 ≤ เพดาน +50 ของวันเต็ม
  */
-export const BOOK_SAMEDAY_CHECK_CAP = 2;
+export const BOOK_SAMEDAY_CHECK_CAP = 4;
 /** วันใกล้เคียง: ช่วง ±วันของวันที่เลือก (มติ C-10) · แสดงสูงสุด */
 export const BOOK_NEARBY_SPAN_DAYS = 7;
 export const BOOK_NEARBY_MAX = 2;
