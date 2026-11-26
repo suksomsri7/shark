@@ -1172,8 +1172,9 @@ async function expiredVMOf(o: Opened, unit: { id: string; tz: string }, dep: Boo
   const rehold = sel ? { href: bookSelectHref(o.shop.slug, { productSlug: dep.product.slug, query: { ...back, ...sel.query } }), partial: sel.partial } : null;
   const seats = items.reduce((n, it) => n + (it.usesCapacity ? it.qty : 0), 0);
   const nq = Object.fromEntries(Object.entries(sel?.query ?? {}).filter(([k]) => k.startsWith("n.")));
-  const full = now?.state === "FULL" ? await bookFullOf(o.shop, { productId: dep.productId, productSlug: dep.product.slug, unit, date: dep.localDate, slot: t, error: null, want: async () => (seats > 0 ? seats : null), nq, lang, locale }, o.now) : null;
-  return { heldUntilDate: held ? utcToLocal(unit.tz, held).ymd : null, heldUntilLocal: held ? localHm(unit.tz, held) : null, now, rehold, full };
+  // ก้อนรอบเต็มเฉพาะเมื่อถือใหม่ทางเว็บได้ (ไม่ใช่เอเจนซี่ · สินค้ายังรับจองทันที · มติ D4)
+  const full = open && now?.state === "FULL" ? await bookFullOf(o.shop, { productId: dep.productId, productSlug: dep.product.slug, unit, date: dep.localDate, slot: t, error: null, want: seats > 0 ? seats : null, nq, lang, locale }, o.now) : null;
+  return { heldUntilDate: held ? utcToLocal(unit.tz, held).ymd : null, heldUntilLocal: held ? localHm(unit.tz, held) : null, now, rehold, full, open, agency: agent };
 }
 /** สินค้านี้ต้องเซ็นเอกสารรับทราบความเสี่ยงไหม (ค่าตั้ง trips.waiver.requiredFor · อ่านไม่ได้ ⇒ ไม่แสดงรายการนี้) */
 async function waiverRequiredOf(tenantId: string, unitId: string, dep: BookDepartureRow, now: Date): Promise<boolean> {

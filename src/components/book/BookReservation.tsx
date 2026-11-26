@@ -112,7 +112,7 @@ export function BookReservation({ vm, frame, selfTop, selfManage }: { vm: BookRe
             <h1 className="text-lg font-semibold">{t(ex ? "res.expiredTitle" : "res.expired")}</h1>
             {ex?.heldUntilLocal && ex.heldUntilDate ? <p data-testid="book-res-expired-when" className="text-base">{t("res.expiredWhen", { time: ex.heldUntilLocal, date: formatYmd(ex.heldUntilDate, names) })}</p> : null}
             {ex && vm.paidSatang === 0 ? <p data-testid="book-res-expired-money" className="text-base">{t("res.expiredMoney")}</p> : null}
-            {ex?.now ? (
+            {ex?.now && (ex.open || ex.now.state === "FULL" || ex.now.state === "CLOSED") ? (
               <p data-testid="book-res-expired-now" data-state={ex.now.state} className="text-base font-semibold">
                 {ex.now.state === "CLOSED" ? t("res.expiredNowClosed") : ex.now.state === "FULL" ? t("res.expiredNowFull") : t("res.expiredNowOpen", { n: ex.now.left })}
               </p>
@@ -131,7 +131,7 @@ export function BookReservation({ vm, frame, selfTop, selfManage }: { vm: BookRe
               <p data-testid="book-expired-contact" className="text-base">
                 {t("res.expiredPaid", { contact: bookContactText(vm.shop), code: vm.code })}
               </p>
-              {ex ? <p className="text-sm text-[color:var(--color-ink-soft)]">{t("res.expiredPaidHow")}</p> : null}
+              {ex && !ex.agency ? <p className="text-sm text-[color:var(--color-ink-soft)]">{t("res.expiredPaidHow")}</p> : null}
             </div>
           </section>
         ) : null}

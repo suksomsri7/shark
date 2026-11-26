@@ -276,18 +276,19 @@ export async function findSelfReplay(ref: { tenantId: string; unitId: string }, 
   return a.length ? { request: null } : null;
 }
 
-// TRIPS W1.4a ▸ "ทริปอื่นวันเดียวกัน" (ใบสั่ง W1.4 §4.1 · มติ C-5): สินค้าทัวร์อื่นที่มองเห็นของหน่วยเดียวกัน (ACTIVE + TOUR) ที่มีรอบวันนั้น (ไม่นับรอบยกเลิก)
-//   อ่าน `take` สินค้าแรกเรียง slug แล้วเรียงเวลาออกรอบแรกของวันนั้น · ที่ว่างจริงผู้เรียกอ่านด้วย listAvailability · คิวรีเดียว อ่านอย่างเดียว ◂
-export async function loadSameDayProducts(ref: { tenantId: string; unitId: string }, q: { date: string; excludeProductId: string; locale: string; take: number }): Promise<{ productId: string; slug: string; title: BookText }[]> {
+// TRIPS W1.4a ▸ "ทริปอื่นวันเดียวกัน" (ใบสั่ง W1.4 §4.1 · มติ C-5 D3): สินค้าทัวร์อื่นที่มองเห็นของหน่วยเดียวกัน (ACTIVE + TOUR) ที่มีรอบวันนั้น (ไม่ยกเลิก)
+//   ที่ว่างแบบหยาบพอ (ความจุ − ขาย − ถือ − กัน ≥ need) · `take` สินค้าแรกเรียง slug แล้วเรียงเวลาออกรอบแรกที่ผ่าน · ที่ว่างจริงผู้เรียกอ่านด้วย listAvailability · คิวรีเดียว อ่านอย่างเดียว ◂
+export async function loadSameDayProducts(ref: { tenantId: string; unitId: string }, q: { date: string; excludeProductId: string; need: number; locale: string; take: number }): Promise<{ productId: string; slug: string; title: BookText }[]> {
   const { tenantId, unitId } = ref;
   const take = Number.isInteger(q.take) && q.take > 0 ? q.take : 1;
+  const need = Number.isInteger(q.need) && q.need > 0 ? q.need : 1;
   const rows = await dbOf(tenantId, unitId).$queryRaw<{ id: string; slug: string; title: unknown }[]>`
     SELECT x."id", x."slug", x."title" FROM (
-      SELECT p."id", p."slug", p."title", (SELECT min(d."startsAt") FROM "TripDeparture" d WHERE d."productId" = p."id" AND d."tenantId" = p."tenantId" AND d."unitId" = p."unitId"
-        AND d."localDate" = ${q.date}::date AND d."status" <> 'CANCELLED') AS "firstAt"
-      FROM "TripProduct" p WHERE p."tenantId" = ${tenantId} AND p."unitId" = ${unitId} AND p."id" <> ${q.excludeProductId} AND p."status" = 'ACTIVE' AND p."productType" = 'TOUR'
-        AND EXISTS (SELECT 1 FROM "TripDeparture" e WHERE e."productId" = p."id" AND e."tenantId" = p."tenantId" AND e."unitId" = p."unitId" AND e."localDate" = ${q.date}::date AND e."status" <> 'CANCELLED')
-      ORDER BY p."slug" ASC LIMIT ${take}) x
+      SELECT p."id", p."slug", p."title", min(d."startsAt") AS "firstAt"
+      FROM "TripProduct" p JOIN "TripDeparture" d ON d."productId" = p."id" AND d."tenantId" = p."tenantId" AND d."unitId" = p."unitId"
+        AND d."localDate" = ${q.date}::date AND d."status" <> 'CANCELLED' AND d."capacity" - d."sold" - d."held" - d."reserved" >= ${need}
+      WHERE p."tenantId" = ${tenantId} AND p."unitId" = ${unitId} AND p."id" <> ${q.excludeProductId} AND p."status" = 'ACTIVE' AND p."productType" = 'TOUR'
+      GROUP BY p."id", p."slug", p."title" ORDER BY p."slug" ASC LIMIT ${take}) x
     ORDER BY x."firstAt" ASC, x."slug" ASC`;
   return rows.map((r) => ({ productId: r.id, slug: r.slug, title: textOf(r.title, q.locale) }));
 }

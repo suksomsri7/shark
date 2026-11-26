@@ -31,6 +31,7 @@ import {
   BOOK_LIMITER_DOWN_RETRY_SEC,
   BOOK_MISS_LIMIT,
   BOOK_PRODUCT_CAP,
+  BOOK_SAMEDAY_CHECK_CAP,
   BOOK_SAMEDAY_MAX,
   BOOK_SAMEDAY_SCAN_CAP,
   addBookDays,
@@ -512,6 +513,7 @@ async function productVM(shop: BookShop, ask: ProductAsk, now: Date): Promise<Bo
     requestedUnavailable,
     selected,
     cta: { enabled: false, reason: null },
+    full: null,
   };
 }
 
@@ -598,15 +600,24 @@ export async function openBookProduct(
     const st = await bookSaleState({ tenantId: r.shop.tenantId, unitId: p.unit.id, productId: p.productId }, now);
     vm.cta = { enabled: st === "OPEN", reason: st === "OPEN" ? null : st };
   }
-  // TRIPS W1.4a ▸ ก้อนรอบเต็มของวันที่ขอ (`d` ในเดือนที่แสดง · e=SOLD_OUT) — คนที่ต้องการจาก `n.*` ที่ตรวจรูปแล้ว (ประเภทที่นับที่นั่ง) ◂
+  // TRIPS W1.4a ▸ ก้อนรอบเต็มของวันที่ขอ (`d` ในเดือนที่แสดง) — ตัดสินจากรอบที่หน้าโหลดแล้ว (มติ D9): ช่องวันเต็ม · หรือ e=SOLD_OUT ที่ต้องการมากกว่าที่ว่างของรอบ (D2) ◂
+  vm.full = null;
   if (q.d !== null && q.d.slice(0, 7) === vm.month) {
-    const pax = parseBookSelection(i.query)?.pax ?? null;
-    const seatsOf = async () => {
-      const seat = new Set((await loadBookCatalog({ tenantId: r.shop.tenantId, unitId: p.unit.id, productId: p.productId }, vm.locale)).paxTypes.filter((x) => x.seat && x.active).map((x) => x.code));
-      const n = (pax ?? []).reduce((sum, x) => sum + (seat.has(x.code) ? x.qty : 0), 0);
+    const cell = vm.weeks.flat().find((c) => c?.date === q.d), slot = parseBookSlot(i.query), pax = parseBookSelection(i.query)?.pax ?? null;
+    const shown = vm.selected?.date === q.d ? vm.selected.slots.filter((s) => s.selectable) : [];
+    const left = cell?.state === "FULL" ? 0 : (shown.find((s) => s.token === slot)?.left ?? Math.max(-1, ...shown.map((s) => s.left ?? 0)));
+    const seatCodes = vm.selected?.price ? vm.selected.price.pax.filter((x) => x.seat).map((x) => x.code) : null;
+    const wantOf = async (): Promise<number | null> => {
+      if (!pax) return null;
+      const seat = new Set(seatCodes ?? (await loadBookCatalog({ tenantId: r.shop.tenantId, unitId: p.unit.id, productId: p.productId }, vm.locale)).paxTypes.filter((x) => x.seat && x.active).map((x) => x.code));
+      const n = pax.reduce((sum, x) => sum + (seat.has(x.code) ? x.qty : 0), 0);
       return n > 0 ? n : null;
     };
-    vm.full = await bookFullOf(r.shop, { ...p, date: q.d, slot: parseBookSlot(i.query), error: bookErrorParam(i.query)?.code ?? null, want: pax ? seatsOf : async () => null, nq: pax ? selectionQuery({ pax, extras: [], zone: null }) : {}, lang: q.lang, locale: vm.locale }, now);
+    const sold = bookErrorParam(i.query)?.code === "SOLD_OUT" && left >= 0;
+    const want = cell?.state === "FULL" || sold ? await wantOf().catch(() => null) : null;
+    if (cell?.state === "FULL" || (sold && want !== null && want > left)) {
+      vm.full = await bookFullOf(r.shop, { ...p, date: q.d, slot, error: sold ? "SOLD_OUT" : null, want, nq: pax ? selectionQuery({ pax, extras: [], zone: null }) : {}, lang: q.lang, locale: vm.locale }, now);
+    }
   }
   const link = await bindLink(r.shop.tenantId, p.productId, q.a);
   if (i.countView !== false) await countBookView({ tenantId: r.shop.tenantId, unit: p.unit, channel: "WEB", clientKey, link, now }, opts);
@@ -648,43 +659,45 @@ export async function bookBrandOf(shop: BookShop): Promise<BookBrandVM> {
 // ═══════════════ TRIPS W1.4a ▸ ก้อนรอบเต็ม (ใบสั่ง W1.4 §4.1 · ใช้ทั้งหน้าสินค้าและหน้าการจองที่หมดเวลา) ◂ ═══════════════
 const K_SHOP_CONTACT = "trips.public.shopContact";
 const ymdOfRow = (v: unknown): string => (v instanceof Date ? v.toISOString() : String(v)).slice(0, 10);
-export type BookFullAsk = { productId: string; productSlug: string; unit: { id: string; tz: string }; date: string; slot: string | null; error: string | null; want: () => Promise<number | null>; nq: Record<string, string>; lang: BookLocale | null; locale: BookLocale };
+export type BookFullAsk = { productId: string; productSlug: string; unit: { id: string; tz: string }; date: string; slot: string | null; error: string | null; want: number | null; nq: Record<string, string>; lang: BookLocale | null; locale: BookLocale };
 /**
- * วันที่ `date` เต็ม (fullStateOf) ⇒ ก้อนทางเลือก · ไม่เต็ม ⇒ null — อ่าน listAvailability ครั้งเดียว 15 วัน + สินค้าวันเดียวกัน ≤ BOOK_SAMEDAY_SCAN_CAP
- * ไม่กินถังอัตรา (อยู่ในเส้นเปิดหน้าเดิม) · อ่านล้ม ⇒ null (ก้อนวันที่ขอ) หรือรายการว่าง (ทางเลือก) — หน้าไม่ล่ม
+ * ผู้เรียกตัดสินแล้วว่าวันนั้นน่าจะเต็ม ⇒ อ่าน listAvailability 15 วันครั้งเดียว (ยืนยันซ้ำด้วย fullStateOf · ไม่เต็มแล้ว ⇒ null) + วันใกล้เคียง
+ * + ทริปอื่นวันเดียวกัน: SQL กรองที่ว่างหยาบก่อน แล้วตรวจจริง (bookSaleState + listAvailability) ไม่เกิน BOOK_SAMEDAY_CHECK_CAP ตัว หยุดเมื่อได้ BOOK_SAMEDAY_MAX (มติ D3)
+ * + ช่องทางติดต่อร้านเฉพาะเมื่อไม่มีทางเลือก (D9) · ไม่กินถังอัตรา · อ่านล้ม ⇒ null / รายการว่าง (หน้าไม่ล่ม)
  */
 export async function bookFullOf(shop: BookShop, a: BookFullAsk, now: Date): Promise<BookFullVM | null> {
   try {
     const ctx = { tenantId: shop.tenantId, unitId: a.unit.id, channel: "WEB" as const, actor: { kind: "PUBLIC" as const, clientKey: "book-view" }, now, locale: a.locale };
     const av = await listAvailability(ctx, { productId: a.productId, from: addBookDays(a.date, -7), to: addBookDays(a.date, 7) });
     if (!av.ok) return null;
-    const day = av.value.filter((x) => ymdOfRow(x.localDate) === a.date);
-    if (!fullStateOf({ slots: day.map((x) => ({ left: x.publicLeft, saleBlock: x.saleBlock })), error: a.error, want: null })) return null;
-    const open = day.filter((x) => x.saleBlock === null);
+    const open = av.value.filter((x) => ymdOfRow(x.localDate) === a.date && x.saleBlock === null);
     const pick = a.slot ? open.find((x) => bookSlotToken(shop.tenantId, x.slotId) === a.slot) : undefined;
     const left = pick ? pick.publicLeft : Math.max(0, ...open.map((x) => x.publicLeft));
-    const want = await a.want().catch(() => null);
-    const need = Math.max(want ?? 1, 1);
+    if (!fullStateOf({ slots: open.map((x) => ({ left: x.publicLeft, saleBlock: null })), error: a.error, want: a.want, left })) return null;
+    const need = Math.max(a.want ?? 1, 1);
     const byDay = new Map<string, { date: string; left: number; sellable: boolean }>();
     for (const x of av.value) {
       const d = ymdOfRow(x.localDate), cur = byDay.get(d) ?? { date: d, left: 0, sellable: false };
-      if (x.saleBlock === null && x.publicLeft > 0) byDay.set(d, { date: d, left: Math.max(cur.left, x.publicLeft), sellable: true });
-      else byDay.set(d, cur);
+      byDay.set(d, x.saleBlock === null && x.publicLeft > 0 ? { date: d, left: Math.max(cur.left, x.publicLeft), sellable: true } : cur);
     }
     const back = (d: string, nq: Record<string, string>) => ({ ...(a.lang ? { lang: a.lang } : {}), m: d.slice(0, 7), d, ...nq });
-    const nearby = nearbyDatesOf({ selected: a.date, want, days: [...byDay.values()] }).map((x) => ({ ...x, href: bookSelectHref(shop.slug, { productSlug: a.productSlug, query: back(x.date, a.nq) }) }));
+    const nearby = nearbyDatesOf({ selected: a.date, want: a.want, days: [...byDay.values()] }).map((x) => ({ ...x, href: bookSelectHref(shop.slug, { productSlug: a.productSlug, query: back(x.date, a.nq) }) }));
     const sameDay: BookFullVM["sameDay"] = [];
-    const others = await loadSameDayProducts({ tenantId: shop.tenantId, unitId: a.unit.id }, { date: a.date, excludeProductId: a.productId, locale: a.locale, take: BOOK_SAMEDAY_SCAN_CAP }).catch(() => []);
-    for (const o of others) {
+    const others = await loadSameDayProducts({ tenantId: shop.tenantId, unitId: a.unit.id }, { date: a.date, excludeProductId: a.productId, need, locale: a.locale, take: BOOK_SAMEDAY_SCAN_CAP }).catch(() => []);
+    for (const o of others.slice(0, BOOK_SAMEDAY_CHECK_CAP)) {
       if (sameDay.length >= BOOK_SAMEDAY_MAX) break;
       if ((await bookSaleState({ tenantId: shop.tenantId, unitId: a.unit.id, productId: o.productId }, now)) !== "OPEN") continue;
       const oa = await listAvailability(ctx, { productId: o.productId, from: a.date, to: a.date }).catch(() => null);
       const best = oa && oa.ok ? Math.max(0, ...oa.value.filter((x) => x.saleBlock === null).map((x) => x.publicLeft)) : 0;
       if (best >= need) sameDay.push({ title: o.title, left: best, href: bookHref(shop.slug, o.slug, back(a.date, {})) });
     }
-    const c = await resolveSettings({ tenantId: shop.tenantId }, [K_SHOP_CONTACT], { unitId: a.unit.id }, now).then((x) => x[K_SHOP_CONTACT]?.value).catch(() => null);
-    const field = (k: string): string | null => { const v = isRec(c) ? c[k] : null; return typeof v === "string" && v.trim() ? v.trim() : null; };
-    return { want, left, date: a.date, nearby, sameDay, contact: bookReachOf(shop.name, field("phone"), field("line")) };
+    let contact = "";
+    if (!nearby.length && !sameDay.length) {
+      const c = await resolveSettings({ tenantId: shop.tenantId }, [K_SHOP_CONTACT], { unitId: a.unit.id }, now).then((x) => x[K_SHOP_CONTACT]?.value).catch(() => null);
+      const field = (k: string): string | null => { const v = isRec(c) ? c[k] : null; return typeof v === "string" && v.trim() ? v.trim() : null; };
+      contact = bookReachOf(shop.name, field("phone"), field("line"));
+    }
+    return { want: a.want, left, date: a.date, nearby, sameDay, contact };
   } catch {
     return null;
   }

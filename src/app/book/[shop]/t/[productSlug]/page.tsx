@@ -23,19 +23,19 @@ const NO_INDEX: Metadata = { robots: { index: false, follow: false } };
 
 // เปิดหน้า 1 ครั้งต่อคำขอ — อาร์กิวเมนต์เป็นค่าพื้นฐานทั้งหมด เพื่อให้ชื่อหน้าและเนื้อหาได้ผลเดียวกัน (นับเปิดดูครั้งเดียว)
 // เปิดหน้า 1 ครั้งต่อคำขอ และอ่าน "ผู้ใช้คือใคร" จากหัวคำขอจุดเดียว (มติ X1 ของ W1.1) — ตัวคิดราคาของ W1.2 ใช้ req ชุดเดียวกันจากผลนี้
-const openOnce = cache(async (shop: string, productSlug: string, lang: string | null, a: string | null, m: string | null, d: string | null, t: string | null) => {
+// TRIPS W1.4a ▸ n = จำนวนคนของการเลือก (`n.<CODE>=<qty>` ต่อด้วย & · ตรวจรูปที่ platform) · e = SOLD_OUT เท่านั้น (ก้อนรอบเต็ม) — ค่าพื้นฐานของ cache ◂
+const openOnce = cache(async (shop: string, productSlug: string, lang: string | null, a: string | null, m: string | null, d: string | null, t: string | null, n: string, e: string | null) => {
   const h = await headers();
   const req = bookRequestFromHeaders((name) => h.get(name));
-  // TRIPS W1.4a ▸ `t` = JSON {t, n.*, e} (ค่าพื้นฐานตัวเดียวของ cache) — n.* ตรวจรูปที่ platform · e เฉพาะ SOLD_OUT (ก้อนรอบเต็ม) ◂
-  const r = await openBookProduct({ shop, productSlug, query: { lang, a, m, d, ...(JSON.parse(t ?? "{}") as Record<string, string>) }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey, countView: req.countView });
+  const r = await openBookProduct({ shop, productSlug, query: { lang, a, m, d, t, e, ...Object.fromEntries(new URLSearchParams(n)) }, acceptLanguage: req.acceptLanguage, clientKey: req.clientKey, countView: req.countView });
   return { r, req };
 });
 async function opened(props: Props) {
   const { shop, productSlug } = await props.params;
   const sp = await props.searchParams;
   const q = parseBookQuery(sp);
-  const n = Object.fromEntries(Object.entries(selectionParamsOf(sp)).filter(([k]) => k.startsWith("n.")));
-  return openOnce(shop, productSlug, q.lang, q.a, q.m, q.d, JSON.stringify({ ...n, ...(parseBookSlot(sp) ? { t: parseBookSlot(sp) } : {}), ...(bookErrorParam(sp)?.code === "SOLD_OUT" ? { e: "SOLD_OUT" } : {}) }));
+  const n = new URLSearchParams(Object.entries(selectionParamsOf(sp)).filter(([k]) => k.startsWith("n."))).toString();
+  return openOnce(shop, productSlug, q.lang, q.a, q.m, q.d, parseBookSlot(sp), n, bookErrorParam(sp)?.code === "SOLD_OUT" ? "SOLD_OUT" : null);
 }
 
 export async function generateMetadata(props: Props): Promise<Metadata> {
