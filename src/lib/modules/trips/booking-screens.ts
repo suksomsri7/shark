@@ -35,6 +35,7 @@ import {
   maskPhone,
   moneyStateOf,
   outstandingOf,
+  bookerPhoneKey,
   typedBookerOf,
   type BookingAttention,
   type BookingBadgeShape,
@@ -606,7 +607,7 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
 
   // ── ปุ่ม (ตรงกับด่านของ recordTripPayment / approveTripBooking / cancelTripBooking) ──
   const holdOk = b.status !== "HOLD" || (row.hold !== null && !row.hold.expired);
-  const typed = purged ? null : typedBookerOf(b.typedBooker), typedName = typed?.name ?? null, typedPhone = normalizePartyPhone(typed?.phone);
+  const typed = purged ? null : typedBookerOf(b.typedBooker), typedName = typed?.name ?? null, typedKey = bookerPhoneKey(normalizePartyPhone(typed?.phone));
   const pay =
     g.can(PAY) && PAYABLE_STATUSES.includes(b.status) && s.outstandingSatang > 0 && row.refund === null && !purged && b.currency === "THB" && b.collectMode === "SHOP" && b.agentAccountId === null && holdOk;
   const approve = g.can(APPROVE) && b.status === "PENDING";
@@ -615,8 +616,8 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
     vm: {
       unit,
       row,
-      // TRIPS W1.2b ▸ ผู้จองตามที่พิมพ์ (ชื่อ · เบอร์ที่ใช้ได้ ≥ 8 หลัก ปิดบัง) · ไม่มี ⇒ Party แบบเดิม (ใบสั่ง W1.2b §4 · OQ57) ◂
-      customer: { name: purged ? null : (typedName ?? profile?.name ?? row.bookerName), phoneMasked: purged ? null : maskPhone(typedPhone.length >= 8 ? typedPhone : profile?.phone), purged },
+      // TRIPS W1.2b ▸ ผู้จองตามที่พิมพ์ (ชื่อ · เบอร์เลขสำคัญ ≥ 8 ปิดบังแบบเบอร์ไทย) · มีคีย์แต่เบอร์ใช้ไม่ได้/ป้ายลบ ⇒ เบอร์ null · ชื่อถอยไป Party · ไม่มีคีย์ ⇒ Party แบบเดิม (§4 · E2 E7 E8) ◂
+      customer: { name: purged ? null : (typedName ?? profile?.name ?? row.bookerName), phoneMasked: purged ? null : typed ? (typedKey ? maskPhone(`0${typedKey}`) : null) : maskPhone(profile?.phone), purged },
       lines: doc.lines.map((l) => ({ itemRef: l.itemRef, labelTh: l.label, labelEn: lineLabelEn(l.itemRef, paxByCode, extraOf), qty: l.qty, amountSatang: l.amountSatang, passThrough: l.passThrough })),
       document: { serviceInclVatSatang: doc.serviceInclVatSatang, preVatSatang: doc.preVatSatang, vatSatang: doc.vatSatang, passThroughSatang: doc.passThroughSatang, totalSatang: doc.totalSatang },
       payableSatang: s.payableSatang,

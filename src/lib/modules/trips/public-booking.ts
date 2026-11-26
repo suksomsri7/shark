@@ -9,7 +9,7 @@
 // ─────────────────────────────────────────────────────────────
 import type { SellCtx } from "@/lib/core/sellable";
 import { normalizePartyPhone } from "@/lib/modules/party";
-import { typedBookerOf } from "./booking-view-core";
+import { bookerPhoneKey, typedBookerOf } from "./booking-view-core";
 import { listAvailability } from "./capacity-service";
 import { hhmm, normalizeTimezone, utcToLocal } from "./departures-core";
 import { localize, type I18n, type I18nText } from "./products-core";
@@ -187,7 +187,7 @@ export async function findBookReservation(ref: { tenantId: string; unitIds: stri
   const { tenantId } = ref;
   const db = dbOf(tenantId, ref.unitIds[0] ?? "");
   const rows = await db.$queryRaw<{ id: string; unitId: string; code: string; status: string; departureId: string; paidSatang: number; collectMode: string; policySnapshot: unknown }[]>`
-    SELECT "id", "unitId", "code", "status", "departureId", "paidSatang", "collectMode", "policySnapshot" FROM "TripBooking"
+    SELECT "id", "unitId", "code", "status", "departureId", "paidSatang", "collectMode", "policySnapshot" - 'booker' AS "policySnapshot" FROM "TripBooking"
     WHERE "publicTokenHash" = ${tokenHash} AND "tenantId" = ${tenantId} AND "unitId" = ANY(${ref.unitIds}::text[]) LIMIT 1`;
   const b = rows[0];
   if (!b) return null;
@@ -230,8 +230,9 @@ export async function findBookSelfFacts(ref: { tenantId: string; unitId: string 
   if (!isId(bookingId) || !isId(ref.unitId)) return null;
   const { tenantId, unitId } = ref;
   const db = dbOf(tenantId, unitId);
-  const rows = await db.$queryRaw<{ channel: string; collectMode: string; agentAccountId: string | null; version: number; purged: boolean; phoneNorm: string | null; typed: unknown; self: boolean }[]>`
-    SELECT b."channel", b."collectMode", b."agentAccountId", b."version", (b."piiPurgedAt" IS NOT NULL) AS "purged", p."phoneNorm", b."policySnapshot"->'booker' AS "typed",
+  const rows = await db.$queryRaw<{ channel: string; collectMode: string; agentAccountId: string | null; version: number; purged: boolean; phoneNorm: string | null; self: boolean }[]>`
+    SELECT b."channel", b."collectMode", b."agentAccountId", b."version", (b."piiPurgedAt" IS NOT NULL) AS "purged", p."phoneNorm",
+      b."policySnapshot"->'booker' AS "typed",
       (b."status" = 'CANCELLED' AND EXISTS (SELECT 1 FROM "AuditLog" a WHERE a."tenantId" = b."tenantId" AND a."createdAt" >= b."createdAt" - interval '1 day' AND a."targetId" = b."id" AND a."action" = 'trips.booking.cancel' AND a."actorId" = 'trips.public.self')) AS "self"
     FROM "TripBooking" b LEFT JOIN "Party" p ON p."id" = b."bookerPartyId" AND p."tenantId" = b."tenantId"
     WHERE b."id" = ${bookingId} AND b."tenantId" = ${tenantId} AND b."unitId" = ${unitId} LIMIT 1`;
@@ -241,14 +242,15 @@ export async function findBookSelfFacts(ref: { tenantId: string; unitId: string 
     SELECT "status", "amountSatang", "by" FROM "TripRefundRequest" WHERE "bookingId" = ${bookingId} AND "tenantId" = ${tenantId} AND "unitId" = ${unitId} AND "status" <> 'WITHDRAWN'
     ORDER BY "createdAt" DESC, "id" DESC LIMIT 1`;
   const r = rq[0];
-  const typedPhone = normalizePartyPhone(typedBookerOf(b.typed)?.phone);
+  const typed = typedBookerOf((b as Record<string, unknown>).typed), typedPhone = normalizePartyPhone(typed?.phone);
   return {
     channel: String(b.channel),
     collectMode: String(b.collectMode),
     agentAccountId: b.agentAccountId ?? null,
     version: Number(b.version),
-    // TRIPS W1.2b ▸ ถูกลบ ⇒ null ก่อนทุกอย่าง · เบอร์ที่พิมพ์ตอนจอง normalize ≥ 8 หลัก ⇒ เบอร์นั้นเท่านั้น · อื่น ⇒ เบอร์ของ Party แบบเดิม (ใบสั่ง W1.2b §3.4 · C-3) ◂
-    bookerPhoneNorm: b.purged ? null : typedPhone.length >= 8 ? typedPhone : typeof b.phoneNorm !== "string" || !b.phoneNorm ? null : b.phoneNorm,
+    // TRIPS W1.2b ▸ ถูกลบ ⇒ null ก่อนทุกอย่าง · มีคีย์ booker ⇒ เบอร์ที่พิมพ์ที่ใช้ได้ (เลขสำคัญ ≥ 8) เท่านั้น ไม่งั้น null (ป้ายลบด้วย) ·
+    //   ไม่มีคีย์ ⇒ เบอร์ของ Party แบบเดิม (ใบสั่ง W1.2b §3.4 · มติ E2 E7 E9 แทน C-3) ◂
+    bookerPhoneNorm: b.purged ? null : typed ? (bookerPhoneKey(typedPhone) ? typedPhone : null) : typeof b.phoneNorm !== "string" || !b.phoneNorm ? null : b.phoneNorm,
     refund: r ? { status: String(r.status), amountSatang: Number(r.amountSatang), by: String(r.by) } : null,
     cancelledBySelf: b.self === true,
   };

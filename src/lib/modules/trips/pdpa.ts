@@ -727,3 +727,16 @@ async function purgeStagesInTx(tx: Prisma.TransactionClient, u: Unit, passengerI
   return dueStages.length;
 }
 // ── /T0.8 pdpa ──
+
+// TRIPS W1.2b ▸ CRM/สมาชิกลบลูกค้า (crm.contact.erased · member.erased {partyId}) ⇒ ป้าย booker {v:1, erased:true} ทุกการจองของ Party นั้นในร้าน
+//   รวมการจองที่ไม่เคยมีคีย์ (มติ E1 E7 E9) · version +1 · ส่งซ้ำ = ไม่เปลี่ยน · ไม่มี partyId ⇒ ไม่ทำอะไร (ไม่มี Party ให้ตาม) ◂
+export async function onBookerPartyErased(evt: { tenantId: string; payload: unknown }): Promise<{ n: number }> {
+  const p = typeof evt.payload === "object" && evt.payload !== null ? (evt.payload as Record<string, unknown>) : {};
+  const partyId = typeof p.partyId === "string" ? p.partyId : "";
+  if (!partyId || !evt.tenantId) return { n: 0 };
+  const n = await tenantDb({ tenantId: evt.tenantId }).$executeRaw`
+    UPDATE "TripBooking" SET "policySnapshot" = "policySnapshot" || '{"booker":{"v":1,"erased":true}}'::jsonb, "version" = "version" + 1, "updatedAt" = now()
+    WHERE "tenantId" = ${evt.tenantId} AND "bookerPartyId" = ${partyId} AND jsonb_typeof("policySnapshot") = 'object'
+      AND "policySnapshot"->'booker' IS DISTINCT FROM '{"v":1,"erased":true}'::jsonb`;
+  return { n };
+}

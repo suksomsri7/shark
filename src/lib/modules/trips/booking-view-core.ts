@@ -141,15 +141,25 @@ export function maskPhone(phone: string | null | undefined): string | null {
   return "xxx";
 }
 
-// TRIPS W1.2b ▸ ผู้จองตามที่พิมพ์ตอนจอง (policySnapshot.booker v1 · ใบสั่ง W1.2b §4) — ผิดรูป/ไม่มี ⇒ null (ผู้เรียกถอยไป Party) ◂
-export type TypedBooker = { name: string | null; phone: string | null; email: string | null };
+// TRIPS W1.2b ▸ ผู้จองตามที่พิมพ์ตอนจอง (policySnapshot.booker v1 · ใบสั่ง W1.2b §4 · มติ E2 E5 E7 E9) — ไม่มีคีย์/ผิดรูป ⇒ null (ผู้เรียกถอยไป Party)
+//   ป้ายลบ {v:1, erased:true} ⇒ { name: null, phone: null } = "มีคีย์ · ไม่มีข้อมูลติดต่อที่ใช้ได้" (ไม่ถอยไปเบอร์ของ Party) ◂
+export type TypedBooker = { name: string | null; phone: string | null };
 export function typedBookerOf(v: unknown): TypedBooker | null {
   if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
   const r = v as Record<string, unknown>;
   if (r.v !== 1) return null;
+  if (r.erased === true) return { name: null, phone: null };
   for (const k of ["name", "phone", "email"] as const) if (r[k] != null && typeof r[k] !== "string") return null;
   const str = (x: unknown): string | null => (typeof x === "string" && x.trim() ? x : null);
-  return { name: str(r.name), phone: str(r.phone), email: str(r.email) };
+  return { name: str(r.name), phone: str(r.phone) };
+}
+/** เลขสำคัญของเบอร์ที่ normalizePartyPhone แล้ว (เกณฑ์เดียวกับ selfPhoneMatches ของ platform · มติ E2) — สั้นกว่า 8 หลัก ⇒ null */
+export function bookerPhoneKey(norm: string): string | null {
+  let d = norm.replace(/\D/g, "");
+  if (d.startsWith("0066")) d = d.slice(4);
+  else if (d.startsWith("66") && d.length >= 10) d = d.slice(2);
+  if (d.startsWith("0")) d = d.slice(1);
+  return d.length >= 8 ? d : null;
 }
 
 // ═══════════════ คีย์กันกดซ้ำต่อเจตนา ═══════════════

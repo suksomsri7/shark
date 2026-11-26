@@ -1729,6 +1729,7 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
   if (!policies.ok) return policies;
   if (!policies.value.departures[to]) return NF();
   const a = { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor };
+  const keptBooker = isRec(b.policySnapshot) && "booker" in b.policySnapshot ? { booker: b.policySnapshot.booker } : null; if (keptBooker && isRec(b.policySnapshot)) delete b.policySnapshot.booker; // TRIPS W1.2b ▸ แฮชใน audit ไม่รวมผู้จองที่พิมพ์ (มติ E4 · ไม่มีคีย์ = แฮชเดิม) ◂
   const oldSha = sha256hex(JSON.stringify(b.policySnapshot));
   const approvalIds = (v.overrideApprovals ?? []).map((x) => x.approvalId);
   const r = await runBooking(g, async (tx): Promise<ChangeValue> => {
@@ -1768,7 +1769,7 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
       if (oldSeats > moveQty) await giveBack(from, oldSeats - moveQty);
     }
     if (approvalIds.length) await consumeApprovalsInTx(tx, a, approvalIds, [b.id]);
-    if (isRec(b.policySnapshot) && "booker" in b.policySnapshot) Object.assign(snap, { booker: b.policySnapshot.booker }); // TRIPS W1.2b ▸ พกผู้จองที่พิมพ์ต่อทั้งก้อน (§3.3 · UPDATE ด้านล่าง CAS เวอร์ชัน = แถวเดียวกับที่อ่าน) ◂
+    if (keptBooker) Object.assign(snap, keptBooker); // TRIPS W1.2b ▸ พกผู้จองที่พิมพ์ (หรือป้ายลบ) ต่อทั้งก้อน (§3.3 · UPDATE ด้านล่าง CAS เวอร์ชัน = แถวเดียวกับที่อ่าน) ◂
     const k = cols.booking;
     const upd = await tx.$queryRaw<{ version: number }[]>`
       UPDATE "TripBooking" SET "version" = "version" + 1, "departureId" = ${to}, "travelDate" = ${k.travelDate}::date,
