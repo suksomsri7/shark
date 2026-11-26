@@ -613,7 +613,10 @@ try {
     ok(/selfReplayOf/.test(b + r), "ไม่มีตัวช่วย selfReplayOf (K5)");
     ok(!/rotateBookingPublicToken/.test(b), "K1: ห้ามมี rotateBookingPublicToken");
     // ORACLE-EDIT S-5 (ผู้คุม 26 พ.ย. · W1.2b-1 มติ C-2): บรรทัดในรั้ว // TRIPS W1.2b ▸ … ◂ (พกผู้จองที่พิมพ์ต่อ · ใบสั่ง W1.2b §3.3) ไม่นับ — เจตนา K1 (ห้ามเลื่อน/ขอลิงก์ใหม่) คงเดิม
-    const body = (src: string) => { const i = src.indexOf("async function changeImpl"); if (i < 0) return ""; const j = src.indexOf("\n// ═══", i); return src.slice(i, j < 0 ? undefined : j).split("\n").filter((l) => !/\/\/ TRIPS W1\.2b ▸[^\n]*◂/.test(l)).join("\n"); };
+    const body = (src: string) => { const i = src.indexOf("async function changeImpl"); if (i < 0) return ""; const j = src.indexOf("\n// ═══", i); // ORACLE-EDIT S-5 (ผู้คุม 26 พ.ย. · W1.2b มติ G3): บรรทัด `const oldSha = …` ย้ายเข้ารั้ว W1.2b ได้ (คิดแฮชจากสำเนาที่ตัด booker) ⇒ ไม่นับทั้งสองฝั่ง · รั้วหลายบรรทัด (// TRIPS W1.2b ▸ … ◂) ไม่นับทั้งก้อน
+      const lines = src.slice(i, j < 0 ? undefined : j).split("\n"); const out: string[] = []; let inFence = false;
+      for (const l of lines) { if (inFence) { if (l.includes("◂")) inFence = false; continue; } if (/\/\/ TRIPS W1\.2b ▸/.test(l)) { if (!l.includes("◂")) inFence = true; continue; } if (/^\s*const oldSha\s*=/.test(l)) continue; out.push(l); }
+      return out.join("\n"); };
     const base = git(["show", `${BASE_SHA}:${BOOKING}`]);
     ok(body(base) && body(b) === body(base), "K1: changeImpl ต้องไม่เปลี่ยนจาก BASE");
     ok(!/FormData|next\/headers/.test(stripComments(b) + stripComments(r)), "บริการห้ามอ่านคำขอ");

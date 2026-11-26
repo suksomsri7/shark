@@ -105,7 +105,7 @@ const CONSUMERS = "src/lib/outbox-consumers.ts";
 const FACADE = "src/lib/modules/trips/index.ts";
 // ORACLE-EDIT S-1 (ผู้คุม 26 พ.ย. · มติ E1 E6): booking ≤ +14/−4 · refund ≤ +3/−2 · outbox-consumers ≤ +16/−0 (รั้ว trips) · ฟังก์ชันตัวรับ E1 หนึ่งตัวใน pdpa.ts หรือ public-booking.ts (+14)
 //   · facade +2 (ส่งออกตัวรับ — ไม่อยู่ในมติ E6 · ผู้ร่างเผื่อ ให้ผู้คุมยืนยัน) · รวมทั้งใบ ≤ +110/−20
-const LIMITED: [string, number, number][] = [[BOOKING, 4, 14], [PUBMOD, 3, 22], [PDPA, 1, 16], [SCREENS, 4, 12], [MANIFEST, 3, 8], [VIEWCORE, 2, 24], [REFUNDF, 2, 3], [CONSUMERS, 0, 16], [FACADE, 0, 2]];
+const LIMITED: [string, number, number][] = [[BOOKING, 4, 14], [PUBMOD, 3, 22], [PDPA, 1, 22] /* ORACLE-EDIT S-1 (มติ G1): ตัวรับ ≤ +20 + ลบ T0.8 +2 */, [SCREENS, 4, 12], [MANIFEST, 3, 8], [VIEWCORE, 2, 24], [REFUNDF, 2, 3], [CONSUMERS, 0, 16], [FACADE, 0, 2]];
 const TOTAL_BUDGET = { add: 110, del: 20 };
 /** ข้อสอบเดิมที่ผู้คุมสั่ง ORACLE-EDIT ในใบนี้ (มติ C-2) — ไม่ใช่ของผู้สร้าง */
 const ORACLE_EDITED = ["scripts/qc-trips-w1.2.mts", "scripts/qc-trips-w1.3.mts"];
@@ -382,7 +382,7 @@ try {
   const NOVIEW: { id: string } = { id: "" };
   const NE = `ผู้จอง E ${STAMP}`, EE = `${EMAIL_PREFIX}e.${STAMP}@example.com`; // E1
   const tB = rid("tB"), uB = rid("uB");
-  const OTHER_T: { bookingId: string } = { bookingId: "" };
+  const OTHER_T: { bookingId: string; mergedB?: string; listB?: string; listBParty?: string } = { bookingId: "" };
   const REFREQ: { rfb1: string; rfl: string } = { rfb1: "", rfl: "" };
   if (!setupErr) {
     try {
@@ -442,6 +442,21 @@ try {
         OTHER_T.bookingId = await insertRow("TripBooking", { id: rid("bkB"), tenantId: tB, unitId: uB, code: `QB-${hex(3)}`, publicTokenHash: sha256hex(rid("tok")), status: "PAID", productId: rid("p"), departureId: rid("d"), travelDate: "2027-04-24",
           channel: "WEB", collectMode: "SHOP", payMethod: "PAY_NOW", bookerPartyId: pe, contactRoute: "DIRECT", currency: "THB", accountingState: "NONE", version: 0,
           policySnapshot: JSON.stringify({ v: 1, booker: { v: 1, name: NE, phone: e164(who("PE1")), email: EE } }), updatedAt: new Date() });
+      }
+      // ── มติ G1 G2 (ผู้เขียนข้อสอบแยก รอบ 4) ──
+      for (const t of ["G0", "G1", "G2", "GA", "GB", "GC", "GD", "GE"]) await mkPublic(t, "gen", { name: `ผู้จอง ${t} ${STAMP}`, phone: who(`P${t}`), email: `${EMAIL_PREFIX}mg-${t.toLowerCase()}.${STAMP}@example.com` }); // ORACLE-EDIT (รอบ 4): คำนำ mg- กันชนอีเมลของ CC-3 (g1.)
+      { // สาย G0 → G1 → G2 (รวม 2 ชั้น · แบบ mergeParties) · ร้าน B มี Party ที่ชี้ mergedIntoId = id ของ G2 (รูป id เดียวกัน) + การจองของมัน
+        const pg = async (t: string) => (await partyOf(BK[t]?.id ?? ""))?.id ?? "";
+        const [p0, p1, p2] = [await pg("G0"), await pg("G1"), await pg("G2")];
+        await pool.query(`UPDATE "Party" SET "mergedIntoId" = $2 WHERE id = $1`, [p0, p1]);
+        await pool.query(`UPDATE "Party" SET "mergedIntoId" = $2 WHERE id = $1`, [p1, p2]);
+        const bp = await insertRow("Party", { id: rid("pB"), tenantId: tB, kind: "PERSON", name: `ร้าน B ${STAMP}`, phone: "+66899990000", phoneNorm: "0899990000", mergedIntoId: p2, updatedAt: new Date() });
+        const mk = (partyId: string) => insertRow("TripBooking", { id: rid("bkB"), tenantId: tB, unitId: uB, code: `QB-${hex(3)}`, publicTokenHash: sha256hex(rid("tok")), status: "PAID", productId: rid("p"), departureId: rid("d"), travelDate: "2027-04-24",
+          channel: "WEB", collectMode: "SHOP", payMethod: "PAY_NOW", bookerPartyId: partyId, contactRoute: "DIRECT", currency: "THB", accountingState: "NONE", version: 0,
+          policySnapshot: JSON.stringify({ v: 1, booker: { v: 1, name: `ร้าน B ${STAMP}`, phone: "+66899990000", email: null } }), updatedAt: new Date() });
+        OTHER_T.mergedB = await mk(bp);
+        const bq = await insertRow("Party", { id: rid("pB2"), tenantId: tB, kind: "PERSON", name: `ร้าน B2 ${STAMP}`, updatedAt: new Date() });
+        OTHER_T.listB = await mk(bq); OTHER_T.listBParty = bq;
       }
       await makeLegacy(BK.L1?.id ?? "");
     } catch (e) { bookErr = e instanceof AssertFail ? e.message : errMsg(e); console.log(`  ⚠️ สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`); }
@@ -1038,6 +1053,50 @@ try {
     eq([tb(TOMB), tb(undefined), tb({ v: 2, name: "x" }), tb({ v: 1, name: "ก", phone: "+66812345678", email: "a@b.co" })],
       [{ name: null, phone: null }, null, null, { name: "ก", phone: "+66812345678" }], "typedBookerOf");
   });
+  // ── มติ G1 G2 (ผู้เขียนข้อสอบแยก รอบ 4 · 26 พ.ย.) ──
+  const bRaw = async (id: string | undefined) => (await q<{ version: number; s: Rec }>(`SELECT version, "policySnapshot" AS s FROM "TripBooking" WHERE id = $1`, [id]))[0];
+  const partyIdOf = async (t: string) => (await partyOf(BK[t]?.id ?? ""))?.id ?? "";
+  await st("ER-7", "G1: Party G0 ⇒ G1 ⇒ G2 (รวม 2 ชั้น) · crm.contact.erased {partyId=G2} ⇒ การจองของ G0 G1 G2 ได้ป้ายทั้งหมด · version +1 · ร้าน B: Party ที่ mergedIntoId = id ของ G2 และการจองของมันไม่ถูกแตะ · ส่งซ้ำไม่เปลี่ยน", async () => {
+    const bs = needBk("G0", "G1", "G2");
+    for (const b of bs) typedRed((await bkRow(b.id))?.s.booker, `${b.tag} ก่อนลบ`);
+    const v0 = await Promise.all(bs.map((b) => vOf(b.id))), ob0 = await bRaw(OTHER_T.mergedB);
+    const ev = { contactId: rid("ct"), systemId: rid("sy"), partyId: await partyIdOf("G2") };
+    const r = await fire("crm.contact.erased", ev);
+    ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
+    eq([await Promise.all(bs.map((b) => tombOf(b.id))), await Promise.all(bs.map((b) => vOf(b.id)))], [bs.map(() => TOMB), v0.map((v) => v + 1)], "G0 G1 G2 หลังลบ");
+    eq(await bRaw(OTHER_T.mergedB), ob0, "ร้าน B");
+    ok((await fire("crm.contact.erased", ev)).ok === true, "ส่งซ้ำ");
+    eq(await Promise.all(bs.map((b) => vOf(b.id))), v0.map((v) => v + 1), "หลังส่งซ้ำ");
+  });
+  await st("ER-8", "G2: crm.contact.erased {partyIds: [GA, GB]} (ไม่มี partyId) ⇒ การจองของ GA GB ได้ป้าย · version +1 · การจองอื่นไม่ถูกแตะ", async () => {
+    const [ga, gb, ge] = needBk("GA", "GB", "GE");
+    const v0 = [await vOf(ga.id), await vOf(gb.id)], e0 = await bkRow(ge.id);
+    const r = await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyIds: [await partyIdOf("GA"), await partyIdOf("GB")] });
+    ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
+    eq([await tombOf(ga.id), await tombOf(gb.id), await vOf(ga.id), await vOf(gb.id)], [TOMB, TOMB, (v0[0] ?? 0) + 1, (v0[1] ?? 0) + 1], "GA GB");
+    eq((await bkRow(ge.id))?.s, e0?.s, "GE ไม่ถูกแตะ");
+  });
+  await st("ER-9", "G2: member.erased {partyId: GC, partyIds: [GD]} ⇒ การจองของ GC และ GD ได้ป้าย", async () => {
+    const [gc, gd] = needBk("GC", "GD");
+    const r = await fire("member.erased", { customerId: rid("cu"), partyId: await partyIdOf("GC"), partyIds: [await partyIdOf("GD")] });
+    ok(r.ok === true, `ตัวรับ: ${fmt(r)}`);
+    eq([await tombOf(gc.id), await tombOf(gd.id)], [TOMB, TOMB], "GC GD");
+  });
+  await st("ER-10", "G2 รูปผิด: partyIds เป็นสตริง / มีค่าไม่ใช่สตริง / 10,000 ตัว (มี id ของ GE 1 ตัว + id ของ Party ร้าน B) ⇒ ไม่ throw · ทำเฉพาะ id ที่ถูกของร้านนี้ (GE ได้ป้าย · การจองร้าน B ไม่ถูกแตะ)", async () => {
+    const [ge] = needBk("GE");
+    const pe = await partyIdOf("GE");
+    const ob0 = await bRaw(OTHER_T.listB);
+    for (const bad of [pe, [1, null, {}, ["x"], true], { 0: pe }]) {
+      const r = await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyIds: bad });
+      ok(r.ok === true, `partyIds ${fmt(bad).slice(0, 40)}: ${fmt(r)}`);
+    }
+    typedRed((await bkRow(ge.id))?.s.booker, "GE ก่อนรายการใหญ่ (รูปผิดต้องไม่ทำอะไร)");
+    const big: unknown[] = Array.from({ length: 10_000 }, (_, i) => (i % 3 === 0 ? i : `ไม่มีจริง_${i}_${hex(2)}`));
+    big[5_000] = pe; big[7_777] = OTHER_T.listBParty;
+    const r = await fire("crm.contact.erased", { contactId: rid("ct"), systemId: rid("sy"), partyIds: big });
+    ok(r.ok === true, `10,000 ตัว: ${fmt(r)}`);
+    eq([await tombOf(ge.id), await bRaw(OTHER_T.listB)], [TOMB, ob0], "GE ได้ป้าย · ร้าน B ไม่ถูกแตะ");
+  });
   groupLine("ER");
 
   console.log("\n── E2: มีคีย์ booker ⇒ ไม่ถอยไปเบอร์ของรายชื่อกลาง ──");
@@ -1134,6 +1193,14 @@ try {
     await approve(REFREQ.rfl);
     const x = await execute(REFREQ.rfl);
     ok(x.ok === true && asRec(x.value)?.status === "DONE", `execute: ${fmt(x)}`);
+  });
+  await st("AU-5", "G3: changeImpl ไม่ลบคีย์ booker บนแถวที่อ่านมา (ไม่มี `delete …policySnapshot.booker` / `delete …policySnapshot[\"booker\"]`) — แฮชคำนวณจากสำเนาที่ตัดแล้ว (AU-1)", () => {
+    const src = stripComments(read(BOOKING));
+    const i = src.indexOf("async function changeImpl");
+    ok(i >= 0, "ไม่มี changeImpl");
+    const j = src.indexOf("\n// ═══", i);
+    const body = src.slice(i, j < 0 ? undefined : j);
+    ok(!/delete\s+[\w.$]*policySnapshot\s*(\.\s*booker|\[\s*["'`]booker["'`]\s*\])/.test(body), "changeImpl ลบคีย์ booker บนแถวที่อ่านมา (มติ G3)");
   });
   groupLine("AU");
 
