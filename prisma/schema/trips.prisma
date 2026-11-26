@@ -198,6 +198,10 @@ model TripDeparture {
   guaranteedAt      DateTime? // มติผู้คุม 12 พ.ย. (T0.4) ▸ เวลาที่รอบถึงขั้นต่ำ/ยืนยันออกเดินทาง ◂
   cancelReason      String? // มติผู้คุม 12 พ.ย. (T0.3)
   cancelledAt       DateTime? // มติผู้คุม 12 พ.ย. (T0.3)
+  cancelKind        String? // T1.6a EXTERNAL | MIN_NOT_MET | SHOP_FAULT · SQL มือ: CHECK cancelKind + CHECK รวม + ดัชนีบางส่วน (tenantId, cancelDecideBy)
+  cancelDecideBy    DateTime?
+  cancelOptions     Json?
+  cancelOutcomes    TripDepartureCancelOutcome[]
   createdAt         DateTime  @default(now())
   updatedAt         DateTime  @updatedAt
 
@@ -419,6 +423,7 @@ model TripBooking {
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
 
+  cancelOutcomes        TripDepartureCancelOutcome[]
   @@unique([tenantId, code])
   @@unique([publicTokenHash])
   @@index([tenantId, unitId, status, travelDate])
@@ -697,6 +702,27 @@ model TripCost {
   updatedAt    DateTime @updatedAt
 
   @@index([departureId])
+}
+
+model TripDepartureCancelOutcome { // T1.6a ผลต่อการจองของรอบที่ร้านยกเลิก · SQL มือ: CHECK choice/by/consent/refund
+  id              String        @id @default(cuid())
+  tenantId        String
+  unitId          String
+  departureId     String
+  bookingId       String
+  choice          String // PENDING | MOVED | REFUND | NO_MONEY | AGENCY_MONEY_HELD
+  by              String // STAFF | SYSTEM_DEFAULT
+  refundRequestId String?
+  consent         Json?
+  at              DateTime
+  createdAt       DateTime
+  updatedAt       DateTime      @updatedAt
+  departure       TripDeparture @relation(fields: [departureId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+  booking         TripBooking   @relation(fields: [bookingId], references: [id], onDelete: Restrict, onUpdate: NoAction)
+
+  @@unique([departureId, bookingId])
+  @@index([tenantId, unitId, choice])
+  @@index([bookingId])
 }
 
 // ต่อรอบ × เตียง (Liveaboard)

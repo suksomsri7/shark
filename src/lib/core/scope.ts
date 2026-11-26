@@ -652,6 +652,7 @@ const MODULE_SCOPES: Record<string, ScopeDescriptor> = {
   TripCheckin: unit,
   TripWaitlist: unit,
   TripCost: unit,
+  TripDepartureCancelOutcome: unit,
   TripUnit: unit,
   TripImportBatch: unit,
   TripLinkStat: unit,

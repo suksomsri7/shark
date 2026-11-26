@@ -124,7 +124,7 @@ const SOLD_ST = ["CONFIRMED", "PART_PAID", "PAID", "TRAVELLED", "NO_SHOW"];
 const RAW_CODES = ["EXTERNAL", "MIN_NOT_MET", "SHOP_FAULT", "PENDING", "NO_MONEY", "AGENCY_MONEY_HELD", "MOVE_DATE", "REFUND_100", "DEPARTURE_CANCEL", "MOVE_NOT_AVAILABLE_YET"];
 /** ไฟล์เดิมที่แก้ได้แบบจำกัด (§1 · a1): [ไฟล์ (หลายไฟล์ = งบรวม), ลบได้สูงสุด, เพิ่มได้สูงสุด (null = ไม่จำกัด)] */
 const LIMITED: [string[], number, number | null][] = [
-  [["prisma/schema/trips.prisma"], 0, 22], [["src/lib/core/scope.ts"], 0, 1], [[MOD + "refund.ts"], 4, 70], [[MOD + "money-core.ts"], 0, 35], [[MOD + "money.ts"], 0, 25], [[MOD + "booking.ts"], 2, 25],
+  [["prisma/schema/trips.prisma"], 0, 26] /* ORACLE-EDIT ผู้คุม: +4 ฟิลด์ relation ของ FK RESTRICT 2 ตัวที่ §3 บังคับ */, [["src/lib/core/scope.ts"], 0, 1], [[MOD + "refund.ts"], 4, 70], [[MOD + "money-core.ts"], 0, 35], [[MOD + "money.ts"], 0, 25], [[MOD + "booking.ts"], 2, 25],
   [[MOD + "capacity.ts", MOD + "capacity-service.ts"], 0, 16], [[MOD + "jobs.ts"], 1, 8], [[MOD + "departure-desk.ts"], 2, 14], [[MOD + "departures.ts"], 0, 4], [[MOD + "departure-screens.ts"], 2, 45], [[MOD + "booking-screens.ts"], 0, 30],
   [["src/lib/platform/trips-self.ts", "src/lib/platform/trips-self-core.ts"], 2, 20], [[`${COMP}/DeparturePanel.tsx`, `${COMP}/DepartureDialogs.tsx`, `${COMP}/BookingsScreen.tsx`, `${COMP}/BookingDrawer.tsx`], 6, 70],
   [["src/lib/outbox-consumers.ts"], 0, 3], [["src/lib/automation/labels.ts"], 0, 3], [[MOD + "index.ts"], 0, null], [["src/messages/th/trips.json"], 2, null], [["src/messages/en/trips.json"], 2, null], [["scripts/trips-ui-inventory.json"], 0, null],
