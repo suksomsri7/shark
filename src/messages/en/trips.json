@@ -421,6 +421,9 @@
   },
   "loading": "Loading…",
   "errors": {
+    "RANGE_TOO_LARGE": "Choose a range of at most 366 days",
+    "REPORT_TOO_LARGE": "This range has too many departures or bookings — choose a shorter range or a product",
+    "RATE_LIMITED": "Too many exports — try again in {min, plural, one {# minute} other {# minutes}}",
     "COST_NOTE_INVISIBLE": "The note has invisible characters — delete it and type it again",
     "COST_ROWS_LIMIT": "A departure can have at most 30 cost lines",
     "COST_AMOUNT_INVALID": "Cost amounts must be above zero, at most 10,000,000 baht per line and at most 21 million baht for the whole departure",
@@ -592,6 +595,7 @@
       "OTHER": "Other"
     },
     "actions": {
+      "reports": "Reports",
       "close": "Close bookings",
       "reopen": "Reopen bookings",
       "guarantee": "Guarantee",
@@ -1344,6 +1348,196 @@
       "health": "Health info",
       "finSize": "Fin size"
     }
+  },
+  "report": {
+    "title": "Tour reports",
+    "back": "Back to the departure calendar",
+    "mgmt": "Management figures, not accounting reports",
+    "accounting": "Nothing is posted to the books yet — use the tax documents the shop issues in the accounting system",
+    "estimate": "Estimate — trip not closed yet",
+    "vat": "VAT in selling prices (approx.) — not the VAT return figure",
+    "tab": {
+      "aria": "Report tabs",
+      "sales": "Sales",
+      "load": "Load factor",
+      "lead": "Booking lead time",
+      "channel": "Channels"
+    },
+    "basis": {
+      "label": "Count by",
+      "travel": "Travel date",
+      "booked": "Booking date"
+    },
+    "group": {
+      "label": "Group by",
+      "day": "Day",
+      "week": "Week",
+      "month": "Month"
+    },
+    "filter": {
+      "aria": "Report filters",
+      "from": "From",
+      "to": "To",
+      "product": "Product",
+      "channel": "Channel",
+      "allProducts": "All products",
+      "allChannels": "All channels",
+      "apply": "Show report",
+      "presets": "Quick ranges"
+    },
+    "preset": {
+      "thisMonth": "This month",
+      "lastMonth": "Last month",
+      "last30": "Last 30 days",
+      "next30": "Next 30 days"
+    },
+    "kpi": {
+      "sales": "Sales",
+      "revenue": "Revenue before VAT",
+      "revenueNoVat": "Revenue",
+      "commission": "Commission",
+      "commissionWithVat": "(including VAT on commission)",
+      "cost": "Departure costs",
+      "profit": "Gross profit",
+      "loss": "Gross loss {amount}",
+      "noCosts": "Departure costs not deducted yet",
+      "load": "Load factor",
+      "loadValue": "{sold}/{capacity} · {pct}",
+      "margin": "Gross margin {pct}"
+    },
+    "noCosts": "Costs not deducted yet for {n, plural, one {# departure} other {# departures}} (travelled {ended} · not travelled yet {upcoming})",
+    "note": {
+      "basis": "By booking date: no capacity, load factor, costs or profit (costs belong to departures, not booking dates)",
+      "channel": "Channel filter: capacity, load factor, costs and profit cannot be split by channel"
+    },
+    "charter": "Charter: {n, plural, one {# departure} other {# departures}} — the load factor does not reflect per-seat selling",
+    "periods": {
+      "title": "Sales by period",
+      "period": "Period",
+      "departures": "Departures",
+      "bookings": "Bookings",
+      "seats": "Seats",
+      "sales": "Sales",
+      "revenue": "Revenue before VAT",
+      "revenueNoVat": "Revenue",
+      "commission": "Commission",
+      "cost": "Departure costs",
+      "profit": "Gross profit"
+    },
+    "loadTab": {
+      "title": "Load factor by product",
+      "product": "Product",
+      "departures": "Departures",
+      "soldCapacity": "Sold/capacity",
+      "pct": "Load factor",
+      "charter": "Charter {n, plural, one {# departure} other {# departures}}",
+      "none": "Load factor is available when counting by travel date across all channels"
+    },
+    "lead": {
+      "title": "Booking lead time (booking date to travel date)",
+      "D0": "Booked on the travel day",
+      "D1_2": "1–2 days",
+      "D3_7": "3–7 days",
+      "D8_14": "8–14 days",
+      "D15_30": "15–30 days",
+      "D31_60": "31–60 days",
+      "D61P": "61 days or more",
+      "median": "Median lead time {n} days",
+      "medianNone": "Median lead time —",
+      "bookings": "Bookings",
+      "seats": "Seats",
+      "sales": "Sales",
+      "notCounted": "Cancelled, refund-pending and imported bookings are not counted ({n, plural, one {# booking} other {# bookings}} imported)",
+      "negative": "{n, plural, one {# booking} other {# bookings}} made after the travel date — not in any band"
+    },
+    "chgroup": {
+      "DIRECT": "Direct sales",
+      "AGENT": "Agents",
+      "OTHER": "Other"
+    },
+    "channels": {
+      "title": "Sales by channel",
+      "bookings": "Bookings",
+      "cancelled": "Cancelled",
+      "seats": "Seats",
+      "sales": "Sales",
+      "share": "Share",
+      "commission": "Commission"
+    },
+    "channel": {
+      "WEB": "Website",
+      "LIFF": "LINE",
+      "EMBED": "Booking widget",
+      "COUNTER": "Front desk",
+      "POS": "Point of sale",
+      "AGENT_PORTAL": "Agent portal",
+      "AGENT_LINK": "Agent link",
+      "AGENT_API": "Agent system",
+      "OTA": "Online travel agency",
+      "API": "External system",
+      "IMPORT": "Import",
+      "CHAT_AI": "AI chat assistant"
+    },
+    "deps": {
+      "title": "Departures in this range",
+      "open": "Open departure"
+    },
+    "dep": {
+      "date": "Date",
+      "product": "Product",
+      "state": "Status",
+      "load": "Sold/capacity",
+      "sales": "Sales",
+      "collected": "Received",
+      "outstanding": "Outstanding",
+      "cost": "Departure costs",
+      "profit": "Gross profit",
+      "noCosts": "Departure costs not deducted yet"
+    },
+    "page": "Page {page} of {pageCount}",
+    "prev": "‹ Previous",
+    "next": "Next ›",
+    "export": {
+      "button": "Export CSV file",
+      "busy": "Preparing the file…",
+      "noJs": "Exporting a file needs JavaScript turned on",
+      "unavailable": "Export is available when counting by travel date across all channels",
+      "partial": "The file has {shown} of {total} departures — choose a shorter range to see the rest",
+      "error": "Export failed — try again"
+    },
+    "csv": {
+      "date": "Date",
+      "time": "Time",
+      "product": "Product",
+      "option": "Option",
+      "state": "Departure status",
+      "capacity": "Capacity",
+      "sold": "Sold (seats)",
+      "loadFactorPct": "Load factor (%)",
+      "bookings": "Bookings",
+      "cancelledBookings": "Cancelled bookings",
+      "pendingRefundBookings": "Refund-pending bookings",
+      "sales": "Sales (THB)",
+      "passThrough": "Collected on behalf of customers (THB)",
+      "vat": "VAT in selling prices (approx.)",
+      "revenueExVat": "Revenue before VAT",
+      "revenueNoVat": "Revenue",
+      "collected": "Received (THB)",
+      "outstanding": "Outstanding (THB)",
+      "held": "Held for refund (THB)",
+      "agentCollectBookings": "Agent-collected bookings",
+      "commission": "Commission (THB)",
+      "cost": "Departure costs (THB)",
+      "grossProfit": "Gross profit (THB)",
+      "marginPct": "Gross margin (%)"
+    },
+    "products": {
+      "truncated": "Showing {shown} of {total} products (sorted by name)"
+    },
+    "error": {
+      "filter": "Some filters could not be used — their defaults were used instead"
+    },
+    "empty": "No departures or bookings in this range"
   },
   "costs": {
     "title": "Costs and profit · {title}",

@@ -564,7 +564,8 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
       filter,
       range: { from, to, days },
       nav,
-      flags: flagsOf(g),
+      // T1.7a2: ทางเข้ารายงานบนหัวปฏิทิน (งบบรรทัด −1 ⇒ ธงเพิ่มที่จุดเดียว · จอตรวจด้วย "canReport" in flags)
+      flags: { ...flagsOf(g), canReport: g.can("trips.report.view") } as DepFlags & { canReport: boolean },
       products,
       productsTotal,
       productsTruncated: productsTotal > products.length,
