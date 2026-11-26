@@ -508,8 +508,9 @@ export async function purgeTripPersonalDataForUnit(i: { tenantId: string; unitId
             SELECT 1 AS "x" FROM "TripMoneyEvent" WHERE "bookingId" = ${b.id} AND "tenantId" = ${u.tenantId}
             UNION ALL SELECT 1 AS "x" FROM "TripRefundRequest" WHERE "bookingId" = ${b.id} AND "tenantId" = ${u.tenantId} AND "status" = ANY(${OPEN_REFUND}::text[]) LIMIT 1`;
           if (blocked.length) return none;
+          // TRIPS W1.2b ▸ ผู้จองที่พิมพ์ตอนจอง (policySnapshot.booker) ลบในคำสั่งเดียวกับการตัดผู้จอง · ส่วนอื่นของ snapshot ไม่เปลี่ยน ◂
           const cas = await tx.$queryRaw<{ id: string }[]>`
-            UPDATE "TripBooking" SET "bookerPartyId" = NULL, "piiPurgedAt" = ${nowIso}::timestamp, "version" = "version" + 1, "updatedAt" = ${nowIso}::timestamp
+            UPDATE "TripBooking" SET "bookerPartyId" = NULL, "policySnapshot" = "policySnapshot" - 'booker', "piiPurgedAt" = ${nowIso}::timestamp, "version" = "version" + 1, "updatedAt" = ${nowIso}::timestamp
             WHERE "id" = ${b.id} AND "tenantId" = ${u.tenantId} AND "unitId" = ${u.unitId} AND "status" = 'EXPIRED' AND "piiPurgedAt" IS NULL AND "paidSatang" = 0
               AND "version" = ${b.version} AND NOT EXISTS (SELECT 1 FROM "TripMoneyEvent" m WHERE m."bookingId" = ${b.id} AND m."tenantId" = ${u.tenantId})
             RETURNING "id"`;

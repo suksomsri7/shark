@@ -141,6 +141,17 @@ export function maskPhone(phone: string | null | undefined): string | null {
   return "xxx";
 }
 
+// TRIPS W1.2b ▸ ผู้จองตามที่พิมพ์ตอนจอง (policySnapshot.booker v1 · ใบสั่ง W1.2b §4) — ผิดรูป/ไม่มี ⇒ null (ผู้เรียกถอยไป Party) ◂
+export type TypedBooker = { name: string | null; phone: string | null; email: string | null };
+export function typedBookerOf(v: unknown): TypedBooker | null {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const r = v as Record<string, unknown>;
+  if (r.v !== 1) return null;
+  for (const k of ["name", "phone", "email"] as const) if (r[k] != null && typeof r[k] !== "string") return null;
+  const str = (x: unknown): string | null => (typeof x === "string" && x.trim() ? x : null);
+  return { name: str(r.name), phone: str(r.phone), email: str(r.email) };
+}
+
 // ═══════════════ คีย์กันกดซ้ำต่อเจตนา ═══════════════
 /** FNV-1a 32 บิต ของข้อความ (หน่วยรหัส UTF-16) ⇒ hex 8 ตัว */
 function fnv1a(text: string): string {

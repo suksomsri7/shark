@@ -13,7 +13,7 @@
 import { z } from "zod";
 import { tenantDb } from "@/lib/core/db";
 import type { SellChannel, SellCtx } from "@/lib/core/sellable";
-import { getProfile, listBriefsByIds, searchByName } from "@/lib/modules/party";
+import { getProfile, listBriefsByIds, normalizePartyPhone, searchByName } from "@/lib/modules/party";
 import { DEPARTURE_SELL_CHANNELS, addDaysYmd, hhmm, localToUtc, normalizeTimezone, utcToLocal } from "./departures-core";
 import { isCalendarYmd } from "./departure-view-core";
 import { TRIP_REFUND_OPEN_STATUSES, TRIP_TENDERS } from "./money-core";
@@ -35,6 +35,7 @@ import {
   maskPhone,
   moneyStateOf,
   outstandingOf,
+  typedBookerOf,
   type BookingAttention,
   type BookingBadgeShape,
   type BookingListChip,
@@ -134,7 +135,7 @@ const ATTENTION_SQL = `(
 )`;
 const PAYABLE_SQL = `(b."grossSatang" - b."discountSatang" - b."agentDiscountSatang")`;
 const ROW_COLS = `b."id", b."code", b."status", b."version", b."productId", b."departureId", b."travelDate", b."bookerPartyId", b."piiPurgedAt", b."channel", b."agentAccountId", b."agentRef",
-  b."collectMode", b."currency", b."grossSatang", b."discountSatang", b."agentDiscountSatang", b."paidSatang", b."refundedSatang", b."createdAt",
+  b."collectMode", b."currency", b."grossSatang", b."discountSatang", b."agentDiscountSatang", b."paidSatang", b."refundedSatang", b."createdAt", b."policySnapshot"->'booker' AS "typedBooker",
   d."startsAt" AS "depStartsAt", d."endsAt" AS "depEndsAt", d."status" AS "depStatus", d."cancelReason" AS "depCancelReason"`;
 const ROW_FROM = `FROM "TripBooking" b LEFT JOIN "TripDeparture" d ON d."id" = b."departureId" AND d."tenantId" = b."tenantId" AND d."unitId" = b."unitId"`;
 type BaseRow = {
@@ -147,6 +148,7 @@ type BaseRow = {
   travelDate: Date;
   bookerPartyId: string | null;
   piiPurgedAt: Date | null;
+  typedBooker: unknown;
   channel: string;
   agentAccountId: string | null;
   agentRef: string | null;
@@ -394,7 +396,7 @@ async function buildRows(g: TripsUnitGate, unit: BookingUnitVM, now: Date, base:
       timeText: timeTextOf(unit.tz, b.depStartsAt, b.depEndsAt),
       departureStatus: b.depStatus ?? "",
       departureCancelReason: b.depCancelReason ?? null,
-      bookerName: purged || !b.bookerPartyId ? null : (nameOf.get(b.bookerPartyId) ?? null),
+      bookerName: purged ? null : (typedBookerOf(b.typedBooker)?.name ?? (b.bookerPartyId ? (nameOf.get(b.bookerPartyId) ?? null) : null)), // TRIPS W1.2b ▸ ตามที่พิมพ์ · ไม่มี ⇒ Party ◂
       bookerPurged: purged,
       channel: b.channel,
       agentAccountId: b.agentAccountId,
@@ -604,6 +606,7 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
 
   // ── ปุ่ม (ตรงกับด่านของ recordTripPayment / approveTripBooking / cancelTripBooking) ──
   const holdOk = b.status !== "HOLD" || (row.hold !== null && !row.hold.expired);
+  const typed = purged ? null : typedBookerOf(b.typedBooker), typedName = typed?.name ?? null, typedPhone = normalizePartyPhone(typed?.phone);
   const pay =
     g.can(PAY) && PAYABLE_STATUSES.includes(b.status) && s.outstandingSatang > 0 && row.refund === null && !purged && b.currency === "THB" && b.collectMode === "SHOP" && b.agentAccountId === null && holdOk;
   const approve = g.can(APPROVE) && b.status === "PENDING";
@@ -612,7 +615,8 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
     vm: {
       unit,
       row,
-      customer: { name: purged ? null : (profile?.name ?? row.bookerName), phoneMasked: purged ? null : maskPhone(profile?.phone), purged },
+      // TRIPS W1.2b ▸ ผู้จองตามที่พิมพ์ (ชื่อ · เบอร์ที่ใช้ได้ ≥ 8 หลัก ปิดบัง) · ไม่มี ⇒ Party แบบเดิม (ใบสั่ง W1.2b §4 · OQ57) ◂
+      customer: { name: purged ? null : (typedName ?? profile?.name ?? row.bookerName), phoneMasked: purged ? null : maskPhone(typedPhone.length >= 8 ? typedPhone : profile?.phone), purged },
       lines: doc.lines.map((l) => ({ itemRef: l.itemRef, labelTh: l.label, labelEn: lineLabelEn(l.itemRef, paxByCode, extraOf), qty: l.qty, amountSatang: l.amountSatang, passThrough: l.passThrough })),
       document: { serviceInclVatSatang: doc.serviceInclVatSatang, preVatSatang: doc.preVatSatang, vatSatang: doc.vatSatang, passThroughSatang: doc.passThroughSatang, totalSatang: doc.totalSatang },
       payableSatang: s.payableSatang,
