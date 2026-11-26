@@ -1086,8 +1086,10 @@ try {
     needFx(); const h = await productHtml(PRD.A?.slug ?? "", { d: D0, "n.ADULT": "3" });
     ok(h.includes('data-testid="book-full"') && hasHoldForm(h), "ตัวควบคุม: ต้องมีทั้งก้อนรอบเต็มและฟอร์มถือ");
     const date = textOfTestid(h, "book-selected-date"); ok(date, "ไม่พบ book-selected-date");
-    const sum = unent(blockOf(h, "book-summary", "book-continue"));
-    ok(sum.includes(date), `แถบสรุปไม่มีวันที่ "${date}": ${sum.slice(0, 200)}`);
+    // ORACLE-EDIT (ผู้คุม 26 พ.ย.): ผู้สร้างวางบรรทัด "วันที่จะถือ" เป็น element `book-hold-date` ติดเหนือแผงสรุป (จอใหญ่) และเหนือแถบล่าง (มือถือ) — ตรงเจตนา E1 · ตรวจที่ element นี้ทั้งสองจุด
+    const holds = [...h.matchAll(/data-testid="book-hold-date"[^>]*>([\s\S]*?)<\/p>/g)].map((m) => unent(m[1].replace(/<[^>]+>/g, "")));
+    ok(holds.length >= 2, `ต้องมี book-hold-date ทั้งแผงสรุปและแถบล่าง (พบ ${holds.length})`);
+    for (const x of holds) ok(x.includes(date), `book-hold-date ไม่มีวันที่ "${date}": ${x.slice(0, 120)}`);
   });
   const neutral = (lang: "th" | "en") => head(tpl(lang, "res.reholdNote"));
   await st("E2-1", "[service+page] มติ E2: EZF (เขตฟรี) · EZN (ไม่ใช้รับส่ง) · EZS (มาเอง) ⇒ partial false · หน้ามีลิงก์ถือใหม่ + บรรทัดกลาง res.reholdNote (th · en) · ไม่มีกล่องเตือน book-res-rehold-partial", async () => {
