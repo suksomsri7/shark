@@ -48,7 +48,7 @@ type Action =
   | { reveal: string }
   | { pause: number };
 // TRIPS W1.1 ▸ public = หน้าสาธารณะ: ไม่ใส่คุกกี้ session (บริบทเบราว์เซอร์ใหม่) + ตั้งหัว x-forwarded-for (หน้าต้องรู้ IP) · expectStatus = รหัสสถานะที่ต้องได้ (ปริยาย: ต่ำกว่า 400) ◂
-type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01" | "07"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print"; as?: string }; // TRIPS T1.7a1 ▸ as = key ของผู้ใช้ seed (SHOP_DIVE.users[].key · ปริยายเจ้าของร้าน) — บริบทเบราว์เซอร์แยก ◂
+type Spec = { name: string; mockup: "11" | "15" | "16" | "17" | "12" | "18" | "19" | "01" | "07"; path: (ids: Ids) => string; actions?: Action[]; fullPage?: boolean; public?: true; expectStatus?: number; media?: "print"; as?: string; locale?: "en" }; // TRIPS T1.7a1 ▸ as = key ของผู้ใช้ seed (SHOP_DIVE.users[].key · ปริยายเจ้าของร้าน) — บริบทเบราว์เซอร์แยก ◂ TRIPS T1.7a2 ▸ locale = คุกกี้ LOCALE (บริบทแยก) ◂
 const PUBLIC_CLIENT_IP = "198.51.100.77";
 const BOOK_RACHA = "racha-yai-day-trip";
 // ตัวแก้ตารางของฟอร์มกลาง (ทะเบียนมี tableTh ของขั้นบันได) — ช่องย่อยมีป้ายไทยต่อช่อง [data-table-cell=<ช่อง>]
@@ -177,6 +177,19 @@ export const TRIPS_VISUAL_SPECS: Record<string, Spec[]> = {
     // ORACLE-EDIT (ผู้คุม 26 พ.ย.): ไกด์ของ seed (STAFF · unitAccess = หน่วย BOOKING "andaman-dive" เท่านั้น) เข้าหน่วยทัวร์ไม่ได้ ⇒ แอปตอบ 404 ถูกต้อง (หน่วยอื่น ⇒ NOT_FOUND)
     //   seed ไม่มีผู้ใช้ที่เข้าหน่วยทัวร์ได้แต่ไม่มีคีย์ต้นทุน (มีแค่เจ้าของ + ไกด์ · ห้ามเพิ่มผู้ใช้ seed) ⇒ ฉากนี้คาด 404 ตามจริง · หน้าไม่มีสิทธิ์ (trips-forbidden) ดูจากร้านชั่วคราวของ probe ผู้คุม
     { name: "departure-costs-not-found", mockup: "11", as: "dive-guide-mint", expectStatus: 404, path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs` },
+  ],
+  // TRIPS T1.7a2 ▸ รายงานทัวร์ตามช่วงเวลา (seed อ่านอย่างเดียว · เดือน พ.ย. 2569 ของ seed · 1440 + 390) — ไม่มีภาพออกแบบของจอนี้ ⇒ อ้างภาพ 11 (ปฏิทินที่เป็นทางเข้า) · ภาษาอังกฤษผ่าน locale "en"
+  //   PARITY: บรรทัดตัวเลขบริหาร + ป้ายประมาณการทุกแท็บ · ข้อความรอบยังไม่หักต้นทุนอยู่ในช่อง KPI กำไร (D1) · บรรทัดตัวเลขบริหารข้างปุ่มส่งออก (D2) · 390 ไม่ล้น (KPI 2 คอลัมน์ · ตารางรอบเป็นการ์ด) · ไม่มีรหัสดิบ · กดจริง: ปิด JS แล้วใช้ฟอร์มตัวกรอง · ส่งออก CSV เปิดใน Excel/Numbers ◂
+  "t1.7a2": [
+    { name: "reports-sales", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&tab=sales`, actions: [{ waitFor: '[data-testid="trips-rp-kpis"]' }] },
+    { name: "reports-load", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&tab=load`, actions: [{ waitFor: '[data-testid="trips-rp-load"]' }] },
+    { name: "reports-lead", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&tab=lead`, actions: [{ waitFor: '[data-testid="trips-rp-lead"]' }] },
+    { name: "reports-channel", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&tab=channel`, actions: [{ waitFor: '[data-testid="trips-rp-channels"]' }] },
+    { name: "reports-booked", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&basis=booked`, actions: [{ waitFor: '[data-testid="trips-rp-basis-note"]' }] },
+    { name: "reports-sales-en", mockup: "11", locale: "en", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-11-01&to=2026-11-30&tab=sales`, actions: [{ waitFor: '[data-testid="trips-rp-kpis"]' }] },
+    { name: "departure-costs-en", mockup: "11", locale: "en", path: (i) => `/app/u/${i.unitSlug}/trips/departures/${i.racha1114}/costs`, actions: [{ waitFor: '[data-testid="trips-cost-editor"]' }] },
+    { name: "calendar-reports-link", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/departures?view=week&start=${i.week}`, actions: [{ waitFor: '[data-testid="trips-dep-reports"]' }] },
+    { name: "reports-filter-error", mockup: "11", path: (i) => `/app/u/${i.unitSlug}/trips/reports?from=2026-02-30&to=2026-11-30&basis=booked&tab=lead`, actions: [{ waitFor: '[data-testid="trips-rp-error"]' }] }, // ตัวกรองผิด ⇒ กล่องข้อผิดพลาด + คงค่าที่ถูก (D5 · D6)
   ],
   // TRIPS W1.2 ▸ ทัวร์ 4 ขั้นฝั่งลูกค้า (ภาพ 01 ข/ค/ง มือถือไทย · 19 จอใหญ่อังกฤษ) — ทุกฉาก public 1440 + 390 · วัน/เดือนปักด้วย --book-month/--book-date (ปริยาย 31 ธ.ค. ของ seed)
   //   "w1.2" อ่านอย่างเดียว (ไม่เขียนฐาน) · "w1.2-flow" กดผ่านฟอร์มจริง ⇒ เขียนฐานเลน (ถือ 3 ที่บนรอบ 31 ธ.ค. + การจอง HOLD + Party ผู้จองทดสอบ ค้างจนตัวกวาดวิ่ง) — รันหลังข้อสอบ/ก่อน reseed
@@ -462,6 +475,10 @@ async function mintSession(asKey?: string): Promise<Cookie[]> {
     ? [{ name: "__Host-shark_session", value: token, url: BASE, path: "/", secure: true }, { name: "shark_tenant", value: tenantId, url: BASE, path: "/", secure: true }]
     : [{ name: "shark_session", value: token, domain: baseUrl.hostname, path: "/" }, { name: "shark_tenant", value: tenantId, domain: baseUrl.hostname, path: "/" }];
 }
+/** TRIPS T1.7a2 ▸ คุกกี้ภาษา (src/i18n/config.ts LOCALE_COOKIE) รูปเดียวกับคุกกี้ session ◂ */
+function localeCookie(v: string): Cookie {
+  return baseUrl.protocol === "https:" ? { name: "LOCALE", value: v, url: BASE, path: "/", secure: true } : { name: "LOCALE", value: v, domain: baseUrl.hostname, path: "/" };
+}
 async function idsFromSeed(): Promise<Ids> {
   const tenantId = SHOP_DIVE.tenant.id;
   const unit = SHOP_DIVE.units.trips;
@@ -569,12 +586,12 @@ try {
       if (spec.name === "book-expired" && !W12_EXPIRED_TOKEN) W12_EXPIRED_TOKEN = await w12ExpireLatestWebBooking(); // TRIPS W1.2 รอบ 2 ▸ ◂
       W13_DEV = dev.device; // TRIPS W1.3 ▸ ◂
       // หน้าสาธารณะ: บริบทใหม่ (ไม่มีคุกกี้ของฉากอื่น) + หัว IP ของผู้ใช้ (ไม่พึ่งว่า server เติมให้)
-      const ctx = (spec.public || spec.as) && browser.createBrowserContext ? await browser.createBrowserContext() : null;
+      const ctx = (spec.public || spec.as || spec.locale) && browser.createBrowserContext ? await browser.createBrowserContext() : null; // TRIPS T1.7a2 ▸ locale = บริบทแยก (คุกกี้ไม่ค้างไปฉากอื่น) ◂
       const page = await (ctx ?? browser).newPage();
       await page.setViewport({ width: dev.width, height: dev.height, deviceScaleFactor: 1, isMobile: dev.mobile, hasTouch: dev.mobile });
       // TRIPS W1.2 r1 (มติ W2 · ผู้คุมทำตอนรับงาน) ▸ ฉากสาธารณะใช้ IP ผู้ใช้ต่างกันต่อฉาก×อุปกรณ์ — ไม่ชนถังถือต่อรอบต่อเครื่อง (3/ชม.) / ถังถือต่อเครื่อง ◂
       if (spec.public) await page.setExtraHTTPHeaders({ "x-forwarded-for": `${PUBLIC_CLIENT_IP.split(".").slice(0, 3).join(".")}.${(Number(PUBLIC_CLIENT_IP.split(".")[3]) + ++publicSeq) % 250}` });
-      else await page.setCookie(...(spec.as ? await mintSession(spec.as) : cookies));
+      else await page.setCookie(...(spec.as ? await mintSession(spec.as) : cookies), ...(spec.locale ? [localeCookie(spec.locale)] : [])); // TRIPS T1.7a2 ▸ ◂
       const errors: string[] = [];
       page.on("pageerror", (e: never) => errors.push(String((e as Error).message).slice(0, 120)));
       if (spec.media) await page.emulateMediaType(spec.media);

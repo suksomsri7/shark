@@ -151,11 +151,12 @@ const RAW_CODES = new Set([...DEP_STATES, ...COST_KINDS, "AGENT_PORTAL", "AGENT_
 const VISUAL_SCENES = ["panel-money", "departure-costs", "departure-costs-not-found"];
 /** ไฟล์เดิมที่แก้ได้แบบจำกัด: [ไฟล์, ลบได้สูงสุด, เพิ่มได้สูงสุด (null = ไม่จำกัด)] */
 // ORACLE-EDIT รอบ 2 (มติ Q5): src/lib/staff/service.ts ≤ +6/−0
-const LIMITED: [string, number, number | null][] = [["src/lib/staff/service.ts", 0, 4] /* ORACLE-EDIT รอบ 3 (U1): ไม่เกิน +4 ที่มีอยู่ */, ["src/lib/staff/levels.ts", 0, 2] /* ORACLE-EDIT รอบ 3 (U1) */, [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 3, 30], [PANEL, 8, 50], [`${COMP}/ProductsScreenParts.tsx`, 3, null], [PERMS, 0, 6],
-  ["src/messages/th/trips.json", 2, null], ["src/messages/en/trips.json", 2, null], ["scripts/trips-ui-inventory.json", 4, null], ["scripts/visual-trips.mts", 30, null], ["scripts/parity-trips.sh", 4, null]];
+const LIMITED: [string, number, number | null][] = [["src/lib/staff/service.ts", 0, 4] /* ORACLE-EDIT รอบ 3 (U1): ไม่เกิน +4 ที่มีอยู่ */, ["src/lib/staff/levels.ts", 0, 2] /* ORACLE-EDIT รอบ 3 (U1) */, [MOD + "index.ts", 0, null], [MOD + "departure-screens.ts", 5, 36] /* ORACLE-EDIT (26 พ.ย.): a1 −3/+30 + a2 −2/+6 (มติ H2) */, [PANEL, 8, 50], [`${COMP}/ProductsScreenParts.tsx`, 3, null], [PERMS, 0, 6],
+  [`${COMP}/DeparturesScreen.tsx`, 0, 10] /* ORACLE-EDIT (26 พ.ย. · ใบ a2 §1.2): ลิงก์ trips-dep-reports ของ a2 · เพิ่มอย่างเดียว ≤ 10 */,
+  ["src/messages/th/trips.json", 4, null], ["src/messages/en/trips.json", 4, null] /* ORACLE-EDIT (26 พ.ย.): a1 −2 + a2 −2 */, ["scripts/trips-ui-inventory.json", 4, null], ["scripts/visual-trips.mts", 30, null], ["scripts/parity-trips.sh", 4, null]];
 const LIMITED_SET = new Set(LIMITED.map(([f]) => f));
 /** ORACLE-EDIT รอบ 2 (ผู้คุม): ข้อสอบเดิมที่ผู้คุมแก้ในใบนี้ (b77b3b0a6) — ไม่นับเป็นการแตะของ builder (BASE ต้องคงก่อน commit ของ builder) */
-const ORACLE_EDITS = ["scripts/qc-trips-t1.1.mts", "scripts/qc-trips-t1.2.mts"];
+const ORACLE_EDITS = ["scripts/qc-trips-t1.1.mts", "scripts/qc-trips-t1.2.mts", "scripts/qc-trips-t1.4.mts" /* ORACLE-EDIT (ผู้คุม 26 พ.ย.): t1.4 S-13 รับลิงก์รายงานของ a2 */];
 // seed / ภาพ 11
 const DIVE_TENANT = FX.SHOP_DIVE.tenant.id;
 const U0 = FX.SHOP_DIVE.units.trips.id;
@@ -335,10 +336,11 @@ try {
     const idx = read(MOD + "index.ts");
     ok(/T1\.7/.test(idx) && !/export \* from "\.\/(report-core|costs)"/.test(idx), "index.ts ต้องมีบล็อก T1.7a1 แบบรายชื่อชัด");
   });
-  await st("S-3", "report-core.ts บริสุทธิ์: import เฉพาะ ./money-math ./booking-view-core ./money-core (+ import type) · ไม่มี I/O · ไม่อ่านนาฬิกา", () => {
+  await st("S-3", "report-core.ts บริสุทธิ์: import เฉพาะ ./money-math ./booking-view-core ./money-core (+ ./departures-core ./manifest-core ตามใบ a2) (+ import type) · ไม่มี I/O · ไม่อ่านนาฬิกา", () => {
     needOwn(); const s = stripComments(read(PURE));
     const imps = [...s.matchAll(/^import\s+(type\s+)?[^;]*?from\s+["']([^"']+)["']/gm)].filter((m) => !m[1]).map((m) => m[2]);
-    const bad = imps.filter((p) => !["./money-math", "./booking-view-core", "./money-core"].includes(p));
+    // ORACLE-EDIT S-3 (ผู้คุม 26 พ.ย. · ใบ T1.7a2 §1.2): a2 เพิ่ม import ค่าได้เฉพาะ ./departures-core ./manifest-core (ทั้งคู่บริสุทธิ์) — นอกนั้นห้ามเหมือนเดิม
+    const bad = imps.filter((p) => !["./money-math", "./booking-view-core", "./money-core", "./departures-core", "./manifest-core"].includes(p));
     ok(bad.length === 0, `import ต้องห้าม: ${bad.join(", ")}`);
     ok(!/Date\.now\(|new Date\(\s*\)|\.get(Day|Date|Hours|Month|FullYear)\(/.test(s), "อ่านนาฬิกา");
     ok(!/\bprisma\b|tenantDb|\$queryRaw|node:fs/.test(s), "มี I/O");
@@ -486,10 +488,12 @@ try {
     const s = read(PANEL);
     ok(s.includes('"trips-dep-money"') && s.includes('"trips-dep-money-note"') && s.includes('"trips-dep-costs"') && /actions\.costs/.test(s), "แผงรอบยังไม่มีการ์ด/ลิงก์ตามใบสั่ง");
   });
-  await st("S-20", "ไม่เพิ่มแท็บ/ไม่ทำรายงานในใบนี้: TRIPS_NAV_KEYS 6 ค่าเดิม · TripsNav.tsx DeparturesScreen.tsx ไม่เปลี่ยน · ไม่มี reports.ts", () => {
+  // ORACLE-EDIT S-20 (ผู้คุม 26 พ.ย. · C15 · ใบ a2): รายงานมากับ T1.7a2 แล้ว ⇒ ไม่ห้าม reports.ts · ปฏิทินแตะได้เฉพาะลิงก์รายงานของ a2 (เพิ่มอย่างเดียว ≤ 10 · S-13) · เจตนาเดิมคง: ไม่เพิ่มแท็บ (C2)
+  await st("S-20", "ไม่เพิ่มแท็บ (C2): TRIPS_NAV_KEYS 6 ค่าเดิม · TripsNav.tsx ไม่เปลี่ยน · DeparturesScreen.tsx เปลี่ยนได้เฉพาะเพิ่มบรรทัด (ลิงก์ trips-dep-reports ของ a2) · รายงานอยู่ที่ route reports ของ a2 (ไม่ใช่แท็บ)", () => {
     ok(/TRIPS_NAV_KEYS = \["products", "departures", "bookings", "agents", "channels", "settings"\] as const/.test(read(`${COMP}/trips-shared.ts`)), "TRIPS_NAV_KEYS เปลี่ยน");
-    ok(git(["diff", "--name-only", BASE_SHA, "--", `${COMP}/TripsNav.tsx`, `${COMP}/DeparturesScreen.tsx`]).trim() === "", "ไฟล์แถบ/ปฏิทินเปลี่ยน");
-    ok(!existsSync(join(ROOT, MOD + "reports.ts")), "มี reports.ts (เป็นของ a2)");
+    ok(git(["diff", "--name-only", BASE_SHA, "--", `${COMP}/TripsNav.tsx`]).trim() === "", "แถบนำทางเปลี่ยน");
+    const ds = git(["diff", "--numstat", BASE_SHA, "--", `${COMP}/DeparturesScreen.tsx`]).trim();
+    if (ds) { const [a, d] = ds.split("\t").map(Number); ok(d === 0 && a <= 10 && /"trips-dep-reports"/.test(read(`${COMP}/DeparturesScreen.tsx`)), `ปฏิทินเปลี่ยนเกินลิงก์รายงาน: +${a}/−${d}`); }
   });
   groupLine("S");
 

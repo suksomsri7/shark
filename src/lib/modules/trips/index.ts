@@ -552,3 +552,44 @@ export { loadDepartureCostsVM, saveDepartureCosts, departureMoneySummary } from 
 export type { DepartureMoneyVM, DepartureCostsVM, CostRowVM, SavedCosts } from "./costs";
 // ◂ TRIPS T1.7a1
 // ── /T1.7a1 costs ──
+
+// ── T1.7a2 reports ──
+// TRIPS T1.7a2 ▸ รายงานทัวร์ตามช่วงเวลา: 4 แท็บ · ตารางรอบแบ่งหน้า · CSV ข้อมูลล้วน · เพดาน (ใบสั่ง ledger/trips-briefs/T1.7a2.md · สูตรเดียวกับ a1) ◂
+export {
+  REPORT_TABS,
+  REPORT_GROUPS,
+  REPORT_BASES,
+  REPORT_QUERY_PARAMS,
+  REPORT_RANGE_MAX_DAYS,
+  REPORT_DAY_GROUP_MAX_DAYS,
+  REPORT_PAGE_SIZE,
+  REPORT_PAGE_MAX,
+  REPORT_PRODUCTS_MAX,
+  REPORT_DEPARTURE_CAP,
+  REPORT_BOOKING_CAP,
+  TRIPS_REPORT_CSV_CAP,
+  REPORT_EXPORT_RATE,
+  LEAD_BUCKETS,
+  REPORT_CSV_COLUMNS,
+  REPORT_CSV_COST_COLUMNS,
+  bookingMoneyInOfRow,
+  reportQueryOf,
+  reportRangeOf,
+  reportGroupOf,
+  reportUtcBoundsOf,
+  reportPresetsOf,
+  periodKeyOf,
+  periodsOf,
+  leadDaysOf,
+  leadBucketOf,
+  medianOf,
+  bahtPlain,
+  pctPlain,
+  reportCsv,
+  reportFileName,
+} from "./report-core";
+export type { BookingMoneyRow, ReportQuery, ReportCell, ReportTab, ReportGroup, ReportBasis, LeadBucketKey } from "./report-core";
+export { loadTripReportVM, exportTripReportCsv } from "./reports";
+export type { TripReportVM, ReportTotals, ReportPeriodVM, ReportLoadVM, ReportLeadVM, ReportChannelsVM, ReportDepartureRowVM, ReportCsvOut } from "./reports";
+// ◂ TRIPS T1.7a2
+// ── /T1.7a2 reports ──

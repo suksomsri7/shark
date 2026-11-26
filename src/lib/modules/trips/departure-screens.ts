@@ -175,7 +175,7 @@ export type DepartureCalendarVM = {
   filter: CalendarFilter;
   range: { from: string; to: string; days: string[] };
   nav: { prev: string; next: string; today: string } | null;
-  flags: { canEdit: boolean; canStatus: boolean; canPrice: boolean; canSeePrices: boolean };
+  flags: { canEdit: boolean; canStatus: boolean; canPrice: boolean; canSeePrices: boolean; canReport: boolean };
   products: CalendarProductVM[];
   productsTotal: number;
   productsTruncated: boolean;
@@ -564,7 +564,7 @@ export async function loadDepartureCalendarVM(ctx: TripsScreenCtx, input: unknow
       filter,
       range: { from, to, days },
       nav,
-      flags: flagsOf(g),
+      flags: { ...flagsOf(g), canReport: g.can("trips.report.view") },
       products,
       productsTotal,
       productsTruncated: productsTotal > products.length,
