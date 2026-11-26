@@ -845,6 +845,28 @@ try {
     if (notOk < 0 || blob < notOk || !retInNotOk) bad.push("ReportExport อาจดาวน์โหลดเมื่อผลผิด");
     ok(bad.length === 0, bad.join(" · "));
   });
+  // ═══ ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ K1 K5) ═══
+  await st("S-22", "K1 [ระดับโค้ด ReportExport — ไฟล์ที่ผู้ใช้ดาวน์โหลดจริงในเบราว์เซอร์ขับไม่ได้ที่นี่ · ระดับบริการคือ EX-1]: ข้อความที่ใส่ Blob ต้องถูกทำให้ขึ้นต้นด้วย U+FEFF ตัวเดียวเสมอ (ผลของ action ที่เกิน ~1 KB ถูก React Flight ตัด BOM ตัวแรก) — มีการตรวจว่าขึ้นต้นด้วย U+FEFF แล้วหรือยังก่อนเติม · new Blob ไม่รับ r.value.csv ดิบ · ถ้ามีตัวช่วยบริสุทธิ์ที่ส่งออกจาก ReportExport (ชื่อมี bom) ตรวจพฤติกรรม: \"a\" ⇒ \"\\uFEFFa\" · \"\\uFEFFa\" ⇒ \"\\uFEFFa\" (ไม่ซ้ำ) · \"\" ⇒ \"\\uFEFF\"", async () => {
+    needOwn(); const ex = stripComments(read(`${COMP}/ReportExport.tsx`)); const bad: string[] = [];
+    const FEFF = /\\u\{?[fF][eE][fF][fF]\}?|\uFEFF|0x[fF][eE][fF][fF]|65279/;
+    if (!FEFF.test(ex)) bad.push("ไม่มี U+FEFF ในโค้ด");
+    if (!/startsWith\(\s*(["'`](\\u\{?[fF][eE][fF][fF]\}?|\uFEFF)["'`]|\w+)\s*\)|charCodeAt\(\s*0\s*\)\s*={2,3}\s*(0x[fF][eE][fF][fF]|65279)|codePointAt\(\s*0\s*\)\s*={2,3}\s*(0x[fF][eE][fF][fF]|65279)|\[0\]\s*={2,3}\s*["'`](\\u[fF][eE][fF][fF]|\uFEFF)["'`]/.test(ex)) bad.push("ไม่ตรวจว่าขึ้นต้นด้วย BOM แล้วก่อนเติม (เสี่ยง BOM ซ้ำ)");
+    if (/new Blob\(\s*\[\s*r\.value\.csv\s*\]/.test(ex)) bad.push("new Blob รับ r.value.csv ดิบ");
+    const EXM = await tryImport("@/components/trips/ReportExport");
+    const helper = Object.entries(EXM.mod ?? {}).find(([k, v]) => k !== "default" && /bom/i.test(k) && typeof v === "function");
+    if (helper) { const h = helper[1] as AnyFn; const got = [h("a"), h("\uFEFFa"), h("")]; if (!isDeepStrictEqual(got, ["\uFEFFa", "\uFEFFa", "\uFEFF"])) bad.push(`ตัวช่วย ${helper[0]}: ${fmt(got.map((x) => escape(String(x))))}`); }
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("S-23", "K5 [ระดับโค้ด]: notFound() ของ page.tsx เมื่อ REPORT_TOO_LARGE ไม่มี today เข้าไม่ถึง — ใน reports.ts ผล REPORT_TOO_LARGE ทุกจุดสร้างจากตัวช่วยที่ใส่ today (ไม่มี fail(\"REPORT_TOO_LARGE\") ลอยนอกตัวช่วยนั้น) และ today มาจาก utcToLocal(…).ymd", () => {
+    needOwn(); const rp = stripComments(read(REPORTS)); const bad: string[] = [];
+    const lits = [...rp.matchAll(/fail\(\s*["']REPORT_TOO_LARGE["']\s*\)/g)].map((m) => m.index ?? 0);
+    const defAt = rp.search(/const\s+tooLarge\s*=\s*\(\)\s*:\s*Fail\s*=>\s*\(\{\s*\.\.\.fail\(\s*["']REPORT_TOO_LARGE["']\s*\)\s*,\s*today\s*\}\)/);
+    if (defAt < 0) bad.push("ไม่มีตัวช่วย tooLarge ที่ใส่ today");
+    if (lits.some((i) => i < defAt || i > defAt + 120)) bad.push(`มี fail("REPORT_TOO_LARGE") นอกตัวช่วย ${lits.length} จุด`);
+    if (!/const\s+today\s*=\s*utcToLocal\([^)]*\)\.ymd/.test(rp)) bad.push("today ไม่ได้มาจาก utcToLocal(…).ymd");
+    if ((rp.match(/["']REPORT_TOO_LARGE["']/g) ?? []).length - lits.length > 1) bad.push("มีการอ้าง REPORT_TOO_LARGE ที่อื่น (ตรวจว่ามีผลที่ไม่มี today หรือไม่)");
+    ok(bad.length === 0, bad.join(" · "));
+  });
   groupLine("S");
 
   // ═══════════════ P. ตัวช่วยบริสุทธิ์ ═══════════════
@@ -1687,6 +1709,53 @@ try {
       if (!hrefs.some((h) => new URL(h, "http://qc.local").pathname === `/app/u/${SLUG_P}/trips/departures`)) bad.push("(ข) ไม่มีลิงก์กลับปฏิทิน");
     }
     if (heavy(b.sql) > 3) bad.push(`(ข) โหลดหนัก ${heavy(b.sql)} ครั้ง`);
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  // ═══ ORACLE-EDIT (ผู้คุม 26 พ.ย. · มติ K3 K4) — ชื่อข้อบอกระดับ: [ระดับตัวช่วย] [ระดับหน้า page.tsx] [ระดับ action] ═══
+  const K3_BAD: Record<string, string>[] = [];
+  for (const base0 of [{ from: "9999-12-31", to: "9999-12-31" }, { to: "9999-12-31" }, { from: "9999-12-01" }, { from: "9999-12-25", to: "9999-12-31" }] as Record<string, string>[]) for (const extra of [{}, { basis: "booked" }, { tab: "lead" }] as Record<string, string>[]) K3_BAD.push({ ...base0, ...extra });
+  for (const y of ["1000-01-01", "1999-12-31", "2101-01-01"]) { K3_BAD.push({ from: y }); K3_BAD.push({ to: y }); K3_BAD.push({ from: y, to: y }); }
+  const K3_OK: Record<string, string>[] = [{ from: "2000-01-01", to: "2000-01-01" }, { from: "2100-12-31", to: "2100-12-31" }, { from: "2000-01-01" }, { to: "2100-12-31" }];
+  await st("P-16", "K3 [ระดับตัวช่วย] reportRangeOf: ปีนอก 2000–2100 ปลายใดปลายหนึ่ง ⇒ { ok:false, INVALID_INPUT } (ไม่ throw) ทุกกรณีในรายการ · 2000-01-01 และ 2100-12-31 ⇒ ok", () => {
+    const today = "2027-04-15"; const bad: string[] = [];
+    for (const i of K3_BAD) { let r: Rec = {}; try { r = asRec(pure("reportRangeOf", { from: i.from ?? null, to: i.to ?? null }, today)) ?? {}; } catch (e) { r = { ok: "THROW", e: errMsg(e) }; } if (r.ok !== false || r.code !== "INVALID_INPUT") bad.push(`${fmt(i)} ⇒ ${fmt(r).slice(0, 80)}`); }
+    for (const i of K3_OK) { let r: Rec = {}; try { r = asRec(pure("reportRangeOf", { from: i.from ?? null, to: i.to ?? null }, today)) ?? {}; } catch (e) { r = { ok: "THROW", e: errMsg(e) }; } if (r.ok !== true) bad.push(`ขอบ ${fmt(i)} ⇒ ${fmt(r).slice(0, 80)}`); }
+    ok(bad.length === 0, bad.slice(0, 6).join(" · "));
+  });
+  await st("RS-22", "K3 [ระดับหน้า page.tsx เรนเดอร์จริง]: ปีนอก 2000–2100 (9999-12-31 ทั้งคู่ · to อย่างเดียว · from 9999-12-01 · 9999-12-25..9999-12-31 · แต่ละแบบ + basis=booked + tab=lead · 1000-01-01 · 1999-12-31 · 2101-01-01 ทั้ง from/to/ทั้งคู่) ⇒ ไม่ throw · กล่อง trips-rp-error = report.error.filter · ฟอร์มกลับเป็นช่วงปริยาย (เดือนนี้ของหน่วย) · basis/tab ที่ถูกคงไว้", async () => {
+    needSetup(); const bad: string[] = []; const FILTER = String(PINNED["report.error.filter"] ?? "\u0000");
+    const today = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Bangkok", year: "numeric", month: "2-digit", day: "2-digit" }).format(new Date());
+    const mFrom = `${today.slice(0, 7)}-01`, mTo = `${today.slice(0, 7)}-${String(new Date(Date.UTC(Number(today.slice(0, 4)), Number(today.slice(5, 7)), 0)).getUTCDate()).padStart(2, "0")}`;
+    for (const sp of K3_BAD) {
+      let h = ""; try { h = await pageAt(SLUG_A, sp); } catch (e) { bad.push(`${fmt(sp)} ⇒ ${e instanceof AssertFail ? e.message : errMsg(e)}`.slice(0, 140)); continue; }
+      const f = Object.fromEntries(formOf(h).fields); const box = unent(byTestid(h, "trips-rp-error"));
+      if (!box.includes(FILTER) || f.from !== mFrom || f.to !== mTo || (sp.basis && f.basis !== sp.basis) || (sp.tab && f.tab !== sp.tab)) bad.push(`${fmt(sp)} ⇒ กล่อง "${box.slice(0, 40)}" ฟอร์ม ${fmt(pick(f as Rec, ["from", "to", "basis", "tab"]))}`);
+    }
+    ok(bad.length === 0, `${bad.length} กรณี: ${bad.slice(0, 5).join(" · ")}`);
+  });
+  await st("RS-23", "K3 [ระดับหน้า page.tsx เรนเดอร์จริง] ขอบที่รับ: 2000-01-01 และ 2100-12-31 (ทั้งคู่ · from/to อย่างเดียว) ⇒ ไม่ throw · ไม่มีกล่องข้อผิดพลาด · ฟอร์มคงค่าที่ส่ง", async () => {
+    needSetup(); const bad: string[] = [];
+    for (const sp of K3_OK) {
+      let h = ""; try { h = await pageAt(SLUG_A, sp); } catch (e) { bad.push(`${fmt(sp)} ⇒ ${e instanceof AssertFail ? e.message : errMsg(e)}`.slice(0, 140)); continue; }
+      const f = Object.fromEntries(formOf(h).fields); if (h.includes('data-testid="trips-rp-error"') || (sp.from && f.from !== sp.from) || (sp.to && f.to !== sp.to)) bad.push(`${fmt(sp)} ⇒ ฟอร์ม ${fmt(pick(f as Rec, ["from", "to"]))} กล่อง ${h.includes('data-testid="trips-rp-error"')}`);
+    }
+    ok(bad.length === 0, bad.join(" · "));
+  });
+  await st("AC-9", "K3 [ระดับ action exportTripReportCsvAction จริง]: ปีนอก 2000–2100 (from/to แบบเดียวกับ RS-22 ที่ใช้กับส่งออกได้) ⇒ ok:false INVALID_INPUT · ไม่มีไฟล์ในผล · ถังโควตาของผู้ใช้ไม่ขยับ · ไม่เขียน audit", async () => {
+    needSetup(); const key = `${RATE_PREFIX}${tA}:${uA}:${U.cv.userId}`; const cnt = async () => (await q<{ c: number }>(`SELECT count AS c FROM "ChatRateBucket" WHERE key = $1`, [key]))[0]?.c ?? 0;
+    const c0 = await cnt(), a0 = await auditN(A_EXP); const bad: string[] = [];
+    const seen = new Set<string>();
+    for (const sp of K3_BAD) { const inp = { from: sp.from ?? null, to: sp.to ?? null, productId: null }; const k = JSON.stringify(inp); if (seen.has(k)) continue; seen.add(k);
+      const r = await actExport("cv", inp); if (r.ok !== false || r.code !== "INVALID_INPUT" || asRec(r.value)?.csv !== undefined) bad.push(`${k} ⇒ ${fmt(r).slice(0, 80)}`); }
+    eq([bad, await cnt() - c0, await auditN(A_EXP) - a0], [[], 0, 0], "ผล/ถัง/audit");
+  });
+  await st("RS-24", "K4 [ระดับหน้า ReportScreen เรนเดอร์จริง th/en]: รอบยกเลิกที่ไม่มีแถวต้นทุนไม่แสดง \"(ยังไม่หักต้นทุนรอบ)\" · รอบไม่ยกเลิกที่ไม่มีแถวต้นทุนในช่วงเดียวกันยังแสดง (ก.ย. 2570 · ฟิกซ์เจอร์ 2 รอบ)", async () => {
+    needSetup(); const D = mkDepX as NonNullable<typeof mkDepX>;
+    if (!DEP.K4x) { DEP.K4x = await D("K4x", "PR", "2027-09-15", { cap: 10, sold: 0, status: "CANCELLED" }); DEP.K4o = await D("K4o", "PR", "2027-09-16", { cap: 10, sold: 0, status: "OPEN" }); }
+    const vm = await repVM("oa", { from: "2027-09-01", to: "2027-09-30" }); const rows = depRows(vm); const ix = rows.findIndex((r) => r.departureId === DEP.K4x), io = rows.findIndex((r) => r.departureId === DEP.K4o); const bad: string[] = [];
+    ok(ix >= 0 && io >= 0, `ไม่พบแถวฟิกซ์เจอร์: ${fmt(rows.map((r) => r.departureId))}`);
+    for (const [L, d] of [["th", fth], ["en", fen]] as const) { const h = screenR(vm, L); const noC = String(d["report.dep.noCosts"] ?? "\u0000");
+      if (txtOf(h, `trips-rp-dep-${ix}`).includes(noC)) bad.push(`${L} รอบยกเลิกมีข้อความ`); if (!txtOf(h, `trips-rp-dep-${io}`).includes(noC)) bad.push(`${L} รอบเปิดไม่มีข้อความ`); }
     ok(bad.length === 0, bad.join(" · "));
   });
   groupLine("PF");
