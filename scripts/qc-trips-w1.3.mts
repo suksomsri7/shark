@@ -102,6 +102,10 @@ const flat = (o: unknown, pre = "", out: Record<string, unknown> = {}): Record<s
 
 // ═══════════════ สเปก (ใบสั่ง W1.3a · มติ K1–K12) ═══════════════
 const BASE_SHA = "499a4be5e"; // wip/trips-w1.3 = session/trips ตอนเขียนใบสั่ง
+// ORACLE-EDIT T1.6 (C9 · ผู้เขียนข้อสอบ 26 พ.ย.): ไฟล์ที่ T1.6a1 แก้ได้ตามงบ §1 ของ ledger/trips-briefs/T1.6.md (นับเทียบ BASE ของ T1.6 = 5953d5061) ไม่นับเป็นการแตะนอกขอบเขตของใบนี้ · ข้อสอบเดิมที่ต่างจาก BASE ของ T1.6 เฉพาะบรรทัดที่มีคำ T1.6/T16 (ORACLE-EDIT ของ C9) ไม่นับ
+const T16_BASE = "5953d5061", T16_M = "src/lib/modules/trips/", T16_C = "src/components/trips/"; const t16git = (a: string[]) => { try { return execFileSync("git", ["-C", ROOT, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return ""; } };
+const T16_BUDGET: [string[], number, number | null][] = [[["prisma/schema/trips.prisma"], 0, 26], [["src/lib/core/scope.ts"], 0, 1], [[T16_M + "refund.ts"], 4, 70], [[T16_M + "money-core.ts"], 0, 35], [[T16_M + "money.ts"], 0, 25], [[T16_M + "booking.ts"], 2, 25], [[T16_M + "capacity.ts", T16_M + "capacity-service.ts"], 0, 16], [[T16_M + "jobs.ts"], 1, 8], [[T16_M + "departure-desk.ts"], 2, 14], [[T16_M + "departures.ts"], 0, 4], [[T16_M + "departure-screens.ts"], 2, 45], [[T16_M + "booking-screens.ts"], 0, 30], [["src/lib/platform/trips-self.ts", "src/lib/platform/trips-self-core.ts"], 2, 20], [[T16_C + "DeparturePanel.tsx", T16_C + "DepartureDialogs.tsx", T16_C + "BookingsScreen.tsx", T16_C + "BookingDrawer.tsx"], 6, 70], [["src/lib/outbox-consumers.ts"], 0, 3], [["src/lib/automation/labels.ts"], 0, 3], [[T16_M + "index.ts"], 0, null], [["src/messages/th/trips.json"], 2, null], [["src/messages/en/trips.json"], 2, null], [["scripts/trips-ui-inventory.json"], 0, null]]; // T16
+const t16Allowed = (f: string): boolean => { if (/^prisma\/migrations\/\d+_trips_t16a_departure_cancel\/migration\.sql$/.test(f) || /^src\/lib\/modules\/trips\/cancel-departure(-core|-actions)?\.ts$/.test(f) || /^src\/components\/trips\/DepartureCancel\w*\.tsx$/.test(f) || /^scripts\/qc-trips-t1\.6(a2\.draft\.txt|\.mts)$/.test(f)) return true; if (/^scripts\/qc-trips-[\w.]+\.mts$/.test(f)) { const d = t16git(["diff", "-U0", T16_BASE, "--", f]).split("\n"); const add = d.filter((l) => l.startsWith("+") && !l.startsWith("+++")), del = d.filter((l) => l.startsWith("-") && !l.startsWith("---")); return add.length > 0 && add.every((l) => /T1\.?6|t16/i.test(l)) && del.length <= add.length; } const g = T16_BUDGET.find(([fs]) => fs.includes(f)); if (!g) return false; let a = 0, dl = 0; for (const x of g[0]) { const [p, q2] = t16git(["diff", "--numstat", T16_BASE, "--", x]).trim().split("\t").map(Number); a += p || 0; dl += q2 || 0; } return dl <= g[1] && (g[2] === null || a <= g[2]); };
 const SCORE = "src/lib/platform/trips-self-core.ts";
 const SSVC = "src/lib/platform/trips-self.ts";
 const BSVC = "src/lib/platform/trips-book.ts";
@@ -614,8 +618,8 @@ try {
     ok(!/rotateBookingPublicToken/.test(b), "K1: ห้ามมี rotateBookingPublicToken");
     // ORACLE-EDIT S-5 (ผู้คุม 26 พ.ย. · W1.2b-1 มติ C-2): บรรทัดในรั้ว // TRIPS W1.2b ▸ … ◂ (พกผู้จองที่พิมพ์ต่อ · ใบสั่ง W1.2b §3.3) ไม่นับ — เจตนา K1 (ห้ามเลื่อน/ขอลิงก์ใหม่) คงเดิม
     const body = (src: string) => { const i = src.indexOf("async function changeImpl"); if (i < 0) return ""; const j = src.indexOf("\n// ═══", i); // ORACLE-EDIT S-5 (ผู้คุม 26 พ.ย. · W1.2b มติ G3): บรรทัด `const oldSha = …` ย้ายเข้ารั้ว W1.2b ได้ (คิดแฮชจากสำเนาที่ตัด booker) ⇒ ไม่นับทั้งสองฝั่ง · รั้วหลายบรรทัด (// TRIPS W1.2b ▸ … ◂) ไม่นับทั้งก้อน
-      const lines = src.slice(i, j < 0 ? undefined : j).split("\n"); const out: string[] = []; let inFence = false;
-      for (const l of lines) { if (inFence) { if (l.includes("◂")) inFence = false; continue; } if (/\/\/ TRIPS W1\.2b ▸/.test(l)) { if (!l.includes("◂")) inFence = true; continue; } if (/^\s*const oldSha\s*=/.test(l)) continue; out.push(l); }
+      const lines = src.slice(i, j < 0 ? undefined : j).split("\n"); const out: string[] = []; let inFence = false; let t16Skip = false; // ORACLE-EDIT T1.6
+      for (const l of lines) { if (inFence) { if (l.includes("◂")) inFence = false; continue; } if (/\/\/ TRIPS W1\.2b ▸/.test(l)) { if (!l.includes("◂")) inFence = true; continue; } if (/^\s*const oldSha\s*=/.test(l)) continue; if (t16Skip) { t16Skip = false; if (/departureCancelKindOf\(/.test(l) && /DEPARTURE_CANCELLED_USE_RESOLVE/.test(l)) continue; } if (/\/\/ TRIPS T1\.6a1 §6 ▸.*◂/.test(l)) { t16Skip = true; continue; } out.push(l); } // ORACLE-EDIT T1.6 (C9): รั้ว §6 ของ T1.6a1 (หมายเหตุ 1 บรรทัด + บรรทัดรั้ว departureCancelKindOf → DEPARTURE_CANCELLED_USE_RESOLVE) ไม่นับ
       return out.join("\n"); };
     const base = git(["show", `${BASE_SHA}:${BOOKING}`]);
     ok(body(base) && body(b) === body(base), "K1: changeImpl ต้องไม่เปลี่ยนจาก BASE");
@@ -662,12 +666,12 @@ try {
     const same = (f: string) => !!tip && git(["ls-files", "--", f]).trim() !== "" && git(["diff", "--name-only", tip, "--", f]).trim() === "";
     const changed = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", ...FORBIDDEN_PATHS]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", ...FORBIDDEN_PATHS]).split("\n")].filter(Boolean))]
       .filter((f) => !f.startsWith("scratchpad/"));
-    const bad = changed.filter((f) => !same(f));
+    const bad = changed.filter((f) => !same(f) && !t16Allowed(f)); // ORACLE-EDIT T1.6 (C9): ไฟล์ที่ T1.6a1 แก้ในงบ §1 ไม่นับ
     ok(bad.length === 0, `แตะไฟล์นอกขอบเขต: ${bad.slice(0, 6).join(", ")}`);
     // ฉากภาพ w1.3 ผู้ร่างเพิ่มพร้อมข้อสอบ ⇒ งบของ visual-trips นับจาก commit ล่าสุดที่ลงข้อสอบนี้ (ยังไม่ commit = BASE)
     const oracleBase = git(["log", "-1", "--format=%H", "--", "scripts/qc-trips-w1.3.mts"]).trim() || BASE_SHA;
     for (const [f, maxDel, maxAdd] of LIMITED) {
-      if (same(f)) continue;
+      if (same(f) || t16Allowed(f)) continue; // ORACLE-EDIT T1.6 (C9): ส่วนที่ต่างจาก merge-base เป็นของ T1.6a1 และอยู่ในงบ §1 ของ T1.6
       // ORACLE-EDIT S-10 (ผู้คุม 19 พ.ย. รอบ 2): งบนับจาก merge-base กับ session/trips (เลนรวม T0.4c/T0.4d/main เข้ามาแล้ว ⇒ นับเฉพาะการแก้ของใบนี้) · ไม่มี session/trips ⇒ BASE
       const limBase = git(["merge-base", "HEAD", "session/trips"]).trim() || BASE_SHA;
       const ns = git(["diff", "--numstat", f === "scripts/visual-trips.mts" ? oracleBase : limBase, "--", f]).trim().split(/\s+/);
@@ -675,7 +679,7 @@ try {
       ok(del <= maxDel && (maxAdd === null || add <= maxAdd), `${f}: +${add} −${del} (จำกัด −${maxDel}${maxAdd === null ? "" : ` +${maxAdd}`})`);
     }
     // ORACLE-EDIT S-10 (ผู้คุม 19 พ.ย.: รวม main — migration ของ main ไม่ใช่ของใบ): ไฟล์ใต้ prisma ที่ตรงกับ commit ฝั่ง main ที่รวมเข้ามา (fromMainMerge · scripts/trips-main-merge.mts) ไม่นับ · ฝั่ง TRIPS เพิ่ม/แก้ หรือ untracked ใต้ prisma ยังแดง
-    const prismaNew = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", "prisma"]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]).split("\n")].filter(Boolean))].filter((f) => !fromMainMerge(ROOT, f) && !changedOnlyByMainMerge(ROOT, BASE_SHA, f)); // ORACLE-EDIT S-10 (ผู้คุม 26 พ.ย.): ไฟล์ prisma ที่ต่างจาก BASE เพราะการรวม main อย่างเดียว (เช่น core.prisma ที่ TRIPS แก้ก่อน BASE แล้ว main แก้ต่อ) ไม่ใช่ของใบ — แบบเดียวกับ a1.1 M-6
+    const prismaNew = [...new Set([...git(["diff", "--name-only", BASE_SHA, "--", "prisma"]).split("\n"), ...git(["ls-files", "--others", "--exclude-standard", "--", "prisma"]).split("\n")].filter(Boolean))].filter((f) => !fromMainMerge(ROOT, f) && !changedOnlyByMainMerge(ROOT, BASE_SHA, f) && !t16Allowed(f) /* ORACLE-EDIT T1.6 (C9): migration + trips.prisma ของ T1.6a1 */); // ORACLE-EDIT S-10 (ผู้คุม 26 พ.ย.): ไฟล์ prisma ที่ต่างจาก BASE เพราะการรวม main อย่างเดียว (เช่น core.prisma ที่ TRIPS แก้ก่อน BASE แล้ว main แก้ต่อ) ไม่ใช่ของใบ — แบบเดียวกับ a1.1 M-6
     ok(prismaNew.length === 0, `ใบนี้ไม่มี migration: ${prismaNew.slice(0, 4).join(", ")}`);
   });
   groupLine("S");

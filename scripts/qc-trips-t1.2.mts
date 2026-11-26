@@ -102,6 +102,10 @@ const T0X_FILES = ["products.ts", "products-core.ts", "product-actions.ts", "dep
 const ADDITIVE_ONLY = [MOD + "index.ts", "src/lib/core/permissions.ts", "scripts/seed-trips-qc.mts", "scripts/trips-fixture.mts"];
 const FROZEN_DIRS = ["src/lib/core/settings", "src/components/settings"];
 const BASE_COMMIT = "a26a41e2d"; // session/trips ตอนเขียนใบสั่ง (P0.1–T0.5 + T1.1 รับแล้ว · T0.6 ยังไม่ merge)
+// ORACLE-EDIT T1.6 (C9 · ผู้เขียนข้อสอบ 26 พ.ย.): ไฟล์ที่ T1.6a1 แก้ได้ตามงบ §1 ของ ledger/trips-briefs/T1.6.md (นับเทียบ BASE ของ T1.6 = 5953d5061) ไม่นับเป็นการแตะนอกขอบเขตของใบนี้ · ข้อสอบเดิมที่ต่างจาก BASE ของ T1.6 เฉพาะบรรทัดที่มีคำ T1.6/T16 (ORACLE-EDIT ของ C9) ไม่นับ
+const T16_BASE = "5953d5061", T16_M = "src/lib/modules/trips/", T16_C = "src/components/trips/"; const t16git = (a: string[]) => { try { return execFileSync("git", ["-C", ROOT, ...a], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] }); } catch { return ""; } };
+const T16_BUDGET: [string[], number, number | null][] = [[["prisma/schema/trips.prisma"], 0, 26], [["src/lib/core/scope.ts"], 0, 1], [[T16_M + "refund.ts"], 4, 70], [[T16_M + "money-core.ts"], 0, 35], [[T16_M + "money.ts"], 0, 25], [[T16_M + "booking.ts"], 2, 25], [[T16_M + "capacity.ts", T16_M + "capacity-service.ts"], 0, 16], [[T16_M + "jobs.ts"], 1, 8], [[T16_M + "departure-desk.ts"], 2, 14], [[T16_M + "departures.ts"], 0, 4], [[T16_M + "departure-screens.ts"], 2, 45], [[T16_M + "booking-screens.ts"], 0, 30], [["src/lib/platform/trips-self.ts", "src/lib/platform/trips-self-core.ts"], 2, 20], [[T16_C + "DeparturePanel.tsx", T16_C + "DepartureDialogs.tsx", T16_C + "BookingsScreen.tsx", T16_C + "BookingDrawer.tsx"], 6, 70], [["src/lib/outbox-consumers.ts"], 0, 3], [["src/lib/automation/labels.ts"], 0, 3], [[T16_M + "index.ts"], 0, null], [["src/messages/th/trips.json"], 2, null], [["src/messages/en/trips.json"], 2, null], [["scripts/trips-ui-inventory.json"], 0, null]]; // T16
+const t16Allowed = (f: string): boolean => { if (/^prisma\/migrations\/\d+_trips_t16a_departure_cancel\/migration\.sql$/.test(f) || /^src\/lib\/modules\/trips\/cancel-departure(-core|-actions)?\.ts$/.test(f) || /^src\/components\/trips\/DepartureCancel\w*\.tsx$/.test(f) || /^scripts\/qc-trips-t1\.6(a2\.draft\.txt|\.mts)$/.test(f)) return true; if (/^scripts\/qc-trips-[\w.]+\.mts$/.test(f)) { const d = t16git(["diff", "-U0", T16_BASE, "--", f]).split("\n"); const add = d.filter((l) => l.startsWith("+") && !l.startsWith("+++")), del = d.filter((l) => l.startsWith("-") && !l.startsWith("---")); return add.length > 0 && add.every((l) => /T1\.?6|t16/i.test(l)) && del.length <= add.length; } const g = T16_BUDGET.find(([fs]) => fs.includes(f)); if (!g) return false; let a = 0, dl = 0; for (const x of g[0]) { const [p, q2] = t16git(["diff", "--numstat", T16_BASE, "--", x]).trim().split("\t").map(Number); a += p || 0; dl += q2 || 0; } return dl <= g[1] && (g[2] === null || a <= g[2]); };
 const TESTIDS_FIXED = ["trips-cal", "trips-cal-range", "trips-cal-prev", "trips-cal-next", "trips-cal-today", "trips-cal-view-week", "trips-cal-view-month", "trips-cal-view-trips",
   "trips-cal-filter-all", "trips-cal-filter-tour", "trips-cal-filter-dive", "trips-cal-attention", "trips-cal-cancelled", "trips-cal-week", "trips-cal-daylist", "trips-cal-month", "trips-cal-trips",
   "trips-cal-legend", "trips-cal-truncated", "trips-cal-empty", "trips-dep-add", "trips-dep-schedules", "trips-dep-panel", "trips-dep-panel-close", "trips-dep-status", "trips-dep-counts",
@@ -371,7 +375,7 @@ try {
     try { out = execFileSync("git", ["diff", "--numstat", BASE_COMMIT, "--", ...T0X_FILES, ...ADDITIVE_ONLY, ...FROZEN_DIRS], { cwd: ROOT, encoding: "utf8" }); } catch (e) { throw new AssertFail(`git diff ไม่ได้: ${errMsg(e)}`); }
     // ORACLE-EDIT S-13 (ผู้คุม 13 พ.ย.): ไฟล์ที่ตรงกับ session/trips ไม่นับ (ใบที่รับภายหลัง เช่น T0.6 แก้ capacity/pricing/sellable-impl/snapshot)
     const sameAsSession = (f: string) => { try { execFileSync("git", ["diff", "--quiet", "session/trips", "--", f], { cwd: ROOT }); return true; } catch { return false; } };
-    const rows = out.trim().split("\n").filter(Boolean).map((l) => l.split("\t")).filter(([, , f]) => !sameAsSession(f));
+    const rows = out.trim().split("\n").filter(Boolean).map((l) => l.split("\t")).filter(([, , f]) => !sameAsSession(f) && !t16Allowed(f)); // ORACLE-EDIT T1.6 (C9): ไฟล์ที่ T1.6a1 แก้ในงบ §1 ไม่นับ
     const t0 = rows.filter(([, , f]) => T0X_FILES.includes(f)).map(([a, d, f]) => `${f} +${a}/−${d}`);
     const del = rows.filter(([, d, f]) => ADDITIVE_ONLY.includes(f) && Number(d) > 0).map(([, d, f]) => `${f} −${d}`);
     const frozen = rows.filter(([, , f]) => FROZEN_DIRS.some((dir) => f.startsWith(dir))).map(([a, d, f]) => `${f} +${a}/−${d}`);
@@ -705,6 +709,7 @@ try {
     await mkUser("dv", tA, "STAFF", [uA], DV);
     await mkUser("de", tA, "STAFF", [uA], [...DV, "trips.departure.edit"]);
     await mkUser("ds", tA, "STAFF", [uA], [...DV, "trips.departure.status"]);
+    await mkUser("dsa", tA, "STAFF", [uA], [...DV, "trips.departure.status", "trips.refund.approve"]); // ORACLE-EDIT T1.6 (C9 · DA-5)
     await mkUser("pv", tA, "STAFF", [uA], [...DV, "trips.product.view"]);
     await mkUser("pe", tA, "STAFF", [uA], [...DV, "trips.product.view", "trips.price.edit"]);
     await mkUser("pvo", tA, "STAFF", [uA], ["trips.product.view"]);
@@ -789,10 +794,11 @@ try {
     }
     eq((await depRow(d))?.status, "OPEN", "สถานะ");
   });
-  await st("DA-5", "CANCEL รอบที่มีคนถือที่ (held 2) ⇒ HAS_BOOKINGS (บริการ T0.3) ไม่เปลี่ยน", async () => {
+  await st("DA-5", "CANCEL รอบที่มีคนถือที่ (held 2) ⇒ ทางใหม่ของ T1.6a1 (N3): ผู้มีแต่ departure.status ⇒ FORBIDDEN · ผู้มี refund.approve แต่ไม่ส่งฟิลด์ยืนยัน (confirmBookings/expectedVersion/idempotencyKey) ⇒ ปฏิเสธ · ไม่เปลี่ยน (ORACLE-EDIT T1.6 C9 · เดิม HAS_BOOKINGS)", async () => { // ORACLE-EDIT T1.6
     needP("p1");
     const d = await mkDep(P.p1, DD, { held: 2 }, uA, 70);
-    codeR(await decide("ds", { departureId: d, decision: "CANCEL", reason: "ไม่ถึงขั้นต่ำ" }), "HAS_BOOKINGS", "held");
+    codeR(await decide("ds", { departureId: d, decision: "CANCEL", reason: "ไม่ถึงขั้นต่ำ" }), "FORBIDDEN", "held · ไม่มี refund.approve"); // ORACLE-EDIT T1.6 (C9 · N3)
+    const r16 = await decide("dsa", { departureId: d, decision: "CANCEL", reason: "ไม่ถึงขั้นต่ำ" }); ok(r16.ok === false && ["VALIDATION", "INVALID_INPUT", "STATE_CONFLICT"].includes(String(r16.code)), `held · มี refund.approve ไม่ส่งฟิลด์ยืนยัน: ${fmt(r16)}`); // ORACLE-EDIT T1.6 (C9 · มติรอบ 2: ฟิลด์ใหม่บังคับเมื่อรอบมีคน)
     const r = await depRow(d);
     eq([r?.status, r?.held], ["OPEN", 2], "แถว");
   });
