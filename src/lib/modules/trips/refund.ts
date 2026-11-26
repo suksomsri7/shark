@@ -187,8 +187,9 @@ async function passThroughPaidOut(db: Tx, g: { tenantId: string; unitId: string 
  */
 async function quoteFactsOf(db: Tx, g: { tenantId: string; unitId: string }, b: { id: string; departureId: string }): Promise<QuoteFacts> {
   const rows = await db.$queryRaw<{ id: string }[]>`SELECT "id" FROM "TripMoneyEvent" WHERE "bookingId" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId} ORDER BY "id"`;
+  // TRIPS W1.2b ▸ แฮชไม่รวมผู้จองที่พิมพ์ (มติ E4) — ไม่มีคีย์ ⇒ ข้อความเดิม (คำขอที่เปิดก่อนใบนี้ไม่ถูกมองว่าเปลี่ยน) ◂
   const sha = await db.$queryRaw<{ sha: string }[]>`
-    SELECT encode(sha256(convert_to("policySnapshot"::text, 'UTF8')), 'hex') AS "sha" FROM "TripBooking" WHERE "id" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
+    SELECT encode(sha256(convert_to(("policySnapshot" - 'booker')::text, 'UTF8')), 'hex') AS "sha" FROM "TripBooking" WHERE "id" = ${b.id} AND "tenantId" = ${g.tenantId} AND "unitId" = ${g.unitId}`;
   return { moneyEventIds: rows.map((r) => r.id), departureId: b.departureId, passThroughPaidOut: await passThroughPaidOut(db, g, b), snapshotSha: sha[0]?.sha ?? "" };
 }
 /** ข้อเท็จจริงตรงกัน (คำขอเก่าที่ไม่มี snapshotSha ⇒ ไม่เทียบช่องนั้น) */

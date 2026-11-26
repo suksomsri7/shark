@@ -1473,10 +1473,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
     await crm.privacy.onMemberErased({ tenantId: evt.tenantId, payload: evt.payload });
     // POS P1.12 ▸ R9 Q8: ล้างชื่อ/เบอร์ปิดบังในสำเนาสมาชิกบนบิล POS ของคนนี้ (idempotent · หลังตัวรับของ CRM) ◂
     await (await import("@/lib/modules/pos/register-member")).posMemberErased({ tenantId: evt.tenantId, payload: evt.payload });
+    // TRIPS W1.2b ▸ ผู้จองที่พิมพ์ของทุกการจองของ Party นี้ ⇒ ป้ายลบ (มติ E1 E7 E9 · idempotent · ล้ม = event ล้ม = ส่งใหม่) ◂
+    await (await import("@/lib/modules/trips")).onBookerPartyErased({ tenantId: evt.tenantId, payload: evt.payload });
   }, withAutomation(async () => {})),
   "crm.contact.erased": crmFirst(async (evt) => {
     const crm = await import("@/lib/modules/crm");
     await crm.privacy.onContactErased({ tenantId: evt.tenantId, payload: evt.payload });
+    // TRIPS W1.2b ▸ ผู้จองที่พิมพ์ของทุกการจองของ Party นี้ ⇒ ป้ายลบ (มติ E1 E7 E9 · payload ไม่มี partyId ⇒ ไม่ทำ) ◂
+    await (await import("@/lib/modules/trips")).onBookerPartyErased({ tenantId: evt.tenantId, payload: evt.payload });
   }, withAutomation(async () => {})),
   // ◂ CRM C3.9
   // SVC H.3 ▸ จองโรงแรม V2 (ใบสั่ง h.3 §5 · CC §7) — ยิงจาก `hotel/booking.ts` ใน tx เดียวกับการเปลี่ยนสถานะ ·

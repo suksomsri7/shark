@@ -1021,6 +1021,8 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
   // 2b การจอง + รายการ + ผู้เดินทาง (ตามลำดับบรรทัด) — คอลัมน์เงินคำนวณใหม่จาก snapshot (R4)
   const done: InsertedBooking[] = [];
   const staffId = c.actor.kind === "STAFF" ? c.actor.userId : null;
+  // TRIPS W1.2b ▸ ผู้จองตามที่บริการได้รับ (ใบสั่ง W1.2b §3.2) เก็บกับการจอง — ร้านเลือก partyId ⇒ ไม่มีคีย์ · ลบพร้อมผู้จองตาม T0.8 ◂
+  const typed = "partyId" in P.booker ? null : { v: 1, name: P.booker.name.trim(), phone: P.booker.phone?.trim() || null, email: P.booker.email?.trim() || null };
   for (const l of P.lines) {
     const cols = bookingColumnsFromSnapshot(l.snapshot as unknown as SnapshotShape);
     if (!cols) throw new BookingAbort("VALIDATION", { reason: "SNAPSHOT_INVALID" });
@@ -1061,7 +1063,7 @@ async function finalizeCoreInTx(t: Tx, c: Ctx, P: PreparedConfirm, holdIds: read
         paidSatang: k.paidSatang,
         refundedSatang: k.refundedSatang,
         accountingState: k.accountingState,
-        policySnapshot: l.snapshot as unknown as Prisma.InputJsonValue,
+        policySnapshot: (typed ? { ...l.snapshot, booker: typed } : l.snapshot) as unknown as Prisma.InputJsonValue,
         version: 0,
         createdById: staffId,
       },
@@ -1727,7 +1729,8 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
   if (!policies.ok) return policies;
   if (!policies.value.departures[to]) return NF();
   const a = { tenantId: g.tenantId, unitId: g.unitId, actor: c.actor };
-  const oldSha = sha256hex(JSON.stringify(b.policySnapshot));
+  const keptBooker = isRec(b.policySnapshot) && "booker" in b.policySnapshot ? { booker: b.policySnapshot.booker } : null; // TRIPS W1.2b ▸ ผู้จองที่พิมพ์ (หรือป้ายลบ) ของแถวที่อ่าน ◂
+  const oldSha = sha256hex(JSON.stringify(keptBooker && isRec(b.policySnapshot) ? { ...b.policySnapshot, booker: undefined } : b.policySnapshot)); // TRIPS W1.2b ▸ แฮชจากสำเนาที่ตัด booker (มติ E4 G3 · ไม่มีคีย์ = แฮชเดิม) ◂
   const approvalIds = (v.overrideApprovals ?? []).map((x) => x.approvalId);
   const r = await runBooking(g, async (tx): Promise<ChangeValue> => {
     // ชั้น 0: การแก้ของการจองเดียวกันทีละคำขอ (คีย์ซ้ำที่ยิงพร้อมกันได้ผลเดิม)
@@ -1766,6 +1769,7 @@ async function changeImpl(ctx: unknown, input: unknown, opts?: BookingOpts): Pro
       if (oldSeats > moveQty) await giveBack(from, oldSeats - moveQty);
     }
     if (approvalIds.length) await consumeApprovalsInTx(tx, a, approvalIds, [b.id]);
+    if (keptBooker) Object.assign(snap, keptBooker); // TRIPS W1.2b ▸ พกผู้จองที่พิมพ์ (หรือป้ายลบ) ต่อทั้งก้อน (§3.3 · UPDATE ด้านล่าง CAS เวอร์ชัน = แถวเดียวกับที่อ่าน) ◂
     const k = cols.booking;
     const upd = await tx.$queryRaw<{ version: number }[]>`
       UPDATE "TripBooking" SET "version" = "version" + 1, "departureId" = ${to}, "travelDate" = ${k.travelDate}::date,

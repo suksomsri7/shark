@@ -14,7 +14,7 @@ import { tenantDb } from "@/lib/core/db";
 import { listBriefsByIds } from "@/lib/modules/party";
 import enMessages from "@/messages/en/trips.json";
 import thMessages from "@/messages/th/trips.json";
-import { BOOKING_OWES_STATUSES, maskPhone } from "./booking-view-core";
+import { BOOKING_OWES_STATUSES, maskPhone, typedBookerOf } from "./booking-view-core";
 import { hhmm, normalizeTimezone, utcToLocal } from "./departures-core";
 import {
   MANIFEST_BOOKING_STATUSES,
@@ -143,6 +143,7 @@ type BookingRow = {
   status: string;
   bookerPartyId: string | null;
   piiPurgedAt: Date | null;
+  typedBooker: unknown;
   channel: string;
   agentAccountId: string | null;
   agentRef: string | null;
@@ -172,7 +173,7 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
     g.db.tripProduct.findFirst({ where: { ...scope, id: dep.productId }, select: { id: true, title: true, crossBorder: true, deepDive: true } }),
     dep.optionId ? g.db.tripOption.findFirst({ where: { ...scope, id: dep.optionId }, select: { name: true } }) : Promise.resolve(null),
     g.db.$queryRawUnsafe<BookingRow[]>(
-      `SELECT b."id", b."code", b."status", b."bookerPartyId", b."piiPurgedAt", b."channel", b."agentAccountId", b."agentRef", b."contactRoute", b."grossSatang", b."discountSatang", b."agentDiscountSatang", b."paidSatang"
+      `SELECT b."id", b."code", b."status", b."bookerPartyId", b."piiPurgedAt", b."policySnapshot"->'booker' AS "typedBooker", b."channel", b."agentAccountId", b."agentRef", b."contactRoute", b."grossSatang", b."discountSatang", b."agentDiscountSatang", b."paidSatang"
        FROM "TripBooking" b WHERE ${M_WHERE} ORDER BY b."code" ASC, b."id" ASC LIMIT $5::int`,
       ...mArgs(e),
       TRIPS_MANIFEST_BOOKING_CAP,
@@ -421,7 +422,7 @@ async function build(e: Entered, view: ManifestView, now: Date): Promise<Loaded 
       bookingId: b.id,
       code: b.code,
       status: b.status,
-      bookerName: purged || !b.bookerPartyId ? null : (nameOf.get(b.bookerPartyId) ?? null),
+      bookerName: purged ? null : (typedBookerOf(b.typedBooker)?.name ?? (b.bookerPartyId ? (nameOf.get(b.bookerPartyId) ?? null) : null)), // TRIPS W1.2b ▸ ตามที่พิมพ์ · ไม่มี ⇒ Party ◂
       bookerPurged: purged,
       channel: b.channel,
       agentAccountId: b.agentAccountId,

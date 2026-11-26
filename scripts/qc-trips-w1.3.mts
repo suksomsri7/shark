@@ -433,6 +433,8 @@ try {
       await pool.query(`UPDATE "TripBooking" SET channel = 'AGENT_LINK' WHERE id = $1`, [BK.bChan?.id]);
       await pool.query(`UPDATE "TripBooking" SET status = 'PENDING' WHERE id = $1`, [BK.bPend?.id]);
       await pool.query(`UPDATE "Party" SET phone = NULL, "phoneNorm" = NULL WHERE id = (SELECT "bookerPartyId" FROM "TripBooking" WHERE id = $1)`, [BK.bNull?.id]);
+      // ORACLE-EDIT V-5 (ผู้คุม 26 พ.ย. · W1.2b-1 มติ C-2): bNull = การจองที่ไม่มีเบอร์ใดเลย ⇒ ลบเบอร์ที่พิมพ์ที่เก็บกับการจอง (policySnapshot.booker) ด้วย ไม่งั้นยืนยันด้วยเบอร์ที่พิมพ์ผ่าน (ถูกตาม W1.2b) และ V-5 แดงผิดเหตุ
+      await pool.query(`UPDATE "TripBooking" SET "policySnapshot" = "policySnapshot" - 'booker' WHERE id = $1`, [BK.bNull?.id]);
     } catch (e) { bookErr = e instanceof AssertFail ? e.message : errMsg(e); console.log(`  ⚠️ สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`); }
   }
   const needBk = (...tags: string[]): Bk[] => { needFx(); ok(!bookErr, `สร้างการจองทดสอบไม่สำเร็จ: ${bookErr}`); return tags.map((t) => { const b = BK[t]; ok(b, `ไม่มีการจอง ${t}`); return b as Bk; }); };
@@ -610,7 +612,11 @@ try {
     ok(/TRIPS W1\.3/.test(b) && /TRIPS W1\.3/.test(r), "การแก้บริการต้องอยู่ในบล็อกรั้ว // TRIPS W1.3 ▸ … ◂");
     ok(/selfReplayOf/.test(b + r), "ไม่มีตัวช่วย selfReplayOf (K5)");
     ok(!/rotateBookingPublicToken/.test(b), "K1: ห้ามมี rotateBookingPublicToken");
-    const body = (src: string) => { const i = src.indexOf("async function changeImpl"); if (i < 0) return ""; const j = src.indexOf("\n// ═══", i); return src.slice(i, j < 0 ? undefined : j); };
+    // ORACLE-EDIT S-5 (ผู้คุม 26 พ.ย. · W1.2b-1 มติ C-2): บรรทัดในรั้ว // TRIPS W1.2b ▸ … ◂ (พกผู้จองที่พิมพ์ต่อ · ใบสั่ง W1.2b §3.3) ไม่นับ — เจตนา K1 (ห้ามเลื่อน/ขอลิงก์ใหม่) คงเดิม
+    const body = (src: string) => { const i = src.indexOf("async function changeImpl"); if (i < 0) return ""; const j = src.indexOf("\n// ═══", i); // ORACLE-EDIT S-5 (ผู้คุม 26 พ.ย. · W1.2b มติ G3): บรรทัด `const oldSha = …` ย้ายเข้ารั้ว W1.2b ได้ (คิดแฮชจากสำเนาที่ตัด booker) ⇒ ไม่นับทั้งสองฝั่ง · รั้วหลายบรรทัด (// TRIPS W1.2b ▸ … ◂) ไม่นับทั้งก้อน
+      const lines = src.slice(i, j < 0 ? undefined : j).split("\n"); const out: string[] = []; let inFence = false;
+      for (const l of lines) { if (inFence) { if (l.includes("◂")) inFence = false; continue; } if (/\/\/ TRIPS W1\.2b ▸/.test(l)) { if (!l.includes("◂")) inFence = true; continue; } if (/^\s*const oldSha\s*=/.test(l)) continue; out.push(l); }
+      return out.join("\n"); };
     const base = git(["show", `${BASE_SHA}:${BOOKING}`]);
     ok(body(base) && body(b) === body(base), "K1: changeImpl ต้องไม่เปลี่ยนจาก BASE");
     ok(!/FormData|next\/headers/.test(stripComments(b) + stripComments(r)), "บริการห้ามอ่านคำขอ");
