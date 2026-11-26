@@ -81,7 +81,7 @@ type RowInput = {
   schema: z.ZodType;
   chain: readonly ScopeKind[];
   d: Tpl;
-  extra?: Partial<Pick<SettingDef, "legal" | "legalInput" | "effectiveDated" | "templateVars" | "hiddenUntil" | "enumLabelsTh" | "percentScale" | "reviewHint" | "reviewAuthorityTh">>;
+  extra?: Partial<Pick<SettingDef, "legal" | "legalInput" | "effectiveDated" | "templateVars" | "hiddenUntil" | "enumLabelsTh" | "percentScale" | "reviewHint" | "reviewAuthorityTh" | "writeVia">>;
   /** r2 ▸ ทับ sensitivity ของกลุ่มรายคีย์ (คีย์เงินในกลุ่มที่ไม่ใช่เงิน ⇒ "MONEY" + สิทธิ์ trips.settings.money · มติผู้คุม 12 พ.ย.) ◂ */
   sensitivity?: SettingSensitivity;
 };
@@ -144,7 +144,8 @@ const PARK_FEE_TABLE = {
   diveSatangPerPaxDay: 20_000,
   mooring: { upTo20Satang: 100_000, from21Satang: 200_000 },
 };
-const msgEnabled = (la: boolean) => Object.fromEntries([...MSG_CUSTOMER, ...MSG_SHOP].map((k) => [k, k === "paymentDue" || k === "docsMissing" ? la : true]));
+const msgEnabled = () => Object.fromEntries([...MSG_CUSTOMER, ...MSG_SHOP].map((k) => [k, false])); // T1.8 ▸ ค่าเริ่มปิดทุกชนิด (มติ R5 · ร้านเปิดเอง) ◂
+const MSG_WRITE_VIA = "หน้า ตั้งค่าทัวร์ › ข้อความแจ้งเตือน"; // T1.8 ▸ R9: ทางกลางบันทึกไม่ได้ (ด่านแม่แบบอยู่ที่ saveTripsSettings) ◂
 const WAIVER_DIVE = {
   th: "ข้าพเจ้ารับทราบความเสี่ยงของกิจกรรมดำน้ำ ได้รับคำอธิบายขั้นตอนความปลอดภัยแล้ว และขอแถลงว่าข้อมูลสุขภาพที่ให้ไว้เป็นความจริง หากสุขภาพเปลี่ยนแปลงจะแจ้งเจ้าหน้าที่ก่อนลงน้ำ",
   en: "I acknowledge the risks of diving activities, have been briefed on safety procedures, and declare that the health information I provided is true. I will inform the staff of any change in my health before entering the water.",
@@ -664,9 +665,9 @@ const DEFS: SettingDef[] = [
   }),
 
   // ── 1.9 ข้อความแจ้งเตือน ──
-  row({ key: "trips.msg.enabled", type: "table", labelTh: "เปิด/ปิดข้อความแต่ละชนิด", chain: U_P, schema: MSG_ENABLED, d: per(msgEnabled(false), msgEnabled(false), msgEnabled(true)) }),
+  row({ key: "trips.msg.enabled", type: "table", labelTh: "เปิด/ปิดข้อความแต่ละชนิด", chain: U_P, schema: MSG_ENABLED, d: all(msgEnabled()), extra: { writeVia: MSG_WRITE_VIA } }),
   ...MSG_CUSTOMER.map((k) =>
-    row({ key: `trips.msg.${k}`, type: "template", labelTh: MSG_TEXTS[k].labelTh, chain: U_P, schema: TEXT, d: all({ th: MSG_TEXTS[k].th, en: MSG_TEXTS[k].en }), extra: { templateVars: [...MSG_VARS] } }),
+    row({ key: `trips.msg.${k}`, type: "template", labelTh: MSG_TEXTS[k].labelTh, chain: U_P, schema: TEXT, d: all({ th: MSG_TEXTS[k].th, en: MSG_TEXTS[k].en }), extra: { templateVars: [...MSG_VARS], writeVia: MSG_WRITE_VIA } }),
   ),
 
   // ── ภาคผนวก ก: ปฏิบัติการ · ผู้ให้บริการ · เงินสด ──

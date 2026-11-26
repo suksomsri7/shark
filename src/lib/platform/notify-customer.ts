@@ -32,7 +32,15 @@ type RowStatus = NotifyStatus | "QUOTA";
 export type NotifyButton = { label: string; kind: "postback" | "uri"; data: string };
 export type NotifyCustomerInput = {
   unitId: string;
-  domain: "booking" | "rooms";
+  // TRIPS T1.8 ▸ (ใบ T1.8 §4.1 · เพิ่มอย่างเดียว) domain ที่สาม "trips" ⇒ แม่แบบ trips.msg.<messageKey> · scope ชั้นสินค้า · ตัวแปรอังกฤษ
+  domain: "booking" | "rooms" | "trips";
+  /** refs ของค่าตั้งได้ productId เพิ่ม (spread แบบมีเงื่อนไข · ผู้เรียกเดิมไม่ส่ง = refs เดิมทุกไบต์) */
+  scope?: { productId?: string };
+  /** ตัวแปรชุดอังกฤษ — ใช้เฉพาะเมื่อข้อความที่เรนเดอร์จริงเป็นอังกฤษ (ผู้รับ en และแม่แบบ en ไม่ว่าง · R6) */
+  localized?: { en?: { vars: Record<string, string> } };
+  /** domain trips: แม่แบบของร้านไม่ผ่านด่านของผู้เรียก ⇒ ใช้ข้อความมาตรฐานของทะเบียน (_fallback · R9) */
+  standardText?: boolean;
+  // ◂
   messageKey: string;
   partyId?: string;
   chatContactId?: string;
@@ -179,7 +187,7 @@ export async function notifyCustomer(ctx: { tenantId: string }, input: NotifyCus
   if (!tenantId || !isRec(input)) return failed("VALIDATION");
   const domain = input.domain;
   const messageKey = str(input.messageKey);
-  if ((domain !== "booking" && domain !== "rooms") || !KEY_RE.test(messageKey)) return failed("VALIDATION");
+  if ((domain !== "booking" && domain !== "rooms" && domain !== "trips") || !KEY_RE.test(messageKey)) return failed("VALIDATION"); // TRIPS T1.8 ▸ + "trips" ◂
   const settingKey = `${domain}.msg.${messageKey}`;
   const def = getDef(settingKey);
   if (!def || def.type !== "template") return failed("VALIDATION");
@@ -213,8 +221,11 @@ export async function notifyCustomer(ctx: { tenantId: string }, input: NotifyCus
     const S = await resolveSettings(
       { tenantId },
       ["messaging.channelOrder", "messaging.quietHours", "messaging.lineConnectionId", settingKey],
-      { unitId },
+      { unitId, ...(input.scope?.productId ? { productId: String(input.scope.productId) } : {}) }, // TRIPS T1.8 ▸ ชั้นสินค้า (R8) ◂
     );
+    // TRIPS T1.8 ▸ ข้อความมาตรฐานแทนแม่แบบที่ไม่ผ่านด่านของผู้เรียก (domain trips เท่านั้น)
+    if (domain === "trips" && input.standardText === true) S[settingKey] = { ...S[settingKey], value: (def.defaults as Record<string, unknown>)._fallback };
+    // ◂
     const orderV = S["messaging.channelOrder"]?.value;
     const order = Array.isArray(orderV) ? orderV.filter((x): x is string => typeof x === "string") : ["LINE", "WEB_LINK"];
 
@@ -380,6 +391,10 @@ async function deliver(a: {
     }
 
     const locale = (contact.lang ?? "").toLowerCase().startsWith("en") ? "en" : "th";
+    // TRIPS T1.8 ▸ ตัวแปรอังกฤษเฉพาะเมื่อข้อความที่เรนเดอร์จริงเป็นอังกฤษ (R6 · missingVarsOf ใช้ชุดเดียวกัน)
+    const enVars = input.localized?.en?.vars, tv = a.tplValue;
+    if (locale === "en" && isRec(enVars) && isRec(tv) && typeof tv.en === "string" && tv.en.length > 0) for (const [k, v] of Object.entries(enVars)) if (typeof v === "string") a.vars[k] = v;
+    // ◂
     missingVars = missingVarsOf(a.tplValue, locale, a.vars);
     const text = renderTemplate(a.tplDef, a.tplValue, a.vars, locale).trim();
     if (!text) {

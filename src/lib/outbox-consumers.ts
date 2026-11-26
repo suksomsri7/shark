@@ -1572,14 +1572,14 @@ const baseConsumers: Record<string, OutboxHandler> = {
   // ── T0.6 booking ── TRIPS T0.6 ▸ การจองทัวร์ (ใบสั่ง T0.6 §8) — ยิงจาก `trips/booking.ts` ในธุรกรรมเดียวกับการเขียน · payload id/สถานะ/ช่องทาง/สตางค์ล้วน (X8)
   //   งานหลัก no-op (เขียนครบในบริการแล้ว) + กฎอัตโนมัติ/เว็บฮุค ◂
   "trips.booking.created": withAutomation(async () => {}),
-  "trips.booking.confirmed": withAutomation(async () => {}),
+  "trips.booking.confirmed": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/modules/trips")).onTripsNotifyEvent(evt))), // T1.8a ▸ onTripsNotifyEvent (ของแถม · ไม่ throw) ◂
   "trips.booking.cancelled": withAutomation(async () => {}),
   "trips.booking.changed": withAutomation(async () => {}),
   // ── /T0.6 booking ──
   // ── T0.7 money ── TRIPS T0.7 ▸ เงินฝั่ง trips (ใบสั่ง T0.7 §12) — ยิงจาก `trips/money.ts` · `trips/refund.ts` ในธุรกรรมเดียวกับการเขียน ·
   //   payload id/จำนวน/สตางค์ล้วน (ไม่มีชื่อ/เบอร์/เลขอ้างอิงโอน) · งานหลัก no-op (ลงบัญชี = T0.7b จากแถว UNPOSTED) + กฎอัตโนมัติ/เว็บฮุค ◂
   "trips.payment.received": withAutomation(async () => {}),
-  "trips.payment.due_soon": withAutomation(async () => {}),
+  "trips.payment.due_soon": withAutomation(compose(async () => {}, async (evt) => (await import("@/lib/modules/trips")).onTripsNotifyEvent(evt))), // T1.8a ▸ onTripsNotifyEvent (ของแถม · ไม่ throw) ◂
   "trips.payment.overdue": withAutomation(async () => {}),
   "trips.booking.part_paid": withAutomation(async () => {}),
   "trips.booking.paid": withAutomation(async () => {}),

@@ -19,6 +19,7 @@ import { isCalendarYmd } from "./departure-view-core";
 import { TRIP_REFUND_OPEN_STATUSES, TRIP_TENDERS } from "./money-core";
 import { tripMoneySummary } from "./money";
 import { listTripRefunds } from "./refund";
+import { tripBookingMessages, type TripBookingMessage } from "./notify"; // TRIPS T1.8a ▸ ◂
 import { tripsFail, tripsUnitGate, type TripsFail, type TripsScreenCtx, type TripsUnitGate } from "./pickup";
 import {
   BOOKING_ATTENTION_KINDS,
@@ -286,6 +287,8 @@ export type BookingDetailVM = {
   travellers: { seats: number; names: string[]; formsAvailable: false };
   refunds: { requestId: string; status: string; amountSatang: number; createdLocal: string }[];
   actions: { pay: boolean; qr: boolean; approve: boolean; reject: boolean; cancel: boolean; change: false; refund: false };
+  /** TRIPS T1.8a ▸ ข้อความถึงลูกค้าของการจองนี้ (กุญแจตรงตัว · ไม่มีแถว = ไม่แสดง · fallback = ส่งข้อความมาตรฐานแทนแม่แบบของร้าน) ◂ */
+  messages: TripBookingMessage[];
 };
 export type BookingDocsVM = {
   unit: BookingUnitVM;
@@ -573,11 +576,12 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
   if (!b) return tripsFail("NOT_FOUND");
   const sctx = sellCtxOf(g, now);
   const purged = b.piiPurgedAt !== null;
-  const [built, summary, refundList, profile] = await Promise.all([
+  const [built, summary, refundList, profile, messages] = await Promise.all([
     buildRows(g, unit, now, [b]),
     tripMoneySummary(sctx, { bookingId: b.id }),
     listTripRefunds(sctx, { bookingId: b.id, limit: 50 }),
     !purged && b.bookerPartyId ? getProfile(g.tenantId, b.bookerPartyId) : Promise.resolve(null),
+    tripBookingMessages({ tenantId: g.tenantId, unitId: g.unitId }, { id: b.id, productId: b.productId, departureId: b.departureId, travelDate: b.travelDate.toISOString().slice(0, 10) }), // T1.8a ▸ ◂
   ]);
   const row = built.rows[0];
   if (!row) return tripsFail("NOT_FOUND");
@@ -630,6 +634,7 @@ export async function loadBookingDetailVM(ctx: TripsScreenCtx, input: unknown, o
       travellers: { seats, names: passengers.map((x) => x.fullName).filter((n) => n.trim() !== ""), formsAvailable: false },
       refunds: refundList.ok ? refundList.value.items.map((r) => ({ requestId: r.id, status: r.status, amountSatang: r.amountSatang, createdLocal: localYmd(unit.tz, r.createdAt) })) : [],
       actions: { pay, qr: pay, approve, reject: approve, cancel: g.can(CANCEL) && UNPAID_CANCEL_STATUSES.includes(b.status), change: false, refund: false },
+      messages,
     },
   };
 }

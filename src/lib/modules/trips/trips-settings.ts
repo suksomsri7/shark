@@ -7,6 +7,7 @@
 import { getDef, resetSetting, setSettings, type RemoveResult, type SetFail, type SetResult, type SettingChangeInput } from "@/lib/core/settings";
 import { tripsUnitGate, type TripsScreenCtx, type TripsUnitGate } from "./pickup";
 import { settingsActorOf } from "./screens";
+import { checkTripsMsgTemplate, isTripsMsgKindA, tripsTplIssueTh } from "./notify-core"; // TRIPS T1.8a ▸ ด่านแม่แบบ ◂
 
 const isRec = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const isStr = (v: unknown): v is string => typeof v === "string" && v.length > 0;
@@ -36,6 +37,13 @@ function keyIssue(key: unknown): SetFail | null {
   if (!def || def.domain !== "trips") return failSet("VALIDATION", "ไม่รู้จักค่าตั้งนี้", key);
   return null;
 }
+/** TRIPS T1.8a ▸ แม่แบบข้อความชนิด a (trips.msg.<kind>) ไม่ผ่านด่าน (คำต้องห้าม · {ลิงก์} · ความยาว · ไทยในอังกฤษ) ⇒ VALIDATION ทั้งชุด (ใบ T1.8 §4.7) ◂ */
+function msgTemplateIssue(key: unknown, value: unknown): SetFail | null {
+  const kind = typeof key === "string" && key.startsWith("trips.msg.") ? key.slice("trips.msg.".length) : "";
+  if (!isTripsMsgKindA(kind)) return null;
+  const r = checkTripsMsgTemplate(kind, value);
+  return r.ok ? null : { ok: false, code: "VALIDATION", issues: r.issues.map((i) => ({ key: String(key), code: i.code, messageTh: tripsTplIssueTh(i) })) };
+}
 const dateOf = (v: unknown): Date | null => {
   if (v instanceof Date) return Number.isNaN(v.getTime()) ? null : v;
   if (typeof v === "string") {
@@ -56,7 +64,7 @@ export async function saveTripsSettings(ctx: TripsScreenCtx, input: unknown): Pr
   const cache = new Map<string, { scope: "UNIT" | "PRODUCT"; scopeId: string } | null>();
   for (const c of changes) {
     if (!isRec(c)) return failSet("VALIDATION", "ข้อมูลค่าตั้งไม่ถูกต้อง");
-    const issue = keyIssue(c.key);
+    const issue = keyIssue(c.key) ?? msgTemplateIssue(c.key, c.value);
     if (issue) return issue;
     const sig = `${String(c.scope)}|${String(c.scopeId)}`;
     if (!cache.has(sig)) cache.set(sig, await scopeOfUnit(g, c.scope, c.scopeId));

@@ -13,6 +13,7 @@ import { formatFieldValue, reviewHintTh, type SettingsField } from "@/components
 import type { TripsSettingsSectionKey } from "./trips-shared";
 import { Dialog } from "./ProductsScreenParts";
 import { ViewValue, viewText } from "./TripsSettingsValues";
+import TripsMsgPreview from "./TripsMsgPreview"; // TRIPS T1.8a ▸ ◂
 
 type Actions = {
   save(changes: unknown, opts?: { ackLegalWarn?: boolean }): Promise<SetResult>;
@@ -54,6 +55,7 @@ export default function TripsSettings({ vm, unitSlug, actions }: Props) {
     [actions],
   );
   const fields = useMemo(() => vm.form.groups.flatMap((g) => g.fields), [vm.form]);
+  const msgFields = fields.filter((f) => /^trips\.msg\.(confirmation|reminder1Day|paymentDue)$/.test(f.key)); // TRIPS T1.8a ▸ ตัวอย่างข้อความ ◂
   const productName = vm.productId ? (vm.products.find((p) => p.id === vm.productId)?.titleTh ?? "") : null;
 
   const editModel = useMemo(() => {
@@ -225,6 +227,7 @@ export default function TripsSettings({ vm, unitSlug, actions }: Props) {
                 {fs.map((f) => (
                   <FieldRow key={f.key} f={f} vm={vm} t={t} />
                 ))}
+                {s.groups.includes("msg") && msgFields.length ? <TripsMsgPreview fields={msgFields} shopName={vm.unitName} /> : null}
               </section>
             );
           })}

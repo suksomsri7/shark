@@ -478,6 +478,10 @@ export { purgeTripPersonalDataForUnit, recordPdpaRequest, listPdpaRequests, reso
 export type { PdpaRequestItem, PurgeUnitResult } from "./pdpa";
 export { onBookerPartyErased } from "./pdpa"; // TRIPS W1.2b ▸ ตัวรับการลบลูกค้าของ CRM/สมาชิก (มติ E1) ◂
 export { runPdpaPurge } from "./jobs";
+// TRIPS T1.8a ▸ ข้อความถึงลูกค้าทริป (ใบ T1.8 §4.10) ◂
+export { notifyTripBooking, onTripsNotifyEvent } from "./notify";
+export { runCustomerMessages } from "./jobs";
+export { TRIPS_MSG_KINDS_A } from "./notify-core";
 export type { PdpaPurgeOpts, PdpaPurgeResult } from "./jobs";
 // ◂ TRIPS T0.8
 // ── /T0.8 passengers ──

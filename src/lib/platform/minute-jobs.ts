@@ -810,6 +810,13 @@ registerMinuteJob({
   run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runPdpaPurge(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
 });
 // ── /T0.8 pdpa ──
+// TRIPS T1.8a ▸ ข้อความถึงลูกค้าทริป (ใบ T1.8 §4.6): เตือนวันก่อนเดินทาง (≥ 17:00 เวลาหน่วย) + ลองซ้ำจาก OutboxEvent (≥ 60 นาที) · ข้ามร้าน (ทางเข้า `trips/jobs.ts`) ◂
+registerMinuteJob({
+  name: "trips.customerMessages",
+  everyMinutes: 15,
+  cadence: "minute",
+  run: async (now, _budgetMs, ctrl) => (await import("@/lib/modules/trips")).runCustomerMessages(now, { signal: ctrl.signal, deadline: ctrl.deadline }),
+});
 // TRIPS A1.2a ▸ งานกวาดล็อกอินเอเจนซี่ (ใบสั่ง §5.7 · มติ R1 ข้อ 12) — ตาราง global เท่านั้น (AgentLoginCode · AgentSession) · ต่อชนิด ≤ sweepBatch ต่อรอบ ·
 //   idempotent · โหลด platform/agent-auth ตอนรัน · เคารพ signal ◂
 registerMinuteJob({

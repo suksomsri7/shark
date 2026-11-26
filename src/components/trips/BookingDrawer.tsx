@@ -19,6 +19,10 @@ const SECTION = "flex min-w-0 flex-col gap-2 border-b border-[color:var(--color-
 const H3 = "text-sm font-bold text-[color:var(--color-ink)]";
 const ROW = "flex min-w-0 flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5 text-sm";
 
+// TRIPS T1.8a ▸ สถานะแถวบันทึกข้อความ ⇒ ป้าย (SKIPPED_PRECHECK_ERASED = ลบข้อมูลผู้จอง · SKIPPED_PRECHECK_* อื่น = การจองเปลี่ยน) ◂
+const MSG_ST = ["SENT", "NO_CHANNEL", "SKIPPED_CONSENT", "SKIPPED_QUIET", "FAILED", "QUOTA", "SENDING"];
+const msgStKey = (s: string) => (s === "SKIPPED_PRECHECK_ERASED" ? "bk.msg.erased" : `bk.msg.st.${MSG_ST.includes(s) ? s : "CHANGED"}`);
+
 function Section({ "data-testid": testid, title, children }: { "data-testid"?: string; title: string; children: ReactNode }) {
   return (
     <section data-testid={testid} className={SECTION}>
@@ -255,6 +259,26 @@ export default function BookingDrawer({ unitSlug, vm, base, q, channels }: { uni
               <p className="text-sm text-[color:var(--color-muted)]">{t("bookings.notYet.refunds")}</p>
             </Section>
           ) : null}
+
+          {/* TRIPS T1.8a ▸ ข้อความถึงลูกค้า (ใบ T1.8 §4.9) — สถานะจากบันทึกของประตูส่ง · ป้ายข้อความมาตรฐาน · ไม่มีปุ่มส่งซ้ำ ◂ */}
+          <Section data-testid="trips-bk-msgs" title={t("bk.msg.title")}>
+            {vm.customer.purged ? <p className="text-sm text-[color:var(--color-muted)]">{t("bk.msg.erased")}</p> : null}
+            {vm.messages.length ? (
+              <ul className="flex min-w-0 flex-col gap-1.5">
+                {vm.messages.map((m, ix) => (
+                  <li key={`${m.kind}-${ix}`} data-testid={`trips-bk-msg-${m.kind}`} data-status={m.status} className={ROW}>
+                    <span className="min-w-0 text-[color:var(--color-ink)]">{t(`bk.msg.kind.${m.kind}`)}</span>
+                    <span className="flex flex-wrap items-center gap-1">
+                      <Pill shape={m.status === "SENT" ? "solid" : "dashed"}>{t(msgStKey(m.status))}</Pill>
+                      {m.fallback ? <Pill shape="muted">{t("bk.msg.fallback")}</Pill> : null}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : vm.customer.purged ? null : (
+              <p className="text-sm text-[color:var(--color-muted)]">{t("bk.msg.none")}</p>
+            )}
+          </Section>
         </div>
 
         {/* ── แถบปุ่มตรึงล่าง (ตาราง 2 คอลัมน์) ── */}

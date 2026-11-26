@@ -1,4 +1,23 @@
 {
+  "bk": {
+    "msg": {
+      "title": "Messages to customer",
+      "kind": {"confirmation": "Booking confirmation", "reminder1Day": "Trip reminder", "paymentDue": "Payment due"},
+      "st": {
+        "SENT": "Sent",
+        "NO_CHANNEL": "No LINE channel (customer not reached — contact them yourself)",
+        "SKIPPED_CONSENT": "Customer opted out",
+        "SKIPPED_QUIET": "Waiting until quiet hours end",
+        "FAILED": "Not delivered — will retry",
+        "QUOTA": "Shop LINE quota is full",
+        "SENDING": "Sending",
+        "CHANGED": "Not sent because the booking changed"
+      },
+      "fallback": "Standard text used instead",
+      "none": "No messages yet",
+      "erased": "Booker data erased — no messages are sent"
+    }
+  },
   "nav": {
     "products": "Products",
     "departures": "Departures",
@@ -328,6 +347,15 @@
     }
   },
   "settings": {
+    "msgPreview": {
+      "title": "Message preview",
+      "kind": "Message type",
+      "th": "Thai",
+      "en": "English",
+      "sample": "Sample values, not a real booking",
+      "fallback": "This text cannot be used; the standard text will be sent instead",
+      "issues": "To fix"
+    },
     "title": "Trip bookings",
     "menuHead": "Shop settings",
     "sectionsAria": "Tour settings sections",

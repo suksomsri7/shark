@@ -687,3 +687,15 @@ export async function recordManifestPrint(ctx: TripsScreenCtx, input: unknown, o
     return { ok: true, value: { passengers, printedLocal: `${local.ymd} ${hhmm(local.minutes)}` } };
   });
 }
+
+// TRIPS T1.8a ▸ เวลารับ/จุดรับต่อการจองของรอบ (ใบ T1.8 §3) — ลำดับเดียวกับ stopOf ของ loadManifestVM: รถเรียงตามเวลาจุดแรก → สร้างก่อน → id ·
+//   การจองอยู่หลายรถ ⇒ รถแรก · อ่านอย่างเดียว คิวรีเดียว (ข้อความเตือนวันก่อนเดินทาง {เวลารับ} {จุดนัด}) ◂
+export async function pickupFactsOf(g: Pick<TripsUnitGate, "db" | "tenantId" | "unitId">, departureId: string): Promise<Map<string, { time: string; place: string }>> {
+  const runs = await g.db.tripVehicleRun.findMany({ where: { tenantId: g.tenantId, unitId: g.unitId, departureId }, orderBy: [{ createdAt: "asc" }, { id: "asc" }], take: RUN_CAP, select: { id: true, stops: true, createdAt: true } });
+  const parsed = runs
+    .map((r) => ({ id: r.id, createdAt: r.createdAt, stops: parseRunStops(r.stops) }))
+    .sort((x, y) => (x.stops[0]?.time ?? "99:99").localeCompare(y.stops[0]?.time ?? "99:99") || x.createdAt.getTime() - y.createdAt.getTime() || x.id.localeCompare(y.id));
+  const out = new Map<string, { time: string; place: string }>();
+  for (const r of parsed) for (const s of r.stops) if (!out.has(s.bookingId)) out.set(s.bookingId, { time: s.time, place: s.place });
+  return out;
+}

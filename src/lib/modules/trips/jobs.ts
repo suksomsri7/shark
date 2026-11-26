@@ -22,9 +22,12 @@ import { expireHoldsBatch, jobGate, sweepPolicies } from "./capacity-service";
 import { offerWaitlistForDeparture } from "./waitlist";
 // ── /T0.4 capacity ──
 // ── T0.7 money ── (งาน trips.paymentDue)
-import { resolveSettings } from "@/lib/core/settings";
+import { resolveSettings, resolveSettingsMany } from "@/lib/core/settings"; // T1.8a ▸ + resolveSettingsMany ◂
 import { emitDueReminders, markTripDueOverdue, reminderDayOf, retryTripAutoRelease, type AutoReleaseInTx } from "./money";
 import { autoReleaseOverdueInTx } from "./refund";
+import { inQuietWindow } from "@/lib/core/quiet-hours"; // T1.8a ▸ ◂
+import { TRIPS_MSG_KINDS_A } from "./notify-core";
+import { tripsOutOfBudget, tripsReminderScan, tripsRetryScan } from "./notify";
 // ── /T0.7 money ──
 
 export type TripJobOpts = { tenantIds?: string[]; signal?: AbortSignal };
@@ -518,3 +521,68 @@ export async function runPdpaPurge(
   return { ok: true, value: out };
 }
 // ── /T0.8 pdpa ──
+// ── T1.8a customer messages ──
+// TRIPS T1.8a ▸ งาน trips.customerMessages (ใบสั่ง T1.8 §4.6 · ทุก 15 นาที) — prisma ดิบอ่านหน่วย TRIPS ข้ามร้านอย่างเดียว (หาร้าน/หน่วย "ก่อนรู้ร้าน")
+//   ต่อร้าน: ค่าตั้งคิวรีเดียวทุกหน่วย (T69 + เวลาเงียบ) · หน่วยในเวลาเงียบ ⇒ ข้าม · เตือนวันก่อนเดินทาง (≥ 17:00 เวลาหน่วย) · ลองซ้ำจาก OutboxEvent (R10)
+//   หมุนลำดับร้านตามนาที · เคารพ signal/deadline (more = หยุดก่อนครบ) · ล้มรายร้าน/หน่วย ⇒ failed (รหัสสั้น) แล้วไปต่อ ◂
+const isRecord = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
+export type CustomerMessagesResult = { units: number; reminder: number; retried: number; failed: CapacityJobFailure[]; more: boolean };
+export async function runCustomerMessages(now: Date, opts?: CapacityJobOpts): Promise<CustomerMessagesResult> {
+  const out = { units: 0, reminder: 0, retried: 0 };
+  const tally = new FailureTally();
+  let more = false;
+  const scoped = Array.isArray(opts?.tenantIds);
+  const ids = scoped ? (opts!.tenantIds as unknown[]).filter((x): x is string => typeof x === "string" && !!x) : [];
+  if (scoped && !ids.length) return { ...out, failed: [], more };
+  const units = await prisma.businessUnit.findMany({
+    where: { type: "TRIPS", status: "ACTIVE", ...(scoped ? { tenantId: { in: ids } } : {}) },
+    select: { id: true, tenantId: true, settings: true },
+    orderBy: [{ tenantId: "asc" }, { id: "asc" }],
+  });
+  const byTenant = new Map<string, typeof units>();
+  for (const u of units) byTenant.set(u.tenantId, [...(byTenant.get(u.tenantId) ?? []), u]);
+  const tenants = [...byTenant.keys()];
+  const shift = tenants.length ? Math.floor(now.getTime() / 60_000) % tenants.length : 0;
+  const ctl = { signal: opts?.signal, deadline: opts?.deadline };
+  for (const tenantId of [...tenants.slice(shift), ...tenants.slice(0, shift)]) {
+    if (tripsOutOfBudget(ctl)) {
+      more = true;
+      break;
+    }
+    const list = byTenant.get(tenantId) ?? [];
+    try {
+      const res = await resolveSettingsMany({ tenantId }, ["trips.msg.enabled", "messaging.quietHours"], list.map((u) => ({ unitId: u.id })));
+      const open = new Map<string, string[]>();
+      for (const [ix, u] of list.entries()) {
+        out.units++;
+        const s = res[ix] ?? {};
+        const en = s["trips.msg.enabled"]?.value;
+        const q = s["messaging.quietHours"]?.value;
+        if (isRecord(q) && typeof q.start === "string" && typeof q.end === "string" && inQuietWindow(now, q.start, q.end)) continue;
+        const on = isRecord(en) ? TRIPS_MSG_KINDS_A.filter((k) => en[k] === true) : [];
+        open.set(u.id, on);
+        if (!on.includes("reminder1Day") || tripsOutOfBudget(ctl)) continue;
+        try {
+          const r = await tripsReminderScan({ tenantId, unitId: u.id }, isRecord(u.settings) ? u.settings.timezone : null, now, ctl);
+          out.reminder += r.sent;
+          more = more || r.more;
+          if (r.failed) tally.add(tenantId, u.id, "SEND_FAILED", r.failed);
+        } catch (e) {
+          tally.add(tenantId, u.id, errorCodeOf(e));
+        }
+      }
+      if ([...open.values()].some((k) => k.includes("confirmation") || k.includes("paymentDue")) && !tripsOutOfBudget(ctl)) {
+        const r = await tripsRetryScan(tenantId, (unitId) => open.get(unitId) ?? [], now, ctl);
+        out.retried += r.sent;
+        more = more || r.more;
+        if (r.failed) tally.add(tenantId, "", "SEND_FAILED", r.failed);
+      }
+    } catch (e) {
+      tally.add(tenantId, "", errorCodeOf(e));
+    }
+  }
+  const failed = tally.list();
+  await reportFailures("trips.customerMessages", failed);
+  return { ...out, failed, more };
+}
+// ── /T1.8a customer messages ──
