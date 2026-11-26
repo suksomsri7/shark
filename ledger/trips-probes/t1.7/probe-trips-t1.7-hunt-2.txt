@@ -1,0 +1,222 @@
+// probe-trips-t1.7-hunt-2.mts — T1.7a1 live hunt: targets 4 (who sees what · leaks · 404 vs forbidden) · 5 (level presets · explicit key · web permission form) · 6 (figures honesty)
+import { writeFileSync } from "node:fs";
+import {
+  BASE, OUT, auditsOf, boot, call, cleanup, cookieHeader, ctxOf, dropProfile, fmt, formatBaht, launch, mkBk, mkCost, mkDep, pageAs, q, rec, req, results, setup, sleep, step, visibleText,
+  type Browser, type FX, type Page, type Rec,
+} from "./probe-trips-t1.7-hunt-lib.mjs";
+
+boot("probe-t17h-2");
+const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7) ?? "";
+const want = (t: string) => !ONLY || ONLY.split(",").includes(t);
+const T = (id: string) => `[data-testid="${id}"]`;
+const DV = "trips.departure.view";
+let fx: FX | null = null;
+let browser: Browser | null = null;
+try {
+  fx = await setup({ users: [
+    ["mg", "A", "MANAGER", ["A", "N"], []], ["wild", "A", "STAFF", ["A"], ["trips.*"]], ["wildcv", "A", "STAFF", ["A"], ["trips.*", "trips.cost.view"]], ["ceonly", "A", "STAFF", ["A"], ["trips.cost.edit"]],
+    ["dvbv", "A", "STAFF", ["A"], [DV, "trips.booking.view"]], ["rvonly", "A", "STAFF", ["A"], ["trips.report.view"]], ["dvrv", "A", "STAFF", ["A"], [DV, "trips.report.view"]], ["dvonly", "A", "STAFF", ["A"], [DV]],
+    ["mgx", "A", "MANAGER", ["A2"], []], ["none", "A", "STAFF", ["A"], []], ["nounit", "A", "STAFF", ["N"], ["trips.*"]],
+    ["lvV", "A", "STAFF", ["A"], []], ["lvU", "A", "STAFF", ["A"], []], ["sw", "A", "STAFF", ["A"], ["trips.*", "settings.staff.write"]], ["tgt", "A", "STAFF", ["A"], []],
+  ] });
+  const F = fx;
+  // dR2: leak target (unique numbers)
+  const dR2 = await mkDep(F, "R2", "PR", "2027-01-12", { cap: 24, sold: 4 });
+  await mkBk(F, "r1", { dep: dR2, prod: "PR", status: "PAID", channel: "WEB", adults: 2, paid: 820_000, created: "2026-11-20T03:00:00Z" });
+  await mkBk(F, "r2", { dep: dR2, prod: "PR", status: "CONFIRMED", channel: "AGENT_PORTAL", adults: 2, agent: true, collectMode: "AGENT", commission: 104_321, commissionVat: 7_303, created: "2026-11-21T03:00:00Z" });
+  await mkCost(F, dR2, "PR", "BOAT", 1_234_567, "เรือลับ"); await mkCost(F, dR2, "PR", "FUEL", 76_543);
+  // dE: no cost rows · agent-collect · counter unpaid
+  const dE = await mkDep(F, "E", "PR", "2027-01-13", { cap: 24, sold: 5 });
+  await mkBk(F, "e1", { dep: dE, prod: "PR", status: "PAID", channel: "WEB", adults: 2, paid: 820_000, created: "2026-11-20T03:00:00Z" });
+  await mkBk(F, "e2", { dep: dE, prod: "PR", status: "CONFIRMED", channel: "AGENT_PORTAL", adults: 2, agent: true, collectMode: "AGENT", commission: 105_000, commissionVat: 7_350, created: "2026-11-20T04:00:00Z" });
+  await mkBk(F, "e3", { dep: dE, prod: "PR", status: "CONFIRMED", channel: "COUNTER", adults: 1, created: "2026-11-20T05:00:00Z" });
+  // dL: loss
+  const dL = await mkDep(F, "L", "PR", "2027-01-14", { cap: 24, sold: 1 });
+  await mkBk(F, "l1", { dep: dL, prod: "PR", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2026-11-20T03:00:00Z" });
+  await mkCost(F, dL, "PR", "BOAT", 900_000);
+  // dX: cancelled departure with a paid and an unpaid live booking
+  const dX = await mkDep(F, "X", "PR", "2027-01-15", { cap: 24, sold: 3, status: "CANCELLED" });
+  await mkBk(F, "x1", { dep: dX, prod: "PR", status: "PAID", channel: "WEB", adults: 2, paid: 820_000, created: "2026-11-20T03:00:00Z" });
+  await mkBk(F, "x2", { dep: dX, prod: "PR", status: "CONFIRMED", channel: "COUNTER", adults: 1, created: "2026-11-20T04:00:00Z" });
+  // dV: non-VAT unit · agent with commission VAT
+  const dV = await mkDep(F, "V", "PN", "2027-01-12", { cap: 12, sold: 3 });
+  await mkBk(F, "vAg", { dep: dV, prod: "PN", status: "CONFIRMED", channel: "AGENT_LINK", adults: 2, agent: true, commission: 100_000, commissionVat: 7_000, created: "2026-11-20T03:00:00Z" });
+  await mkBk(F, "vDi", { dep: dV, prod: "PN", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2026-11-20T04:00:00Z" });
+  await mkCost(F, dV, "PN", "BOAT", 200_000);
+  // other unit / tenant
+  const dA2 = await mkDep(F, "A2", "PA2", "2027-01-12", { cap: 30, sold: 0 });
+  await mkCost(F, dA2, "PA2", "BOAT", 999_900);
+
+  browser = await launch();
+  const B = browser;
+  const WEEK = "2027-01-11";
+  const panelPath = (slug: string, dep: string) => `/app/u/${slug}/trips/departures?view=week&start=${WEEK}&dep=${dep}`;
+  const costPath = (slug: string, dep: string) => `/app/u/${slug}/trips/departures/${dep}/costs`;
+  const open = async (tag: string, path: string, waitSel: string, w = 1440, h = 900) => {
+    const p = await pageAs(B, F, tag, w, h);
+    const r = await p.page.goto(`${BASE}${path}`, { waitUntil: "networkidle2", timeout: 90_000 });
+    await p.page.waitForSelector(waitSel, { timeout: 12_000 }).catch(() => null);
+    return { ...p, status: r?.status() ?? 0 };
+  };
+
+  // known secret numbers of dR2 from the service (positive control: OWNER must see them)
+  const vmR2 = await call("loadDepartureCostsVM", ctxOf(F, "oa"), { unitId: F.uA, departureId: dR2 });
+  const m2 = ((vmR2.vm as Rec)?.money ?? {}) as Rec; const c2 = ((vmR2.vm as Rec)?.costs ?? {}) as Rec;
+  const secretSat = [1_234_567, 76_543, Number(m2.costSatang), Number(m2.commissionCostSatang), Number(m2.grossProfitSatang), Number(c2.perSeatSatang), 104_321, 7_303].filter((n) => Number.isFinite(n) && n !== 0);
+  const secretStr = [...new Set([...secretSat.map(String), ...(await Promise.all(secretSat.map((n) => formatBaht(n)))), ...secretSat.map((n) => (n / 100).toFixed(2)), "เรือลับ"])];
+  console.log(`secrets ${fmt(secretStr)} · margin ${m2.marginBp}`);
+  const leaks = (body: string) => secretStr.filter((s) => new RegExp(`(^|[^0-9.,])${s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^0-9]|$)`).test(body));
+
+  // ═══════ target 4: who sees what ═══════
+  if (want("4")) await step("T4", async () => {
+    const who: { tag: string; seesCost: boolean; seesMoney: boolean; costPage: "editor" | "readonly" | "forbidden" | "404"; panel: "200" | "forbidden" | "404" }[] = [
+      { tag: "oa", seesCost: true, seesMoney: true, costPage: "editor", panel: "200" }, { tag: "mg", seesCost: true, seesMoney: true, costPage: "editor", panel: "200" },
+      { tag: "wild", seesCost: false, seesMoney: true, costPage: "forbidden", panel: "200" }, { tag: "wildcv", seesCost: true, seesMoney: true, costPage: "readonly", panel: "200" },
+      { tag: "ceonly", seesCost: false, seesMoney: false, costPage: "forbidden", panel: "forbidden" }, { tag: "dvbv", seesCost: false, seesMoney: true, costPage: "forbidden", panel: "200" },
+      { tag: "rvonly", seesCost: false, seesMoney: false, costPage: "forbidden", panel: "forbidden" }, { tag: "dvrv", seesCost: false, seesMoney: true, costPage: "forbidden", panel: "200" },
+      { tag: "dvonly", seesCost: false, seesMoney: false, costPage: "forbidden", panel: "200" }, { tag: "none", seesCost: false, seesMoney: false, costPage: "forbidden", panel: "forbidden" },
+      { tag: "mgx", seesCost: false, seesMoney: false, costPage: "404", panel: "404" }, { tag: "nounit", seesCost: false, seesMoney: false, costPage: "404", panel: "404" }, { tag: "ob", seesCost: false, seesMoney: false, costPage: "404", panel: "404" },
+    ];
+    const kindOf = (r: { status: number; body: string }) => r.status === 404 ? "404" : r.body.includes('data-testid="trips-forbidden"') ? "forbidden" : r.body.includes('data-testid="trips-cost-editor"') ? "editor" : r.body.includes('data-testid="trips-cost-readonly"') ? "readonly" : r.body.includes('data-testid="trips-dep-panel"') ? "200" : `other:${r.status}`;
+    for (const w of who) {
+      const ck = await cookieHeader(F, w.tag);
+      const pr = await req(panelPath(F.slugA, dR2), { headers: { cookie: ck } });
+      const prsc = await req(panelPath(F.slugA, dR2), { headers: { cookie: ck, rsc: "1", accept: "*/*" } });
+      const cr = await req(costPath(F.slugA, dR2), { headers: { cookie: ck } });
+      const crsc = await req(costPath(F.slugA, dR2), { headers: { cookie: ck, rsc: "1", accept: "*/*" } });
+      const cNope = await req(costPath(F.slugA, "t17h_dNOPE_doesnotexist"), { headers: { cookie: ck } });
+      const cA2 = await req(costPath(F.slugA, dA2), { headers: { cookie: ck } });
+      const pk = kindOf(pr), ck2 = kindOf(cr);
+      const hasCard = pr.body.includes('data-testid="trips-dep-money"'); const hasLink = /data-testid="trips-dep-costs"/.test(pr.body) || pr.body.includes(`/departures/${dR2}/costs`);
+      const lk = { panel: leaks(pr.body), panelRsc: leaks(prsc.body), cost: leaks(cr.body), costRsc: leaks(crsc.body) };
+      const anyLeak = Object.values(lk).some((x) => x.length);
+      const pkOk = w.panel === "200" ? pk === "200" : pk === w.panel; const ckOk = ck2 === w.costPage;
+      const leakOk = w.seesCost ? lk.panel.length > 0 && (w.costPage === "editor" || w.costPage === "readonly" ? lk.cost.length > 0 : true) : !anyLeak;
+      const cardOk = w.panel !== "200" || hasCard === w.seesMoney; const linkOk = hasLink === (w.seesCost && w.panel === "200");
+      const existence = `ไม่มีรอบ→${kindOf(cNope)} · รอบหน่วยอื่น→${kindOf(cA2)} · รอบจริง→${ck2}`;
+      rec(`T4-${w.tag}`, pkOk && ckOk && leakOk && cardOk && linkOk ? "HELD" : "FOUND",
+        `แผง ${pk} (HTTP ${pr.status}) การ์ดเงิน ${hasCard} ลิงก์ต้นทุน ${hasLink} · จอต้นทุน ${ck2} (HTTP ${cr.status}) · ${existence} · ตัวเลขลับที่เจอ ${w.seesCost ? "(ต้องเจอ) " : ""}${fmt(lk)}`);
+      // existence consistency: for users that cannot see costs, real / missing / other-unit departure must look the same
+      if (!w.seesCost && w.costPage !== "404") {
+        const same = kindOf(cNope) === ck2 && kindOf(cA2) === ck2;
+        rec(`T4-${w.tag}-existence`, same ? "HELD" : "FOUND", `ผู้ไม่เห็นต้นทุน: ${existence}`);
+      }
+      if (["wild", "dvbv", "wildcv", "nounit", "none"].includes(w.tag)) {
+        const o = await open(w.tag, panelPath(F.slugA, dR2), T("trips-dep-panel"));
+        await o.page.screenshot({ path: `${OUT}/h2-t4-panel-${w.tag}.png`, fullPage: true });
+        await o.ctx.close();
+        const o2 = await open(w.tag, costPath(F.slugA, dR2), "body");
+        await o2.page.screenshot({ path: `${OUT}/h2-t4-cost-${w.tag}.png`, fullPage: false });
+        await o2.ctx.close();
+      }
+    }
+    // other tenant owner with a forged shark_tenant cookie of tenant A
+    const forged = await req(costPath(F.slugA, dR2), { headers: { cookie: await cookieHeader(F, "ob", F.tA) } });
+    rec("T4-ob-forged-tenant", forged.status !== 200 || !leaks(forged.body).length ? "HELD" : "FOUND", `เจ้าของร้าน B + คุกกี้ร้าน A → HTTP ${forged.status} ${kindOf(forged)} · location ${forged.headers.location ?? "-"} · ตัวเลขลับ ${fmt(leaks(forged.body))}`);
+  });
+
+  // ═══════ target 6: figures honesty ═══════
+  if (want("6")) await step("T6", async () => {
+    const card = async (tag: string, dep: string, slug = F.slugA) => { const o = await open(tag, panelPath(slug, dep), T("trips-dep-money")); const t = (await visibleText(o.page, T("trips-dep-money"))).replace(/\s+/g, " "); await o.page.screenshot({ path: `${OUT}/h2-t6-card-${tag}-${dep.slice(5, 9)}.png`, fullPage: false }); await o.ctx.close(); return t; };
+    const screen = async (tag: string, dep: string, slug = F.slugA) => { const o = await open(tag, costPath(slug, dep), T("trips-cost")); const t = (await visibleText(o.page, T("trips-cost"))).replace(/\s+/g, " "); await o.page.screenshot({ path: `${OUT}/h2-t6-screen-${tag}-${dep.slice(5, 9)}.png`, fullPage: true }); await o.ctx.close(); return t; };
+    const MG = "ตัวเลขบริหาร ไม่ใช่รายงานบัญชี";
+    // no costs
+    const cE = await card("oa", dE), sE = await screen("oa", dE);
+    rec("T6-nocost-card", cE.includes("ยังไม่บันทึกต้นทุน") && cE.includes("ยังไม่หักต้นทุนรอบ") && /กำไรขั้นต้น —/.test(cE) ? "HELD" : "FOUND", `การ์ด: ${cE.slice(0, 400)}`);
+    const profK = sE.match(/กำไรขั้นต้น\s*(\S+)\s*ยังไม่หักต้นทุนรอบ/);
+    rec("T6-nocost-screen", profK?.[1] === "—" ? "HELD" : "FOUND", `จอ: KPI กำไร = ${fmt(profK?.[0])}`);
+    rec("T6-nocost-costKpi", "INFO", `จอ dE (ไม่มีแถวต้นทุน) KPI ต้นทุน: ${fmt(sE.match(/ต้นทุนรอบ\s*\S+\s*(ต่อที่นั่ง \S+)?/)?.[0])}`);
+    const cEb = await card("dvbv", dE);
+    rec("T6-nocost-noncost-viewer", !cEb.includes("ยังไม่บันทึกต้นทุน") && !cEb.includes("ยังไม่หักต้นทุน") && !cEb.includes("คอมมิชชัน") ? "HELD" : "FOUND", `พนักงานดูการจอง (ไม่เห็นต้นทุน) การ์ด dE: ${cEb.slice(0, 300)}`);
+    // agent collect line
+    rec("T6-agent-line", cE.includes("เอเจนซี่เก็บเงิน 1 การจอง · ยังไม่นับในรับแล้ว/ค้างรับ") && sE.includes("เอเจนซี่เก็บเงิน 1 การจอง · ยังไม่นับในรับแล้ว/ค้างรับ") ? "HELD" : "FOUND", `การ์ด/จอ มีบรรทัดเอเจนซี่`);
+    // loss
+    const vL = await call("departureMoneySummary", ctxOf(F, "oa"), { unitId: F.uA, departureId: dL });
+    const gpL = Number(((vL.value ?? {}) as Rec).grossProfitSatang);
+    const cL = await card("oa", dL), sL = await screen("oa", dL);
+    const lossTxt = `ขาดทุนขั้นต้น ${await formatBaht(Math.abs(gpL))}`;
+    rec("T6-loss", gpL < 0 && cL.includes(lossTxt) && /ขาดทุน/.test(sL) ? "HELD" : "FOUND", `gp ${gpL} · การ์ดมี "${lossTxt}" ${cL.includes(lossTxt)} · จอมีคำ ขาดทุน ${/ขาดทุน/.test(sL)} · ${cL.slice(0, 260)}`);
+    // cancelled departure
+    const vX = await call("departureMoneySummary", ctxOf(F, "oa"), { unitId: F.uA, departureId: dX });
+    const cX = await card("oa", dX), sX = await screen("oa", dX);
+    const pend = cX.match(/รอคืนเงิน[^·]*?\d[\d,]*\.\d\d/)?.[0] ?? "";
+    rec("T6-cancelled-pending", pend === "รอคืนเงิน 1 การจอง 8,200.00" && !/รอคืนเงิน[^0-9]*0\.00/.test(cX + sX) ? "HELD" : "FOUND", `การ์ด "${pend}" · VM ${fmt(vX.value)}`);
+    rec("T6-cancelled-unpaid-live", "INFO", `รอบยกเลิก: การ์ด ${cX.slice(0, 300)} · จอ ${sX.slice(0, 900)}`);
+    // non-VAT unit
+    const cV = await card("oa", dV, F.slugN), sV = await screen("oa", dV, F.slugN);
+    const vatLine = /VAT ในราคาขาย/.test(cV + sV); const beforeVat = /ก่อน VAT/.test(cV + sV);
+    rec("T6-novat", !vatLine && !beforeVat && sV.includes("คอมมิชชัน (รวม VAT ของคอมมิชชัน)") && sV.includes("ร้านไม่ได้จด VAT") ? "HELD" : "FOUND", `บรรทัด VAT ${vatLine} · คำ ก่อน VAT ${beforeVat} · ป้ายคอมฯ รวม VAT ${sV.includes("คอมมิชชัน (รวม VAT ของคอมมิชชัน)")} · การ์ด ${cV.slice(0, 260)}`);
+    // every screen carries estimate + mgmt
+    const all: [string, string][] = [["card dE", cE], ["screen dE", sE], ["card dL", cL], ["screen dL", sL], ["card dX", cX], ["screen dX", sX], ["card dV", cV], ["screen dV", sV], ["card dE dvbv", cEb]];
+    const miss = all.filter(([, t]) => !t.includes("ประมาณการ") || !t.includes(MG)).map(([n]) => n);
+    rec("T6-estimate-mgmt", miss.length === 0 ? "HELD" : "FOUND", `ขาดป้าย: ${fmt(miss)}`);
+  });
+
+  // ═══════ target 5: level presets ═══════
+  if (want("5")) await step("T5", async () => {
+    const L = (await import("@/lib/staff/levels")) as Rec; const S = (await import("@/lib/staff/service")) as Rec;
+    const ownerCtx = { tenantId: F.tA, actorUserId: F.U.oa.userId, membership: { role: "OWNER", unitAccess: ["*"], permissions: {} } };
+    const permsOf = async (tag: string) => ((await q<{ p: Rec }>(`SELECT permissions AS p FROM "Membership" WHERE id = $1`, [F.U[tag].membershipId]))[0]?.p ?? {}) as Rec;
+    const r1 = (await (L.setStaffLevels as (...a: unknown[]) => Promise<Rec>)(ownerCtx, F.U.lvV.membershipId, { levels: { trips: "VIEW" } })) as Rec;
+    const r2 = (await (L.setStaffLevels as (...a: unknown[]) => Promise<Rec>)(ownerCtx, F.U.lvU.membershipId, { levels: { trips: "USE" } })) as Rec;
+    const pV = await permsOf("lvV"), pU = await permsOf("lvU");
+    const costKeys = (p: Rec) => Object.keys(p).filter((k) => k.startsWith("trips.cost."));
+    rec("T5-levels-db", r1.ok === true && r2.ok === true && costKeys(pV).length === 0 && costKeys(pU).length === 0 ? "HELD" : "FOUND", `VIEW ${fmt(r1)} → ${fmt(Object.keys(pV))} · USE ${fmt(r2)} → ${fmt(Object.keys(pU))}`);
+    const look = async (tag: string) => {
+      const ck = await cookieHeader(F, tag);
+      const pr = await req(panelPath(F.slugA, dR2), { headers: { cookie: ck } }); const cr = await req(costPath(F.slugA, dR2), { headers: { cookie: ck } });
+      return { card: pr.body.includes('data-testid="trips-dep-money"'), link: pr.body.includes(`/departures/${dR2}/costs`), leaks: leaks(pr.body).length + leaks(cr.body).length, cost: cr.body.includes('data-testid="trips-forbidden"') ? "forbidden" : cr.body.includes("trips-cost-editor") ? "editor" : cr.body.includes("trips-cost-readonly") ? "readonly" : `HTTP ${cr.status}` };
+    };
+    const bV = await look("lvV"), bU = await look("lvU");
+    rec("T5-levels-browser", !bV.link && !bU.link && bV.leaks === 0 && bU.leaks === 0 && bV.cost === "forbidden" && bU.cost === "forbidden" ? "HELD" : "FOUND", `ทัวร์:ดู ${fmt(bV)} · ทัวร์:ใช้งาน ${fmt(bU)}`);
+    for (const [tag, nm] of [["lvV", "VIEW"], ["lvU", "USE"]] as const) { const o = await open(tag, panelPath(F.slugA, dR2), T("trips-dep-panel")); await o.page.screenshot({ path: `${OUT}/h2-t5-panel-${nm}.png`, fullPage: true }); await o.ctx.close(); }
+    // owner ticks the explicit key through the real staff-permission service
+    const upd = S.updateStaffAccess as (...a: unknown[]) => Promise<Rec>;
+    const u1 = await upd({ tenantId: F.tA, actorUserId: F.U.oa.userId, membershipId: F.U.lvV.membershipId, permissions: { ...pV, "trips.cost.view": true } });
+    const u2 = await upd({ tenantId: F.tA, actorUserId: F.U.oa.userId, membershipId: F.U.lvU.membershipId, permissions: { ...pU, "trips.cost.edit": true } });
+    const aV = await look("lvV"), aU = await look("lvU");
+    rec("T5-explicit-key", u1.ok === true && u2.ok === true && aV.link && aV.leaks > 0 && aV.cost === "readonly" && aU.link && aU.cost === "editor" ? "HELD" : "FOUND", `ติ๊กคีย์ตรง ${fmt([u1.ok, u2.ok])} → ดู+cost.view ${fmt(aV)} · ใช้งาน+cost.edit ${fmt(aU)}`);
+    { const o = await open("lvV", costPath(F.slugA, dR2), T("trips-cost")); await o.page.screenshot({ path: `${OUT}/h2-t5-cost-view-after-tick.png`, fullPage: true }); await o.ctx.close(); }
+    // re-apply presets: does the explicit key survive? (USE keeps sensitive keys · VIEW?)
+    await (L.setStaffLevels as (...a: unknown[]) => Promise<Rec>)(ownerCtx, F.U.lvU.membershipId, { levels: { trips: "USE" } });
+    await (L.setStaffLevels as (...a: unknown[]) => Promise<Rec>)(ownerCtx, F.U.lvV.membershipId, { levels: { trips: "VIEW" } });
+    rec("T5-reapply-preset", "INFO", `ตั้งระดับซ้ำหลังติ๊กคีย์: ใช้งาน → ${fmt(costKeys(await permsOf("lvU")))} · ดู → ${fmt(costKeys(await permsOf("lvV")))}`);
+    // MANAGER of another unit grants the cost key through the service
+    const mx = await upd({ tenantId: F.tA, actorUserId: F.U.mgx.userId, membershipId: F.U.tgt.membershipId, permissions: { "trips.cost.view": true } });
+    rec("T5-manager-other-unit-grants", "INFO", `ผู้จัดการหน่วยอื่น (A2) แจก trips.cost.view ให้พนักงานหน่วย A ผ่านบริการ → ${fmt(mx)} · สิทธิ์เป้าหมาย ${fmt(Object.keys(await permsOf("tgt")))}`);
+    if (mx.ok === true) await q(`UPDATE "Membership" SET permissions = '{}'::jsonb WHERE id = $1`, [F.U.tgt.membershipId]);
+    // web permission form: STAFF with trips.* + settings.staff.write ticks trips.cost.view for tgt
+    const o = await open("sw", `/app/settings/staff/${F.U.tgt.membershipId}`, 'input[name="perm"]');
+    const box = await o.page.evaluate(() => { const b = document.querySelector('input[name="perm"][value="trips.cost.view"]') as HTMLInputElement | null; return b ? { disabled: b.disabled, label: b.closest("label")?.textContent ?? "" } : null; });
+    await o.page.evaluate(() => { (document.querySelector('input[name="perm"][value="trips.cost.view"]') as HTMLInputElement | null)?.click(); });
+    await o.page.evaluate(() => { const b = Array.from(document.querySelectorAll("button[type=submit]")).find((x) => (x.textContent ?? "").includes("บันทึกสิทธิ์")) as HTMLButtonElement | undefined; b?.click(); });
+    await sleep(3500);
+    const msg = await o.page.evaluate(() => Array.from(document.querySelectorAll("form p")).map((p) => p.textContent ?? "").filter((t) => t.trim()).slice(-2));
+    await o.page.evaluate(() => { const p = Array.from(document.querySelectorAll("form p")).pop(); p?.scrollIntoView({ block: "center" }); });
+    await o.page.screenshot({ path: `${OUT}/h2-t5-webform-refused.png`, fullPage: false });
+    const after = await permsOf("tgt");
+    rec("T5-webform", costKeys(after).length === 0 && msg.some((m) => m.includes("trips") || m.includes("ต้นทุน") || m.includes("ให้ได้เฉพาะ")) ? "HELD" : "FOUND", `ช่อง ${fmt(box)} · ข้อความที่ผู้ใช้เห็น ${fmt(msg)} · สิทธิ์เป้าหมายหลังส่ง ${fmt(Object.keys(after))}`);
+    await o.ctx.close();
+    // positive control: same form, a normal key only
+    const o2 = await open("sw", `/app/settings/staff/${F.U.tgt.membershipId}`, 'input[name="perm"]');
+    await o2.page.evaluate(() => { (document.querySelector('input[name="perm"][value="trips.departure.view"]') as HTMLInputElement | null)?.click(); });
+    await o2.page.evaluate(() => { const b = Array.from(document.querySelectorAll("button[type=submit]")).find((x) => (x.textContent ?? "").includes("บันทึกสิทธิ์")) as HTMLButtonElement | undefined; b?.click(); });
+    await sleep(3500);
+    const msg2 = await o2.page.evaluate(() => Array.from(document.querySelectorAll("form p")).map((p) => p.textContent ?? "").filter((t) => t.trim()).slice(-1));
+    rec("T5-webform-control", "INFO", `ตัวควบคุม (ติ๊ก trips.departure.view อย่างเดียว) → ${fmt(msg2)} · สิทธิ์เป้าหมาย ${fmt(Object.keys(await permsOf("tgt")))}`);
+    await o2.ctx.close();
+    void auditsOf;
+  });
+} catch (e) {
+  rec("FATAL", "ERR", e instanceof Error ? (e.stack ?? e.message).slice(0, 600) : String(e));
+} finally {
+  try { await browser?.close(); } catch { /* gone */ }
+  dropProfile();
+  const left = await cleanup().catch((e) => ({ err: String(e) }));
+  console.log(`LEFTOVER ${fmt(left)}`);
+  writeFileSync(`${OUT}/hunt-2-results.json`, JSON.stringify(results, null, 2));
+  await (await import("./probe-trips-t1.7-hunt-lib.mjs")).pool().end().catch(() => undefined);
+}
+console.log(`SUMMARY ${fmt({ held: results.filter((r) => r.res === "HELD").length, found: results.filter((r) => r.res === "FOUND").length, err: results.filter((r) => r.res === "ERR").length })}`);
+process.exit(0);
+type _P = Page;

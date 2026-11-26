@@ -1,0 +1,314 @@
+// probe-trips-t1.7-hunt-1.mts — T1.7a1 live hunt: targets 1 (editor round trip) · 2 (bad input) · 3 (two tabs/users · double click · pending) · 7 (layout)
+// Real browser (puppeteer-core) against the controller's QC server :3242 · temp shop `trips-t17h-` · cleanup in finally
+import { writeFileSync } from "node:fs";
+import {
+  BASE, OUT, auditsOf, boot, call, cleanup, costRowsDb, ctxOf, dropProfile, fmt, formatBaht, launch, mkBk, mkCost, mkDep, pageAs, pasteInto, q, rec, results, setup, sleep, step, visibleText,
+  type Browser, type FX, type Page, type Rec,
+} from "./probe-trips-t1.7-hunt-lib.mjs";
+
+boot("probe-t17h-1");
+const SMOKE = process.argv.includes("--smoke");
+const ONLY = process.argv.find((a) => a.startsWith("--only="))?.slice(7) ?? "";
+const want = (t: string) => !ONLY || ONLY.split(",").includes(t);
+const KINDS = ["BOAT", "FUEL", "GUIDE", "FOOD", "PARK_FEE", "TRANSPORT", "EQUIPMENT", "OTHER"];
+const pct = (bp: number | null) => (bp === null ? "—" : `${bp < 0 ? "-" : ""}${Math.floor(Math.abs(bp) / 100)}.${String(Math.abs(bp) % 100).padStart(2, "0")}%`);
+const T = (id: string) => `[data-testid="${id}"]`;
+const row = (i: number) => T(`trips-cost-row-${i}`);
+const amountSel = (i: number) => `${row(i)} input[inputmode="decimal"]`;
+const noteSel = (i: number) => `${row(i)} input:not([inputmode])`;
+const kindSel = (i: number) => `${row(i)} select`;
+const shot = (page: Page, name: string, full = true) => page.screenshot({ path: `${OUT}/${name}.png`, fullPage: full });
+
+let fx: FX | null = null;
+let browser: Browser | null = null;
+try {
+  fx = await setup({ users: [["ce2", "A", "STAFF", ["A"], ["trips.departure.view", "trips.cost.edit"]]] });
+  const F = fx;
+  const dC = await mkDep(F, "C", "PR", "2027-01-15", { cap: 24, sold: 1 });
+  await mkBk(F, "c1", { dep: dC, prod: "PR", status: "PAID", channel: "WEB", adults: 1, paid: 410_000, created: "2026-11-20T03:00:00Z" });
+  const dK = await mkDep(F, "K", "PR", "2027-01-16", { cap: 24, sold: 0 });
+  const dBig = await mkDep(F, "BIG", "PR", "2027-01-17", { cap: 6000, sold: 5000 });
+  await mkBk(F, "big", { dep: dBig, prod: "PR", status: "CONFIRMED", channel: "COUNTER", adults: 5000, created: "2026-11-20T03:00:00Z" });
+  await mkCost(F, dBig, "PR", "BOAT", 1_000_000_000, "x".repeat(200)); await mkCost(F, dBig, "PR", "FUEL", 1_000_000_000, "ค่าน้ำมันเรือยาวมาก".repeat(10).slice(0, 200));
+  for (let i = 0; i < 28; i++) await mkCost(F, dBig, "PR", KINDS[i % 8], 5_000_000, i % 3 ? null : `หมายเหตุ ${i}`);
+  browser = await launch();
+  const B = browser;
+  const costUrl = (dep: string) => `${BASE}/app/u/${F.slugA}/trips/departures/${dep}/costs`;
+  const panelUrl = (dep: string, date: string) => `${BASE}/app/u/${F.slugA}/trips/departures?view=week&start=${date}&dep=${dep}`;
+  const open = async (tag: string, url: string, w = 1440, h = 900, waitSel = T("trips-cost")) => {
+    const p = await pageAs(B, F, tag, w, h);
+    const r = await p.page.goto(url, { waitUntil: "networkidle2", timeout: 90_000 });
+    await p.page.waitForSelector(waitSel, { timeout: 20_000 }).catch(() => null);
+    return { ...p, status: r?.status() ?? 0 };
+  };
+  const rowsOnScreen = (page: Page) => page.evaluate(() => Array.from(document.querySelectorAll('[data-testid^="trips-cost-row-"]')).map((li) => ({
+    kind: (li.querySelector("select") as HTMLSelectElement | null)?.value ?? "", amount: (li.querySelector('input[inputmode="decimal"]') as HTMLInputElement | null)?.value ?? "", note: (li.querySelector("input:not([inputmode])") as HTMLInputElement | null)?.value ?? "",
+  })));
+  const savedVisible = (page: Page) => page.evaluate(() => Array.from(document.querySelectorAll('[data-testid="trips-cost-editor"] [role="status"]')).some((e) => (e as HTMLElement).offsetParent !== null && (e.textContent ?? "").includes("บันทึกแล้ว")));
+  const waitOutcome = async (page: Page, ms = 15_000) => {
+    const t0 = Date.now();
+    while (Date.now() - t0 < ms) {
+      const o = await page.evaluate(() => ({ saved: Array.from(document.querySelectorAll('[data-testid="trips-cost-editor"] [role="status"]')).some((e) => (e.textContent ?? "").includes("บันทึกแล้ว")),
+        error: document.querySelector('[data-testid="trips-cost-error"]')?.textContent ?? null, conflict: document.querySelector('[data-testid="trips-cost-conflict"]')?.textContent ?? null }));
+      if (o.saved || o.error || o.conflict) return o;
+      await sleep(150);
+    }
+    return { saved: false, error: null, conflict: null, timeout: true };
+  };
+  const addRow = async (page: Page, kind: string, amount: string, note: string) => {
+    const n = (await page.$$('[data-testid^="trips-cost-row-"]')).length;
+    await (await page.$(T("trips-cost-add")))?.click();
+    await page.waitForSelector(row(n), { timeout: 5000 });
+    await (await page.$(kindSel(n)))?.select(kind);
+    if (amount) await (await page.$(amountSel(n)))?.type(amount);
+    if (note) await (await page.$(noteSel(n)))?.type(note);
+    return n;
+  };
+  const clickSave = async (page: Page) => { await (await page.$(T("trips-cost-save")))?.click(); };
+
+  // ── smoke: login works for a temp user ──
+  {
+    const o = await open("oa", costUrl(dC));
+    const txt = await visibleText(o.page);
+    rec("SMOKE", o.status === 200 && txt.includes("ต้นทุนและกำไร") ? "INFO" : "ERR", `OWNER ชั่วคราวเปิดจอต้นทุน HTTP ${o.status} · มีตัวแก้ ${!!(await o.page.$(T("trips-cost-editor")))} · url ${o.page.url().slice(0, 120)}`);
+    await shot(o.page, "h1-smoke");
+    await o.ctx.close();
+    if (SMOKE) throw new Error("SMOKE_DONE");
+  }
+
+  // ═══════ target 1: editor round trip (OWNER) ═══════
+  const typed: [string, string, string][] = [["BOAT", "1,250.50", "เรือ ล่า"], ["FUEL", "300", ""], ["GUIDE", "1,000", "ไกด์ 2 คน"], ["FOOD", "50.5", ""], ["PARK_FEE", "2,000.00", "อุทยานของไกด์"], ["TRANSPORT", "75", ""], ["EQUIPMENT", "10.01", ""], ["OTHER", "999.99", "อื่น ๆ"]];
+  const satOf = (s: string) => Math.round(Number(s.replace(/,/g, "")) * 100);
+  if (want("1")) await step("T1", async () => {
+    const o = await open("oa", costUrl(dC));
+    const p = o.page;
+    for (const [k, a, n] of typed) await addRow(p, k, a, n);
+    await clickSave(p);
+    const out = await waitOutcome(p);
+    rec("T1.1-save", out.saved ? "HELD" : "FOUND", `บันทึก 8 แถว → ${fmt(out)}`);
+    await sleep(3500);
+    const still = await savedVisible(p);
+    const totalTxt = await visibleText(p, T("trips-cost-editor"));
+    const sum = typed.reduce((s, [, a]) => s + satOf(a), 0);
+    rec("T1.2-saved-after-refresh", still && totalTxt.includes(await formatBaht(sum)) ? "HELD" : "FOUND", `"บันทึกแล้ว" ยังเห็นหลังหน้ารีเฟรชตัวเอง 3.5 วิ = ${still} · รวมที่บันทึกแล้ว ${await formatBaht(sum)} อยู่บนจอ = ${totalTxt.includes(await formatBaht(sum))}`);
+    const db = await costRowsDb(dC);
+    const dbOk = db.length === 8 && db.every((r, i) => r.kind === typed[i][0] && r.amountSatang === satOf(typed[i][1]) && (r.note ?? "") === typed[i][2]);
+    rec("T1.3-db-order", dbOk ? "HELD" : "FOUND", `แถวในฐานเรียง createdAt ตรงลำดับที่พิมพ์ = ${dbOk} · ${fmt(db.map((r) => [r.kind, r.amountSatang, r.note]))}`);
+    await p.reload({ waitUntil: "networkidle2" }); await p.waitForSelector(T("trips-cost-editor"));
+    const scr = await rowsOnScreen(p);
+    const expScr = await Promise.all(typed.map(async ([k, a, n]) => ({ kind: k, amount: await formatBaht(satOf(a)), note: n })));
+    rec("T1.4-reload-rows", fmt(scr) === fmt(expScr) ? "HELD" : "FOUND", `โหลดใหม่: ${fmt(scr)}`);
+    // figures vs service
+    const vmR = await call("loadDepartureCostsVM", ctxOf(F, "oa"), { unitId: F.uA, departureId: dC });
+    const vm = (vmR.vm ?? {}) as Rec; const m = (vm.money ?? {}) as Rec; const c = (vm.costs ?? {}) as Rec;
+    const kpi = async (id: string) => (await visibleText(p, T(`trips-cost-kpi-${id}`))).replace(/\s+/g, " ");
+    const checks: [string, string, string][] = [
+      ["sales", await kpi("sales"), await formatBaht(Number(m.salesSatang))],
+      ["revenue", await kpi("revenue"), await formatBaht(Number(m.revenueExVatSatang))],
+      ["commission", await kpi("commission"), await formatBaht(Number(m.commissionCostSatang))],
+      ["cost", await kpi("cost"), await formatBaht(Number(m.costSatang))],
+      ["perSeat", await kpi("cost"), `ต่อที่นั่ง ${await formatBaht(Number(c.perSeatSatang))}`],
+      ["profit", await kpi("profit"), await formatBaht(Number(m.grossProfitSatang))],
+      ["margin/loss", await kpi("profit"), Number(m.grossProfitSatang) < 0 ? "ขาดทุน" : pct(m.marginBp as number | null)],
+      ["load", await kpi("load"), `${m.sold}/${m.capacity} · ${pct(m.loadFactorBp as number | null)}`],
+    ];
+    const bad = checks.filter(([, got, exp]) => !got.includes(exp));
+    rec("T1.5-figures", bad.length === 0 ? "HELD" : "FOUND", `การ์ด = บริการ: ${bad.length ? fmt(bad) : fmt(checks.map(([k, , e]) => `${k}=${e}`))}`);
+    // edit row 1 ("300" → "350") + delete row 2 (GUIDE) → save
+    const before = (await auditsOf(dC)).length;
+    const a1 = await p.$(amountSel(1)); await a1?.click({ clickCount: 3 }); await p.keyboard.press("Backspace"); await a1?.type("350");
+    await (await p.$(T("trips-cost-remove-2")))?.click();
+    await clickSave(p); const out2 = await waitOutcome(p); await sleep(2500);
+    const db2 = await costRowsDb(dC);
+    const exp2 = typed.filter((_, i) => i !== 2).map(([k, a, n], i) => [k, i === 1 ? 35_000 : satOf(a), n]);
+    const db2Ok = fmt(db2.map((r) => [r.kind, r.amountSatang, r.note ?? ""])) === fmt(exp2) && db.filter((_, i) => i !== 2).every((r, i) => db2[i]?.id === r.id);
+    const au = await auditsOf(dC); const last = au[au.length - 1];
+    const auOk = au.length === before + 1 && fmt(Object.keys(last?.before ?? {}).sort()) === fmt(["count", "kinds"]) && fmt(Object.keys(last?.after ?? {}).sort()) === fmt(["count", "kinds"])
+      && last.before.count === 8 && last.after.count === 7 && fmt(last.before.kinds) === fmt(KINDS) && fmt(last.after.kinds) === fmt(KINDS.filter((k) => k !== "GUIDE"))
+      && !/\d{3,}/.test(JSON.stringify([last.before, last.after])) && !JSON.stringify(last).includes("ไกด์ 2 คน");
+    rec("T1.6-edit-delete", out2.saved && db2Ok ? "HELD" : "FOUND", `แก้+ลบ → ${fmt(out2)} · ฐาน ${fmt(db2.map((r) => [r.kind, r.amountSatang]))} · id ของแถวที่คงไว้เดิม ${db2Ok}`);
+    rec("T1.7-audit", auOk ? "HELD" : "FOUND", `audit ${au.length} แถว (+${au.length - before}) · ล่าสุด before ${fmt(last?.before)} after ${fmt(last?.after)}`);
+    await shot(p, "h1-t1-after-edit");
+    await o.ctx.close();
+  });
+
+  // ═══════ target 2: bad input ═══════
+  if (want("2")) await step("T2", async () => {
+    const o = await open("oa", costUrl(dC));
+    const p = o.page;
+    const FORMAT = "พิมพ์ยอดเป็นตัวเลข ทศนิยมไม่เกิน 2 ตำแหน่ง";
+    const INVALID = "ยอดต้นทุนต้องมากกว่าศูนย์ ไม่เกิน 10,000,000 บาทต่อรายการ และรวมทั้งรอบไม่เกิน 21 ล้านบาท";
+    const INVIS = "หมายเหตุมีอักขระที่มองไม่เห็น ลบแล้วพิมพ์ใหม่";
+    const cases: { name: string; amount: string; note?: string; paste?: boolean; exp: string; field: "amount" | "note" }[] = [
+      { name: "1250,50", amount: "1250,50", exp: FORMAT, field: "amount" }, { name: ",5", amount: ",5", exp: FORMAT, field: "amount" }, { name: "1 000", amount: "1 000", exp: FORMAT, field: "amount" },
+      { name: "1,2a", amount: "1,2a", exp: FORMAT, field: "amount" }, { name: "0", amount: "0", exp: INVALID, field: "amount" }, { name: "-5", amount: "-5", exp: FORMAT, field: "amount" },
+      { name: "เลขไทย ๑๒๓", amount: "๑๒๓", exp: FORMAT, field: "amount" }, { name: "ยาว 20 หลัก", amount: "99999999999999999999", exp: INVALID, field: "amount" },
+      { name: "12,345,678", amount: "12,345,678", exp: INVALID, field: "amount" }, { name: "10000000.01", amount: "10000000.01", exp: INVALID, field: "amount" }, { name: "1.234", amount: "1.234", exp: FORMAT, field: "amount" },
+      { name: "ว่าง", amount: "", exp: FORMAT, field: "amount" },
+      { name: "bidi U+202E", amount: "5", note: "abc‮def", paste: true, exp: INVIS, field: "note" }, { name: "isolate U+2066", amount: "5", note: "x⁦y⁩", paste: true, exp: INVIS, field: "note" },
+      { name: "BOM U+FEFF", amount: "5", note: "﻿หมายเหตุ", paste: true, exp: INVIS, field: "note" },
+    ];
+    for (const cs of cases) {
+      await p.reload({ waitUntil: "networkidle2" }); await p.waitForSelector(T("trips-cost-editor"));
+      const db0 = fmt((await costRowsDb(dC)).map((r) => [r.id, r.kind, r.amountSatang, r.note, r.updatedAt])); const a0 = (await auditsOf(dC)).length;
+      const n = await addRow(p, "OTHER", cs.paste ? cs.amount : cs.amount, "");
+      if (cs.note) await pasteInto(p, noteSel(n), cs.note);
+      // the offending row first? also put it in the middle: bad row = last row (index n)
+      await clickSave(p); const out = await waitOutcome(p);
+      const aria = await p.evaluate((x: { sel: string }) => {
+        const el = document.querySelector(x.sel) as HTMLElement | null; const id = el?.getAttribute("aria-describedby") ?? null; const tgt = id ? document.getElementById(id) : null;
+        const others = Array.from(document.querySelectorAll('[data-testid^="trips-cost-row-"] [aria-invalid="true"]')).length;
+        return { invalid: el?.getAttribute("aria-invalid") ?? null, describedby: id, targetText: tgt?.textContent ?? null, targetVisible: !!tgt && (tgt as HTMLElement).offsetParent !== null, role: tgt?.getAttribute("role") ?? null, others };
+      }, { sel: cs.field === "amount" ? amountSel(n) : noteSel(n) });
+      const amtOnScreen = await p.evaluate((s: string) => (document.querySelector(s) as HTMLInputElement | null)?.value ?? null, amountSel(n));
+      await sleep(400);
+      const db1 = fmt((await costRowsDb(dC)).map((r) => [r.id, r.kind, r.amountSatang, r.note, r.updatedAt])); const a1 = (await auditsOf(dC)).length;
+      const okMsg = out.error === cs.exp; const okAria = aria.invalid === "true" && aria.describedby !== null && aria.targetText === cs.exp && aria.targetVisible && aria.others === 1; const okDb = db0 === db1 && a0 === a1;
+      rec(`T2-${cs.name}`, okMsg && okAria && okDb ? "HELD" : "FOUND", `ช่องมีค่า ${fmt(amtOnScreen)} · ข้อความ ${fmt(out.error ?? out)} · aria ${fmt(aria)} · ฐานไม่เปลี่ยน ${okDb}`);
+      if (cs.name === "1,2a") await shot(p, "h1-t2-format-error");
+      if (cs.name === "bidi U+202E") await shot(p, "h1-t2-bidi-error");
+    }
+    // the bad row in the middle (row 0 of a fresh set): error points at row 0 not the last one
+    {
+      await p.reload({ waitUntil: "networkidle2" }); await p.waitForSelector(T("trips-cost-editor"));
+      const a0 = await p.$(amountSel(0)); await a0?.click({ clickCount: 3 }); await p.keyboard.press("Backspace"); await a0?.type("12,34");
+      await clickSave(p); const out = await waitOutcome(p);
+      const inv = await p.evaluate(() => Array.from(document.querySelectorAll('[data-testid^="trips-cost-row-"]')).map((li, i) => (li.querySelector('[aria-invalid="true"]') ? i : -1)).filter((i) => i >= 0));
+      rec("T2-first-row", fmt(inv) === "[0]" && !!out.error ? "HELD" : "FOUND", `แถวแรกยอดผิด "12,34" → ข้อความ ${fmt(out.error)} · แถวที่ aria-invalid ${fmt(inv)}`);
+    }
+    // notes that must save: ZWSP stripped · family emoji unchanged
+    for (const [name, note, exp] of [["ZWSP", "ค่า​เรือ​ ล่า", "ค่าเรือ ล่า"], ["emoji", "ครอบครัว 👨‍👩‍👧 มา", "ครอบครัว 👨‍👩‍👧 มา"], ["ZWNJ", "a‌b", "a‌b"], ["tag char U+E0041", `t\u{E0041}x`, `t\u{E0041}x`]] as const) {
+      await p.reload({ waitUntil: "networkidle2" }); await p.waitForSelector(T("trips-cost-editor"));
+      const n = await addRow(p, "OTHER", "1", ""); await pasteInto(p, noteSel(n), note);
+      await clickSave(p); const out = await waitOutcome(p); await sleep(1500);
+      const db = await costRowsDb(dC); const got = db[db.length - 1]?.note;
+      const res = name === "tag char U+E0041" ? "INFO" : out.saved && got === exp ? "HELD" : "FOUND";
+      rec(`T2-note-${name}`, res, `${fmt(out)} · หมายเหตุในฐาน ${fmt(got)} (ต้อง ${fmt(exp)}) · codepoints ${fmt([...(got ?? "")].map((ch) => ch.codePointAt(0)?.toString(16)))}`);
+    }
+    // note 201 chars via paste (maxLength only stops typing)
+    {
+      await p.reload({ waitUntil: "networkidle2" }); await p.waitForSelector(T("trips-cost-editor"));
+      const n = await addRow(p, "OTHER", "1", ""); await pasteInto(p, noteSel(n), "ก".repeat(201));
+      const a0 = (await auditsOf(dC)).length; await clickSave(p); const out = await waitOutcome(p);
+      const aria = await p.evaluate((s: string) => document.querySelector(s)?.getAttribute("aria-invalid") ?? null, noteSel(n));
+      rec("T2-note-201", out.error && aria === "true" && (await auditsOf(dC)).length === a0 ? "HELD" : "FOUND", `หมายเหตุ 201 ตัว (วาง) → ${fmt(out)} · aria-invalid ${aria}`);
+    }
+    await o.ctx.close();
+    // 31st row: dBig has 30 rows → add disabled + label
+    const o2 = await open("oa", costUrl(dBig));
+    const add = await o2.page.evaluate(() => { const b = document.querySelector('[data-testid="trips-cost-add"]') as HTMLButtonElement | null; return { disabled: b?.disabled ?? null, text: b?.textContent ?? null, rows: document.querySelectorAll('[data-testid^="trips-cost-row-"]').length }; });
+    rec("T2-31st-row", add.disabled === true && add.rows === 30 && (add.text ?? "").includes("ครบ 30") ? "HELD" : "FOUND", `30 แถว → ปุ่มเพิ่ม ${fmt(add)}`);
+    await o2.ctx.close();
+  });
+
+  // ═══════ target 3: two users / two tabs / double click / pending ═══════
+  if (want("3")) await step("T3", async () => {
+    for (const [label, tagB] of [["2users", "ce2"], ["2tabs", "oa"]] as const) {
+      const A = await open("oa", costUrl(dK)); const Bp = await open(tagB, costUrl(dK));
+      await addRow(A.page, "BOAT", "1,000", `A-${label}`); await clickSave(A.page); const oA = await waitOutcome(A.page); await sleep(1500);
+      const dbA = fmt((await costRowsDb(dK)).map((r) => [r.kind, r.amountSatang, r.note])); const auA = (await auditsOf(dK)).length;
+      await addRow(Bp.page, "FUEL", "777", `B-draft-${label}`); await clickSave(Bp.page); const oB = await waitOutcome(Bp.page); await sleep(1500);
+      const dbB = fmt((await costRowsDb(dK)).map((r) => [r.kind, r.amountSatang, r.note])); const auB = (await auditsOf(dK)).length;
+      await sleep(4000);
+      const draft = await rowsOnScreen(Bp.page);
+      const saveDis = await Bp.page.evaluate(() => (document.querySelector('[data-testid="trips-cost-save"]') as HTMLButtonElement | null)?.disabled ?? null);
+      await shot(Bp.page, `h1-t3-conflict-${label}`, false);
+      const okConf = !!oB.conflict && oB.conflict.includes("ยอดที่พิมพ์ไว้จะหาย") && dbA === dbB && auA === auB && draft.some((r) => r.amount === "777" && r.note === `B-draft-${label}`);
+      rec(`T3-${label}-conflict`, oA.saved && okConf ? "HELD" : "FOUND", `A ${fmt(oA)} · B ${fmt(oB)} · ฐานไม่เปลี่ยนจาก B ${dbA === dbB} audit ${auA}→${auB} · ร่างของ B ยังอยู่หลัง 5.5 วิ ${fmt(draft)} · ปุ่มบันทึกปิด ${saveDis}`);
+      // B presses reload
+      await Bp.page.evaluate(() => { const b = Array.from(document.querySelectorAll('[data-testid="trips-cost-conflict"] button'))[0] as HTMLButtonElement | undefined; b?.click(); });
+      await sleep(3000);
+      const after = await rowsOnScreen(Bp.page);
+      const dbRows = await costRowsDb(dK);
+      const expAfter = await Promise.all(dbRows.map(async (r) => ({ kind: r.kind, amount: await formatBaht(r.amountSatang), note: r.note ?? "" })));
+      const conflictGone = !(await Bp.page.$(T("trips-cost-conflict")));
+      rec(`T3-${label}-reload`, fmt(after) === fmt(expAfter) && conflictGone ? "HELD" : "FOUND", `หลังกดโหลดใหม่ B เห็น ${fmt(after)} · ฐาน ${fmt(expAfter)} · กล่องชนหาย ${conflictGone}`);
+      await A.ctx.close(); await Bp.ctx.close();
+    }
+    // double click → one write (two el.click() in one task + a real dblclick)
+    for (const mode of ["sync-2-clicks", "dblclick"] as const) {
+      const A = await open("oa", costUrl(dK));
+      let actions = 0; A.page.on("request", (r: never) => { const rq = r as { method(): string; headers(): Record<string, string> }; if (rq.method() === "POST" && rq.headers()["next-action"]) actions++; });
+      await addRow(A.page, "FOOD", mode === "dblclick" ? "13" : "12", mode);
+      const au0 = (await auditsOf(dK)).length; const n0 = (await costRowsDb(dK)).length;
+      if (mode === "sync-2-clicks") await A.page.evaluate(() => { const b = document.querySelector('[data-testid="trips-cost-save"]') as HTMLButtonElement; b.click(); b.click(); });
+      else await (await A.page.$(T("trips-cost-save")))?.click({ clickCount: 2 });
+      const out = await waitOutcome(A.page); await sleep(2500);
+      const au1 = (await auditsOf(dK)).length; const n1 = (await costRowsDb(dK)).length;
+      rec(`T3-${mode}`, au1 - au0 === 1 && n1 - n0 === 1 ? "HELD" : "FOUND", `คำขอ action ${actions} · audit +${au1 - au0} · แถว +${n1 - n0} · ${fmt(out)}`);
+      await A.ctx.close();
+    }
+    // inputs disabled while pending (server action delayed 2.5 s by request interception)
+    {
+      const A = await open("oa", costUrl(dK));
+      await A.page.setRequestInterception(true);
+      A.page.on("request", (r: never) => {
+        const rq = r as { isInterceptResolutionHandled(): boolean; continue(): Promise<void>; method(): string; headers(): Record<string, string> };
+        if (rq.isInterceptResolutionHandled()) return;
+        if (rq.method() === "POST" && rq.headers()["next-action"]) setTimeout(() => void rq.continue().catch(() => undefined), 2500);
+        else void rq.continue().catch(() => undefined);
+      });
+      await addRow(A.page, "OTHER", "5", "pending");
+      await clickSave(A.page); await sleep(700);
+      const st = await A.page.evaluate(() => {
+        const ed = document.querySelector('[data-testid="trips-cost-editor"]');
+        const ctl = Array.from(ed?.querySelectorAll("input, select, button") ?? []) as (HTMLInputElement | HTMLButtonElement)[];
+        return { total: ctl.length, enabled: ctl.filter((c) => !c.disabled).map((c) => c.getAttribute("data-testid") ?? c.tagName), saveText: document.querySelector('[data-testid="trips-cost-save"]')?.textContent ?? null };
+      });
+      await shot(A.page, "h1-t3-pending", false);
+      const out = await waitOutcome(A.page);
+      rec("T3-pending-disabled", st.enabled.length === 0 && st.saveText === "กำลังบันทึก…" ? "HELD" : "FOUND", `ระหว่างรอ: ${fmt(st)} · ผล ${fmt(out)}`);
+      await A.ctx.close();
+    }
+  });
+
+  // ═══════ target 7: layout ═══════
+  if (want("7")) await step("T7", async () => {
+    const measure = (page: Page) => page.evaluate(() => {
+      const de = document.documentElement; const vw = de.clientWidth;
+      const over = Array.from(document.querySelectorAll('[data-testid^="trips-cost"], [data-testid^="trips-dep"], button, a, input, select')).filter((e) => { const r = e.getBoundingClientRect(); return r.width > 0 && (r.right > vw + 1 || r.left < -1); })
+        .slice(0, 6).map((e) => `${e.getAttribute("data-testid") ?? e.tagName}:${Math.round(e.getBoundingClientRect().right)}`);
+      const inner = Array.from(document.querySelectorAll('[data-testid^="trips-cost"], [data-testid^="trips-dep"]')).filter((e) => (e as HTMLElement).scrollWidth > (e as HTMLElement).clientWidth + 1 && getComputedStyle(e).overflowX !== "visible").slice(0, 4).map((e) => e.getAttribute("data-testid"));
+      const save = document.querySelector('[data-testid="trips-cost-save"]')?.getBoundingClientRect();
+      return { scrollWidth: de.scrollWidth, clientWidth: vw, outOfView: over, innerScroll: inner, save: save ? { left: Math.round(save.left), right: Math.round(save.right), w: Math.round(save.width), h: Math.round(save.height) } : null };
+    });
+    for (const w of [1440, 390] as const) {
+      const h = w === 390 ? 844 : 900;
+      for (const [name, url, sel] of [["panel", panelUrl(dC, "2027-01-11"), T("trips-dep-money")], ["costs", costUrl(dC), T("trips-cost")], ["costs-30rows-huge", costUrl(dBig), T("trips-cost")], ["panel-huge", panelUrl(dBig, "2027-01-11"), T("trips-dep-money")]] as const) {
+        const o = await open("oa", url, w, h, sel);
+        await sleep(800);
+        const mm = await measure(o.page);
+        // panel sheet on mobile: inner scroll of the fixed sheet
+        const sheet = await o.page.evaluate(() => { const s = document.querySelector('[data-testid="trips-dep-panel"]') as HTMLElement | null; return s ? { sw: s.scrollWidth, cw: s.clientWidth, sh: s.scrollHeight, ch: s.clientHeight, pos: getComputedStyle(s).position } : null; });
+        await shot(o.page, `h1-t7-${name}-${w}`, true); await shot(o.page, `h1-t7-${name}-${w}-viewport`, false);
+        // reachability: scroll save into view and check it is inside the viewport
+        const reach = await o.page.evaluate(() => { const b = document.querySelector('[data-testid="trips-cost-save"]') as HTMLElement | null; if (!b) return null; b.scrollIntoView({ block: "center" }); const r = b.getBoundingClientRect(); const top = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return { inView: r.left >= 0 && r.right <= window.innerWidth && r.top >= 0 && r.bottom <= window.innerHeight, hitSelf: top === b || b.contains(top) }; });
+        const ok = mm.scrollWidth <= mm.clientWidth + 1 && mm.outOfView.length === 0 && (!sheet || sheet.sw <= sheet.cw + 1) && (reach === null || (reach.inView && reach.hitSelf));
+        rec(`T7-${name}-${w}`, ok ? "HELD" : "FOUND", `${fmt(mm)} · sheet ${fmt(sheet)} · ปุ่มบันทึก ${fmt(reach)} · pageerrors ${o.errors.length} · HTTP ${o.status}`);
+        await o.ctx.close();
+      }
+    }
+    // the 390 "blank gap": fixed sheet (max-md:fixed inset-0) stretches to the full-page screenshot height
+    const o = await open("oa", panelUrl(dC, "2027-01-11"), 390, 844, T("trips-dep-money"));
+    const g = await o.page.evaluate(() => {
+      const s = document.querySelector('[data-testid="trips-dep-panel"]') as HTMLElement; const r = s.getBoundingClientRect();
+      const last = s.lastElementChild as HTMLElement | null; const lr = last?.getBoundingClientRect();
+      const cal = document.querySelector('[data-trips-departures] > .grid > :first-child') as HTMLElement | null;
+      return { docH: document.documentElement.scrollHeight, vh: window.innerHeight, sheet: { top: Math.round(r.top), h: Math.round(r.height), scrollH: s.scrollHeight, pos: getComputedStyle(s).position }, contentBottom: lr ? Math.round(lr.bottom) : null, calTop: cal ? Math.round(cal.getBoundingClientRect().top) : null };
+    });
+    rec("T7-390-gap", "INFO", `แผงมือถือ = ${fmt(g)}`);
+    await o.ctx.close();
+  });
+} catch (e) {
+  if (!(e instanceof Error && e.message === "SMOKE_DONE")) rec("FATAL", "ERR", e instanceof Error ? (e.stack ?? e.message).slice(0, 600) : String(e));
+} finally {
+  try { await browser?.close(); } catch { /* gone */ }
+  dropProfile();
+  const left = await cleanup().catch((e) => ({ err: String(e) }));
+  console.log(`LEFTOVER ${fmt(left)}`);
+  writeFileSync(`${OUT}/hunt-1-results.json`, JSON.stringify(results, null, 2));
+  await (await import("./probe-trips-t1.7-hunt-lib.mjs")).pool().end().catch(() => undefined);
+  void q;
+}
+console.log(`SUMMARY ${fmt({ held: results.filter((r) => r.res === "HELD").length, found: results.filter((r) => r.res === "FOUND").length, err: results.filter((r) => r.res === "ERR").length })}`);
+process.exit(0);

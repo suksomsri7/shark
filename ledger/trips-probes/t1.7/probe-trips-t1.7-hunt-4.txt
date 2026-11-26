@@ -1,0 +1,25 @@
+// probe-trips-t1.7-hunt-4.mts — control for target 8's 5xx: do pre-existing trips actions (manifest · T1.4a) answer the same malformed POSTs with 500 too?
+import { actionResult, boot, cleanup, fmt, mkDep, postAction, rec, results, serveLogSince, serveLogSize, setup, sleep } from "./probe-trips-t1.7-hunt-lib.mjs";
+
+boot("probe-t17h-4");
+const MANIFEST_CSV = "60561177007c442aef853ef452fcfca39c8bb83bc0"; // exportManifestCsvAction (manifest-actions.ts · server-reference-manifest)
+try {
+  const F = await setup();
+  const d = await mkDep(F, "M", "PR", "2027-01-15");
+  const off = await serveLogSize();
+  for (const [name, path, id, args] of [
+    ["manifest slug-object", `/app/u/${F.slugA}/trips/departures/${d}/manifest`, MANIFEST_CSV, [{ toString: 1 }, { departureId: d }]],
+    ["manifest body-not-json", `/app/u/${F.slugA}/trips/departures/${d}/manifest`, MANIFEST_CSV, "this is {not json"],
+    ["cost slug-object", `/app/u/${F.slugA}/trips/departures/${d}/costs`, undefined, [{ toString: 1 }, { departureId: d, expectedToken: "x", rows: [] }]],
+  ] as const) {
+    const r = await postAction(F, "oa", path, args as unknown[] | string, { actionId: id });
+    rec(`CTL-${name}`, "INFO", `HTTP ${r.status} · ${fmt(actionResult(r.body) ?? r.body.replace(/\s+/g, " ").slice(0, 140))}`);
+  }
+  await sleep(1000);
+  console.log((await serveLogSince(off)).slice(0, 1500));
+} finally {
+  console.log(`LEFTOVER ${fmt(await cleanup())}`);
+  await (await import("./probe-trips-t1.7-hunt-lib.mjs")).pool().end().catch(() => undefined);
+}
+console.log(`SUMMARY ${fmt(results.map((r) => r.id))}`);
+process.exit(0);
