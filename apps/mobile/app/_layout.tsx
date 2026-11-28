@@ -44,6 +44,8 @@ function Gate({ children }: { children: React.ReactNode }) {
       if (segments[0] !== "phone") router.replace("/phone");
       return;
     }
+    // โหลด /me ไม่สำเร็จ (ออฟไลน์) ⇒ user ยัง null — อย่าตีความว่า "ไม่มีกิจการ" แล้วพาเข้า /dna
+    if (!user) return;
     if (tenants.length === 0) {
       // login แล้วแต่ยังไม่มีกิจการ → บังคับเข้า DNA Wizard สร้างกิจการแรก (คำสั่งเจ้าของ) · /business/new (G1) เปิดได้แต่ไม่บังคับ (R-S2.12a)
       // S2.21 (สลับธงตาม R-S2.12a): เพิ่งสมัครด้วยเบอร์ (ธงผูก user.id) ⇒ G1 /business/new จริง แทน /dna · ธงล้างเมื่อสร้างกิจการแรกเสร็จ

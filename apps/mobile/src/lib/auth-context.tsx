@@ -1,7 +1,7 @@
 // สถานะ auth กลางของแอป — token/กิจการ active/รายชื่อกิจการ + bootstrap จาก SecureStore ตอนเปิดแอป
 // กติกา flow (คำสั่งเจ้าของ): เปิดแอปบังคับ login → มี token แต่ไม่มีกิจการ → DNA Wizard สร้างกิจการแรก
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { api } from "@/src/api/client";
+import { api, ApiError } from "@/src/api/client";
 import {
   clearSession,
   getCachedBrand,
@@ -74,8 +74,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(me.user);
       setTenants(me.memberships);
       return me;
-    } catch {
-      return null; // token ตาย/ออฟไลน์ — ฝั่งจอจัดการ redirect เอง
+    } catch (e) {
+      // 28 พ.ย. (เจ้าของเจอ): token หมดอายุ (ครบ 90 วัน/ไม่ใช้ 30 วัน) → /me 401 → tenants ว่าง → Gate เคยพาเข้า /dna
+      // "ตั้งค่ากิจการใหม่" ทั้งที่มีร้าน · 401 = ล้าง token ในเครื่อง ⇒ Gate พาไป /login
+      if (e instanceof ApiError && e.status === 401) {
+        resetPushRegistration();
+        await clearSession();
+        setTok(null); setUser(null); setTenants([]); setActive(null);
+      }
+      return null; // ออฟไลน์ — user ยัง null ⇒ Gate ไม่พาเข้า /dna (ดู app/_layout.tsx)
     }
   }, []);
 
